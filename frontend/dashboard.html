@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cost Dashboard | Claude Office Assistant</title>
+  <meta name="description" content="Real-time API cost monitoring dashboard for Claude Office Assistant — track spend, model usage, and budget alerts." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #12121a;
+      --surface2:  #1a1a26;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #e8e8f0;
+      --muted:     #6b6b8a;
+      --accent:    #7c6fff;
+      --accent2:   #ff6f91;
+      --green:     #22d3a0;
+      --yellow:    #fbbf24;
+      --red:       #ef4444;
+      --haiku:     #22d3a0;
+      --sonnet:    #7c6fff;
+      --radius:    14px;
+      --radius-sm: 8px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Background ── */
+    .bg-orbs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .orb {
+      position: absolute; border-radius: 50%;
+      filter: blur(80px); opacity: 0.12;
+      animation: orb-drift 20s ease-in-out infinite;
+    }
+    .orb-1 { width: 500px; height: 500px; background: var(--accent);  top: -10%; left: -5%; }
+    .orb-2 { width: 400px; height: 400px; background: var(--accent2); bottom: -10%; right: -5%; animation-delay: -7s; }
+    .orb-3 { width: 300px; height: 300px; background: var(--green);   top: 50%; left: 50%; animation-delay: -14s; }
+    @keyframes orb-drift {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      33%       { transform: translate(40px,-30px) scale(1.08); }
+      66%       { transform: translate(-20px,40px) scale(0.94); }
+    }
+
+    /* ── Layout ── */
+    .container {
+      position: relative; z-index: 1;
+      max-width: 1200px; margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    /* ── Header ── */
+    .dash-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 40px; gap: 16px; flex-wrap: wrap;
+    }
+    .dash-header h1 { font-size: 1.8rem; font-weight: 700; }
+    .dash-header h1 span { color: var(--accent); }
+    .header-meta { display: flex; align-items: center; gap: 12px; }
+    .back-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--muted); text-decoration: none; font-size: 0.875rem;
+      padding: 8px 14px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); transition: all .2s;
+    }
+    .back-link:hover { color: var(--text); border-color: var(--accent); }
+    .refresh-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--accent); color: white; border: none;
+      padding: 9px 18px; border-radius: var(--radius-sm);
+      font-size: 0.875rem; font-weight: 500; cursor: pointer;
+      transition: all .2s;
+    }
+    .refresh-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+
+    /* ── Alert Banner ── */
+    .alert-banner {
+      padding: 14px 20px; border-radius: var(--radius-sm);
+      margin-bottom: 24px; font-weight: 500; font-size: 0.9rem;
+      border: 1px solid; display: none; align-items: center; gap: 10px;
+    }
+    .alert-banner.visible { display: flex; }
+    .alert-banner.warning  { background: rgba(251,191,36,0.1);  border-color: rgba(251,191,36,0.3); color: var(--yellow); }
+    .alert-banner.critical { background: rgba(239,68,68,0.1);   border-color: rgba(239,68,68,0.3);  color: var(--red); }
+
+    /* ── KPI Cards ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px; margin-bottom: 32px;
+    }
+    .kpi-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; position: relative; overflow: hidden;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
+    .kpi-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 2px; background: var(--accent-color, var(--accent));
+    }
+    .kpi-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .kpi-value { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .kpi-sub   { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+    /* ── Budget Bar ── */
+    .budget-section {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px; margin-bottom: 24px;
+    }
+    .budget-section h2 { font-size: 1rem; font-weight: 600; margin-bottom: 20px; }
+    .budget-bar-wrap {
+      background: var(--surface2); border-radius: 100px;
+      height: 14px; overflow: hidden; margin-bottom: 12px;
+    }
+    .budget-bar-fill {
+      height: 100%; border-radius: 100px;
+      background: linear-gradient(90deg, var(--green), var(--accent));
+      transition: width .6s cubic-bezier(.4,0,.2,1);
+    }
+    .budget-bar-fill.warn  { background: linear-gradient(90deg, var(--yellow), #f97316); }
+    .budget-bar-fill.limit { background: linear-gradient(90deg, var(--red), #dc2626); }
+    .budget-row {
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+      font-size: 0.875rem; color: var(--muted);
+    }
+    .budget-row strong { color: var(--text); font-size: 1rem; }
+    .threshold-row {
+      display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap;
+    }
+    .threshold-chip {
+      font-size: 0.75rem; padding: 4px 10px; border-radius: 100px; font-weight: 500;
+    }
+    .threshold-chip.warn  { background: rgba(251,191,36,0.15); color: var(--yellow); }
+    .threshold-chip.crit  { background: rgba(239,68,68,0.15);  color: var(--red); }
+    .threshold-chip.ok    { background: rgba(34,211,160,0.15);  color: var(--green); }
+
+    /* ── Two-column grid ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Panel card ── */
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px;
+    }
+    .panel h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+    /* ── Model Split ── */
+    .model-split { display: flex; gap: 16px; }
+    .model-stat {
+      flex: 1; padding: 16px; border-radius: var(--radius-sm); text-align: center;
+    }
+    .model-stat.haiku  { background: rgba(34,211,160,0.1); border: 1px solid rgba(34,211,160,0.2); }
+    .model-stat.sonnet { background: rgba(124,111,255,0.1); border: 1px solid rgba(124,111,255,0.2); }
+    .model-stat .count { font-size: 2rem; font-weight: 700; }
+    .model-stat .name  { font-size: 0.75rem; margin-top: 4px; color: var(--muted); }
+    .model-stat.haiku .count  { color: var(--haiku); }
+    .model-stat.sonnet .count { color: var(--sonnet); }
+
+    /* ── Task breakdown ── */
+    .task-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid var(--border); gap: 8px;
+    }
+    .task-row:last-child { border-bottom: none; }
+    .task-name { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; }
+    .task-emoji { font-size: 1rem; }
+    .task-calls { font-size: 0.75rem; color: var(--muted); }
+    .task-cost  { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--accent); }
+
+    /* ── Recent calls table ── */
+    .calls-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .calls-table th {
+      text-align: left; color: var(--muted); font-weight: 500; font-size: 0.7rem;
+      text-transform: uppercase; letter-spacing: .05em; padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .calls-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .calls-table tr:last-child td { border-bottom: none; }
+    .calls-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .tier-badge {
+      padding: 2px 8px; border-radius: 100px; font-size: 0.7rem; font-weight: 600;
+    }
+    .tier-badge.haiku  { background: rgba(34,211,160,0.15); color: var(--haiku); }
+    .tier-badge.sonnet { background: rgba(124,111,255,0.15); color: var(--sonnet); }
+    /* monospace utility — replaces the invalid code-mono custom element */
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 32px; color: var(--muted); }
+
+    /* ── Footer ── */
+    .dash-footer {
+      margin-top: 40px; text-align: center; font-size: 0.75rem; color: var(--muted);
+    }
+
+    /* ── Loading skeleton ── */
+    .skeleton { background: var(--surface2); border-radius: 4px; animation: shimmer 1.5s infinite; }
+    @keyframes shimmer {
+      0%, 100% { opacity: 0.5; }
+      50%       { opacity: 1; }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 500px) {
+      .kpi-value { font-size: 1.5rem; }
+      .model-split { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<div class="container">
+
+  <!-- Header -->
+  <header class="dash-header">
+    <div>
+      <h1>Cost <span>Dashboard</span></h1>
+      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Real-time Claude API spend monitoring</p>
+    </div>
+    <div class="header-meta">
+      <a href="index.html" class="back-link">← Chat</a>
+      <button class="refresh-btn" id="refresh-btn" onclick="loadDashboard()">↻ Refresh</button>
+    </div>
+  </header>
+
+  <!-- Alert Banner -->
+  <div class="alert-banner" id="alert-banner" role="alert">
+    <span id="alert-icon">⚠️</span>
+    <span id="alert-text">Budget alert</span>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="kpi-card" style="--accent-color:var(--green)">
+      <div class="kpi-label">Monthly Spend</div>
+      <div class="kpi-value" id="kpi-spent">—</div>
+      <div class="kpi-sub" id="kpi-budget-sub">of $150.00 budget</div>
+    </div>
+    <div class="kpi-card" style="--accent-color:var(--accent)">
+      <div class="kpi-label">Remaining</div>
+      <div class="kpi-value" id="kpi-remaining">—</div>
+      <div class="kpi-sub" id="kpi-month">This month</div>
+    </div>
+    <div class="kpi-card" style="--accent-color:var(--yellow)">
+      <div class="kpi-label">Total API Calls</div>
+      <div class="kpi-value" id="kpi-calls">—</div>
+      <div class="kpi-sub">This month</div>
+    </div>
+    <div class="kpi-card" style="--accent-color:var(--accent2)">
+      <div class="kpi-label">All-Time Spend</div>
+      <div class="kpi-value" id="kpi-alltime">—</div>
+      <div class="kpi-sub">Since day one</div>
+    </div>
+  </div>
+
+  <!-- Budget Bar -->
+  <section class="budget-section" aria-label="Budget progress">
+    <h2>📊 Budget Utilization</h2>
+    <div class="budget-bar-wrap">
+      <div class="budget-bar-fill" id="budget-bar-fill" style="width:0%"></div>
+    </div>
+    <div class="budget-row">
+      <span>Spent: <strong id="bb-spent">$0.00</strong></span>
+      <span id="bb-pct" style="color:var(--accent);font-weight:600">0%</span>
+      <span>Limit: <strong>$150.00</strong></span>
+    </div>
+    <div class="threshold-row">
+      <span class="threshold-chip warn">⚠️ Warning at $120 (80%)</span>
+      <span class="threshold-chip crit">🚨 Critical at $135 (90%)</span>
+      <span class="threshold-chip ok">✅ Current status: <strong id="status-chip">OK</strong></span>
+    </div>
+  </section>
+
+  <!-- Two column row -->
+  <div class="two-col">
+
+    <!-- Model split -->
+    <div class="panel">
+      <h2>🤖 Model Usage</h2>
+      <div class="model-split">
+        <div class="model-stat haiku">
+          <div class="count" id="haiku-count">—</div>
+          <div class="name">Haiku calls</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Fast & cheap</div>
+        </div>
+        <div class="model-stat sonnet">
+          <div class="count" id="sonnet-count">—</div>
+          <div class="name">Sonnet calls</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Powerful</div>
+        </div>
+      </div>
+      <p style="margin-top:16px;font-size:.75rem;color:var(--muted)">
+        Smart routing saves ~60–70% on API costs by using Haiku for simple tasks.
+      </p>
+    </div>
+
+    <!-- Task breakdown -->
+    <div class="panel">
+      <h2>📋 Task Breakdown</h2>
+      <div id="task-breakdown">
+        <div class="empty-state">No data yet</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Recent Calls -->
+  <div class="panel" style="margin-bottom:24px">
+    <h2>🕐 Recent API Calls <span style="color:var(--muted);font-weight:400;font-size:.8rem">(last 10)</span></h2>
+    <div id="recent-calls-wrap" style="overflow-x:auto">
+      <div class="empty-state">No calls recorded yet</div>
+    </div>
+  </div>
+
+  <!-- Quick links -->
+  <div class="two-col">
+    <div class="panel">
+      <h2>⚡ Quick Actions</h2>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+        <a href="index.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span>⌨️</span> Open Chat Assistant
+        </a>
+        <a href="html-generator.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span>🎨</span> HTML Generator
+        </a>
+        <a href="presentation.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span>📊</span> Presentation Creator
+        </a>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>📅 Monthly Maintenance</h2>
+      <div style="font-size:.8rem;color:var(--muted);line-height:1.8">
+        <p>✅ Review usage logs weekly</p>
+        <p>✅ Check spend vs budget</p>
+        <p>✅ Optimize model routing if needed</p>
+        <p>✅ Back up usage data monthly</p>
+        <p>✅ Test all features bi-weekly</p>
+        <p>✅ Gather team feedback</p>
+      </div>
+    </div>
+  </div>
+
+  <footer class="dash-footer">
+    <p>Claude Office Assistant · Cost Dashboard · Auto-refreshes every 60s</p>
+  </footer>
+
+</div>
+
+<script>
+// Auto-detect API base: localhost in dev, same-origin in production
+const API = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:5000"
+  : window.location.origin;
+
+const TASK_ICONS = {
+  coding: "⌨️", html_design: "🎨", presentations: "📊",
+  captions: "✍️", scripts: "🎬", general: "💬",
+};
+
+async function loadDashboard() {
+  const offlineIds = ["kpi-spent", "kpi-remaining", "kpi-calls", "kpi-alltime"];
+  try {
+    const res  = await fetch(`${API}/api/usage`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderDashboard(data);
+  } catch (e) {
+    offlineIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = "—";
+    });
+    const spent = document.getElementById("kpi-spent");
+    if (spent) spent.textContent = "Offline";
+    console.error("Could not reach API:", e);
+  }
+}
+
+function renderDashboard(d) {
+  // KPIs
+  document.getElementById("kpi-spent").textContent     = `$${(d.monthly_spend||0).toFixed(4)}`;
+  document.getElementById("kpi-remaining").textContent = `$${(d.remaining||0).toFixed(2)}`;
+  document.getElementById("kpi-calls").textContent     = d.total_calls || 0;
+  document.getElementById("kpi-alltime").textContent   = `$${(d.total_spent_ever||0).toFixed(4)}`;
+  document.getElementById("kpi-month").textContent     = d.month || "—";
+
+  // Budget bar
+  const pct = Math.min(d.percent_used || 0, 100);
+  const bar  = document.getElementById("budget-bar-fill");
+  bar.style.width = pct + "%";
+  bar.className = "budget-bar-fill" + (pct >= 90 ? " limit" : pct >= 80 ? " warn" : "");
+  document.getElementById("bb-spent").textContent = `$${(d.monthly_spend||0).toFixed(4)}`;
+  document.getElementById("bb-pct").textContent   = pct.toFixed(1) + "%";
+
+  // Alert
+  const alerts = d.budget_alerts || {};
+  const level  = alerts.alert_level || "OK";
+  const banner = document.getElementById("alert-banner");
+  document.getElementById("status-chip").textContent = level;
+  if (level === "CRITICAL") {
+    banner.className = "alert-banner visible critical";
+    document.getElementById("alert-icon").textContent = "🚨";
+    document.getElementById("alert-text").textContent =
+      `CRITICAL: You have spent ${pct.toFixed(1)}% of your monthly budget ($${(d.monthly_spend||0).toFixed(2)} of $${d.budget_limit}). Non-critical tasks pausing soon.`;
+  } else if (level === "WARNING") {
+    banner.className = "alert-banner visible warning";
+    document.getElementById("alert-icon").textContent = "⚠️";
+    document.getElementById("alert-text").textContent =
+      `WARNING: You have used ${pct.toFixed(1)}% of your monthly budget. Consider switching more tasks to Haiku.`;
+  } else {
+    banner.className = "alert-banner";
+  }
+
+  // Model split
+  document.getElementById("haiku-count").textContent  = d.haiku_calls  || 0;
+  document.getElementById("sonnet-count").textContent = d.sonnet_calls || 0;
+
+  // Task breakdown
+  const tb   = d.task_breakdown || {};
+  const tbEl = document.getElementById("task-breakdown");
+  const tasks = Object.entries(tb);
+  if (tasks.length === 0) {
+    tbEl.innerHTML = '<div class="empty-state">No calls yet</div>';
+  } else {
+    tbEl.innerHTML = tasks.sort((a,b) => b[1].cost - a[1].cost).map(([task, stat]) => `
+      <div class="task-row">
+        <div class="task-name">
+          <span class="task-emoji">${TASK_ICONS[task] || "🔷"}</span>
+          <span>${task.replace(/_/g," ")}</span>
+          <span class="task-calls">(${stat.calls} calls)</span>
+        </div>
+        <span class="task-cost">$${stat.cost.toFixed(5)}</span>
+      </div>`).join("");
+  }
+
+  // Recent calls
+  const calls  = d.recent_calls || [];
+  const callEl = document.getElementById("recent-calls-wrap");
+  if (calls.length === 0) {
+    callEl.innerHTML = '<div class="empty-state">No API calls recorded yet. Start chatting!</div>';
+  } else {
+    callEl.innerHTML = `
+      <table class="calls-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Task</th>
+            <th>Model</th>
+            <th>Tokens</th>
+            <th>Cost</th>
+            <th>User</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${calls.map(c => `
+            <tr>
+              <td style="color:var(--muted);font-size:.75rem;font-family:JetBrains Mono,monospace">${c.timestamp?.split("T")[1]?.slice(0,8) || "—"}</td>
+              <td>${TASK_ICONS[c.task_type]||"🔷"} ${c.task_type||"—"}</td>
+              <td><span class="tier-badge ${c.model_tier}">${c.model_tier}</span></td>
+              <td style="font-family:JetBrains Mono,monospace">${((c.input_tokens||0)+(c.output_tokens||0)).toLocaleString()}</td>
+              <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">$${(c.cost_usd||0).toFixed(5)}</td>
+              <td style="color:var(--muted)">${c.user_id||"—"}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>`;
+  }
+}
+
+// Auto-refresh every 60 seconds
+loadDashboard();
+setInterval(loadDashboard, 60000);
+</script>
+</body>
+</html>

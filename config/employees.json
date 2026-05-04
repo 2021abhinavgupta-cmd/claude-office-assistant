@@ -1,0 +1,67 @@
+{
+  "employees": [
+    {
+      "id": "emp001",
+      "name": "Vidit",
+      "role": "Co-Founder",
+      "whatsapp": "+919876543210",
+      "department": "Engineering",
+      "status": "active",
+      "checkins": []
+    },
+    {
+      "id": "emp002",
+      "name": "Nupur",
+      "role": "UI/UX Designer",
+      "whatsapp": "+919876543211",
+      "department": "Design",
+      "status": "active",
+      "checkins": []
+    },
+    {
+      "id": "emp003",
+      "name": "Abhinav",
+      "role": "Backend Developer",
+      "whatsapp": "+919876543212",
+      "department": "Engineering",
+      "status": "active",
+      "checkins": []
+    },
+    {
+      "id": "emp004",
+      "name": "Kshitij",
+      "role": "Founder",
+      "whatsapp": "+919876543213",
+      "department": "General",
+      "status": "active",
+      "checkins": []
+    },
+    {
+      "id": "emp005",
+      "name": "Raj",
+      "role": "Video Editor",
+      "whatsapp": "+919876543214",
+      "department": "General",
+      "status": "active",
+      "checkins": []
+    },
+    {
+      "id": "emp006",
+      "name": "Mohit",
+      "role": "Media",
+      "whatsapp": "+919876543215",
+      "department": "General",
+      "status": "active",
+      "checkins": []
+    },
+    {
+      "id": "emp007",
+      "name": "Tanaya",
+      "role": "Account",
+      "whatsapp": "+919876543216",
+      "department": "General",
+      "status": "active",
+      "checkins": []
+    }
+  ]
+}

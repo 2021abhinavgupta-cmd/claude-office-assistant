@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Presentation Creator | Claude Office Assistant</title>
+  <meta name="description" content="AI-powered presentation generator — turn any topic into structured, professional slide decks instantly using Claude API." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0a0a0f;
+      --surface:  #12121a;
+      --surface2: #1a1a26;
+      --border:   rgba(255,255,255,0.08);
+      --text:     #e8e8f0;
+      --muted:    #6b6b8a;
+      --accent:   #7c6fff;
+      --green:    #22d3a0;
+      --yellow:   #fbbf24;
+      --radius:   14px;
+      --radius-sm:8px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+    .bg-orbs { position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden; }
+    .orb { position:absolute;border-radius:50%;filter:blur(80px);opacity:.1;animation:drift 20s ease-in-out infinite; }
+    .orb-1 { width:500px;height:500px;background:var(--accent);top:-15%;right:-5%; }
+    .orb-2 { width:400px;height:400px;background:#22d3a0;bottom:-10%;left:-5%;animation-delay:-8s; }
+    @keyframes drift { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-25px,30px)} }
+
+    .container { position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:28px 24px; }
+
+    .page-header {
+      display:flex;align-items:center;justify-content:space-between;
+      margin-bottom:32px;gap:16px;flex-wrap:wrap;
+    }
+    .page-header h1 { font-size:1.7rem;font-weight:700; }
+    .page-header h1 span { color:var(--green); }
+    .header-nav { display:flex;gap:10px; }
+    .nav-link {
+      padding:8px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);
+      color:var(--muted);text-decoration:none;font-size:.8rem;transition:all .2s;
+    }
+    .nav-link:hover { color:var(--text);border-color:var(--accent); }
+
+    /* Split */
+    .main-split { display:grid;grid-template-columns:360px 1fr;gap:20px; }
+    @media(max-width:850px) { .main-split { grid-template-columns:1fr; } }
+
+    /* Form */
+    .form-panel {
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius);padding:24px;position:sticky;top:24px;
+    }
+    .form-panel h2 { font-size:1rem;font-weight:600;margin-bottom:20px; }
+    .form-group { margin-bottom:16px; }
+    .form-group label {
+      display:block;font-size:.7rem;font-weight:500;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width:100%;background:var(--surface2);border:1px solid var(--border);
+      border-radius:var(--radius-sm);color:var(--text);font-family:'Inter',sans-serif;
+      font-size:.875rem;padding:10px 13px;outline:none;transition:border-color .2s;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus { border-color:var(--accent); }
+    .form-group select option { background:var(--surface2); }
+
+    .slide-count-row { display:flex;align-items:center;gap:12px; }
+    .slide-count-row input[type="range"] { flex:1;accent-color:var(--accent); }
+    .slide-count-val { font-size:1.1rem;font-weight:700;color:var(--accent);min-width:28px;text-align:right; }
+
+    .gen-btn {
+      width:100%;padding:14px;border-radius:var(--radius-sm);
+      background:linear-gradient(135deg,var(--green),#10b981);
+      border:none;color:white;font-size:.95rem;font-weight:600;
+      cursor:pointer;transition:all .25s;display:flex;align-items:center;justify-content:center;gap:8px;
+    }
+    .gen-btn:hover:not(:disabled) { opacity:.9;transform:translateY(-1px);box-shadow:0 6px 20px rgba(34,211,160,.3); }
+    .gen-btn:disabled { opacity:.5;cursor:not-allowed; }
+    .spinner { width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* Slides output */
+    .slides-panel {
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius);overflow:hidden;
+    }
+    .slides-header {
+      display:flex;align-items:center;justify-content:space-between;
+      padding:16px 20px;border-bottom:1px solid var(--border);
+    }
+    .slides-header h2 { font-size:1rem;font-weight:600; }
+    .slides-actions { display:flex;gap:8px; }
+    .action-btn {
+      padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);
+      background:transparent;color:var(--muted);font-size:.75rem;cursor:pointer;transition:all .2s;
+    }
+    .action-btn:hover { color:var(--text);border-color:var(--accent); }
+
+    /* Deck navigation */
+    .deck-nav {
+      display:none;align-items:center;justify-content:center;gap:16px;
+      padding:12px;background:var(--surface2);border-bottom:1px solid var(--border);
+    }
+    .deck-nav.visible { display:flex; }
+    .slide-nav-btn {
+      width:36px;height:36px;border-radius:var(--radius-sm);border:1px solid var(--border);
+      background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;font-size:1rem;
+      display:flex;align-items:center;justify-content:center;
+    }
+    .slide-nav-btn:hover:not(:disabled) { color:var(--text);border-color:var(--accent); }
+    .slide-nav-btn:disabled { opacity:.3;cursor:not-allowed; }
+    .slide-counter { font-size:.875rem;color:var(--muted);min-width:80px;text-align:center; }
+
+    /* Slide card */
+    .slide-display { padding:24px; }
+    .slide-card {
+      background:linear-gradient(135deg,var(--surface2),rgba(124,111,255,.05));
+      border:1px solid var(--border);border-radius:var(--radius);
+      padding:36px;min-height:340px;display:none;
+      flex-direction:column;position:relative;overflow:hidden;
+    }
+    .slide-card.active { display:flex; }
+    .slide-card::before {
+      content:'';position:absolute;top:0;left:0;right:0;height:3px;
+      background:linear-gradient(90deg,var(--accent),var(--green));
+    }
+    .slide-number { font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px; }
+    .slide-title { font-size:1.6rem;font-weight:700;margin-bottom:20px;line-height:1.3; }
+    .slide-bullets { list-style:none;display:flex;flex-direction:column;gap:12px; }
+    .slide-bullets li {
+      display:flex;align-items:flex-start;gap:10px;font-size:.95rem;line-height:1.5;
+    }
+    .slide-bullets li::before {
+      content:'▸';color:var(--accent);flex-shrink:0;margin-top:1px;
+    }
+    .slide-notes {
+      margin-top:auto;padding-top:20px;border-top:1px solid var(--border);
+      font-size:.75rem;color:var(--muted);
+    }
+    .slide-notes strong { color:var(--yellow); }
+
+    /* Markdown view */
+    .markdown-view {
+      display:none;padding:24px;max-height:600px;overflow:auto;
+    }
+    .markdown-view pre {
+      font-family:'JetBrains Mono',monospace;font-size:.78rem;
+      color:#a8b4d8;white-space:pre-wrap;line-height:1.8;
+    }
+
+    /* Empty */
+    .empty-slides {
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      min-height:400px;color:var(--muted);gap:12px;
+    }
+    .empty-slides .icon { font-size:3.5rem;opacity:.4; }
+
+    /* Usage */
+    .usage-strip {
+      display:none;padding:10px 20px;background:var(--surface2);
+      border-top:1px solid var(--border);font-size:.75rem;
+      color:var(--muted);align-items:center;gap:14px;
+    }
+    .usage-strip.visible { display:flex; }
+    .usage-chip { padding:2px 8px;border-radius:100px;background:rgba(34,211,160,.15);color:var(--green); }
+
+    /* View toggle */
+    .view-toggle { display:flex;gap:4px; }
+    .view-btn {
+      padding:5px 12px;border-radius:6px;border:none;background:transparent;
+      color:var(--muted);font-size:.75rem;cursor:pointer;transition:all .2s;
+    }
+    .view-btn.active { background:rgba(124,111,255,.2);color:var(--accent); }
+  </style>
+</head>
+<body>
+
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+</div>
+
+<div class="container">
+
+  <header class="page-header">
+    <div>
+      <h1>📊 Presentation <span>Creator</span></h1>
+      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Turn any topic into a structured slide deck — powered by Claude Sonnet</p>
+    </div>
+    <nav class="header-nav">
+      <a href="index.html" class="nav-link">← Chat</a>
+      <a href="dashboard.html" class="nav-link">📊 Dashboard</a>
+      <a href="html-generator.html" class="nav-link">🎨 HTML Gen</a>
+    </nav>
+  </header>
+
+  <div class="main-split">
+
+    <!-- Form -->
+    <aside class="form-panel">
+      <h2>⚙️ Slide Settings</h2>
+
+      <div class="form-group">
+        <label>Topic / Title *</label>
+        <input type="text" id="topic" placeholder="E.g. AI Strategy for SMEs in 2025" />
+      </div>
+
+      <div class="form-group">
+        <label>Number of Slides</label>
+        <div class="slide-count-row">
+          <input type="range" id="slide-count" min="5" max="20" value="10"
+            oninput="document.getElementById('slide-val').textContent=this.value" />
+          <span class="slide-count-val" id="slide-val">10</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Target Audience</label>
+        <input type="text" id="audience" placeholder="E.g. C-suite executives, startup founders..." value="general business audience" />
+      </div>
+
+      <div class="form-group">
+        <label>Presentation Tone</label>
+        <select id="tone">
+          <option value="professional">Professional</option>
+          <option value="inspirational">Inspirational</option>
+          <option value="educational">Educational</option>
+          <option value="casual">Casual / Friendly</option>
+          <option value="sales-focused">Sales Focused</option>
+          <option value="technical">Technical</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Additional Notes</label>
+        <textarea id="extra-notes" placeholder="E.g. Focus on ROI, include India market data, keep it under 15 minutes..." rows="3"></textarea>
+      </div>
+
+      <button class="gen-btn" id="gen-btn" onclick="generatePresentation()">
+        <span id="btn-icon">✦</span>
+        <span id="btn-text">Generate Slides</span>
+      </button>
+
+      <p style="margin-top:10px;font-size:.7rem;color:var(--muted);text-align:center">
+        Uses Claude Sonnet · ~$0.003–0.005 per deck
+      </p>
+    </aside>
+
+    <!-- Slides Output -->
+    <div class="slides-panel">
+      <div class="slides-header">
+        <h2 id="deck-title">📋 Your Slides</h2>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="view-toggle">
+            <button class="view-btn active" id="view-deck" onclick="switchView('deck')">🖼 Deck</button>
+            <button class="view-btn" id="view-md" onclick="switchView('md')">📝 Markdown</button>
+          </div>
+          <div class="slides-actions">
+            <button class="action-btn" id="copy-md-btn" onclick="copyMarkdown()" style="display:none">📋 Copy MD</button>
+            <button class="action-btn" id="download-md-btn" onclick="downloadMarkdown()" style="display:none">⬇️ Download</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deck navigation -->
+      <div class="deck-nav" id="deck-nav">
+        <button class="slide-nav-btn" id="prev-btn" onclick="prevSlide()" disabled>‹</button>
+        <span class="slide-counter" id="slide-counter">1 / 10</span>
+        <button class="slide-nav-btn" id="next-btn" onclick="nextSlide()">›</button>
+      </div>
+
+      <!-- Deck view -->
+      <div class="slide-display" id="slide-display">
+        <div class="empty-slides" id="empty-slides">
+          <div class="icon">📊</div>
+          <p>Your presentation will appear here</p>
+          <p style="font-size:.75rem;opacity:.6">Enter a topic on the left and click Generate</p>
+        </div>
+        <!-- Slides injected here by JS -->
+      </div>
+
+      <!-- Markdown view -->
+      <div class="markdown-view" id="markdown-view">
+        <pre id="md-content">// Markdown will appear here...</pre>
+      </div>
+
+      <div class="usage-strip" id="usage-strip">
+        <span>✦</span>
+        <span id="us-model" class="usage-chip">claude-sonnet</span>
+        <span id="us-tokens">— tokens</span>
+        <span id="us-cost">$—</span>
+        <span id="us-slides" style="margin-left:auto"></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Auto-detect API base: localhost in dev, same-origin in production
+const API = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:5000"
+  : window.location.origin;
+let slides       = [];
+let currentSlide = 0;
+let rawMarkdown  = "";
+
+async function generatePresentation() {
+  const topic  = document.getElementById("topic").value.trim();
+  const count  = parseInt(document.getElementById("slide-count").value);
+  const aud    = document.getElementById("audience").value.trim();
+  const tone   = document.getElementById("tone").value;
+  const extra  = document.getElementById("extra-notes").value.trim();
+  const topicF = extra ? `${topic}. Additional notes: ${extra}` : topic;
+
+  if (!topic) { alert("Please enter a topic."); return; }
+
+  setLoading(true);
+
+  try {
+    const res  = await fetch(`${API}/api/presentation`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ topic: topicF, slide_count: count, audience: aud, tone, user_id: "presentation_gen" }),
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      alert("Error: " + (data.error || "Generation failed"));
+      return;
+    }
+
+    slides      = data.slides || [];
+    rawMarkdown = data.raw_markdown || "";
+    currentSlide = 0;
+
+    renderDeck(data);
+
+  } catch(e) {
+    alert("Could not connect to Flask server. Make sure it's running on port 5000.");
+    console.error(e);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function renderDeck(data) {
+  const display = document.getElementById("slide-display");
+  const empty   = document.getElementById("empty-slides");
+  empty.style.display = "none";
+
+  // Clear old slides
+  display.querySelectorAll(".slide-card").forEach(s => s.remove());
+
+  // Render slide cards
+  slides.forEach((slide, i) => {
+    const card = document.createElement("div");
+    card.className = `slide-card${i === 0 ? " active" : ""}`;
+    card.innerHTML = `
+      <div class="slide-number">Slide ${i+1} of ${slides.length}</div>
+      <div class="slide-title">${escapeHtml(slide.title)}</div>
+      <ul class="slide-bullets">
+        ${slide.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join("")}
+      </ul>
+      ${slide.notes ? `<div class="slide-notes"><strong>🎤 Speaker:</strong> ${escapeHtml(slide.notes)}</div>` : ""}`;
+    display.appendChild(card);
+  });
+
+  // Navigation
+  document.getElementById("deck-nav").classList.add("visible");
+  updateNavButtons();
+
+  // Markdown
+  document.getElementById("md-content").textContent = rawMarkdown;
+
+  // Actions
+  document.getElementById("copy-md-btn").style.display     = "";
+  document.getElementById("download-md-btn").style.display = "";
+
+  // Deck title
+  document.getElementById("deck-title").textContent = `📋 ${slides.length} Slides Generated`;
+
+  // Usage
+  const strip = document.getElementById("usage-strip");
+  strip.classList.add("visible");
+  document.getElementById("us-model").textContent  = data.model_used || "claude-sonnet";
+  document.getElementById("us-tokens").textContent = `${(data.tokens?.total||0).toLocaleString()} tokens`;
+  document.getElementById("us-cost").textContent   = `$${(data.cost_usd||0).toFixed(5)}`;
+  document.getElementById("us-slides").textContent = `${slides.length} slides`;
+}
+
+function switchView(view) {
+  document.getElementById("view-deck").classList.toggle("active", view === "deck");
+  document.getElementById("view-md").classList.toggle("active", view !== "deck");
+  document.getElementById("slide-display").style.display   = view === "deck" ? "" : "none";
+  document.getElementById("deck-nav").classList.toggle("visible", view === "deck");
+  document.getElementById("markdown-view").style.display   = view === "md"   ? "block" : "none";
+}
+
+function showSlide(index) {
+  document.querySelectorAll(".slide-card").forEach((c, i) => {
+    c.classList.toggle("active", i === index);
+  });
+  currentSlide = index;
+  updateNavButtons();
+}
+
+function prevSlide() { if (currentSlide > 0) showSlide(currentSlide - 1); }
+function nextSlide() { if (currentSlide < slides.length - 1) showSlide(currentSlide + 1); }
+
+function updateNavButtons() {
+  document.getElementById("prev-btn").disabled = currentSlide === 0;
+  document.getElementById("next-btn").disabled = currentSlide === slides.length - 1;
+  document.getElementById("slide-counter").textContent = `${currentSlide + 1} / ${slides.length}`;
+}
+
+// Keyboard navigation
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") nextSlide();
+  if (e.key === "ArrowLeft")  prevSlide();
+});
+
+function copyMarkdown() {
+  navigator.clipboard.writeText(rawMarkdown).then(() => {
+    const btn = document.getElementById("copy-md-btn");
+    btn.textContent = "✅ Copied!";
+    setTimeout(() => btn.textContent = "📋 Copy MD", 2000);
+  });
+}
+
+function downloadMarkdown() {
+  const blob = new Blob([rawMarkdown], { type: "text/markdown" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "presentation.md";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function setLoading(v) {
+  const btn  = document.getElementById("gen-btn");
+  const icon = document.getElementById("btn-icon");
+  const text = document.getElementById("btn-text");
+  btn.disabled = v;
+  if (v) {
+    icon.outerHTML = '<div class="spinner" id="btn-icon"></div>';
+    text.textContent = "Generating...";
+  } else {
+    document.getElementById("btn-icon").outerHTML = '<span id="btn-icon">✦</span>';
+    text.textContent = "Generate Slides";
+  }
+}
+
+function escapeHtml(str) {
+  return (str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+</script>
+</body>
+</html>

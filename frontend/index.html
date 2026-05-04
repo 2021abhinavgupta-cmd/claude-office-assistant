@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Office | AI Workspace</title>
+  <meta name="description" content="AI office assistant — code, write, design, analyze with Claude. Multiple conversations per employee." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ── Employee Picker Modal ── -->
+<div class="modal-overlay" id="employee-modal" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <div class="modal-icon">✦</div>
+    <h2>Welcome to Claude Office</h2>
+    <p class="modal-sub">Who are you? Choose your profile to begin.</p>
+    <div class="emp-grid" id="emp-grid">
+      <div class="emp-loading">Loading…</div>
+    </div>
+    <div class="modal-divider"><span>or enter your name</span></div>
+    <div class="modal-custom">
+      <input id="custom-name" placeholder="Your name…" maxlength="40" autocomplete="off" />
+      <button id="custom-name-btn">Continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── App Shell ── -->
+<div class="app-shell" id="app-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-icon">✦</div>
+        <span class="brand-name">Claude Office</span>
+      </div>
+      <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Chat
+      </button>
+    </div>
+
+    <div class="conv-list" id="conv-list">
+      <div class="conv-empty">No chats yet.<br>Click <strong>New Chat</strong> to begin.</div>
+    </div>
+
+    <!-- Memory Panel -->
+    <div class="memory-panel" id="memory-panel">
+      <div class="memory-header" id="memory-toggle">
+        <span>🧠 Memory</span>
+        <div class="memory-header-actions">
+          <span class="memory-count" id="memory-count">0</span>
+          <button class="memory-add-btn" id="memory-add-btn" title="Add memory">+</button>
+          <span class="memory-chevron" id="memory-chevron">▾</span>
+        </div>
+      </div>
+      <div class="memory-body hidden" id="memory-body">
+        <div class="memory-input-row">
+          <input id="memory-input" class="memory-input" placeholder="e.g. I prefer Python over JS" />
+          <button id="memory-save-btn" class="memory-save-btn">Save</button>
+        </div>
+        <div class="memory-list" id="memory-list">
+          <div class="memory-empty">No memories yet</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="budget-mini">
+        <div class="budget-mini-row">
+          <span class="budget-mini-label">💰 Budget</span>
+          <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
+          <a href="dashboard.html" class="budget-dash-link" title="Full dashboard">↗</a>
+        </div>
+        <div class="budget-mini-track">
+          <div class="budget-mini-fill" id="budget-mini-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <button class="user-pill" id="user-pill" title="Switch user">
+        <span class="user-avatar" id="user-avatar">?</span>
+        <span class="user-name-text" id="user-name-text">Select profile</span>
+        <span class="pill-switch">⇅</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main" id="main">
+
+    <!-- Welcome Screen -->
+    <div class="welcome-screen" id="welcome-screen">
+      <div class="welcome-inner">
+        <div class="welcome-icon">✦</div>
+        <h1 class="welcome-title">How can I help you today?</h1>
+        <p class="welcome-sub-text">Ask me anything — code, design, write, analyze, plan.</p>
+        <div class="qs-grid">
+          <button class="qs-card" data-prompt="Write a Python function to ">
+            <span class="qs-emoji">⌨️</span>
+            <strong>Write code</strong>
+            <small>Debug, build, explain</small>
+          </button>
+          <button class="qs-card" data-prompt="Create a slide presentation about ">
+            <span class="qs-emoji">📊</span>
+            <strong>Make slides</strong>
+            <small>Turn topics into decks</small>
+          </button>
+          <button class="qs-card" data-prompt="Write Instagram captions for ">
+            <span class="qs-emoji">✍️</span>
+            <strong>Write content</strong>
+            <small>Captions, scripts, copy</small>
+          </button>
+          <button class="qs-card" data-prompt="Design a beautiful HTML landing page for ">
+            <span class="qs-emoji">🎨</span>
+            <strong>Design a page</strong>
+            <small>HTML/CSS from description</small>
+          </button>
+        </div>
+        <div class="welcome-input-row">
+          <textarea id="welcome-input" class="welcome-input" rows="1"
+            placeholder="Ask anything or pick a card above…" maxlength="4000"></textarea>
+          <button class="send-btn" id="welcome-send" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat View -->
+    <div class="chat-view hidden" id="chat-view">
+      <header class="chat-header" id="chat-header">
+        <div class="ch-left">
+          <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <h1 class="conv-title-header" id="conv-title-header">New conversation</h1>
+        </div>
+        <div class="ch-right">
+          <span class="task-chip" id="task-chip">general</span>
+          <span class="model-chip" id="model-chip">haiku</span>
+          <div class="conn-status" id="conn-status">
+            <span class="conn-dot ok"></span>
+            <span>Connected</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="messages" id="messages" aria-live="polite" aria-label="Messages"></section>
+
+      <!-- File Chips (shown when files are attached) -->
+      <div class="file-chips" id="file-chips"></div>
+
+      <footer class="input-bar">
+        <div class="input-wrap" id="input-wrap">
+          <button class="upload-btn" id="upload-btn" title="Attach file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <button class="optimize-btn" id="optimize-btn" title="Optimize prompt with AI (⚡ cheap)">
+            ⚡
+          </button>
+          <textarea id="msg-input" class="msg-input" rows="1"
+            placeholder="Message Claude… (or drop a file here)" maxlength="8000"></textarea>
+          <div class="input-actions">
+            <span class="char-count" id="char-count"></span>
+            <button class="send-btn" id="send-btn" disabled title="Send (Enter)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <p class="input-footer-meta">
+          <span id="meta-task">auto-detecting task</span>
+          <span> · </span>
+          <span id="meta-model">claude-haiku-4-5</span>
+          <span> · </span>
+          <a href="dashboard.html" style="color:var(--accent);text-decoration:none">📊 dashboard</a>
+        </p>
+      </footer>
+    </div>
+
+  </main>
+</div>
+
+<!-- Hidden file input -->
+<input type="file" id="file-input" multiple hidden
+  accept="image/*,.pdf,.docx,.xlsx,.xls,.txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.yaml,.sql" />
+
+<!-- Drag-Drop Overlay -->
+<div class="drag-overlay hidden" id="drag-overlay">
+  <div class="drag-overlay-inner">
+    <div style="font-size:3rem">📎</div>
+    <strong>Drop files to attach</strong>
+    <small>Images, PDF, DOCX, code, and more</small>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toast-container" aria-live="assertive"></div>
+
+<!-- ── Prompt Optimizer Panel ── -->
+<div class="opt-backdrop hidden" id="opt-backdrop"></div>
+<div class="opt-panel hidden" id="opt-panel" role="dialog" aria-label="Prompt Optimizer">
+  <!-- Header -->
+  <div class="opt-header">
+    <div class="opt-title">
+      <span class="opt-icon">⚡</span>
+      <span>Prompt Optimizer</span>
+      <span class="opt-badge">Powered by Haiku · ~$0.00008</span>
+    </div>
+    <div class="opt-header-right">
+      <span class="opt-cost-display" id="opt-cost-display"></span>
+      <button class="opt-close-btn" id="opt-close-btn" title="Close">✕</button>
+    </div>
+  </div>
+
+  <!-- Split body -->
+  <div class="opt-body">
+    <!-- Original -->
+    <div class="opt-col">
+      <div class="opt-col-header">
+        <span class="opt-col-label">Your prompt</span>
+      </div>
+      <div class="opt-original" id="opt-original"></div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="opt-arrow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </div>
+
+    <!-- Optimized (editable) -->
+    <div class="opt-col">
+      <div class="opt-col-header">
+        <span class="opt-col-label">AI Enhanced</span>
+        <span class="opt-edit-hint">✎ click to edit</span>
+      </div>
+      <textarea class="opt-optimized" id="opt-optimized" spellcheck="true"
+        placeholder="Optimized prompt will appear here…"></textarea>
+    </div>
+  </div>
+
+  <!-- Loading state -->
+  <div class="opt-loading hidden" id="opt-loading">
+    <div class="opt-spinner"></div>
+    <span>Optimizing with Claude Haiku…</span>
+  </div>
+
+  <!-- Footer actions -->
+  <div class="opt-footer">
+    <div class="opt-diff-hint" id="opt-diff-hint"></div>
+    <div class="opt-actions">
+      <button class="opt-btn secondary" id="opt-keep-btn">✕ Keep original</button>
+      <button class="opt-btn primary" id="opt-use-btn">✓ Use optimized →</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="optimizer.js"></script>
+</body>
+</html>
