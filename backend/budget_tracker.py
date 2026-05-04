@@ -1,5 +1,5 @@
 """
-Budget Tracker — Tracks monthly Claude API spend, enforces $150/month cap.
+Budget Tracker — Tracks monthly Claude API spend, enforces $20/month cap.
 Usage data is stored in logs/usage.json
 """
 
@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 
-BUDGET_LIMIT = float(os.getenv("MONTHLY_BUDGET_LIMIT", 150.0))
+BUDGET_LIMIT = float(os.getenv("MONTHLY_BUDGET_LIMIT", 20.0))
 LOG_DIR      = Path(__file__).parent.parent / "logs"
 USAGE_FILE   = LOG_DIR / "usage.json"
 MAX_CALLS    = 500  # Cap the calls log to prevent unbounded file growth

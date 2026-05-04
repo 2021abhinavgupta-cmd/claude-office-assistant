@@ -375,12 +375,27 @@ const TASK_ICONS = {
   captions: "✍️", scripts: "🎬", general: "💬",
 };
 
+let employeesMap = {};
+
 async function loadDashboard() {
   const offlineIds = ["kpi-spent", "kpi-remaining", "kpi-calls", "kpi-alltime"];
   try {
-    const res  = await fetch(`${API}/api/usage`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const [usageRes, empRes] = await Promise.all([
+      fetch(`${API}/api/usage`),
+      fetch(`${API}/api/employees`).catch(() => null)
+    ]);
+    
+    if (!usageRes.ok) throw new Error(`HTTP ${usageRes.status}`);
+    
+    if (empRes && empRes.ok) {
+      const empData = await empRes.json();
+      (empData.employees || []).forEach(emp => {
+        employeesMap[emp.id] = emp.name;
+        if (emp.whatsapp) employeesMap[emp.whatsapp] = emp.name;
+      });
+    }
+
+    const data = await usageRes.json();
     renderDashboard(data);
   } catch (e) {
     offlineIds.forEach(id => {
@@ -471,12 +486,12 @@ function renderDashboard(d) {
         <tbody>
           ${calls.map(c => `
             <tr>
-              <td style="color:var(--muted);font-size:.75rem;font-family:JetBrains Mono,monospace">${c.timestamp?.split("T")[1]?.slice(0,8) || "—"}</td>
+              <td style="color:var(--muted);font-size:.75rem;font-family:JetBrains Mono,monospace">${c.timestamp ? new Date(c.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : "—"}</td>
               <td>${TASK_ICONS[c.task_type]||"🔷"} ${c.task_type||"—"}</td>
               <td><span class="tier-badge ${c.model_tier}">${c.model_tier}</span></td>
               <td style="font-family:JetBrains Mono,monospace">${((c.input_tokens||0)+(c.output_tokens||0)).toLocaleString()}</td>
               <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">$${(c.cost_usd||0).toFixed(5)}</td>
-              <td style="color:var(--muted)">${c.user_id||"—"}</td>
+              <td style="color:var(--muted)">${employeesMap[c.user_id] || c.user_id || "—"}</td>
             </tr>`).join("")}
         </tbody>
       </table>`;
