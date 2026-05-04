@@ -286,15 +286,21 @@ newChatBtn.addEventListener("click", () => startNewChat());
 
 // ── Sending Messages ──────────────────────────────────────────────────────────
 async function sendMessage() {
+  const atts = typeof pendingAttachments !== "undefined" ? [...pendingAttachments] : [];
   const text = msgInput.value.trim();
-  if (!text || isLoading || !currentConvId) return;
+  if (!text && !atts.length) return;
+  if (isLoading || !currentConvId) return;
 
   msgInput.value = "";
   msgInput.style.height = "auto";
   charCount.textContent = "";
+  if (typeof clearAttachments === "function") clearAttachments();
   setLoading(true);
 
-  appendMessage("user", text);
+  const displayText = atts.length
+    ? text + `\n\n📎 _${atts.length} file(s) attached: ${atts.map(a => a.filename).join(", ")}_`
+    : text;
+  appendMessage("user", displayText || "Sent an attachment");
   const typingId = appendTyping();
   scrollToBottom();
 
@@ -302,7 +308,7 @@ async function sendMessage() {
     const res = await fetch(`${API}/api/conversations/${currentConvId}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, attachments: atts }),
     });
     const data = await res.json();
     removeTyping(typingId);
@@ -714,71 +720,7 @@ function formatBytes(b) {
   return (b / 1048576).toFixed(1) + " MB";
 }
 
-// Override sendMessage to include attachments
-const _origSendMessage = sendMessage;
-window.sendMessage = async function() {
-  // Grab attachments snapshot before clearing
-  const atts = [...pendingAttachments];
 
-  // Inline the send logic with attachments
-  const text = msgInput.value.trim();
-  if (!text || isLoading || !currentConvId) return;
-
-  msgInput.value = "";
-  msgInput.style.height = "auto";
-  charCount.textContent = "";
-  clearAttachments();
-  setLoading(true);
-
-  // Show user message with file indicators
-  const displayText = atts.length
-    ? text + `\n\n📎 _${atts.length} file(s) attached: ${atts.map(a => a.filename).join(", ")}_`
-    : text;
-  appendMessage("user", displayText);
-  const typingId = appendTyping();
-  scrollToBottom();
-
-  try {
-    const res = await fetch(`${API}/api/conversations/${currentConvId}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, attachments: atts }),
-    });
-    const data = await res.json();
-    removeTyping(typingId);
-
-    if (res.ok && data.success) {
-      appendMessage("assistant", data.response, {
-        model_tier: data.model_tier, model_used: data.model_used, cost_usd: data.cost_usd,
-      });
-      const task  = data.task_type || "general";
-      const model = data.model_tier || "haiku";
-      updateHeaderChips(task, model);
-      updateInputMeta(task, data.model_used || "");
-      convTitleHeader.textContent = data.title || convTitleHeader.textContent;
-      const activeItem = convList.querySelector(`.conv-item[data-id="${currentConvId}"] .conv-item-title`);
-      if (activeItem && data.title) activeItem.textContent = data.title;
-      updateBudgetUI(data.budget);
-      scrollToBottom();
-    } else {
-      appendErrorMessage(data.error || "Something went wrong");
-      showToast("❌ " + (data.error || "Error"), "error");
-    }
-  } catch (err) {
-    removeTyping(typingId);
-    appendErrorMessage("Could not reach the server. Is Flask running?");
-    showToast("⚠️ Server offline", "error");
-  } finally {
-    setLoading(false);
-    msgInput.focus();
-  }
-};
-
-// Re-bind send button and enter key to the new sendMessage
-sendBtn.addEventListener("click", window.sendMessage);
-msgInput.addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); window.sendMessage(); }
-});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MEMORY MANAGEMENT
