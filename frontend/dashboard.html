@@ -251,7 +251,7 @@
     <div class="kpi-card" style="--accent-color:var(--green)">
       <div class="kpi-label">Monthly Spend</div>
       <div class="kpi-value" id="kpi-spent">—</div>
-      <div class="kpi-sub" id="kpi-budget-sub">of $150.00 budget</div>
+      <div class="kpi-sub" id="kpi-budget-sub">of $... budget</div>
     </div>
     <div class="kpi-card" style="--accent-color:var(--accent)">
       <div class="kpi-label">Remaining</div>
@@ -279,11 +279,11 @@
     <div class="budget-row">
       <span>Spent: <strong id="bb-spent">$0.00</strong></span>
       <span id="bb-pct" style="color:var(--accent);font-weight:600">0%</span>
-      <span>Limit: <strong>$150.00</strong></span>
+      <span>Limit: <strong id="bb-limit">$...</strong></span>
     </div>
     <div class="threshold-row">
-      <span class="threshold-chip warn">⚠️ Warning at $120 (80%)</span>
-      <span class="threshold-chip crit">🚨 Critical at $135 (90%)</span>
+      <span class="threshold-chip warn" id="warn-chip">⚠️ Warning at ...</span>
+      <span class="threshold-chip crit" id="crit-chip">🚨 Critical at ...</span>
       <span class="threshold-chip ok">✅ Current status: <strong id="status-chip">OK</strong></span>
     </div>
   </section>
@@ -409,6 +409,23 @@ async function loadDashboard() {
 }
 
 function renderDashboard(d) {
+  // Dynamic Limits
+  const limit = d.budget_limit || 20;
+  const warnLimit = limit * 0.8;
+  const critLimit = limit * 0.9;
+  
+  const elBudgetSub = document.getElementById("kpi-budget-sub");
+  if (elBudgetSub) elBudgetSub.textContent = `of $${limit.toFixed(2)} budget`;
+  
+  const elBbLimit = document.getElementById("bb-limit");
+  if (elBbLimit) elBbLimit.textContent = `$${limit.toFixed(2)}`;
+  
+  const elWarnChip = document.getElementById("warn-chip");
+  if (elWarnChip) elWarnChip.innerHTML = `⚠️ Warning at $${warnLimit.toFixed(2)} (80%)`;
+  
+  const elCritChip = document.getElementById("crit-chip");
+  if (elCritChip) elCritChip.innerHTML = `🚨 Critical at $${critLimit.toFixed(2)} (90%)`;
+
   // KPIs
   document.getElementById("kpi-spent").textContent     = `$${(d.monthly_spend||0).toFixed(4)}`;
   document.getElementById("kpi-remaining").textContent = `$${(d.remaining||0).toFixed(2)}`;
