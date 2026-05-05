@@ -456,9 +456,9 @@ function updateHeaderChips(task, modelTier) {
   modelChip.textContent = modelTier;
   modelChip.className   = `model-chip ${modelTier}`;
 }
-function updateInputMeta(task, modelName) {
-  metaTask.textContent  = task.replace(/_/g, " ");
-  metaModel.textContent = modelName || "claude-haiku-4-5";
+function updateInputMeta(taskName, modelName) {
+  if (metaTask) metaTask.textContent = taskName.replace(/_/g, " ");
+  if (metaModel) metaModel.textContent = modelName || "claude-haiku-4-5";
 }
 
 // ── Message Rendering ─────────────────────────────────────────────────────────
