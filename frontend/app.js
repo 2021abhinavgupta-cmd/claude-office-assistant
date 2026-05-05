@@ -1064,9 +1064,10 @@ window.sendMessage = async function() {
       }
       showToast("⏹ Generation stopped", "info");
     } else {
+      console.error("Stream Fetch Error:", err);
       streamEl.remove();
-      appendErrorMessage("Could not connect to server. Is Flask running?");
-      showToast("⚠️ Server offline", "error");
+      appendErrorMessage("Network error: " + err.message);
+      showToast("⚠️ " + err.message, "error");
     }
   } finally {
     resetSendBtn();
