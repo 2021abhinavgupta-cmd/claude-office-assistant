@@ -174,10 +174,22 @@ def _get_user_tone_profile(user_id: str) -> Optional[str]:
         pass
     return None
 
+def _get_all_users_str() -> str:
+    try:
+        with open(EMPLOYEES_DB, "r") as f:
+            data = json.load(f)
+            return "\n".join([f"- {emp.get('id')} ({emp.get('name')})" for emp in data.get("employees", [])])
+    except Exception:
+        return ""
+
 def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None) -> list:
     base_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
     base_prompt += "\n\nBe concise and direct. No unnecessary preamble. No phrases like 'Certainly!' or 'Great question!'. Get to the answer immediately."
     
+    # Auto-memory extraction instruction
+    users_str = _get_all_users_str()
+    base_prompt += f"\n\n## AUTO-MEMORY EXTRACTION\nIf the user tells you a preference, rule, or fact about themselves or another user that you should remember for future conversations, output the following EXACT XML block at the very end of your response:\n<SAVE_MEMORY user=\"USER_ID\">The memory content</SAVE_MEMORY>\n\nValid USER_IDs you can assign memories to:\n{users_str}\n(If saving for the current user, use {user_id})"
+
     tone_profile = _get_user_tone_profile(user_id)
     if tone_profile:
         base_prompt += f"\n\nCRITICAL OUTPUT STYLE REQUIREMENT: You MUST strictly adhere to the following writing style and tone for this user: {tone_profile}"
@@ -932,12 +944,24 @@ def conversation_stream(conv_id):
             yield f"data: {json.dumps({'type':'error','error':stream_error})}\n\n"
             return
 
+        # Parse auto-memory extraction
+        import re
+        memory_matches = re.finditer(r'<SAVE_MEMORY\s+user="([^"]+)">([\s\S]*?)</SAVE_MEMORY>', full_response)
+        for match in memory_matches:
+            target_user = match.group(1)
+            mem_content = match.group(2).strip()
+            memory_store.add_memory(target_user, mem_content, source="auto")
+            logger.info(f"Auto-saved memory for {target_user}: {mem_content}")
+
+        # Strip the memory tags from the final saved message so they don't pollute the chat history
+        clean_response = re.sub(r'<SAVE_MEMORY\s+user="[^"]+">[\s\S]*?</SAVE_MEMORY>', '', full_response).strip()
+
         # Persist assistant reply + record usage
         cost = calculate_cost(model_tier, input_tokens, output_tokens)
         record_usage(task_type=task_type, model_tier=model_tier, model_name=model_name,
                      input_tokens=input_tokens, output_tokens=output_tokens,
                      cost=cost, user_id=user_id)
-        conversation_store.add_message(conv_id, "assistant", full_response, {
+        conversation_store.add_message(conv_id, "assistant", clean_response, {
             "model_tier": model_tier, "model_used": model_name,
             "cost_usd": cost, "task_type": task_type,
         })
