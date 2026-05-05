@@ -370,7 +370,7 @@ def chat():
     """
     data      = request.get_json(silent=True) or {}
     task_type = data.get("task_type", "").strip()
-    message   = data.get("message",   "").strip()
+    message   = " ".join(data.get("message", "").split())
     user_id   = data.get("user_id",   "anonymous")
 
     if not task_type:
@@ -761,7 +761,7 @@ def conversation_chat(conv_id):
         return jsonify({"error": "Conversation not found"}), 404
 
     data        = request.get_json(silent=True) or {}
-    message     = data.get("message", "").strip()
+    message     = " ".join(data.get("message", "").split())
     attachments = data.get("attachments", [])  # [{type,filename,content|data,media_type}]
     if not message:
         return jsonify({"error": "message is required"}), 400
@@ -823,7 +823,7 @@ def conversation_stream(conv_id):
         return jsonify({"error": "Conversation not found"}), 404
 
     data        = request.get_json(silent=True) or {}
-    message     = data.get("message", "").strip()
+    message     = " ".join(data.get("message", "").split())
     attachments = data.get("attachments", [])
     if not message:
         return jsonify({"error": "message is required"}), 400
