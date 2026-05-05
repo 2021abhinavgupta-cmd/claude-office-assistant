@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Optional
 from flask import Flask, request, jsonify, render_template_string, Response, stream_with_context
 from flask_cors import CORS
+from flask_compress import Compress
 from dotenv import load_dotenv
 import anthropic
 
@@ -45,10 +46,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Add a persistent file handler to log to the Railway volume
+from logging.handlers import RotatingFileHandler
+LOG_DIR = Path(__file__).parent.parent / "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+file_handler = RotatingFileHandler(LOG_DIR / "app.log", maxBytes=5_000_000, backupCount=2)
+file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logger.addHandler(file_handler)
+
 # ── Flask App ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 CORS(app, resources={r"/api/*": {"origins": "*"}})
+Compress(app)
 
 # ── Frontend Static Files ──────────────────────────────────────────────────────
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -124,8 +134,11 @@ _TASK_KEYWORDS = {
                       "podcast", "voiceover"],
 }
 
+from functools import lru_cache
+
+@lru_cache(maxsize=1000)
 def _detect_task(message: str) -> str:
-    """Detect task type from message keywords. Falls back to 'general'."""
+    """Detect task type from message keywords. Cached to save processing time."""
     lower = message.lower()
     for task, keywords in _TASK_KEYWORDS.items():
         if any(k in lower for k in keywords):
