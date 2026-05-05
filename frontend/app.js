@@ -647,8 +647,16 @@ function removeTyping(id) {
 if (typeof marked !== "undefined") {
   const renderer = new marked.Renderer();
   renderer.code = function(code, language, isEscaped) {
-    const ext = language || 'txt';
-    const cleanCode = code.trim();
+    let textStr = code;
+    let langStr = language;
+    // Support Marked v10+ where the first argument is a token object
+    if (typeof code === 'object' && code !== null) {
+      textStr = code.text;
+      langStr = code.lang;
+    }
+    
+    const ext = langStr || 'txt';
+    const cleanCode = (textStr || "").trim();
     const encodedCode = cleanCode.length < 500000 ? encodeURIComponent(cleanCode) : encodeURIComponent(cleanCode.slice(0, 500000));
     
     let highlighted = cleanCode;
@@ -674,7 +682,7 @@ if (typeof marked !== "undefined") {
         </div>
       </div>`;
 
-    return `<div class="code-block-wrapper" style="margin: 16px 0;">${headerHtml}<pre style="margin-top:0; border-top-left-radius:0; border-top-right-radius:0; border:1px solid var(--border); padding:16px; overflow-x:auto; background:#282c34;"><code class="hljs language-${language}">${highlighted}</code></pre></div>`;
+    return `<div class="code-block-wrapper" style="margin: 16px 0;">${headerHtml}<pre style="margin-top:0; border-top-left-radius:0; border-top-right-radius:0; border:1px solid var(--border); padding:16px; overflow-x:auto; background:#282c34;"><code class="hljs language-${langStr}">${highlighted}</code></pre></div>`;
   };
   marked.setOptions({ renderer: renderer, breaks: true, gfm: true });
 }
