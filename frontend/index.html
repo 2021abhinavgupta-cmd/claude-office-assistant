@@ -53,11 +53,14 @@
     </div>
 
     <div class="projects-panel" style="margin-bottom: 16px;">
-      <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
+      <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600; cursor:pointer;" onclick="toggleProjectsPanel()" id="projects-panel-header">
         <span>📁 Projects</span>
-        <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;">+</button>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;" onclick="event.stopPropagation()">+</button>
+          <span id="projects-chevron" style="font-size:0.7rem; transition:transform 0.2s; display:inline-block; transform:rotate(-90deg);">▼</span>
+        </div>
       </div>
-      <div class="projects-list" id="projects-list">
+      <div class="projects-list" id="projects-list" style="display:none;">
         <div class="conv-empty">No projects yet</div>
       </div>
     </div>

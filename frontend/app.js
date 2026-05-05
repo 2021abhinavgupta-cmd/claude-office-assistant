@@ -422,13 +422,29 @@ document.querySelectorAll(".qs-card").forEach(card => {
 
 // ── UI Helpers ────────────────────────────────────────────────────────────────
 function showChatView() {
+  // Always hide project view when entering chat
+  const projView = document.getElementById("project-view");
+  if (projView) projView.classList.add("hidden");
   welcomeScreen.classList.add("hidden");
   chatView.classList.remove("hidden");
 }
 function showWelcomeScreen() {
+  // Always hide project view when going to welcome
+  const projView = document.getElementById("project-view");
+  if (projView) projView.classList.add("hidden");
   chatView.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
 }
+
+// Toggle Projects panel in sidebar
+window.toggleProjectsPanel = function() {
+  const list = document.getElementById("projects-list");
+  const chevron = document.getElementById("projects-chevron");
+  if (!list) return;
+  const isOpen = list.style.display !== "none";
+  list.style.display = isOpen ? "none" : "block";
+  if (chevron) chevron.style.transform = isOpen ? "rotate(-90deg)" : "rotate(0deg)";
+};
 
 function updateHeaderChips(task, modelTier) {
   taskChip.textContent  = task.replace(/_/g, " ");
