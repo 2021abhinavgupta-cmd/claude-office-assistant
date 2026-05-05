@@ -155,7 +155,7 @@ def get_usage_summary(all_calls: bool = False) -> dict:
         task_breakdown[t]["cost"] = round(task_breakdown[t]["cost"] + c.get("cost_usd", 0.0), 6)
 
     # Return all calls or just the most recent for the dashboard table
-    calls_to_return = list(reversed(month_calls)) if all_calls else list(reversed(month_calls[:100]))
+    calls_to_return = list(reversed(month_calls)) if all_calls else list(reversed(month_calls[-100:]))
 
     return {
         "month":            month_key,
