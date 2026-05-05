@@ -596,7 +596,8 @@ def employee_summary():
 def call_claude_with_context(task_type: str, messages: list,
                              user_id: str = "api",
                              attachments: list = None,
-                             project_id: str = None) -> dict:
+                             project_id: str = None,
+                             model_override: str = None) -> dict:
     """
     Call Claude with full conversation history + optional file attachments.
     Memories are automatically injected into the system prompt.
@@ -606,9 +607,13 @@ def call_claude_with_context(task_type: str, messages: list,
     if not budget["allowed"]:
         return {"success": False, "error": "Monthly budget limit reached", "budget": budget}
 
-    model_config  = get_model_for_task(task_type)
-    model_name    = model_config["name"]
-    model_tier    = model_config["tier"]
+    if model_override and model_override != "auto":
+        model_name = model_override
+        model_tier = "sonnet" if "sonnet" in model_name.lower() else "haiku" if "haiku" in model_name.lower() else "opus"
+    else:
+        model_config  = get_model_for_task(task_type)
+        model_name    = model_config["name"]
+        model_tier    = model_config["tier"]
 
     # Inject user memories and project context into system prompt
     system_prompt = _build_system_prompt(task_type, user_id, project_id)
@@ -772,7 +777,7 @@ def conversation_chat(conv_id):
     context = conversation_store.get_context_messages(conv_id)
 
     # Call Claude with full conversation context + any file attachments
-    result = call_claude_with_context(task_type, context, conv.get("user_id", "api"), attachments=attachments, project_id=conv.get("project_id"))
+    result = call_claude_with_context(task_type, context, conv.get("user_id", "api"), attachments=attachments, project_id=conv.get("project_id"), model_override=data.get("model_override"))
 
     if not result["success"]:
         err = result.get("error", "")

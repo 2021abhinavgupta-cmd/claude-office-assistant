@@ -473,39 +473,52 @@ function removeTyping(id) {
   if (el) el.remove();
 }
 
-// ── Text Formatting (markdown-lite) ──────────────────────────────────────────
+// ── Text Formatting (Markdown & Highlight.js) ──────────────────────────────
+if (typeof marked !== "undefined") {
+  const renderer = new marked.Renderer();
+  renderer.code = function(code, language, isEscaped) {
+    const ext = language || 'txt';
+    const cleanCode = code.trim();
+    const encodedCode = cleanCode.length < 500000 ? encodeURIComponent(cleanCode) : encodeURIComponent(cleanCode.slice(0, 500000));
+    
+    let highlighted = cleanCode;
+    if (language && hljs.getLanguage(language)) {
+      highlighted = hljs.highlight(cleanCode, { language }).value;
+    } else {
+      highlighted = escHtml(cleanCode);
+    }
+
+    let previewBtn = '';
+    if (ext === 'html' || ext === 'svg') {
+      previewBtn = `<button onclick="previewArtifact(this, '${ext}')" data-code="${encodedCode}" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:0.75rem; display:flex; align-items:center; gap:4px; opacity:0.9;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>`;
+    }
+
+    const headerHtml = `
+      <div class="code-header" style="display:flex; justify-content:space-between; background:var(--surface2); padding:6px 12px; border-radius:8px 8px 0 0; font-size:0.75rem; color:var(--muted); border:1px solid var(--border); border-bottom:none;">
+        <span style="font-family:JetBrains Mono, monospace; text-transform:uppercase">${ext}</span>
+        <div style="display:flex; gap:12px;">
+          ${previewBtn}
+          <button onclick="downloadCode(this, '${ext}')" data-code="${encodedCode}" style="background:none; border:none; color:var(--text); cursor:pointer; font-size:0.75rem; display:flex; align-items:center; gap:4px; opacity:0.8; transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Download
+          </button>
+        </div>
+      </div>`;
+
+    return `<div class="code-block-wrapper" style="margin: 16px 0;">${headerHtml}<pre style="margin-top:0; border-top-left-radius:0; border-top-right-radius:0; border:1px solid var(--border); padding:16px; overflow-x:auto; background:#282c34;"><code class="hljs language-${language}">${highlighted}</code></pre></div>`;
+  };
+  marked.setOptions({ renderer: renderer, breaks: true, gfm: true });
+}
+
 function formatText(text) {
-  const blocks = [];
-  // Extract code blocks first
-  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-    const ph = `\x00BLK${blocks.length}\x00`;
-    blocks.push(`<pre><code class="language-${lang}">${escHtml(code.trim())}</code></pre>`);
-    return ph;
-  });
-
-  text = text.replace(/`([^`\n]+)`/g, "<code>$1</code>");
-  text = text.replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>");
-  text = text.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>");
-  text = text.replace(/^### (.+)$/gm, "<h4>$1</h4>");
-  text = text.replace(/^## (.+)$/gm,  "<h3>$1</h3>");
-
-  // Bullet + numbered lists
-  text = text.replace(/(?:^[•\-\*] .+$\n?)+/gm, m => {
-    const items = m.trim().split("\n").map(l => `<li>${l.replace(/^[•\-\*] /, "")}</li>`).join("");
-    return `<ul>${items}</ul>`;
-  });
-  text = text.replace(/(?:^\d+\. .+$\n?)+/gm, m => {
-    const items = m.trim().split("\n").map(l => `<li>${l.replace(/^\d+\.\s*/, "")}</li>`).join("");
-    return `<ol>${items}</ol>`;
-  });
-
-  text = text.replace(/\n\n+/g, "</p><p>");
-  text = text.replace(/\n/g, "<br>");
-  text = `<p>${text}</p>`;
-
-  // Restore code blocks
-  blocks.forEach((b, i) => { text = text.replace(`\x00BLK${i}\x00`, b); });
-  return text;
+  if (typeof marked !== "undefined") {
+    // Fix unclosed code blocks during streaming
+    const codeBlocks = (text.match(/```/g) || []).length;
+    if (codeBlocks % 2 !== 0) {
+      text += "\n```"; 
+    }
+    return marked.parse(text);
+  }
+  return `<p>${escHtml(text).replace(/\n/g, "<br>")}</p>`;
 }
 
 function escHtml(str) {
@@ -581,7 +594,7 @@ function setLoading(v) {
 }
 
 function scrollToBottom() {
-  messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: "smooth" });
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 function showToast(msg, type = "info") {
@@ -631,7 +644,63 @@ document.addEventListener("drop", e => {
   [...e.dataTransfer.files].forEach(uploadFile);
 });
 
-async function uploadFile(file) {
+async function compressImage(file, maxSizeMB = 4.5) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 2048; // Safe dimension for Claude API
+        
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+              type: "image/jpeg",
+              lastModified: Date.now(),
+            }));
+          } else {
+            resolve(file);
+          }
+        }, "image/jpeg", 0.85);
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadFile(originalFile) {
+  let file = originalFile;
+  
+  if (file.type.startsWith("image/") && file.size > 4.5 * 1024 * 1024) {
+    try {
+      file = await compressImage(file);
+    } catch (e) {
+      console.warn("Image compression failed", e);
+    }
+  }
+
   const chipId = "chip_" + Date.now() + Math.random().toString(36).slice(2);
   addFileChip(chipId, file.name, formatBytes(file.size), "uploading");
 
@@ -846,10 +915,15 @@ window.sendMessage = async function() {
   let fullText = "";
 
   try {
+    const modelOverrideEl = document.getElementById("model-override");
+    const override = modelOverrideEl ? modelOverrideEl.value : "auto";
+    const bodyPayload = { message: text, attachments: atts };
+    if (override !== "auto") bodyPayload.model_override = override;
+
     const response = await fetch(`${API}/api/conversations/${currentConvId}/stream`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ message: text, attachments: atts }),
+      body:    JSON.stringify(bodyPayload),
     });
 
     if (!response.ok) {
@@ -956,7 +1030,7 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     metaEl.className = "msg-meta";
     metaEl.innerHTML = `
       ${meta.model_used ? `<span class="msg-chip ${meta.model_tier}">${meta.model_used}</span>` : ""}
-      ${meta.cost_usd  ? `<span class="msg-chip cost">$${meta.cost_usd.toFixed(5)}</span>` : ""}`;
+      ${meta.cost_usd  ? `<span class="msg-chip cost">$${meta.cost_usd.toFixed(5)} <span style="opacity:0.7">(₹${(meta.cost_usd * 83.5).toFixed(4)})</span></span>` : ""}`;
     body.appendChild(metaEl);
   }
 
@@ -1191,4 +1265,64 @@ window.openConversation = async function(convId) {
   const projView = document.getElementById("project-view");
   if (projView) projView.classList.add("hidden");
   return _oldOpenConversation ? _oldOpenConversation(convId) : null;
+};
+
+// ── Claude.ai Clone Features ────────────────────────────────────────────────
+window.filterChats = function(query) {
+  const term = query.toLowerCase();
+  document.querySelectorAll(".conv-item").forEach(item => {
+    const title = item.querySelector(".conv-item-title").textContent.toLowerCase();
+    item.style.display = title.includes(term) ? "flex" : "none";
+  });
+};
+
+window.previewArtifact = function(btn, ext) {
+  const code = decodeURIComponent(btn.getAttribute("data-code"));
+  const pane = document.getElementById("artifacts-pane");
+  const iframe = document.getElementById("artifact-iframe");
+  const chatContainer = document.getElementById("chat-container");
+  
+  if (ext === 'html' || ext === 'svg') {
+    pane.style.display = "flex";
+    chatContainer.style.width = "55%";
+    iframe.srcdoc = code;
+  }
+};
+
+window.closeArtifact = function() {
+  document.getElementById("artifacts-pane").style.display = "none";
+  document.getElementById("chat-container").style.width = "100%";
+};
+
+// Global Keyboard Shortcuts
+document.addEventListener("keydown", (e) => {
+  // Cmd+K or Ctrl+K for New Chat
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    document.getElementById("new-chat-btn")?.click();
+  }
+  // Cmd+Enter or Ctrl+Enter to Send Message
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    if (document.activeElement === msgInput) {
+      e.preventDefault();
+      document.getElementById("send-btn")?.click();
+    }
+  }
+});
+
+window.downloadCode = function(btn, ext) {
+  const code = decodeURIComponent(btn.getAttribute("data-code"));
+  const blob = new Blob([code], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `code_snippet.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  const originalText = btn.innerHTML;
+  btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22d3a0" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> <span style="color:#22d3a0">Saved</span>`;
+  setTimeout(() => { btn.innerHTML = originalText; }, 2000);
 };

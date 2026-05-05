@@ -9,6 +9,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
 
@@ -58,6 +61,9 @@
     <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
       <span>💬 Recent Chats</span>
     </div>
+    <div style="padding: 0 12px 12px;">
+      <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
+    </div>
     <div class="conv-list" id="conv-list">
       <div class="conv-empty">No chats yet.<br>Click <strong>New Chat</strong> to begin.</div>
     </div>
@@ -103,7 +109,8 @@
   </aside>
 
   <!-- Main -->
-  <main class="main" id="main">
+  <main class="main" id="main" style="display:flex;">
+    <div id="chat-container" style="flex:1; display:flex; flex-direction:column; height:100%; position:relative; overflow:hidden;">
 
     <!-- Welcome Screen -->
     <div class="welcome-screen" id="welcome-screen">
@@ -195,7 +202,11 @@
         <p class="input-footer-meta">
           <span id="meta-task">auto-detecting task</span>
           <span> · </span>
-          <span id="meta-model">claude-haiku-4-5</span>
+          <select id="model-override" style="background:transparent; border:none; color:var(--text); cursor:pointer; font-size:inherit; outline:none; font-family:inherit;">
+            <option value="auto">Auto (Smart Routing)</option>
+            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+            <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+          </select>
           <span> · </span>
           <a href="dashboard.html" style="color:var(--accent);text-decoration:none">📊 dashboard</a>
         </p>
@@ -245,7 +256,20 @@
         </div>
       </div>
     </div>
-
+    </div> <!-- end chat-container -->
+    
+    <!-- Artifacts Pane -->
+    <div id="artifacts-pane" style="display:none; width:45%; border-left:1px solid var(--border); background:var(--bg); flex-direction:column;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--border); background:var(--surface2);">
+        <div style="font-size:0.85rem; font-weight:600; display:flex; align-items:center; gap:8px;">
+          <span id="artifact-icon">✨</span> <span id="artifact-title">Live Preview</span>
+        </div>
+        <button onclick="closeArtifact()" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem;">&times;</button>
+      </div>
+      <div id="artifact-content" style="flex:1; overflow:hidden; padding:0; background:#fff;">
+        <iframe id="artifact-iframe" style="width:100%; height:100%; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+      </div>
+    </div>
   </main>
 </div>
 

@@ -82,6 +82,13 @@
     }
     .refresh-btn:hover { opacity: 0.85; transform: translateY(-1px); }
 
+    .currency-toggle {
+      background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+      padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.875rem;
+      cursor: pointer; transition: all .2s; outline: none; appearance: none;
+    }
+    .currency-toggle:hover { border-color: var(--accent); }
+
     /* ── Alert Banner ── */
     .alert-banner {
       padding: 14px 20px; border-radius: var(--radius-sm);
@@ -235,6 +242,10 @@
       <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Real-time Claude API spend monitoring</p>
     </div>
     <div class="header-meta">
+      <select class="currency-toggle" id="currency-select" onchange="toggleCurrency(this.value)">
+        <option value="USD">USD ($)</option>
+        <option value="INR">INR (₹)</option>
+      </select>
       <a href="index.html" class="back-link">← Chat</a>
       <button class="refresh-btn" id="refresh-btn" onclick="loadDashboard()">↻ Refresh</button>
     </div>
@@ -379,6 +390,22 @@ const TASK_ICONS = {
 };
 
 let employeesMap = {};
+let currentDashboardData = null;
+let currencyMode = 'USD';
+
+function toggleCurrency(val) {
+  currencyMode = val;
+  if (currentDashboardData) {
+    renderDashboard(currentDashboardData);
+  }
+}
+
+function formatCost(usdAmount, decimals = 4) {
+  if (currencyMode === 'INR') {
+    return `₹${(usdAmount * 83.5).toFixed(decimals === 4 ? 2 : decimals)}`;
+  }
+  return `$${usdAmount.toFixed(decimals)}`;
+}
 
 async function loadDashboard() {
   const offlineIds = ["kpi-spent", "kpi-remaining", "kpi-calls", "kpi-alltime"];
@@ -399,6 +426,7 @@ async function loadDashboard() {
     }
 
     const data = await usageRes.json();
+    currentDashboardData = data;
     renderDashboard(data);
   } catch (e) {
     offlineIds.forEach(id => {
@@ -412,29 +440,28 @@ async function loadDashboard() {
 }
 
 function renderDashboard(d) {
-  const rate = 83.5;
   // Dynamic Limits
   const limit = d.budget_limit || 20;
   const warnLimit = limit * 0.8;
   const critLimit = limit * 0.9;
   
   const elBudgetSub = document.getElementById("kpi-budget-sub");
-  if (elBudgetSub) elBudgetSub.textContent = `of $${limit.toFixed(2)} (₹${(limit*rate).toFixed(2)}) budget`;
+  if (elBudgetSub) elBudgetSub.textContent = `of ${formatCost(limit, 2)} budget`;
   
   const elBbLimit = document.getElementById("bb-limit");
-  if (elBbLimit) elBbLimit.textContent = `$${limit.toFixed(2)} (₹${(limit*rate).toFixed(2)})`;
+  if (elBbLimit) elBbLimit.textContent = formatCost(limit, 2);
   
   const elWarnChip = document.getElementById("warn-chip");
-  if (elWarnChip) elWarnChip.innerHTML = `⚠️ Warning at $${warnLimit.toFixed(2)} (₹${(warnLimit*rate).toFixed(2)}) (80%)`;
+  if (elWarnChip) elWarnChip.innerHTML = `⚠️ Warning at ${formatCost(warnLimit, 2)} (80%)`;
   
   const elCritChip = document.getElementById("crit-chip");
-  if (elCritChip) elCritChip.innerHTML = `🚨 Critical at $${critLimit.toFixed(2)} (₹${(critLimit*rate).toFixed(2)}) (90%)`;
+  if (elCritChip) elCritChip.innerHTML = `🚨 Critical at ${formatCost(critLimit, 2)} (90%)`;
 
   // KPIs
-  document.getElementById("kpi-spent").textContent     = `$${(d.monthly_spend||0).toFixed(4)} (₹${((d.monthly_spend||0)*rate).toFixed(2)})`;
-  document.getElementById("kpi-remaining").textContent = `$${(d.remaining||0).toFixed(2)} (₹${((d.remaining||0)*rate).toFixed(2)})`;
+  document.getElementById("kpi-spent").textContent     = formatCost(d.monthly_spend || 0, 4);
+  document.getElementById("kpi-remaining").textContent = formatCost(d.remaining || 0, 2);
   document.getElementById("kpi-calls").textContent     = d.total_calls || 0;
-  document.getElementById("kpi-alltime").textContent   = `$${(d.total_spent_ever||0).toFixed(4)} (₹${((d.total_spent_ever||0)*rate).toFixed(2)})`;
+  document.getElementById("kpi-alltime").textContent   = formatCost(d.total_spent_ever || 0, 4);
   document.getElementById("kpi-month").textContent     = d.month || "—";
 
   // Budget bar
@@ -442,7 +469,7 @@ function renderDashboard(d) {
   const bar  = document.getElementById("budget-bar-fill");
   bar.style.width = pct + "%";
   bar.className = "budget-bar-fill" + (pct >= 90 ? " limit" : pct >= 80 ? " warn" : "");
-  document.getElementById("bb-spent").textContent = `$${(d.monthly_spend||0).toFixed(4)} (₹${((d.monthly_spend||0)*rate).toFixed(2)})`;
+  document.getElementById("bb-spent").textContent = formatCost(d.monthly_spend || 0, 4);
   document.getElementById("bb-pct").textContent   = pct.toFixed(1) + "%";
 
   // Alert
@@ -482,7 +509,7 @@ function renderDashboard(d) {
           <span>${task.replace(/_/g," ")}</span>
           <span class="task-calls">(${stat.calls} calls)</span>
         </div>
-        <span class="task-cost">$${stat.cost.toFixed(5)}</span>
+        <span class="task-cost">${formatCost(stat.cost, 5)}</span>
       </div>`).join("");
   }
 
@@ -511,7 +538,7 @@ function renderDashboard(d) {
               <td>${TASK_ICONS[c.task_type]||"🔷"} ${c.task_type||"—"}</td>
               <td><span class="tier-badge ${c.model_tier}">${c.model_tier}</span></td>
               <td style="font-family:JetBrains Mono,monospace">${((c.input_tokens||0)+(c.output_tokens||0)).toLocaleString()}</td>
-              <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">$${(c.cost_usd||0).toFixed(5)} <span style="font-size:0.7rem;color:var(--muted);margin-left:4px">₹${((c.cost_usd||0)*rate).toFixed(4)}</span></td>
+              <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">${formatCost(c.cost_usd || 0, 5)}</td>
               <td style="color:var(--muted)">${employeesMap[c.user_id] || c.user_id || "—"}</td>
             </tr>`).join("")}
         </tbody>
