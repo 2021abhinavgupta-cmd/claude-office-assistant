@@ -12,6 +12,10 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]})"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
 </head>
 <body>
 
@@ -100,11 +104,14 @@
           <div class="budget-mini-fill" id="budget-mini-fill" style="width:0%"></div>
         </div>
       </div>
-      <button class="user-pill" id="user-pill" title="Switch user">
-        <span class="user-avatar" id="user-avatar">?</span>
-        <span class="user-name-text" id="user-name-text">Select profile</span>
-        <span class="pill-switch">⇅</span>
-      </button>
+      <div style="display:flex; align-items:center; gap:8px; padding:8px 4px;">
+        <button class="user-pill" id="user-pill" title="Switch user" style="flex:1">
+          <span class="user-avatar" id="user-avatar">?</span>
+          <span class="user-name-text" id="user-name-text">Select profile</span>
+          <span class="pill-switch">⇅</span>
+        </button>
+        <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark mode" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:8px; cursor:pointer; font-size:1rem; flex-shrink:0;">☀️</button>
+      </div>
     </div>
   </aside>
 

@@ -197,7 +197,38 @@ function renderConvList(convs) {
   convList.querySelectorAll(".conv-item").forEach(item => {
     item.addEventListener("click", e => {
       if (e.target.classList.contains("conv-del")) return;
+      if (e.target.classList.contains("conv-item-title") && e.detail === 2) return; // handled by dblclick
       openConversation(item.dataset.id);
+    });
+    // Double-click title to inline rename
+    const titleEl = item.querySelector(".conv-item-title");
+    titleEl.addEventListener("dblclick", e => {
+      e.stopPropagation();
+      const convId = item.dataset.id;
+      const input = document.createElement("input");
+      input.value = titleEl.textContent;
+      input.className = "conv-rename-input";
+      input.style.cssText = "background:var(--surface3);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font-size:inherit;color:var(--text);width:100%;outline:none;";
+      titleEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const save = async () => {
+        const newTitle = input.value.trim();
+        if (newTitle) {
+          await fetch(`${API}/api/conversations/${convId}/title`, {
+            method: "PATCH",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({title: newTitle})
+          });
+          if (currentConvId === convId) convTitleHeader.textContent = newTitle;
+        }
+        loadConversations();
+      };
+      input.addEventListener("blur", save);
+      input.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+        if (e.key === "Escape") { loadConversations(); }
+      });
     });
   });
   convList.querySelectorAll(".conv-del").forEach(btn => {
@@ -428,12 +459,17 @@ function appendMessage(role, content, meta = {}) {
        </div>`
     : "";
 
+  const copyBtn = role === "assistant"
+    ? `<div class="msg-actions"><button class="msg-action-btn copy-btn" onclick="copyMessage(this)" data-text="${escHtml(content).replace(/"/g,'&quot;')}" title="Copy">📋 Copy</button></div>`
+    : "";
+
   el.innerHTML = `
     ${avatar}
     <div class="msg-body">
       <div class="msg-name">${escHtml(name)}</div>
       <div class="msg-text">${formatText(content)}</div>
       ${metaHtml}
+      ${copyBtn}
     </div>`;
 
   messagesEl.appendChild(el);
@@ -913,6 +949,22 @@ window.sendMessage = async function() {
   scrollToBottom();
 
   let fullText = "";
+  let abortController = new AbortController();
+
+  // Transform send button to Stop button
+  sendBtn.disabled = false;
+  sendBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="14" height="14"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>`;
+  sendBtn.style.background = "#ef4444";
+  sendBtn.title = "Stop generating";
+  const stopHandler = () => { abortController.abort(); };
+  sendBtn.addEventListener("click", stopHandler, { once: true });
+
+  const resetSendBtn = () => {
+    sendBtn.removeEventListener("click", stopHandler);
+    sendBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+    sendBtn.style.background = "";
+    sendBtn.title = "Send (Enter)";
+  };
 
   try {
     const modelOverrideEl = document.getElementById("model-override");
@@ -924,6 +976,7 @@ window.sendMessage = async function() {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(bodyPayload),
+      signal:  abortController.signal,
     });
 
     if (!response.ok) {
@@ -981,10 +1034,21 @@ window.sendMessage = async function() {
       }
     }
   } catch (err) {
-    streamEl.remove();
-    appendErrorMessage("Could not connect to server. Is Flask running?");
-    showToast("⚠️ Server offline", "error");
+    if (err.name === "AbortError") {
+      // User clicked Stop — finalize whatever was received
+      if (fullText) {
+        finalizeStreamingMessage(streamEl, fullText + "\n\n*[Generation stopped]*", {});
+      } else {
+        streamEl.remove();
+      }
+      showToast("⏹ Generation stopped", "info");
+    } else {
+      streamEl.remove();
+      appendErrorMessage("Could not connect to server. Is Flask running?");
+      showToast("⚠️ Server offline", "error");
+    }
   } finally {
+    resetSendBtn();
     setLoading(false);
     msgInput.focus();
     scrollToBottom();
@@ -1325,4 +1389,35 @@ window.downloadCode = function(btn, ext) {
   const originalText = btn.innerHTML;
   btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22d3a0" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> <span style="color:#22d3a0">Saved</span>`;
   setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+};
+
+// ── Copy Message ──────────────────────────────────────────────────────────────
+window.copyMessage = function(btn) {
+  const text = btn.getAttribute("data-text") || btn.closest(".msg-body")?.querySelector(".msg-text")?.innerText || "";
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = "✓ Copied";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove("copied"); }, 2000);
+  }).catch(() => showToast("Copy failed", "error"));
+};
+
+// ── Dark / Light Mode Toggle ──────────────────────────────────────────────────
+(function initTheme() {
+  const saved = localStorage.getItem("theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
+})();
+
+window.toggleTheme = function() {
+  const current = document.documentElement.getAttribute("data-theme") || "dark";
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("theme", next);
+  const btn = document.getElementById("theme-toggle-btn");
+  if (btn) btn.textContent = next === "dark" ? "☀️" : "🌙";
+};
+
+// ── Export all calls to CSV ───────────────────────────────────────────────────
+window.exportAllCalls = function() {
+  window.open(`${API}/api/usage/export`, "_blank");
 };

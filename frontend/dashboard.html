@@ -332,10 +332,18 @@
 
   </div>
 
+  <!-- Top Users by Spend -->
+  <div class="panel" style="margin-bottom:24px">
+    <h2>🏆 Top Users by Spend (This Month)</h2>
+    <div id="top-users-wrap">
+      <div class="empty-state">No data yet</div>
+    </div>
+  </div>
+
   <!-- Recent Calls -->
   <div class="panel" style="margin-bottom:24px">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h2 style="margin-bottom:0">🕐 Recent API Calls <span style="color:var(--muted);font-weight:400;font-size:.8rem">(last 10)</span></h2>
+      <h2 style="margin-bottom:0">🕐 All API Calls This Month</h2>
       <a href="/api/usage/export" target="_blank" style="display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Export Full CSV</a>
     </div>
     <div id="recent-calls-wrap" style="overflow-x:auto">
@@ -511,6 +519,24 @@ function renderDashboard(d) {
         </div>
         <span class="task-cost">${formatCost(stat.cost, 5)}</span>
       </div>`).join("");
+  }
+
+  // Top Users
+  const topUsers = d.top_users || [];
+  const tuEl = document.getElementById("top-users-wrap");
+  if (tuEl) {
+    if (!topUsers.length) {
+      tuEl.innerHTML = '<div class="empty-state">No user data yet</div>';
+    } else {
+      tuEl.innerHTML = `<table class="calls-table"><thead><tr><th>Rank</th><th>User</th><th>Calls</th><th>Cost</th></tr></thead><tbody>
+        ${topUsers.map((u, i) => `<tr>
+          <td style="color:var(--muted)">#${i+1}</td>
+          <td>${employeesMap[u.user_id] || u.user_id}</td>
+          <td style="font-family:JetBrains Mono,monospace">${u.calls}</td>
+          <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">${formatCost(u.cost_usd, 4)}</td>
+        </tr>`).join("")}
+      </tbody></table>`;
+    }
   }
 
   // Recent calls

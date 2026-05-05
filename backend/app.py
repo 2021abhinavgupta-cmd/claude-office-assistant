@@ -282,28 +282,13 @@ def budget_status():
 def usage_dashboard():
     """
     Full usage dashboard data — powers the cost monitoring dashboard.
-    Returns aggregated stats, per-task breakdown, and recent calls.
+    Returns aggregated stats, per-user breakdown, per-task breakdown, and all calls.
     """
-    summary = get_usage_summary()
-
-    # Build per-task breakdown from recent calls
-    all_calls = summary.get("recent_calls", [])
-    task_stats = {}  # task_name -> {calls, cost, tokens}
-    for call in all_calls:
-        t = call.get("task_type", "unknown")
-        if t not in task_stats:
-            task_stats[t] = {"calls": 0, "cost": 0.0, "tokens": 0}
-        task_stats[t]["calls"]  += 1
-        task_stats[t]["cost"]   += call.get("cost_usd", 0)
-        task_stats[t]["tokens"] += call.get("input_tokens", 0) + call.get("output_tokens", 0)
-
-    # Round task costs
-    for t in task_stats:
-        task_stats[t]["cost"] = round(task_stats[t]["cost"], 5)
+    all_flag = request.args.get("all", "false").lower() == "true"
+    summary  = get_usage_summary(all_calls=all_flag)
 
     return jsonify({
         **summary,
-        "task_breakdown": task_stats,
         "budget_alerts": {
             "warning_threshold":  round(summary["budget_limit"] * 0.80, 2),
             "critical_threshold": round(summary["budget_limit"] * 0.90, 2),

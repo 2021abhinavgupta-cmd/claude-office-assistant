@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from budget_tracker import check_budget_available, record_usage
 from model_router import calculate_cost
+from memory_store import get_memories, format_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -54,16 +55,20 @@ def detect_task(message: str) -> str:
 
 
 def ask_claude(message: str, user_id: str = "whatsapp_user") -> dict:
-    """Send a WhatsApp message to Claude Haiku and return result."""
+    """Send a WhatsApp message to Claude with user memories injected."""
     budget = check_budget_available()
     if not budget["allowed"]:
         return {"reply": "⚠️ Monthly AI budget limit reached. Please contact admin.", "success": False}
+
+    # Build system prompt with user's persistent memories
+    memory_context = format_for_prompt(user_id)
+    full_system = WA_SYSTEM + memory_context
 
     try:
         response = client.messages.create(
             model=HAIKU,
             max_tokens=512,
-            system=WA_SYSTEM,
+            system=full_system,
             messages=[{"role": "user", "content": message}]
         )
         text   = response.content[0].text

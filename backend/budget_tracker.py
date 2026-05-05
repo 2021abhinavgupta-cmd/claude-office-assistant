@@ -123,7 +123,7 @@ def record_usage(task_type: str, model_tier: str, model_name: str,
     return entry
 
 
-def get_usage_summary() -> dict:
+def get_usage_summary(all_calls: bool = False) -> dict:
     """Returns full usage summary for dashboard display."""
     data = _load_usage()
     month_key = get_current_month_key()
@@ -134,15 +134,55 @@ def get_usage_summary() -> dict:
     haiku_calls  = sum(1 for c in month_calls if c.get("model_tier") == "haiku")
     sonnet_calls = sum(1 for c in month_calls if c.get("model_tier") == "sonnet")
 
+    # Per-user spend breakdown
+    user_spend = {}
+    for c in month_calls:
+        uid = c.get("user_id", "unknown")
+        user_spend[uid] = round(user_spend.get(uid, 0.0) + c.get("cost_usd", 0.0), 6)
+    top_users = sorted(
+        [{"user_id": u, "cost_usd": v, "calls": sum(1 for c in month_calls if c.get("user_id") == u)}
+         for u, v in user_spend.items()],
+        key=lambda x: x["cost_usd"], reverse=True
+    )
+
+    # Task breakdown
+    task_breakdown = {}
+    for c in month_calls:
+        t = c.get("task_type", "general")
+        if t not in task_breakdown:
+            task_breakdown[t] = {"calls": 0, "cost": 0.0}
+        task_breakdown[t]["calls"] += 1
+        task_breakdown[t]["cost"] = round(task_breakdown[t]["cost"] + c.get("cost_usd", 0.0), 6)
+
+    # Return all calls or just the most recent for the dashboard table
+    calls_to_return = list(reversed(month_calls)) if all_calls else list(reversed(month_calls[:100]))
+
     return {
-        "month":          month_key,
-        "monthly_spend":  round(monthly_spend, 4),
-        "budget_limit":   BUDGET_LIMIT,
-        "remaining":      round(BUDGET_LIMIT - monthly_spend, 4),
-        "percent_used":   round((monthly_spend / BUDGET_LIMIT) * 100, 1),
-        "total_calls":    len(month_calls),
-        "haiku_calls":    haiku_calls,
-        "sonnet_calls":   sonnet_calls,
+        "month":            month_key,
+        "monthly_spend":    round(monthly_spend, 4),
+        "budget_limit":     BUDGET_LIMIT,
+        "remaining":        round(BUDGET_LIMIT - monthly_spend, 4),
+        "percent_used":     round((monthly_spend / BUDGET_LIMIT) * 100, 1),
+        "total_calls":      len(month_calls),
+        "haiku_calls":      haiku_calls,
+        "sonnet_calls":     sonnet_calls,
         "total_spent_ever": round(data.get("total_spent", 0.0), 4),
-        "recent_calls":   month_calls[-10:][::-1],  # Last 10 calls, newest first
+        "recent_calls":     calls_to_return,
+        "top_users":        top_users,
+        "task_breakdown":   task_breakdown,
     }
+
+
+def get_all_calls_csv() -> str:
+    """Return all call records as a CSV string for export."""
+    import csv, io
+    data = _load_usage()
+    calls = data.get("calls", [])
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=[
+        "timestamp", "user_id", "task_type", "model_tier", "model_name",
+        "input_tokens", "output_tokens", "cost_usd", "month"
+    ], extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(calls)
+    return output.getvalue()

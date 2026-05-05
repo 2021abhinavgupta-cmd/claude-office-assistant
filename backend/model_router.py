@@ -12,23 +12,34 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', 
 # Haiku: Fast, cheap — good for simple/structured tasks
 # Sonnet: Powerful, precise — good for creative/complex tasks
 TASK_ROUTING = {
-    "captions":      "haiku",    # Short, simple outputs
-    "scripts":       "haiku",    # Template-based, structured
-    "general":       "haiku",    # Open-ended Q&A — cheap and fast
-    "coding":        "sonnet",   # Complex reasoning required
-    "html_design":   "sonnet",   # Creative + technical
-    "presentations": "sonnet",   # Needs creativity + structure
+    # Haiku tasks — fast & cheap
+    "captions":        "haiku",
+    "scripts":         "haiku",
+    "general":         "haiku",
+    "summarization":   "haiku",
+    "translation":     "haiku",
+    "email_drafting":  "haiku",
+    "data_extraction": "haiku",
+    "qa":              "haiku",
+    # Sonnet tasks — complex & creative
+    "coding":          "sonnet",
+    "html_design":     "sonnet",
+    "presentations":   "sonnet",
+    "analysis":        "sonnet",
+    "research":        "sonnet",
+    "data_analysis":   "sonnet",
+    "legal":           "sonnet",
 }
 
-# Cost per 1M tokens (USD) — approximate, as of 2024
+# Cost per 1M tokens (USD) — Claude 4 pricing (May 2025)
 MODEL_COSTS = {
     "haiku": {
-        "input":  0.25,   # $0.25 / 1M input tokens
-        "output": 1.25,   # $1.25 / 1M output tokens
+        "input":  0.80,   # $0.80 / 1M input tokens  (claude-haiku-4-5)
+        "output": 4.00,   # $4.00 / 1M output tokens
         "name":   os.getenv("HAIKU_MODEL", "claude-haiku-4-5"),
     },
     "sonnet": {
-        "input":  3.00,   # $3.00 / 1M input tokens
+        "input":  3.00,   # $3.00 / 1M input tokens  (claude-sonnet-4-5)
         "output": 15.00,  # $15.00 / 1M output tokens
         "name":   os.getenv("SONNET_MODEL", "claude-sonnet-4-5"),
     }
