@@ -342,6 +342,7 @@ body {
 }
 .chat-view.hidden { display: none; }
 .welcome-screen.hidden { display: none; }
+.project-view.hidden { display: none !important; }
 
 /* Chat Header */
 .chat-header {
