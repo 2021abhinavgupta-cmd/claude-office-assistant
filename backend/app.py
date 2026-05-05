@@ -1053,7 +1053,7 @@ def delete_project(project_id):
     return jsonify({"error": "Not found"}), 404
 
 @app.route("/api/projects/<project_id>/knowledge", methods=["POST"])
-def add_project_knowledge():
+def add_project_knowledge(project_id):
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id")
     filename = data.get("filename", "untitled.txt")
