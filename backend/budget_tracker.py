@@ -16,7 +16,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', 
 BUDGET_LIMIT = float(os.getenv("MONTHLY_BUDGET_LIMIT", 20.0))
 LOG_DIR      = Path(__file__).parent.parent / "logs"
 USAGE_FILE   = LOG_DIR / "usage.json"
-MAX_CALLS    = 500  # Cap the calls log to prevent unbounded file growth
+MAX_CALLS    = 5000  # Cap the calls log to prevent unbounded file growth
 
 logger = logging.getLogger(__name__)
 

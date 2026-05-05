@@ -30,7 +30,7 @@ import anthropic
 
 # Local modules
 from model_router import get_model_for_task, calculate_cost, get_all_routes
-from budget_tracker import check_budget_available, record_usage, get_usage_summary
+from budget_tracker import check_budget_available, record_usage, get_usage_summary, _load_usage
 import conversation_store
 import memory_store
 import file_processor
@@ -294,6 +294,42 @@ def usage_dashboard():
         },
     })
 
+@app.route("/api/usage/export", methods=["GET"])
+def export_usage():
+    import csv
+    from io import StringIO
+    data = _load_usage()
+    calls = data.get("calls", [])
+    
+    emp_map = {}
+    try:
+        emp_file = Path(__file__).parent.parent / "config" / "employees.json"
+        with open(emp_file, "r") as f:
+            emps = json.load(f).get("employees", [])
+            for e in emps:
+                emp_map[e["id"]] = e["name"]
+                if e.get("whatsapp"):
+                    emp_map[e["whatsapp"]] = e["name"]
+    except Exception:
+        pass
+
+    si = StringIO()
+    cw = csv.writer(si)
+    cw.writerow(["Timestamp", "User", "Task", "Model Tier", "Model Name", "Input Tokens", "Output Tokens", "Cost (USD)", "Month"])
+    for c in reversed(calls):
+        uid = c.get("user_id", "")
+        user_name = emp_map.get(uid, uid)
+        cw.writerow([
+            c.get("timestamp"), user_name, c.get("task_type"),
+            c.get("model_tier"), c.get("model_name"), c.get("input_tokens"),
+            c.get("output_tokens"), c.get("cost_usd"), c.get("month")
+        ])
+    
+    return Response(
+        si.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=claude_api_usage.csv"}
+    )
 
 # ── Main Chat ─────────────────────────────────────────────────────────────────
 @app.route("/api/chat", methods=["POST"])
