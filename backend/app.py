@@ -114,6 +114,14 @@ SYSTEM_PROMPTS = {
         "they need — analysis, writing, research, planning, brainstorming, math, or anything else. "
         "Be concise, accurate, and genuinely helpful. Ask clarifying questions when needed."
     ),
+    "meetings": (
+        "You are a professional Executive Assistant. Parse this meeting transcript or notes and output exactly four sections:\n"
+        "1. Executive Summary (2-3 sentences)\n"
+        "2. Key Decisions Made (Bullet points)\n"
+        "3. Action Items (Use checkboxes [ ] and bold the owner's name)\n"
+        "4. Suggested Agenda for Next Meeting\n"
+        "Do not include any other commentary."
+    ),
 }
 
 DEFAULT_SYSTEM = SYSTEM_PROMPTS["general"]
@@ -132,6 +140,7 @@ _TASK_KEYWORDS = {
                       "post", "hashtag", "tweet"],
     "scripts":       ["script", "dialogue", "scene", "screenplay", "video script",
                       "podcast", "voiceover"],
+    "meetings":      ["meeting", "transcript", "notes", "agenda", "call recording", "discussion"],
 }
 
 from functools import lru_cache
@@ -147,9 +156,24 @@ def _detect_task(message: str) -> str:
 
 
 
+def _get_user_tone_profile(user_id: str) -> Optional[str]:
+    try:
+        with open(EMPLOYEES_DB, "r") as f:
+            data = json.load(f)
+            for emp in data.get("employees", []):
+                if emp.get("id") == user_id:
+                    return emp.get("tone_profile")
+    except Exception:
+        pass
+    return None
+
 def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None) -> list:
     base_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
     base_prompt += "\n\nBe concise and direct. No unnecessary preamble. No phrases like 'Certainly!' or 'Great question!'. Get to the answer immediately."
+    
+    tone_profile = _get_user_tone_profile(user_id)
+    if tone_profile:
+        base_prompt += f"\n\nCRITICAL OUTPUT STYLE REQUIREMENT: You MUST strictly adhere to the following writing style and tone for this user: {tone_profile}"
     
     mem_ctx = memory_store.format_for_prompt(user_id)
     sections = [base_prompt]

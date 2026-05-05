@@ -7,6 +7,7 @@
       "whatsapp": "+919876543210",
       "department": "Engineering",
       "status": "active",
+      "tone_profile": "Formal, detailed and highly analytical.",
       "checkins": []
     },
     {
@@ -16,6 +17,7 @@
       "whatsapp": "+919876543211",
       "department": "Design",
       "status": "active",
+      "tone_profile": "Friendly, concise, and empathetic.",
       "checkins": []
     },
     {
@@ -25,6 +27,7 @@
       "whatsapp": "+919876543212",
       "department": "Engineering",
       "status": "active",
+      "tone_profile": "Technical, use bullet points, and provide code-centric context.",
       "checkins": []
     },
     {
@@ -34,6 +37,7 @@
       "whatsapp": "+919876543213",
       "department": "General",
       "status": "active",
+      "tone_profile": "Direct, strategic, and high-level.",
       "checkins": []
     },
     {
@@ -43,6 +47,7 @@
       "whatsapp": "+919876543214",
       "department": "General",
       "status": "active",
+      "tone_profile": "Creative, engaging, and visually descriptive.",
       "checkins": []
     },
     {
@@ -52,6 +57,7 @@
       "whatsapp": "+919876543215",
       "department": "General",
       "status": "active",
+      "tone_profile": "Persuasive, brief, and action-oriented.",
       "checkins": []
     },
     {
@@ -61,6 +67,7 @@
       "whatsapp": "+919876543216",
       "department": "General",
       "status": "active",
+      "tone_profile": "Professional, precise, and numbers-driven.",
       "checkins": []
     }
   ]
