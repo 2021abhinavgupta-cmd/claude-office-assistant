@@ -9,4 +9,4 @@
   restartPolicyMaxRetries = 3
 
 [volumes]
-  logs = "/app/logs"
+  "web-volume" = "/app/logs"
