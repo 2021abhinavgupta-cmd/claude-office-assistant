@@ -34,6 +34,7 @@ from budget_tracker import check_budget_available, record_usage, get_usage_summa
 import conversation_store
 import memory_store
 import file_processor
+import project_store
 
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
@@ -133,9 +134,31 @@ def _detect_task(message: str) -> str:
 
 
 
+def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None) -> str:
+    base_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
+    mem_ctx = memory_store.format_for_prompt(user_id)
+    sections = [base_prompt]
+    if mem_ctx:
+        sections.append(mem_ctx)
+    
+    if project_id:
+        project = project_store.get_project(project_id, user_id)
+        if project:
+            if project.get("custom_instructions"):
+                sections.append(f"## Custom Instructions\n{project['custom_instructions']}")
+            if project.get("knowledge_base"):
+                kb_text = "\n\n---\n\n".join(
+                    f"### {doc['filename']}\n{doc['content']}"
+                    for doc in project["knowledge_base"]
+                )
+                sections.append(f"## Project Knowledge Base\nThe following documents have been provided for context:\n\n{kb_text}")
+    
+    return "\n\n".join(sections)
+
 # ── Helper: call Claude ───────────────────────────────────────────────────────
 def call_claude(task_type: str, message: str, user_id: str = "api",
-                max_tokens: int = MAX_TOKENS, force_tier: Optional[str] = None) -> dict:
+                max_tokens: int = MAX_TOKENS, force_tier: Optional[str] = None,
+                project_id: Optional[str] = None) -> dict:
     """
     Shared helper to call Claude with budget check + usage logging.
     Returns dict with: success, response, model_used, model_tier, tokens, cost_usd, budget
@@ -147,7 +170,7 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
     model_config  = get_model_for_task(task_type) if not force_tier else _build_config(force_tier)
     model_name    = model_config["name"]
     model_tier    = model_config["tier"]
-    system_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
+    system_prompt = _build_system_prompt(task_type, user_id, project_id)
 
     logger.info(f"Claude call | task={task_type} | model={model_tier} | user={user_id}")
 
@@ -572,7 +595,8 @@ def employee_summary():
 
 def call_claude_with_context(task_type: str, messages: list,
                              user_id: str = "api",
-                             attachments: list = None) -> dict:
+                             attachments: list = None,
+                             project_id: str = None) -> dict:
     """
     Call Claude with full conversation history + optional file attachments.
     Memories are automatically injected into the system prompt.
@@ -586,9 +610,8 @@ def call_claude_with_context(task_type: str, messages: list,
     model_name    = model_config["name"]
     model_tier    = model_config["tier"]
 
-    # Inject user memories into system prompt
-    mem_ctx       = memory_store.format_for_prompt(user_id)
-    system_prompt = SYSTEM_PROMPTS.get(task_type, DEFAULT_SYSTEM) + mem_ctx
+    # Inject user memories and project context into system prompt
+    system_prompt = _build_system_prompt(task_type, user_id, project_id)
 
     logger.info(f"Multi-turn | task={task_type} | model={model_tier} | turns={len(messages)} | files={len(attachments or [])} | user={user_id}")
 
@@ -665,16 +688,17 @@ def list_conversations():
 # ── Create conversation ───────────────────────────────────────────────────────
 @app.route("/api/conversations", methods=["POST"])
 def create_conversation():
-    """POST /api/conversations  body: {user_id, user_name, task_type?}"""
+    """POST /api/conversations  body: {user_id, user_name, task_type?, project_id?}"""
     data      = request.get_json(silent=True) or {}
     user_id   = data.get("user_id",   "").strip()
     user_name = data.get("user_name", "Anonymous").strip()
     task_type = data.get("task_type")
+    project_id = data.get("project_id")
 
     if not user_id:
         return jsonify({"error": "user_id is required"}), 400
 
-    conv = conversation_store.create_conversation(user_id, user_name, task_type)
+    conv = conversation_store.create_conversation(user_id, user_name, task_type, project_id)
     return jsonify(conv), 201
 
 
@@ -748,7 +772,7 @@ def conversation_chat(conv_id):
     context = conversation_store.get_context_messages(conv_id)
 
     # Call Claude with full conversation context + any file attachments
-    result = call_claude_with_context(task_type, context, conv.get("user_id", "api"), attachments=attachments)
+    result = call_claude_with_context(task_type, context, conv.get("user_id", "api"), attachments=attachments, project_id=conv.get("project_id"))
 
     if not result["success"]:
         err = result.get("error", "")
@@ -805,8 +829,7 @@ def conversation_stream(conv_id):
     model_config = get_model_for_task(task_type)
     model_name   = model_config["name"]
     model_tier   = model_config["tier"]
-    mem_ctx      = memory_store.format_for_prompt(user_id)
-    system_prompt = SYSTEM_PROMPTS.get(task_type, DEFAULT_SYSTEM) + mem_ctx
+    system_prompt = _build_system_prompt(task_type, user_id, conv.get("project_id"))
 
     api_messages = list(context)
     if attachments and api_messages and api_messages[-1]["role"] == "user":
@@ -993,6 +1016,69 @@ def delete_memory(user_id, memory_id):
     if not deleted:
         return jsonify({"error": "Memory not found"}), 404
     return jsonify({"success": True})
+
+
+# ── Projects ──────────────────────────────────────────────────────────────────
+@app.route("/api/projects", methods=["GET"])
+def list_projects():
+    user_id = request.args.get("user_id")
+    if not user_id:
+        return jsonify({"error": "user_id is required"}), 400
+    return jsonify({"projects": project_store.get_projects(user_id)})
+
+@app.route("/api/projects", methods=["POST"])
+def create_project():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    name = data.get("name", "New Project")
+    custom_instructions = data.get("custom_instructions", "")
+    if not user_id:
+        return jsonify({"error": "user_id is required"}), 400
+    p = project_store.create_project(user_id, name, custom_instructions)
+    return jsonify(p), 201
+
+@app.route("/api/projects/<project_id>", methods=["GET"])
+def get_project(project_id):
+    user_id = request.args.get("user_id")
+    p = project_store.get_project(project_id, user_id)
+    if not p: return jsonify({"error": "Not found"}), 404
+    return jsonify(p)
+
+@app.route("/api/projects/<project_id>", methods=["PATCH"])
+def update_project(project_id):
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    name = data.get("name")
+    custom_instructions = data.get("custom_instructions")
+    p = project_store.update_project(project_id, user_id, name, custom_instructions)
+    if not p: return jsonify({"error": "Not found"}), 404
+    return jsonify(p)
+
+@app.route("/api/projects/<project_id>", methods=["DELETE"])
+def delete_project(project_id):
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id") or request.args.get("user_id")
+    if project_store.delete_project(project_id, user_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+@app.route("/api/projects/<project_id>/knowledge", methods=["POST"])
+def add_project_knowledge():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    filename = data.get("filename", "untitled.txt")
+    content = data.get("content", "")
+    doc = project_store.add_knowledge_base_doc(project_id, user_id, filename, content)
+    if not doc: return jsonify({"error": "Project not found"}), 404
+    return jsonify(doc), 201
+
+@app.route("/api/projects/<project_id>/knowledge/<doc_id>", methods=["DELETE"])
+def delete_project_knowledge(project_id, doc_id):
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id") or request.args.get("user_id")
+    if project_store.delete_knowledge_base_doc(project_id, user_id, doc_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────

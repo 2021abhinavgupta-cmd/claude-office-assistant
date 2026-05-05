@@ -77,7 +77,8 @@ def _strip_messages(conv: dict) -> dict:
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def create_conversation(user_id: str, user_name: str,
-                        task_type: Optional[str] = None) -> dict:
+                        task_type: Optional[str] = None,
+                        project_id: Optional[str] = None) -> dict:
     """Create a new conversation and return its full dict."""
     with _lock:
         data    = _load()
@@ -88,6 +89,7 @@ def create_conversation(user_id: str, user_name: str,
             "user_name":  user_name,
             "title":      "New conversation",
             "task_type":  task_type,
+            "project_id": project_id,
             "created_at": _now(),
             "updated_at": _now(),
             "messages":   [],
