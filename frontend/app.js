@@ -279,6 +279,10 @@ async function startNewChat(initialMessage = null, projectId = null) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: currentUser.user_id, user_name: currentUser.user_name, project_id: projectId }),
     });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errText}`);
+    }
     const conv = await res.json();
     currentConvId = conv.id;
 
@@ -296,7 +300,8 @@ async function startNewChat(initialMessage = null, projectId = null) {
       msgInput.focus();
     }
   } catch (e) {
-    showToast("Could not create conversation", "error");
+    console.error("Chat creation error:", e);
+    showToast("Could not create conversation. Please refresh the page.", "error");
   }
 }
 
