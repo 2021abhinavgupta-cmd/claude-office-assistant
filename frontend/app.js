@@ -417,7 +417,7 @@ function appendMessage(role, content, meta = {}) {
   const metaHtml = (role === "assistant" && (meta.model_tier || meta.cost_usd))
     ? `<div class="msg-meta">
         ${meta.model_used ? `<span class="msg-chip ${meta.model_tier}">${meta.model_used}</span>` : ""}
-        ${meta.cost_usd   ? `<span class="msg-chip cost">$${meta.cost_usd.toFixed(5)}</span>` : ""}
+        ${meta.cost_usd   ? `<span class="msg-chip cost">$${meta.cost_usd.toFixed(5)} <span style="opacity:0.7">(₹${(meta.cost_usd * 83.5).toFixed(4)})</span></span>` : ""}
        </div>`
     : "";
 
@@ -521,7 +521,7 @@ function updateBudgetUI(b) {
   const spent = b.spent ?? b.monthly_spend ?? 0;
   const limit = b.limit ?? b.budget_limit  ?? 150;
   const pct   = Math.min((spent / limit) * 100, 100);
-  budgetMiniVal.textContent = `$${spent.toFixed(2)} / $${limit}`;
+  budgetMiniVal.textContent = `$${spent.toFixed(2)} (₹${(spent*83.5).toFixed(2)}) / $${limit} (₹${(limit*83.5).toFixed(2)})`;
   budgetMiniFill.style.width = pct + "%";
   if (pct >= 90) budgetMiniFill.style.background = "#ef4444";
   else if (pct >= 80) budgetMiniFill.style.background = "linear-gradient(90deg,#f59e0b,#ef4444)";
