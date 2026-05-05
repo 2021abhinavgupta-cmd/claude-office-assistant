@@ -21,14 +21,14 @@ TASK_ROUTING = {
     "email_drafting":  "haiku",
     "data_extraction": "haiku",
     "qa":              "haiku",
+    "analysis":        "haiku",
+    "research":        "haiku",
+    "legal":           "haiku",
     # Sonnet tasks — complex & creative
     "coding":          "sonnet",
     "html_design":     "sonnet",
     "presentations":   "sonnet",
-    "analysis":        "sonnet",
-    "research":        "sonnet",
     "data_analysis":   "sonnet",
-    "legal":           "sonnet",
 }
 
 # Cost per 1M tokens (USD) — Claude 4 pricing (May 2025)

@@ -147,8 +147,10 @@ def _detect_task(message: str) -> str:
 
 
 
-def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None) -> str:
+def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None) -> list:
     base_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
+    base_prompt += "\n\nBe concise and direct. No unnecessary preamble. No phrases like 'Certainly!' or 'Great question!'. Get to the answer immediately."
+    
     mem_ctx = memory_store.format_for_prompt(user_id)
     sections = [base_prompt]
     if mem_ctx:
@@ -166,7 +168,14 @@ def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str]
                 )
                 sections.append(f"## Project Knowledge Base\nThe following documents have been provided for context:\n\n{kb_text}")
     
-    return "\n\n".join(sections)
+    final_text = "\n\n".join(sections)
+    return [
+        {
+            "type": "text",
+            "text": final_text,
+            "cache_control": {"type": "ephemeral"}
+        }
+    ]
 
 # ── Helper: call Claude ───────────────────────────────────────────────────────
 def call_claude(task_type: str, message: str, user_id: str = "api",
