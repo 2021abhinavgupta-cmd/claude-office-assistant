@@ -122,6 +122,12 @@ SYSTEM_PROMPTS = {
         "4. Suggested Agenda for Next Meeting\n"
         "Do not include any other commentary."
     ),
+    "announcements": (
+        "You are a professional Internal Communications Manager. "
+        "Take the rough notes provided and format them into a polite, clear, and professional office announcement. "
+        "Include a clear Subject line, proper greetings/sign-offs, and organized formatting. "
+        "Make it ready to copy-paste into an email or WhatsApp group."
+    ),
 }
 
 DEFAULT_SYSTEM = SYSTEM_PROMPTS["general"]
@@ -141,6 +147,7 @@ _TASK_KEYWORDS = {
     "scripts":       ["script", "dialogue", "scene", "screenplay", "video script",
                       "podcast", "voiceover"],
     "meetings":      ["meeting", "transcript", "notes", "agenda", "call recording", "discussion"],
+    "announcements": ["announcement", "notice", "office update", "regarding:", "memo", "bulletin"],
 }
 
 from functools import lru_cache
