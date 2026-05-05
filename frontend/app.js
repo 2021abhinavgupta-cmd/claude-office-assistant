@@ -57,6 +57,109 @@ const welcomeInput   = document.getElementById("welcome-input");
 const welcomeSend    = document.getElementById("welcome-send");
 
 // ── Init ─────────────────────────────────────────────────────────────────────
+// ── User Editing & Action Buttons ──────────────────────────────────────────
+window.copyMessage = function(btn) {
+  const text = btn.dataset.text || btn.getAttribute('data-text');
+  if (!text) return;
+  const decoded = text.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  navigator.clipboard.writeText(decoded).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = "✅ Copied";
+    btn.classList.add("copied");
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.classList.remove("copied");
+    }, 2000);
+  });
+};
+
+window.dislikeMessage = function(btn) {
+  btn.style.color = "var(--error)";
+  btn.innerHTML = "👎 Marked Bad";
+  showToast("Feedback submitted. Thank you!", "info");
+};
+
+window.editMessage = function(btn) {
+  const msgEl = btn.closest(".msg");
+  if (!msgEl) return;
+  const textContainer = msgEl.querySelector(".msg-text-container");
+  const msgTextEl = msgEl.querySelector(".msg-text");
+  const rawText = msgTextEl.dataset.raw ? msgTextEl.dataset.raw.replace(/&quot;/g, '"') : msgTextEl.innerText;
+
+  // Create an edit textarea
+  const textarea = document.createElement("textarea");
+  textarea.className = "msg-edit-textarea";
+  textarea.style.width = "100%";
+  textarea.style.minHeight = "60px";
+  textarea.style.padding = "8px";
+  textarea.style.background = "var(--bg)";
+  textarea.style.color = "var(--text)";
+  textarea.style.border = "1px solid var(--border)";
+  textarea.style.borderRadius = "4px";
+  textarea.style.marginTop = "8px";
+  textarea.style.fontFamily = "inherit";
+  textarea.style.fontSize = "inherit";
+  textarea.value = rawText;
+
+  // Create action buttons
+  const actionsDiv = document.createElement("div");
+  actionsDiv.style.display = "flex";
+  actionsDiv.style.gap = "8px";
+  actionsDiv.style.marginTop = "8px";
+  
+  const saveBtn = document.createElement("button");
+  saveBtn.textContent = "Save & Submit";
+  saveBtn.className = "primary-btn";
+  saveBtn.style.padding = "4px 12px";
+  saveBtn.style.fontSize = "0.85rem";
+  saveBtn.onclick = () => {
+    const newText = textarea.value.trim();
+    if (!newText) return;
+    const idx = parseInt(msgEl.dataset.index);
+    sendMessage(newText, idx);
+  };
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.className = "secondary-btn";
+  cancelBtn.style.padding = "4px 12px";
+  cancelBtn.style.fontSize = "0.85rem";
+  cancelBtn.onclick = () => {
+    textContainer.innerHTML = "";
+    textContainer.appendChild(msgTextEl);
+  };
+
+  actionsDiv.appendChild(saveBtn);
+  actionsDiv.appendChild(cancelBtn);
+
+  // Replace text with editor
+  textContainer.innerHTML = "";
+  textContainer.appendChild(textarea);
+  textContainer.appendChild(actionsDiv);
+  textarea.focus();
+};
+
+window.previewArtifact = function(btn, ext) {
+  const code = decodeURIComponent(btn.dataset.code);
+  const pane = document.getElementById("artifacts-pane");
+  const iframe = document.getElementById("artifact-iframe");
+  
+  if (ext === "html") {
+    iframe.srcdoc = code;
+  } else if (ext === "svg") {
+    iframe.srcdoc = `<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;">${code}</body></html>`;
+  } else {
+    iframe.srcdoc = `<html><body style="font-family:monospace;white-space:pre-wrap;padding:16px;">${code.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`;
+  }
+  
+  pane.style.display = "flex";
+};
+
+window.closeArtifact = function() {
+  const pane = document.getElementById("artifacts-pane");
+  if (pane) pane.style.display = "none";
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   checkConnection();
   fetchBudget();
@@ -465,6 +568,9 @@ function updateInputMeta(taskName, modelName) {
 function appendMessage(role, content, meta = {}) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
+  // Assign index based on current number of messages in DOM
+  const msgIndex = Array.from(messagesEl.querySelectorAll('.msg')).length;
+  el.dataset.index = msgIndex;
 
   const avatar = role === "user"
     ? `<div class="msg-avatar">${currentUser ? currentUser.user_name.charAt(0).toUpperCase() : "U"}</div>`
@@ -480,17 +586,24 @@ function appendMessage(role, content, meta = {}) {
        </div>`
     : "";
 
-  const copyBtn = role === "assistant"
-    ? `<div class="msg-actions"><button class="msg-action-btn copy-btn" onclick="copyMessage(this)" data-text="${escHtml(content).replace(/"/g,'&quot;')}" title="Copy">📋 Copy</button></div>`
-    : "";
+  const actionsBtn = role === "assistant"
+    ? `<div class="msg-actions">
+         <button class="msg-action-btn copy-btn" onclick="copyMessage(this)" data-text="${escHtml(content).replace(/"/g,'&quot;')}" title="Copy">📋 Copy</button>
+         <button class="msg-action-btn dislike-btn" onclick="dislikeMessage(this)" title="Bad Response">👎 Dislike</button>
+       </div>`
+    : `<div class="msg-actions">
+         <button class="msg-action-btn edit-btn" onclick="editMessage(this)" title="Edit Message">✏️ Edit</button>
+       </div>`;
 
   el.innerHTML = `
     ${avatar}
     <div class="msg-body">
       <div class="msg-name">${escHtml(name)}</div>
-      <div class="msg-text">${formatText(content)}</div>
+      <div class="msg-text-container">
+        <div class="msg-text" data-raw="${escHtml(content).replace(/"/g,'&quot;')}">${formatText(content)}</div>
+      </div>
       ${metaHtml}
-      ${copyBtn}
+      ${actionsBtn}
     </div>`;
 
   messagesEl.appendChild(el);
@@ -947,16 +1060,25 @@ window.applyUser = function(user) {
 // STREAMING — replaces the override from the file-upload section
 // Uses fetch + ReadableStream to consume SSE, exactly like Claude.ai
 // ══════════════════════════════════════════════════════════════════════════════
-window.sendMessage = async function() {
-  const text = msgInput.value.trim();
+window.sendMessage = async function(overrideText = null, truncateFromIndex = null) {
+  const text = overrideText || msgInput.value.trim();
   if (!text || isLoading || !currentConvId) return;
 
-  const atts = [...pendingAttachments];
+  const atts = typeof pendingAttachments !== "undefined" ? [...pendingAttachments] : [];
 
-  msgInput.value = "";
-  msgInput.style.height = "auto";
-  charCount.textContent = "";
-  clearAttachments();
+  if (truncateFromIndex !== null) {
+    const allMsgs = Array.from(messagesEl.querySelectorAll('.msg'));
+    for (let i = truncateFromIndex; i < allMsgs.length; i++) {
+      allMsgs[i].remove();
+    }
+  }
+
+  if (!overrideText) {
+    msgInput.value = "";
+    msgInput.style.height = "auto";
+    charCount.textContent = "";
+    if (typeof clearAttachments === "function") clearAttachments();
+  }
   setLoading(true);
 
   // Show user message (with file indicator if files attached)
@@ -992,6 +1114,7 @@ window.sendMessage = async function() {
     const override = modelOverrideEl ? modelOverrideEl.value : "auto";
     const bodyPayload = { message: text, attachments: atts };
     if (override !== "auto") bodyPayload.model_override = override;
+    if (truncateFromIndex !== null) bodyPayload.truncate_from_index = truncateFromIndex;
 
     const response = await fetch(`${API}/api/conversations/${currentConvId}/stream`, {
       method:  "POST",

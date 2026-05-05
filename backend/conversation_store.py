@@ -153,6 +153,16 @@ def update_title(conv_id: str, title: str):
             _save(data)
 
 
+def truncate_messages(conv_id: str, index: int):
+    """Truncate conversation history from a specific message index (used for editing past messages)."""
+    with _lock:
+        data = _load()
+        if conv_id in data:
+            data[conv_id]["messages"] = data[conv_id]["messages"][:index]
+            data[conv_id]["updated_at"] = _now()
+            _save(data)
+
+
 def update_task_type(conv_id: str, task_type: str):
     """Set/update the task type for a conversation."""
     with _lock:

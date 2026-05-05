@@ -809,6 +809,10 @@ def conversation_stream(conv_id):
     task_type = (data.get("task_type") or conv.get("task_type") or _detect_task(message))
     user_id   = conv.get("user_id", "api")
 
+    truncate_idx = data.get("truncate_from_index")
+    if truncate_idx is not None:
+        conversation_store.truncate_messages(conv_id, int(truncate_idx))
+
     # Save user message and update task type
     conversation_store.add_message(conv_id, "user", message)
     if not conv.get("task_type"):
