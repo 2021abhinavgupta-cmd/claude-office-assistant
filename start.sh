@@ -49,4 +49,4 @@ echo ""
 (sleep 2 && open "http://localhost:5000" 2>/dev/null || true) &
 
 cd backend
-python app.py
+gunicorn app:app --bind 0.0.0.0:5000 --workers 4 --worker-class gevent
