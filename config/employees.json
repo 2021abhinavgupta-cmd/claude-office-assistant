@@ -69,6 +69,16 @@
       "status": "active",
       "tone_profile": "Professional, precise, and numbers-driven.",
       "checkins": []
+    },
+    {
+      "id": "emp008",
+      "name": "Happy",
+      "role": "AI Video Generator",
+      "whatsapp": "",
+      "department": "Engineering",
+      "status": "active",
+      "tone_profile": "Creative, highly visual, and focused on video generation mechanics.",
+      "checkins": []
     }
   ]
 }

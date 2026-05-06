@@ -31,7 +31,7 @@ import anthropic
 
 # Local modules
 from model_router import get_model_for_task, calculate_cost, get_all_routes
-from budget_tracker import check_budget_available, record_usage, get_usage_summary, _load_usage
+from budget_tracker import check_budget_available, record_usage, get_usage_summary, get_all_usage_logs
 import conversation_store
 import memory_store
 import file_processor
@@ -371,8 +371,7 @@ def usage_dashboard():
 def export_usage():
     import csv
     from io import StringIO
-    data = _load_usage()
-    calls = data.get("calls", [])
+    calls = get_all_usage_logs()
     
     emp_map = {}
     try:

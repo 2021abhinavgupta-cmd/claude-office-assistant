@@ -93,7 +93,20 @@ def record_usage(task_type: str, model_tier: str, model_name: str,
     logger.info(f"Usage recorded: {task_type} | {model_tier} | ${cost:.6f} | Total this month: ${new_total:.4f}")
     return entry
 
-def get_usage_summary(all_calls: bool = False) -> dict:
+def get_all_usage_logs() -> list:
+    """Return all historical usage logs across all months."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT data FROM usage_logs")
+    all_logs = []
+    for (data_str,) in cursor.fetchall():
+        try:
+            all_logs.append(json.loads(data_str))
+        except: pass
+    conn.close()
+    return all_logs
+
+def get_usage_summary(month_key: str = None) -> dict:
     """Returns full usage summary for dashboard display."""
     month_key = get_current_month_key()
     monthly_spend = get_monthly_spend()
