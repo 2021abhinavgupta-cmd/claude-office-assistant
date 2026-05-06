@@ -26,6 +26,9 @@ def init_db():
         
         # Usage Logs
         conn.execute("CREATE TABLE IF NOT EXISTS usage_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT)")
+        
+        # Attendance tracking
+        conn.execute("CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, action TEXT, timestamp TEXT)")
     conn.close()
 
 init_db()
