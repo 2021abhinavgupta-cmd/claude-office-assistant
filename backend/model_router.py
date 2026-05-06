@@ -34,14 +34,14 @@ TASK_ROUTING = {
 # Cost per 1M tokens (USD) — Claude 4 pricing (May 2025)
 MODEL_COSTS = {
     "haiku": {
-        "input":  0.80,   # $0.80 / 1M input tokens  (claude-haiku-4-5)
+        "input":  0.80,   # $0.80 / 1M input tokens  (claude-haiku-4-5-20251001)
         "output": 4.00,   # $4.00 / 1M output tokens
-        "name":   os.getenv("HAIKU_MODEL", "claude-haiku-4-5"),
+        "name":   os.getenv("HAIKU_MODEL", "claude-haiku-4-5-20251001"),
     },
     "sonnet": {
-        "input":  3.00,   # $3.00 / 1M input tokens  (claude-sonnet-4-5)
+        "input":  3.00,   # $3.00 / 1M input tokens  (claude-sonnet-4-6)
         "output": 15.00,  # $15.00 / 1M output tokens
-        "name":   os.getenv("SONNET_MODEL", "claude-sonnet-4-5"),
+        "name":   os.getenv("SONNET_MODEL", "claude-sonnet-4-6"),
     }
 }
 

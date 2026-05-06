@@ -14,8 +14,8 @@ Claude Office Assistant is a lightweight, production-ready web application built
 
 ### 1. Model Routing Engine (`backend/model_router.py`)
 To optimize token costs and speed, the application dynamically analyzes the user's prompt to determine complexity:
-- **Simple Tasks:** (Greetings, general questions, summaries) are routed to `claude-3-haiku-20240307` for rapid, cost-effective responses.
-- **Complex Tasks:** (Coding, deep analysis, math) are automatically routed to `claude-3.5-sonnet-20241022` for high reasoning capability.
+- **Simple Tasks:** (Greetings, general questions, summaries) are routed to `claude-haiku-4-5-20251001` for rapid, cost-effective responses.
+- **Complex Tasks:** (Coding, deep analysis, math) are automatically routed to `claude-sonnet-4-6` for high reasoning capability.
 
 ### 2. Frontend Application (`frontend/app.js` & `style.css`)
 The UI mimics the sleek dark-mode aesthetic of modern AI applications.
