@@ -178,9 +178,24 @@ def _get_all_users_str() -> str:
     try:
         with open(EMPLOYEES_DB, "r") as f:
             data = json.load(f)
-            return "\n".join([f"- {emp.get('id')} ({emp.get('name')})" for emp in data.get("employees", [])])
+            return ", ".join([e.get("id") for e in data.get("employees", []) if e.get("id")])
     except Exception:
-        return ""
+        return "api"
+
+def _get_team_context() -> str:
+    """Returns a directory of all team members and their default tone profiles."""
+    try:
+        with open(EMPLOYEES_DB, "r") as f:
+            data = json.load(f)
+            lines = []
+            for emp in data.get("employees", []):
+                role = emp.get('role', 'Staff')
+                tone = emp.get('tone_profile', 'Standard professional')
+                lines.append(f"- {emp.get('name')} ({role}): {tone}")
+            return "\n".join(lines)
+    except Exception:
+        pass
+    return ""
 
 def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None) -> list:
     base_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
@@ -195,9 +210,20 @@ def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str]
         base_prompt += f"\n\nCRITICAL OUTPUT STYLE REQUIREMENT: You MUST strictly adhere to the following writing style and tone for this user: {tone_profile}"
     
     mem_ctx = memory_store.format_for_prompt(user_id)
+    team_mem_ctx = memory_store.format_team_memories()
+    team_directory = _get_team_context()
+    
     sections = [base_prompt]
     if mem_ctx:
         sections.append(mem_ctx)
+        
+    if team_directory or team_mem_ctx:
+        team_section = "## TEAM DIRECTORY & SHARED STYLES\n(If the user asks you to write like someone else on the team, use the profiles and memories below.)"
+        if team_directory:
+            team_section += f"\n\n### Team Tone Profiles:\n{team_directory}"
+        if team_mem_ctx:
+            team_section += f"\n{team_mem_ctx}"
+        sections.append(team_section)
     
     if project_id:
         project = project_store.get_project(project_id, user_id)
@@ -372,6 +398,7 @@ def usage_dashboard():
 @app.route("/api/usage/export", methods=["GET"])
 def export_usage():
     import csv
+    import re
     from io import StringIO
     calls = get_all_usage_logs()
     
@@ -384,19 +411,31 @@ def export_usage():
                 emp_map[e["id"]] = e["name"]
                 if e.get("whatsapp"):
                     emp_map[e["whatsapp"]] = e["name"]
+                    emp_map[e["whatsapp"].replace('+', '')] = e["name"]
     except Exception:
         pass
 
+    def format_user(uid):
+        if uid in emp_map:
+            return emp_map[uid]
+        # Mask phone numbers like we do in the frontend
+        if re.match(r"^\+?\d{10,15}$", uid):
+            return f"WhatsApp ({uid[-4:]})"
+        return uid
+
     si = StringIO()
     cw = csv.writer(si)
-    cw.writerow(["Timestamp", "User", "Task", "Model Tier", "Model Name", "Input Tokens", "Output Tokens", "Cost (USD)", "Month"])
+    cw.writerow(["Timestamp", "User", "Task", "Model Tier", "Model Name", "Input Tokens", "Output Tokens", "Cost (USD)", "Cost (INR)", "Month"])
     for c in reversed(calls):
         uid = c.get("user_id", "")
-        user_name = emp_map.get(uid, uid)
+        user_name = format_user(uid)
+        cost_usd = c.get("cost_usd", 0)
+        cost_inr = round(cost_usd * 83.5, 2) if cost_usd else 0.0
+        
         cw.writerow([
             c.get("timestamp"), user_name, c.get("task_type"),
             c.get("model_tier"), c.get("model_name"), c.get("input_tokens"),
-            c.get("output_tokens"), c.get("cost_usd"), c.get("month")
+            c.get("output_tokens"), cost_usd, cost_inr, c.get("month")
         ])
     
     return Response(

@@ -74,3 +74,35 @@ def format_for_prompt(user_id: str) -> str:
     if not mems: return ""
     lines = "\n".join(f"• {m['content']}" for m in mems[-20:])
     return f"\n\n## What you remember about this user:\n{lines}"
+
+def format_team_memories() -> str:
+    """Format all team memories to allow cross-pollination of writing styles."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, data FROM memory")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    import os
+    from pathlib import Path
+    emp_map = {}
+    try:
+        with open(Path(__file__).parent.parent / "config" / "employees.json", "r") as f:
+            for e in json.load(f).get("employees", []):
+                emp_map[e["id"]] = e["name"]
+    except Exception:
+        pass
+
+    res = []
+    for uid, data in rows:
+        name = emp_map.get(uid, uid)
+        try:
+            mems = list(reversed(json.loads(data)))
+            if mems:
+                lines = "\n".join(f"  • {m['content']}" for m in mems[-10:])
+                res.append(f"[{name}'s Preferences]:\n{lines}")
+        except:
+            pass
+            
+    if not res: return ""
+    return "\n\n## SHARED TEAM MEMORY (Use these if asked to write in another employee's style):\n" + "\n\n".join(res)
