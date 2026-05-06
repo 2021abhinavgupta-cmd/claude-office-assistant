@@ -353,7 +353,10 @@
 
   <!-- Admin Attendance Logs -->
   <div class="panel" style="margin-bottom:24px" id="admin-attendance-panel" style="display:none;">
-    <h2>🕒 Employee Attendance (Admin Only)</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="margin-bottom:0">🕒 Employee Attendance (Admin Only)</h2>
+      <a href="#" id="export-attendance-btn" target="_blank" style="display:none; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Export Full CSV</a>
+    </div>
     <div id="attendance-wrap" style="overflow-x:auto">
       <div class="empty-state">Verifying admin access...</div>
     </div>
@@ -598,12 +601,15 @@ async function loadAttendance() {
   const wrap = document.getElementById("attendance-wrap");
   
   const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  if (user.user_id !== "emp003" && user.user_id !== "emp004") {
+  if (user.user_id !== "emp001" && user.user_id !== "emp003" && user.user_id !== "emp004") {
     panel.style.display = "none";
     return;
   }
   
   panel.style.display = "block";
+  const exportBtn = document.getElementById("export-attendance-btn");
+  exportBtn.style.display = "inline-flex";
+  exportBtn.href = `/api/attendance/export?user_id=${user.user_id}`;
   try {
     const res = await fetch(`${API}/api/attendance/logs?user_id=${user.user_id}`);
     const data = await res.json();

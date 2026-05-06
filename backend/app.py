@@ -699,8 +699,8 @@ def auth_change_pin():
 @app.route("/api/attendance/logs", methods=["GET"])
 def attendance_logs():
     admin_id = request.args.get("user_id")
-    # Only Abhinav (emp003) and Kshitij (emp004) are admins
-    if admin_id not in ["emp003", "emp004"]:
+    # Vidit (emp001), Abhinav (emp003), Kshitij (emp004) are admins
+    if admin_id not in ["emp001", "emp003", "emp004"]:
         return jsonify({"error": "Unauthorized"}), 403
         
     from db import get_connection
@@ -711,6 +711,57 @@ def attendance_logs():
     conn.close()
     
     return jsonify({"logs": logs})
+
+@app.route("/api/attendance/export", methods=["GET"])
+def attendance_export():
+    admin_id = request.args.get("user_id")
+    if admin_id not in ["emp001", "emp003", "emp004"]:
+        return "Unauthorized", 403
+        
+    import csv
+    import re
+    from io import StringIO
+    from db import get_connection
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, action, timestamp FROM attendance ORDER BY timestamp DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    emp_map = {}
+    try:
+        emp_file = Path(__file__).parent.parent / "config" / "employees.json"
+        with open(emp_file, "r") as f:
+            emps = json.load(f).get("employees", [])
+            for e in emps:
+                emp_map[e["id"]] = e["name"]
+                if e.get("whatsapp"):
+                    emp_map[e["whatsapp"]] = e["name"]
+                    emp_map[e["whatsapp"].replace('+', '')] = e["name"]
+    except Exception:
+        pass
+
+    def format_user(uid):
+        if uid in emp_map:
+            return emp_map[uid]
+        if re.match(r"^\+?\d{10,15}$", uid):
+            return f"WhatsApp ({uid[-4:]})"
+        return uid
+
+    si = StringIO()
+    cw = csv.writer(si)
+    cw.writerow(["Timestamp", "Employee", "Action"])
+    for r in rows:
+        uid = r[0]
+        user_name = format_user(uid)
+        cw.writerow([r[2], user_name, r[1].upper()])
+        
+    return Response(
+        si.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=claude_attendance_logs.csv"}
+    )
 
 # ── Employee Tracking (WhatsApp Bot Support) ──────────────────────────────────
 @app.route("/api/employees", methods=["GET"])
