@@ -567,47 +567,55 @@ def _parse_slides(markdown: str) -> list:
 # ── Employee Auth & Attendance ────────────────────────────────────────────────
 @app.route("/api/auth/login", methods=["POST"])
 def auth_login():
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id")
-    pin = body.get("pin")
-    
-    data = _load_employees()
-    found = None
-    for emp in data.get("employees", []):
-        if emp.get("id") == user_id:
-            found = emp
-            break
+    try:
+        body = request.get_json(silent=True) or {}
+        user_id = body.get("user_id")
+        pin = body.get("pin")
+        
+        data = _load_employees()
+        found = None
+        for emp in data.get("employees", []):
+            if emp.get("id") == user_id:
+                found = emp
+                break
+                
+        if not found:
+            return jsonify({"error": "Employee not found"}), 404
             
-    if not found:
-        return jsonify({"error": "Employee not found"}), 404
-        
-    if str(found.get("pin")) != str(pin):
-        return jsonify({"error": "Invalid PIN"}), 401
-        
-    # Log punch-in
-    from db import get_connection
-    conn = get_connection()
-    with conn:
-        conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
-                     (user_id, "in", datetime.utcnow().isoformat() + "Z"))
-    conn.close()
-    
-    return jsonify({"success": True})
-
-@app.route("/api/auth/logout", methods=["POST"])
-def auth_logout():
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id")
-    
-    if user_id:
+        if str(found.get("pin")) != str(pin):
+            return jsonify({"error": "Invalid PIN"}), 401
+            
+        # Log punch-in
         from db import get_connection
         conn = get_connection()
         with conn:
             conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
-                         (user_id, "out", datetime.utcnow().isoformat() + "Z"))
+                         (user_id, "in", datetime.utcnow().isoformat() + "Z"))
         conn.close()
-    
-    return jsonify({"success": True})
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": "Server error", "details": str(e), "trace": traceback.format_exc()}), 500
+
+@app.route("/api/auth/logout", methods=["POST"])
+def auth_logout():
+    try:
+        body = request.get_json(silent=True) or {}
+        user_id = body.get("user_id")
+        
+        if user_id:
+            from db import get_connection
+            conn = get_connection()
+            with conn:
+                conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
+                             (user_id, "out", datetime.utcnow().isoformat() + "Z"))
+            conn.close()
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": "Server error", "details": str(e), "trace": traceback.format_exc()}), 500
 
 @app.route("/api/auth/change_pin", methods=["POST"])
 def auth_change_pin():
