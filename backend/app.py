@@ -335,6 +335,10 @@ def list_routes():
     })
 
 
+@app.route('/api/health')
+def health():
+    return jsonify({"status": "ok"}), 200
+
 # ── Budget ────────────────────────────────────────────────────────────────────
 @app.route("/api/budget", methods=["GET"])
 def budget_status():

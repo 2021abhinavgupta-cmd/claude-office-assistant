@@ -1,11 +1,10 @@
-anthropic>=0.51.0
+anthropic>=0.55.0
 flask>=3.0.0
 flask-cors>=4.0.0
 flask-compress>=1.14
 python-dotenv>=1.0.0
 gunicorn>=21.2.0
-gevent>=23.9.1
-twilio>=8.12.0
+gevent>=24.2.1
 requests>=2.31.0
 # File processing
 pypdf>=4.2.0
