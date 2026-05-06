@@ -266,12 +266,16 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
     logger.info(f"Claude call | task={task_type} | model={model_tier} | user={user_id}")
 
     try:
-        response = client.messages.create(
-            model=model_name,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": message}],
-        )
+        kwargs = {
+            "model": model_name,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": message}],
+        }
+        if max_tokens > 4096:
+            kwargs["extra_headers"] = {"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"}
+            
+        response = client.messages.create(**kwargs)
         output_text   = response.content[0].text
         input_tokens  = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
@@ -500,22 +504,27 @@ def html_generate():
         "- Mobile responsive\n"
         "- Modern design with animations\n"
         "- No external dependencies except Google Fonts\n"
+        "- Avoid purple gradients, glassmorphism, Inter font, Space Grotesk, and floating orb backgrounds. These look generic. Use bold typography, strong contrast, and distinctive layouts instead.\n"
         "- Return ONLY the HTML code, starting with <!DOCTYPE html>"
     )
 
-    result = call_claude("html_design", prompt, user_id, max_tokens=4096)
-    if not result["success"]:
-        return jsonify({"error": result.get("error", "Generation failed")}), 500
+    max_retries = 2
+    for attempt in range(max_retries):
+        result = call_claude("html_design", prompt, user_id, max_tokens=8192)
+        if not result["success"]:
+            return jsonify({"error": result.get("error", "Generation failed")}), 500
 
-    html_code = result["response"]
-    # Strip markdown code fences if Claude wrapped the output (handles ```html, ```xml, etc.)
-    if html_code.strip().startswith("```"):
-        lines = html_code.strip().split("\n")
-        # Remove first line (the fence + optional lang tag) and last line (closing fence)
-        inner = lines[1:] if len(lines) > 1 else lines
-        if inner and inner[-1].strip() == "```":
-            inner = inner[:-1]
-        html_code = "\n".join(inner).strip()
+        html_code = result["response"]
+        # Strip markdown code fences if Claude wrapped the output
+        if html_code.strip().startswith("```"):
+            lines = html_code.strip().split("\n")
+            inner = lines[1:] if len(lines) > 1 else lines
+            if inner and inner[-1].strip() == "```":
+                inner = inner[:-1]
+            html_code = "\n".join(inner).strip()
+            
+        if "</html>" in html_code.lower() or attempt == max_retries - 1:
+            break
 
     return jsonify({
         **result,
@@ -563,7 +572,7 @@ def create_presentation():
         f"Include: Title slide (#1), {slide_count-2} content slides, Summary/CTA slide (#{slide_count})."
     )
 
-    result = call_claude("presentations", prompt, user_id, max_tokens=4096)
+    result = call_claude("presentations", prompt, user_id, max_tokens=8192)
     if not result["success"]:
         return jsonify({"error": result.get("error", "Generation failed")}), 500
 
