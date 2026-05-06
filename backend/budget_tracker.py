@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
-from backend.db import get_connection
+from db import get_connection
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 
@@ -106,7 +106,7 @@ def get_all_usage_logs() -> list:
     conn.close()
     return all_logs
 
-def get_usage_summary(month_key: str = None) -> dict:
+def get_usage_summary(all_calls: bool = False) -> dict:
     """Returns full usage summary for dashboard display."""
     month_key = get_current_month_key()
     monthly_spend = get_monthly_spend()

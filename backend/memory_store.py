@@ -6,7 +6,7 @@ Stored in SQLite via db.py
 import json, uuid, logging
 from datetime import datetime
 
-from backend.db import get_connection
+from db import get_connection
 
 MAX_PER_USER = 50
 

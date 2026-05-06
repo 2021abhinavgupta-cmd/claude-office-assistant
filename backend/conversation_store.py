@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from backend.db import get_connection
+from db import get_connection
 
 MAX_CONTEXT_MESSAGES = 40
 MAX_TITLE_WORDS      = 7
@@ -65,12 +65,14 @@ def get_conversation(conv_id: str) -> Optional[dict]:
 def list_conversations(user_id: str) -> list:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT data FROM conversations")
+    cursor.execute(
+        "SELECT data FROM conversations WHERE json_extract(data, '$.user_id') = ?",
+        (user_id,)
+    )
     convs = []
     for (row,) in cursor.fetchall():
         c = json.loads(row)
-        if c.get("user_id") == user_id:
-            convs.append(_strip_messages(c))
+        convs.append(_strip_messages(c))
     conn.close()
     convs.sort(key=lambda c: c["updated_at"], reverse=True)
     return convs

@@ -199,7 +199,7 @@ async function loadEmployeeList() {
     }
 
     empGrid.innerHTML = emps.map(e => `
-      <button class="emp-btn" data-id="${e.whatsapp}" data-name="${e.name}" data-role="${e.role || ''}">
+      <button class="emp-btn" data-id="${e.id}" data-name="${e.name}" data-role="${e.role || ''}">
         <div class="emp-avatar">${e.name.charAt(0)}</div>
         <strong>${e.name}</strong>
         <small>${e.role || e.department || ''}</small>
@@ -208,7 +208,7 @@ async function loadEmployeeList() {
 
     empGrid.querySelectorAll(".emp-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        selectUser(btn.dataset.id, btn.dataset.name);
+        promptPin(btn.dataset.id, btn.dataset.name);
       });
     });
   } catch (_) {
@@ -228,6 +228,66 @@ function selectUser(userId, userName) {
 function applyUser(user) {
   userAvatar.textContent   = user.user_name.charAt(0).toUpperCase();
   userNameText.textContent = user.user_name;
+  
+  // Show punch out button if logged in
+  const existingBtn = document.getElementById("punch-out-btn");
+  if (!existingBtn) {
+    const punchOut = document.createElement("button");
+    punchOut.id = "punch-out-btn";
+    punchOut.innerHTML = `Log Out`;
+    punchOut.style.cssText = "background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 10px;";
+    punchOut.onclick = async () => {
+      await fetch(`${API}/api/auth/logout`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({user_id: user.user_id})
+      });
+      localStorage.removeItem("claude_office_user");
+      location.reload();
+    };
+    userPill.parentNode.insertBefore(punchOut, userPill);
+    
+    const changePin = document.createElement("button");
+    changePin.id = "change-pin-btn";
+    changePin.innerHTML = `Change PIN`;
+    changePin.style.cssText = "background: transparent; border: 1px solid var(--border); color: var(--text); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 10px;";
+    changePin.onclick = async () => {
+      const oldPin = prompt("Enter your CURRENT 4-digit PIN:");
+      if (!oldPin) return;
+      const newPin = prompt("Enter your NEW 4-digit PIN:");
+      if (!newPin) return;
+      
+      const res = await fetch(`${API}/api/auth/change_pin`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({user_id: user.user_id, old_pin: oldPin, new_pin: newPin})
+      });
+      const data = await res.json();
+      if (res.ok) alert("PIN successfully changed!");
+      else alert(data.error || "Failed to change PIN");
+    };
+    userPill.parentNode.insertBefore(changePin, punchOut);
+  }
+}
+
+// ── PIN Login Logic ─────────────────────────────────────────────────────────
+async function promptPin(userId, userName) {
+  const pin = prompt(`Enter 4-digit PIN for ${userName}:`);
+  if (!pin) return;
+  
+  try {
+    const res = await fetch(`${API}/api/auth/login`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({user_id: userId, pin: pin})
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Invalid PIN");
+      return;
+    }
+    selectUser(userId, userName);
+  } catch (err) {
+    alert("Login failed. Check server connection.");
+  }
 }
 
 customNameBtn.addEventListener("click", () => {
@@ -431,68 +491,10 @@ newChatBtn.addEventListener("click", () => {
 });
 
 // ── Sending Messages ──────────────────────────────────────────────────────────
-async function sendMessage() {
-  const atts = typeof pendingAttachments !== "undefined" ? [...pendingAttachments] : [];
-  const text = msgInput.value.trim();
-  if (!text && !atts.length) return;
-  if (isLoading || !currentConvId) return;
-
-  msgInput.value = "";
-  msgInput.style.height = "auto";
-  charCount.textContent = "";
-  if (typeof clearAttachments === "function") clearAttachments();
-  setLoading(true);
-
-  const displayText = atts.length
-    ? text + `\n\n📎 _${atts.length} file(s) attached: ${atts.map(a => a.filename).join(", ")}_`
-    : text;
-  appendMessage("user", displayText || "Sent an attachment");
-  const typingId = appendTyping();
-  scrollToBottom();
-
-  try {
-    const res = await fetch(`${API}/api/conversations/${currentConvId}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, attachments: atts }),
-    });
-    const data = await res.json();
-    removeTyping(typingId);
-
-    if (res.ok && data.success) {
-      appendMessage("assistant", data.response, {
-        model_tier: data.model_tier,
-        model_used: data.model_used,
-        cost_usd:   data.cost_usd,
-      });
-      // Update header with detected task type
-      const task  = data.task_type || "general";
-      const model = data.model_tier || "haiku";
-      updateHeaderChips(task, model);
-      updateInputMeta(task, data.model_used || "");
-      convTitleHeader.textContent = data.title || convTitleHeader.textContent;
-
-      // Update sidebar item title
-      const activeItem = convList.querySelector(`.conv-item[data-id="${currentConvId}"] .conv-item-title`);
-      if (activeItem && data.title) activeItem.textContent = data.title;
-
-      updateBudgetUI(data.budget);
-      scrollToBottom();
-    } else {
-      appendErrorMessage(data.error || "Something went wrong");
-      showToast("❌ " + (data.error || "Error"), "error");
-    }
-  } catch (err) {
-    removeTyping(typingId);
-    appendErrorMessage("Could not reach the server. Is Flask running?");
-    showToast("⚠️ Server offline", "error");
-  } finally {
-    setLoading(false);
-    msgInput.focus();
-  }
-}
-
-sendBtn.addEventListener("click", sendMessage);
+// The full streaming sendMessage is defined below (window.sendMessage).
+// These event bindings use arrow-function wrappers so they resolve
+// window.sendMessage at call-time rather than at script-parse-time.
+sendBtn.addEventListener("click", () => sendMessage());
 msgInput.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });

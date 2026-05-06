@@ -335,9 +335,7 @@ def list_routes():
     })
 
 
-@app.route('/api/health')
-def health():
-    return jsonify({"status": "ok"}), 200
+
 
 # ── Budget ────────────────────────────────────────────────────────────────────
 @app.route("/api/budget", methods=["GET"])
@@ -587,7 +585,7 @@ def auth_login():
         return jsonify({"error": "Invalid PIN"}), 401
         
     # Log punch-in
-    from backend.db import get_connection
+    from db import get_connection
     conn = get_connection()
     with conn:
         conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
@@ -602,7 +600,7 @@ def auth_logout():
     user_id = body.get("user_id")
     
     if user_id:
-        from backend.db import get_connection
+        from db import get_connection
         conn = get_connection()
         with conn:
             conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
@@ -647,7 +645,7 @@ def attendance_logs():
     if admin_id not in ["emp003", "emp004"]:
         return jsonify({"error": "Unauthorized"}), 403
         
-    from backend.db import get_connection
+    from db import get_connection
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, user_id, action, timestamp FROM attendance ORDER BY timestamp DESC LIMIT 500")
@@ -977,10 +975,15 @@ def conversation_stream(conv_id):
         conversation_store.update_task_type(conv_id, task_type)
 
     # Build context + attachments
-    context      = conversation_store.get_context_messages(conv_id)
-    model_config = get_model_for_task(task_type)
-    model_name   = model_config["name"]
-    model_tier   = model_config["tier"]
+    context = conversation_store.get_context_messages(conv_id)
+    model_override = data.get("model_override")
+    if model_override and model_override != "auto":
+        model_name = model_override
+        model_tier = "sonnet" if "sonnet" in model_name.lower() else "haiku"
+    else:
+        model_config = get_model_for_task(task_type)
+        model_name   = model_config["name"]
+        model_tier   = model_config["tier"]
     system_prompt = _build_system_prompt(task_type, user_id, conv.get("project_id"))
 
     api_messages = list(context)
@@ -1106,7 +1109,11 @@ def optimize_prompt():
         input_tokens  = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
         cost          = calculate_cost("haiku", input_tokens, output_tokens)
-
+        record_usage(
+            task_type="general", model_tier="haiku", model_name="claude-haiku-4-5",
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            cost=cost, user_id=data.get("user_id", "anonymous"),
+        )
         logger.info(f"Prompt optimized | {input_tokens}→{output_tokens} tokens | ${cost:.6f}")
         return jsonify({
             "success":   True,
