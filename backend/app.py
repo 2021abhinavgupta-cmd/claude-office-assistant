@@ -562,6 +562,96 @@ def _parse_slides(markdown: str) -> list:
     return slides
 
 
+# ── Employee Auth & Attendance ────────────────────────────────────────────────
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    body = request.get_json(silent=True) or {}
+    user_id = body.get("user_id")
+    pin = body.get("pin")
+    
+    data = _load_employees()
+    found = None
+    for emp in data.get("employees", []):
+        if emp.get("id") == user_id:
+            found = emp
+            break
+            
+    if not found:
+        return jsonify({"error": "Employee not found"}), 404
+        
+    if str(found.get("pin")) != str(pin):
+        return jsonify({"error": "Invalid PIN"}), 401
+        
+    # Log punch-in
+    from backend.db import get_connection
+    conn = get_connection()
+    with conn:
+        conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
+                     (user_id, "in", datetime.utcnow().isoformat() + "Z"))
+    conn.close()
+    
+    return jsonify({"success": True})
+
+@app.route("/api/auth/logout", methods=["POST"])
+def auth_logout():
+    body = request.get_json(silent=True) or {}
+    user_id = body.get("user_id")
+    
+    if user_id:
+        from backend.db import get_connection
+        conn = get_connection()
+        with conn:
+            conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
+                         (user_id, "out", datetime.utcnow().isoformat() + "Z"))
+        conn.close()
+    
+    return jsonify({"success": True})
+
+@app.route("/api/auth/change_pin", methods=["POST"])
+def auth_change_pin():
+    body = request.get_json(silent=True) or {}
+    user_id = body.get("user_id")
+    old_pin = body.get("old_pin")
+    new_pin = body.get("new_pin")
+    
+    data = _load_employees()
+    found = False
+    for emp in data.get("employees", []):
+        if emp.get("id") == user_id:
+            if str(emp.get("pin")) != str(old_pin):
+                return jsonify({"error": "Incorrect old PIN"}), 401
+            emp["pin"] = new_pin
+            found = True
+            break
+            
+    if not found:
+        return jsonify({"error": "Employee not found"}), 404
+        
+    try:
+        emp_file = Path(__file__).parent.parent / "config" / "employees.json"
+        with open(emp_file, "w") as f:
+            json.dump(data, f, indent=2)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Failed to save new PIN: {e}")
+        return jsonify({"error": "Could not save PIN"}), 500
+
+@app.route("/api/attendance/logs", methods=["GET"])
+def attendance_logs():
+    admin_id = request.args.get("user_id")
+    # Only Abhinav (emp003) and Kshitij (emp004) are admins
+    if admin_id not in ["emp003", "emp004"]:
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    from backend.db import get_connection
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, user_id, action, timestamp FROM attendance ORDER BY timestamp DESC LIMIT 500")
+    logs = [{"id": r[0], "user_id": r[1], "action": r[2], "timestamp": r[3]} for r in cursor.fetchall()]
+    conn.close()
+    
+    return jsonify({"logs": logs})
+
 # ── Employee Tracking (WhatsApp Bot Support) ──────────────────────────────────
 @app.route("/api/employees", methods=["GET"])
 def get_employees():

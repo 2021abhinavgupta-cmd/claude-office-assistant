@@ -351,6 +351,14 @@
     </div>
   </div>
 
+  <!-- Admin Attendance Logs -->
+  <div class="panel" style="margin-bottom:24px" id="admin-attendance-panel" style="display:none;">
+    <h2>🕒 Employee Attendance (Admin Only)</h2>
+    <div id="attendance-wrap" style="overflow-x:auto">
+      <div class="empty-state">Verifying admin access...</div>
+    </div>
+  </div>
+
   <!-- Quick links -->
   <div class="two-col">
     <div class="panel">
@@ -436,6 +444,7 @@ async function loadDashboard() {
     const data = await usageRes.json();
     currentDashboardData = data;
     renderDashboard(data);
+    loadAttendance();
   } catch (e) {
     offlineIds.forEach(id => {
       const el = document.getElementById(id);
@@ -569,6 +578,61 @@ function renderDashboard(d) {
             </tr>`).join("")}
         </tbody>
       </table>`;
+  }
+}
+
+async function loadAttendance() {
+  const panel = document.getElementById("admin-attendance-panel");
+  const wrap = document.getElementById("attendance-wrap");
+  
+  const user = JSON.parse(localStorage.getItem("claude_user") || "{}");
+  if (user.user_id !== "emp003" && user.user_id !== "emp004") {
+    panel.style.display = "none";
+    return;
+  }
+  
+  panel.style.display = "block";
+  try {
+    const res = await fetch(`${API}/api/attendance/logs?user_id=${user.user_id}`);
+    const data = await res.json();
+    if (!res.ok) {
+      wrap.innerHTML = `<div class="empty-state">Unauthorized</div>`;
+      return;
+    }
+    
+    if (data.logs.length === 0) {
+      wrap.innerHTML = `<div class="empty-state">No attendance records yet</div>`;
+      return;
+    }
+    
+    let html = `
+      <table class="calls-table">
+        <tr>
+          <th>Timestamp</th>
+          <th>Employee</th>
+          <th>Action</th>
+        </tr>
+    `;
+    data.logs.forEach(log => {
+      const ts = new Date(log.timestamp).toLocaleString();
+      const empName = employeesMap[log.user_id] || log.user_id;
+      const actionHtml = log.action === "in" 
+        ? `<span class="tier-badge haiku">Clocked In</span>` 
+        : `<span class="tier-badge crit">Clocked Out</span>`;
+        
+      html += `
+        <tr>
+          <td>${ts}</td>
+          <td><strong>${empName}</strong></td>
+          <td>${actionHtml}</td>
+        </tr>
+      `;
+    });
+    html += `</table>`;
+    wrap.innerHTML = html;
+    
+  } catch (err) {
+    wrap.innerHTML = `<div class="empty-state">Failed to load attendance logs.</div>`;
   }
 }
 
