@@ -423,6 +423,15 @@ function formatCost(usdAmount, decimals = 4) {
   return `$${usdAmount.toFixed(decimals)}`;
 }
 
+function formatUser(userId) {
+  if (employeesMap[userId]) return employeesMap[userId];
+  // If it's an unknown phone number, mask it
+  if (/^\+?\d{10,15}$/.test(userId)) {
+    return "WhatsApp (" + userId.slice(-4) + ")";
+  }
+  return userId;
+}
+
 async function loadDashboard() {
   const offlineIds = ["kpi-spent", "kpi-remaining", "kpi-calls", "kpi-alltime"];
   try {
@@ -437,7 +446,10 @@ async function loadDashboard() {
       const empData = await empRes.json();
       (empData.employees || []).forEach(emp => {
         employeesMap[emp.id] = emp.name;
-        if (emp.whatsapp) employeesMap[emp.whatsapp] = emp.name;
+        if (emp.whatsapp) {
+          employeesMap[emp.whatsapp] = emp.name;
+          employeesMap[emp.whatsapp.replace('+', '')] = emp.name; // For Twilio (no +)
+        }
       });
     }
 
@@ -540,7 +552,7 @@ function renderDashboard(d) {
       tuEl.innerHTML = `<table class="calls-table"><thead><tr><th>Rank</th><th>User</th><th>Calls</th><th>Cost</th></tr></thead><tbody>
         ${topUsers.map((u, i) => `<tr>
           <td style="color:var(--muted)">#${i+1}</td>
-          <td>${employeesMap[u.user_id] || u.user_id}</td>
+          <td>${formatUser(u.user_id)}</td>
           <td style="font-family:JetBrains Mono,monospace">${u.calls}</td>
           <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">${formatCost(u.cost_usd, 4)}</td>
         </tr>`).join("")}
@@ -574,7 +586,7 @@ function renderDashboard(d) {
               <td><span class="tier-badge ${c.model_tier}">${c.model_tier}</span></td>
               <td style="font-family:JetBrains Mono,monospace">${((c.input_tokens||0)+(c.output_tokens||0)).toLocaleString()}</td>
               <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">${formatCost(c.cost_usd || 0, 5)}</td>
-              <td style="color:var(--muted)">${employeesMap[c.user_id] || c.user_id || "—"}</td>
+              <td style="color:var(--muted)">${formatUser(c.user_id || "—")}</td>
             </tr>`).join("")}
         </tbody>
       </table>`;
@@ -585,7 +597,7 @@ async function loadAttendance() {
   const panel = document.getElementById("admin-attendance-panel");
   const wrap = document.getElementById("attendance-wrap");
   
-  const user = JSON.parse(localStorage.getItem("claude_user") || "{}");
+  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
   if (user.user_id !== "emp003" && user.user_id !== "emp004") {
     panel.style.display = "none";
     return;
@@ -615,7 +627,7 @@ async function loadAttendance() {
     `;
     data.logs.forEach(log => {
       const ts = new Date(log.timestamp).toLocaleString();
-      const empName = employeesMap[log.user_id] || log.user_id;
+      const empName = formatUser(log.user_id);
       const actionHtml = log.action === "in" 
         ? `<span class="tier-badge haiku">Clocked In</span>` 
         : `<span class="tier-badge crit">Clocked Out</span>`;
