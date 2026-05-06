@@ -589,6 +589,7 @@ def auth_login():
         from db import get_connection
         conn = get_connection()
         with conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, action TEXT, timestamp TEXT)")
             conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
                          (user_id, "in", datetime.utcnow().isoformat() + "Z"))
         conn.close()
@@ -608,6 +609,7 @@ def auth_logout():
             from db import get_connection
             conn = get_connection()
             with conn:
+                conn.execute("CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, action TEXT, timestamp TEXT)")
                 conn.execute("INSERT INTO attendance (user_id, action, timestamp) VALUES (?, ?, ?)",
                              (user_id, "out", datetime.utcnow().isoformat() + "Z"))
             conn.close()
