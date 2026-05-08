@@ -125,6 +125,8 @@ const EMPLOYEES = [
 let selectedEmp = null;
 let pin = "";
 
+// If already logged in with valid session, redirect; else render grid
+(async()=>{
   // sessionStorage clears automatically on tab close — auto-logout
   const token = sessionStorage.getItem("_session_token");
   if(token){
