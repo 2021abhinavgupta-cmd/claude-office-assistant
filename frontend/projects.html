@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Project Board | Claude Office Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="auth.js"></script>
+  <style>
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:12px;--rs:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+    .wrap{max-width:1500px;margin:0 auto;padding:24px 20px}
+
+    /* Header */
+    .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+    .hdr h1{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800}
+    .hdr h1 span{color:var(--acc)}
+    .nav{display:flex;gap:8px}
+    .nl{padding:7px 14px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--muted);text-decoration:none;font-size:.8rem;transition:all .2s}
+    .nl:hover,.nl.active{color:var(--txt);border-color:var(--acc)}
+    .btn{padding:9px 18px;border-radius:var(--rs);border:none;font-size:.84rem;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-acc{background:var(--acc);color:#000}.btn-acc:hover{opacity:.9;transform:translateY(-1px)}
+
+    /* Tabs */
+    .tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:4px;width:fit-content}
+    .tab{padding:7px 18px;border-radius:var(--rs);font-size:.83rem;font-weight:600;cursor:pointer;transition:all .2s;color:var(--muted);border:none;background:transparent}
+    .tab.on{background:var(--s2);color:var(--txt);border:1px solid var(--bdr)}
+
+    /* ────────── MATRIX VIEW ────────── */
+    .matrix-wrap{overflow-x:auto}
+    table.matrix{width:100%;border-collapse:separate;border-spacing:0;min-width:900px}
+    table.matrix th{background:var(--s1);border:1px solid var(--bdr);padding:10px 14px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap}
+    table.matrix th:first-child{text-align:left;width:200px}
+    table.matrix td{border:1px solid var(--bdr);padding:10px 12px;vertical-align:middle;background:var(--s1)}
+    table.matrix tr:hover td{background:var(--s2)}
+    .client-td{font-weight:600;font-size:.9rem}
+    .client-sub{font-size:.72rem;color:var(--muted);margin-top:3px}
+
+    /* Status cells */
+    .cell{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:110px}
+    .cell .icon{font-size:1.1rem}
+    .cell .label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+    .cell .pct{font-size:.68rem;color:var(--muted)}
+    .cell-done .label{color:var(--grn)}
+    .cell-risk .label{color:var(--red)}
+    .cell-blocked .label{color:var(--muted)}
+    .cell-progress .label{color:var(--blu)}
+    .cell-waiting .label{color:var(--muted)}
+    .cell-review .label{color:var(--acc)}
+
+    /* Overall status pill */
+    .ov-pill{padding:4px 12px;border-radius:100px;font-size:.7rem;font-weight:700;white-space:nowrap}
+    .ov-at_risk{background:rgba(255,92,92,.15);color:var(--red)}
+    .ov-on_track{background:rgba(34,211,160,.15);color:var(--grn)}
+    .ov-upcoming{background:rgba(107,107,138,.15);color:var(--muted)}
+    .ov-complete{background:rgba(91,163,255,.15);color:var(--blu)}
+
+    /* ────────── BLOCKER PANEL ────────── */
+    .blocker-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+    .blocker-header h2{font-family:'Syne',sans-serif;font-size:1.15rem}
+    .blocker-count{background:rgba(255,92,92,.2);color:var(--red);border-radius:100px;padding:2px 10px;font-size:.75rem;font-weight:700}
+    .blocker-card{background:var(--s1);border:1px solid rgba(255,92,92,.25);border-radius:var(--r);padding:18px 20px;margin-bottom:12px}
+    .blocker-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px}
+    .blocker-who{font-weight:600;font-size:.92rem}
+    .blocker-task{font-size:.8rem;color:var(--muted);margin-top:3px}
+    .overdue-badge{padding:3px 10px;border-radius:100px;font-size:.7rem;font-weight:700}
+    .overdue-yes{background:rgba(255,92,92,.2);color:var(--red)}
+    .overdue-no{background:rgba(245,166,35,.15);color:var(--acc)}
+    .blocker-chain{margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr);display:flex;flex-direction:column;gap:6px}
+    .chain-item{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
+    .chain-item .arrow{color:var(--red);font-size:.9rem}
+    .action-note{margin-top:12px;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.2);border-radius:var(--rs);padding:10px 14px;font-size:.8rem;color:var(--acc)}
+
+    /* ────────── DETAIL PANEL ────────── */
+    .client-blocks{display:flex;flex-direction:column;gap:14px}
+    .cb{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden}
+    .cb-head{padding:14px 18px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid var(--bdr)}
+    .cb-head:hover{background:var(--s2)}
+    .cb-name{font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem}
+    .cb-meta{font-size:.72rem;color:var(--muted);margin-top:3px}
+    .tasks-grid{padding:14px 18px;display:flex;flex-direction:column;gap:10px}
+    .tc{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:14px}
+    .tc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+    .tc-title{font-weight:600;font-size:.88rem}
+    .tc-who{font-size:.72rem;color:var(--muted);margin-top:3px}
+    .sp{padding:3px 10px;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap}
+    .sp-not_started{background:rgba(107,107,138,.2);color:var(--muted)}
+    .sp-unlocked{background:rgba(245,166,35,.15);color:var(--acc)}
+    .sp-in_progress{background:rgba(91,163,255,.15);color:var(--blu)}
+    .sp-pending_review{background:rgba(245,166,35,.2);color:var(--acc)}
+    .sp-approved{background:rgba(34,211,160,.15);color:var(--grn)}
+    .sp-rejected{background:rgba(255,92,92,.15);color:var(--red)}
+    .prog{background:rgba(255,255,255,.07);border-radius:100px;height:5px;overflow:hidden;margin-top:10px}
+    .prog-fill{height:5px;border-radius:100px;transition:width .4s;background:linear-gradient(90deg,var(--acc),#ff8c42)}
+    .tc-actions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+    .btn-sm{padding:5px 12px;font-size:.73rem;border-radius:6px;border:none;cursor:pointer;font-weight:600}
+    .btn-approve{background:rgba(34,211,160,.2);color:var(--grn);border:1px solid rgba(34,211,160,.3)}
+    .btn-reject{background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25)}
+    .sub-box{margin-top:10px;background:var(--bg);border-radius:var(--rs);padding:10px;border:1px solid var(--bdr);font-size:.8rem;line-height:1.6}
+    .sub-label{font-size:.68rem;color:var(--muted);text-transform:uppercase;font-weight:600;margin-bottom:4px}
+    .add-task-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+    .add-task-row input,.add-task-row select{flex:1;min-width:140px;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:7px 10px;font-size:.8rem;outline:none}
+    .add-task-row input:focus,.add-task-row select:focus{border-color:var(--acc)}
+
+    /* Reject modal */
+    .modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+    .modal-ov.open{display:flex}
+    .modal{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:28px;width:90%;max-width:420px}
+    .modal h3{font-family:'Syne',sans-serif;margin-bottom:14px}
+    .modal textarea{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:10px;font-family:'DM Sans',sans-serif;font-size:.875rem;resize:vertical;min-height:90px;outline:none}
+    .modal textarea:focus{border-color:var(--acc)}
+    .modal-btns{display:flex;gap:10px;margin-top:14px;justify-content:flex-end}
+
+    .empty{text-align:center;color:var(--muted);padding:48px;font-size:.875rem}
+    #toast{position:fixed;bottom:20px;right:20px;background:var(--s1);border:1px solid var(--bdr);padding:11px 18px;border-radius:var(--rs);font-size:.84rem;display:none;z-index:200}
+    #toast.ok{border-color:var(--grn);color:var(--grn)}
+    #toast.err{border-color:var(--red);color:var(--red)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div>
+      <h1>📋 Project <span>Board</span></h1>
+      <p style="color:var(--muted);font-size:.82rem;margin-top:3px">Dependency-aware tracker — one glance tells you everything</p>
+    </div>
+    <div class="nav">
+      <a href="dashboard.html" class="nl">📊 Dashboard</a>
+      <a href="my-tasks.html" class="nl">✅ My Tasks</a>
+      <a href="client-onboard.html" class="btn btn-acc">+ New Client</a>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab on" onclick="switchTab('matrix',this)">📊 Matrix View</button>
+    <button class="tab" onclick="switchTab('blockers',this)">🔴 Blockers</button>
+    <button class="tab" onclick="switchTab('detail',this)">📋 Detail View</button>
+  </div>
+
+  <!-- Matrix -->
+  <div id="tab-matrix">
+    <div class="matrix-wrap">
+      <table class="matrix" id="matrix-table">
+        <thead><tr id="matrix-head"><th>Client</th></tr></thead>
+        <tbody id="matrix-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Blockers -->
+  <div id="tab-blockers" style="display:none">
+    <div class="blocker-header">
+      <h2>🔴 Active Blockers</h2>
+      <span class="blocker-count" id="blocker-count">—</span>
+    </div>
+    <div id="blockers-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- Detail -->
+  <div id="tab-detail" style="display:none">
+    <div class="client-blocks" id="detail-list"><div class="empty">Loading...</div></div>
+  </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal-ov" id="reject-modal">
+  <div class="modal">
+    <h3>↩ Request Changes</h3>
+    <textarea id="reject-note" placeholder="Describe what needs to change..."></textarea>
+    <div class="modal-btns">
+      <button class="btn" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted)" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-reject btn-sm" style="padding:9px 18px;font-size:.84rem" onclick="confirmReject()">Send Back</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
+const UID = user.user_id || "emp003";
+
+const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
+// Role → category column
+const ROLE_COL = {emp001:"Website",emp002:"Design",emp003:"Website",emp004:"Review",emp005:"Video",emp006:"Content",emp007:"Accounts",emp008:"Video"};
+const COLS = ["Content","Video","Design","Website","Accounts","Review"];
+
+let rejectTaskId=null, allData=null;
+
+function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
+
+function switchTab(name,btn){
+  ["matrix","blockers","detail"].forEach(n=>document.getElementById("tab-"+n).style.display=n===name?"":"none");
+  document.querySelectorAll(".tab").forEach(b=>b.classList.remove("on"));
+  btn.classList.add("on");
+  if(name==="blockers")loadBlockers();
+}
+
+function overallStatus(tasks){
+  const today=new Date().toISOString().slice(0,10);
+  if(!tasks.length)return"upcoming";
+  if(tasks.every(t=>t.status==="approved"))return"complete";
+  const hasOverdue=tasks.some(t=>t.due_date&&t.due_date<today&&t.status!=="approved");
+  const hasBlocked=tasks.some(t=>t.status==="not_started"&&t.depends_on&&t.depends_on.length);
+  if(hasOverdue||hasBlocked)return"at_risk";
+  const allDone=tasks.every(t=>["approved","pending_review"].includes(t.status));
+  return allDone?"on_track":"on_track";
+}
+
+function cellForCol(col, tasks){
+  // Find tasks whose assignee maps to this column
+  const colTasks=tasks.filter(t=>ROLE_COL[t.assigned_to]===col);
+  if(!colTasks.length)return`<td><div class="cell cell-waiting"><span class="icon">—</span><span class="label" style="color:var(--bdr)">N/A</span></div></td>`;
+  const today=new Date().toISOString().slice(0,10);
+  const hasApproved=colTasks.some(t=>t.status==="approved");
+  const allApproved=colTasks.every(t=>t.status==="approved");
+  const hasBlocked=colTasks.some(t=>t.status==="not_started"&&t.depends_on&&t.depends_on.length);
+  const hasOverdue=colTasks.some(t=>t.due_date&&t.due_date<today&&t.status!=="approved");
+  const hasReview=colTasks.some(t=>t.status==="pending_review");
+  const avgPct=Math.round(colTasks.reduce((a,t)=>a+(t.progress||0),0)/colTasks.length);
+
+  let cls,icon,label;
+  if(allApproved){cls="cell-done";icon="✅";label="Done";}
+  else if(hasOverdue){cls="cell-risk";icon="🔴";label="Delayed";}
+  else if(hasBlocked){cls="cell-blocked";icon="⏸";label="Blocked";}
+  else if(hasReview){cls="cell-review";icon="⏳";label="In Review";}
+  else if(colTasks.some(t=>t.status==="in_progress")){cls="cell-progress";icon="🔄";label="In Progress";}
+  else{cls="cell-waiting";icon="⏳";label="Waiting";}
+
+  return`<td><div class="cell ${cls}"><span class="icon">${icon}</span><span class="label">${label}</span><span class="pct">${avgPct}%</span></div></td>`;
+}
+
+async function load(){
+  const res=await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
+  allData=await res.json();
+  if(allData.error){document.getElementById("matrix-body").innerHTML=`<tr><td colspan="99" class="empty">${allData.error}</td></tr>`;return;}
+
+  // Matrix head
+  const head=document.getElementById("matrix-head");
+  head.innerHTML=`<th>Client</th>`+COLS.map(c=>`<th>${c}</th>`).join("")+`<th>Status</th>`;
+
+  // Matrix body
+  const tbody=document.getElementById("matrix-body");
+  if(!allData.clients.length){tbody.innerHTML=`<tr><td colspan="${COLS.length+2}" class="empty">No clients yet.</td></tr>`;return;}
+
+  tbody.innerHTML=allData.clients.map(c=>{
+    const ov=overallStatus(c.tasks);
+    const ovLabel={at_risk:"🔴 AT RISK",on_track:"✅ ON TRACK",upcoming:"🕐 UPCOMING",complete:"🏁 COMPLETE"}[ov]||ov;
+    return`<tr>
+      <td><div class="client-td">${c.name}</div><div class="client-sub">${c.deadline?"Due: "+c.deadline:""} · ${c.tasks.length} tasks</div></td>
+      ${COLS.map(col=>cellForCol(col,c.tasks)).join("")}
+      <td><span class="ov-pill ov-${ov}">${ovLabel}</span></td>
+    </tr>`;
+  }).join("");
+
+  // Detail view
+  renderDetail(allData.clients);
+}
+
+function renderDetail(clients){
+  const wrap=document.getElementById("detail-list");
+  if(!clients.length){wrap.innerHTML='<div class="empty">No clients yet.</div>';return;}
+  wrap.innerHTML=clients.map(c=>{
+    const approved=c.tasks.filter(t=>t.status==="approved").length;
+    return`<div class="cb">
+      <div class="cb-head" onclick="toggleDetail(${c.id})">
+        <div><div class="cb-name">🏢 ${c.name}</div>
+          <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
+        <span style="color:var(--muted);font-size:.8rem">▼</span>
+      </div>
+      <div class="tasks-grid" id="dtasks-${c.id}" style="display:none">
+        ${c.tasks.length?c.tasks.map(t=>renderTaskCard(t)).join(""):'<div style="color:var(--muted);font-size:.8rem">No tasks.</div>'}
+        <div class="add-task-row">
+          <input type="text" id="nt-${c.id}" placeholder="New task..." />
+          <select id="na-${c.id}"><option value="">Assign...</option>${Object.entries(EMP).map(([id,n])=>`<option value="${id}">${n}</option>`).join("")}</select>
+          <input type="date" id="nd-${c.id}" />
+          <button class="btn btn-sm btn-acc" style="padding:7px 14px" onclick="addTask(${c.id})">Add</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function toggleDetail(id){const el=document.getElementById("dtasks-"+id);el.style.display=el.style.display==="none"?"":"none";}
+
+function renderTaskCard(t){
+  const pct=t.progress||0;
+  return`<div class="tc" id="tc-${t.id}">
+    <div class="tc-top">
+      <div><div class="tc-title">${t.title}</div>
+        <div class="tc-who">👤 ${EMP[t.assigned_to]||t.assigned_to||"—"}${t.due_date?" · Due: "+t.due_date:""}</div></div>
+      <span class="sp sp-${t.status}">${{not_started:"Not Started",unlocked:"Unlocked",in_progress:"In Progress",pending_review:"⏳ Review",approved:"✅ Approved",rejected:"↩ Changes"}[t.status]||t.status}</span>
+    </div>
+    <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
+    ${t.submission_note?`<div class="sub-box"><div class="sub-label">Submission</div>${t.submission_note}${t.submission_file?`<br><a href="${t.submission_file}" target="_blank" style="color:var(--acc)">📎 File</a>`:""}</div>`:""}
+    ${t.status==="pending_review"?`<div class="tc-actions">
+      <button class="btn-sm btn-approve" onclick="approveTask(${t.id})">✅ Approve</button>
+      <button class="btn-sm btn-reject" onclick="openModal(${t.id})">↩ Changes</button>
+    </div>`:""}
+  </div>`;
+}
+
+async function loadBlockers(){
+  const res=await fetch(`${API}/api/blockers?user_id=${UID}`);
+  const data=await res.json();
+  if(data.error){document.getElementById("blockers-list").innerHTML=`<div class="empty">${data.error}</div>`;return;}
+  document.getElementById("blocker-count").textContent=data.blockers.length;
+  if(!data.blockers.length){document.getElementById("blockers-list").innerHTML=`<div class="empty">🎉 No blockers right now. Everything is flowing smoothly.</div>`;return;}
+
+  // Group by blocker task
+  const grouped={};
+  for(const b of data.blockers){
+    const key=b.blocker_task.id;
+    if(!grouped[key])grouped[key]={blocker:b.blocker_task,blocked:[],days:b.days_overdue};
+    grouped[key].blocked.push(b.blocked_task);
+  }
+  document.getElementById("blockers-list").innerHTML=Object.values(grouped).map(g=>{
+    const badge=g.days>0?`<span class="overdue-badge overdue-yes">${g.days}d overdue</span>`:`<span class="overdue-badge overdue-no">Not yet due</span>`;
+    return`<div class="blocker-card">
+      <div class="blocker-top">
+        <div><div class="blocker-who">👤 ${g.blocker.name} <span style="color:var(--muted);font-weight:400">on</span> ${g.blocker.client_name}</div>
+          <div class="blocker-task">${g.blocker.title}</div></div>
+        ${badge}
+      </div>
+      <div class="blocker-chain">
+        ${g.blocked.map(b=>`<div class="chain-item"><span class="arrow">└─▶</span> Blocking <strong>${b.name}</strong> — <span>${b.title}</span></div>`).join("")}
+      </div>
+      <div class="action-note">⚡ Action needed: Follow up with ${g.blocker.name}</div>
+    </div>`;
+  }).join("");
+}
+
+async function approveTask(id){
+  const r=await fetch(`${API}/api/tasks/${id}/approve`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID})});
+  const d=await r.json();
+  if(d.success){toast("✅ Task approved!");load();}else toast(d.error||"Error","err");
+}
+function openModal(id){rejectTaskId=id;document.getElementById("reject-note").value="";document.getElementById("reject-modal").classList.add("open");}
+function closeModal(){document.getElementById("reject-modal").classList.remove("open");}
+async function confirmReject(){
+  const note=document.getElementById("reject-note").value.trim();
+  if(!note){toast("Enter revision notes","err");return;}
+  const r=await fetch(`${API}/api/tasks/${rejectTaskId}/reject`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID,note})});
+  const d=await r.json();
+  closeModal();
+  if(d.success){toast("↩ Changes requested");load();}else toast(d.error||"Error","err");
+}
+async function addTask(cid){
+  const title=document.getElementById("nt-"+cid).value.trim();
+  const assignee=document.getElementById("na-"+cid).value;
+  const due=document.getElementById("nd-"+cid).value;
+  if(!title){toast("Enter a task title","err");return;}
+  const r=await fetch(`${API}/api/tasks`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID,client_id:cid,title,assigned_to:assignee,due_date:due})});
+  const d=await r.json();
+  if(d.success){toast("Task added!");load();}else toast(d.error||"Error","err");
+}
+load();
+</script>
+</body>
+</html>

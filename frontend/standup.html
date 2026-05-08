@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Daily Standup | Claude Office Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="auth.js"></script>
+  <style>
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:14px;--rs:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+    .wrap{max-width:1100px;margin:0 auto;padding:28px 20px}
+
+    .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:12px}
+    .hdr h1{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800}
+    .hdr h1 span{color:var(--acc)}
+    .hdr p{color:var(--muted);font-size:.83rem;margin-top:4px}
+    .nav{display:flex;gap:8px}
+    .nl{padding:7px 14px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--muted);text-decoration:none;font-size:.8rem;transition:all .2s}
+    .nl:hover{color:var(--txt);border-color:var(--acc)}
+
+    .layout{display:grid;grid-template-columns:1fr 1.4fr;gap:20px}
+    @media(max-width:750px){.layout{grid-template-columns:1fr}}
+
+    /* Form card */
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:28px}
+    .card h2{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:4px}
+    .card .card-sub{font-size:.78rem;color:var(--muted);margin-bottom:22px}
+    .fg{margin-bottom:18px}
+    .fg label{display:block;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+    .fg textarea{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:12px;font-family:'DM Sans',sans-serif;font-size:.9rem;resize:vertical;min-height:80px;outline:none;transition:border-color .2s}
+    .fg textarea:focus{border-color:var(--acc)}
+    .fg textarea.blocker-field:focus{border-color:var(--red)}
+    .emoji-hint{font-size:.72rem;color:var(--muted);margin-bottom:6px}
+
+    .btn-submit{width:100%;padding:13px;background:var(--acc);color:#000;border:none;border-radius:var(--rs);font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+    .btn-submit:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 20px rgba(245,166,35,.3)}
+    .btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+    .submitted-banner{background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.25);border-radius:var(--rs);padding:14px;text-align:center;margin-top:16px;display:none}
+    .submitted-banner .sb-icon{font-size:1.8rem;margin-bottom:6px}
+    .submitted-banner p{color:var(--grn);font-size:.85rem}
+
+    /* Team standups view */
+    .date-badge{display:inline-block;background:var(--s2);border:1px solid var(--bdr);border-radius:100px;padding:4px 14px;font-size:.75rem;color:var(--muted);margin-bottom:16px}
+    .standup-card{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:16px;margin-bottom:12px}
+    .sc-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .sc-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#ff8c42);display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;color:#000}
+    .sc-name{font-weight:600;font-size:.9rem}
+    .sc-time{font-size:.72rem;color:var(--muted);margin-top:2px}
+    .sc-body{display:flex;flex-direction:column;gap:10px}
+    .sc-field{font-size:.83rem;line-height:1.6}
+    .sc-field .fl{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+    .sc-field .fv{color:var(--txt)}
+    .sc-field.blocker .fv{color:var(--red)}
+    .sc-field.blocker .fl{color:var(--red)}
+    .not-submitted{color:var(--muted);font-size:.82rem;font-style:italic;display:flex;align-items:center;gap:8px;padding:14px;background:rgba(107,107,138,.08);border-radius:var(--rs);border:1px dashed var(--bdr)}
+
+    /* Alerts panel */
+    .alerts-panel{margin-top:20px}
+    .alerts-panel h2{font-family:'Syne',sans-serif;font-size:1.05rem;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+    .alert-card{border-radius:var(--rs);padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+    .alert-critical{background:rgba(255,92,92,.08);border:1px solid rgba(255,92,92,.3)}
+    .alert-at_risk{background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.25)}
+    .alert-title{font-weight:600;font-size:.88rem}
+    .alert-sub{font-size:.75rem;color:var(--muted);margin-top:3px}
+    .risk-pill{padding:4px 12px;border-radius:100px;font-size:.7rem;font-weight:700;white-space:nowrap}
+    .rp-critical{background:rgba(255,92,92,.2);color:var(--red)}
+    .rp-at_risk{background:rgba(245,166,35,.2);color:var(--acc)}
+
+    .empty{color:var(--muted);font-size:.84rem;padding:20px;text-align:center}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div>
+      <h1>☀️ Daily <span>Standup</span></h1>
+      <p id="greeting-line">Good morning! Quick update — takes under 60 seconds.</p>
+    </div>
+    <div class="nav">
+      <a href="projects.html" class="nl">📋 Board</a>
+      <a href="my-tasks.html" class="nl">✅ My Tasks</a>
+      <a href="dashboard.html" class="nl">📊 Dashboard</a>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- LEFT: Submit form -->
+    <div>
+      <div class="card">
+        <h2>Your Update</h2>
+        <p class="card-sub" id="user-label">Submitting as <strong>—</strong></p>
+
+        <div class="fg">
+          <div class="emoji-hint">✅ What did you finish yesterday?</div>
+          <label>Done Yesterday</label>
+          <textarea id="f-yesterday" placeholder="e.g. Completed hero section copy for ABC Corp, sent for review..."></textarea>
+        </div>
+        <div class="fg">
+          <div class="emoji-hint">🎯 What are you working on today?</div>
+          <label>Today's Plan</label>
+          <textarea id="f-today" placeholder="e.g. Writing services page, blog intro for XYZ Ltd..."></textarea>
+        </div>
+        <div class="fg">
+          <div class="emoji-hint">🚧 Anything blocking you?</div>
+          <label>Blockers (Optional)</label>
+          <textarea id="f-blockers" class="blocker-field" placeholder="e.g. Waiting for brand guidelines from Nupur, need client's logo files..."></textarea>
+        </div>
+
+        <button class="btn-submit" id="submit-btn" onclick="submitStandup()">
+          <span>☀️ Submit Standup</span>
+        </button>
+
+        <div class="submitted-banner" id="submitted-banner">
+          <div class="sb-icon">🎉</div>
+          <p>Standup submitted! Have a productive day.</p>
+        </div>
+      </div>
+
+      <!-- Alerts panel (founder only) -->
+      <div class="alerts-panel" id="alerts-panel" style="display:none">
+        <h2>🔴 Risk Alerts <span id="alert-count" style="font-size:.8rem;color:var(--muted);font-weight:400"></span></h2>
+        <div id="alerts-list"></div>
+        <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:8px 16px;border-radius:var(--rs);font-size:.8rem;cursor:pointer;margin-top:4px" onclick="runCheck()">
+          🔄 Run Overdue Check Now
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Team standups today -->
+    <div>
+      <div class="card">
+        <h2>👥 Team Standups Today</h2>
+        <p class="card-sub">See what everyone is working on</p>
+        <div class="date-badge" id="today-badge">—</div>
+        <div id="team-standups"><div class="empty">Loading...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
+const UID = user.user_id || "emp002";
+const ADMIN_IDS = ["emp001","emp003","emp004"];
+
+const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
+const ALL_EMPS = Object.keys(EMP);
+
+// Greet
+const hour = new Date().getHours();
+const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+document.getElementById("greeting-line").textContent = `${greet}, ${EMP[UID]||UID}! Quick update — takes under 60 seconds.`;
+document.getElementById("user-label").innerHTML = `Submitting as <strong>${EMP[UID]||UID}</strong>`;
+
+async function submitStandup(){
+  const yesterday = document.getElementById("f-yesterday").value.trim();
+  const today     = document.getElementById("f-today").value.trim();
+  const blockers  = document.getElementById("f-blockers").value.trim();
+  if(!yesterday && !today){alert("Please fill in at least one field.");return;}
+
+  const btn = document.getElementById("submit-btn");
+  btn.disabled = true;
+  btn.querySelector("span").textContent = "Submitting...";
+
+  const res = await fetch(`${API}/api/standup`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({user_id:UID,yesterday,today,blockers})});
+  const d = await res.json();
+
+  if(d.success){
+    document.getElementById("submitted-banner").style.display="block";
+    btn.style.display="none";
+    loadTeamStandups();
+  } else {
+    alert(d.error||"Error submitting.");
+    btn.disabled=false;
+    btn.querySelector("span").textContent="☀️ Submit Standup";
+  }
+}
+
+async function loadTeamStandups(){
+  const res = await fetch(`${API}/api/standup/today`);
+  const data = await res.json();
+  const today = data.date || new Date().toISOString().slice(0,10);
+  document.getElementById("today-badge").textContent = today;
+
+  const submitted = new Map(data.standups.map(s=>[s.user_id,s]));
+  const wrap = document.getElementById("team-standups");
+
+  const avatarChar = name => name[0].toUpperCase();
+  const timeStr = iso => iso ? new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
+
+  wrap.innerHTML = ALL_EMPS.map(eid=>{
+    const s = submitted.get(eid);
+    const name = EMP[eid]||eid;
+    if(!s) return `
+      <div class="not-submitted">
+        <span style="font-size:1.1rem">⏳</span>
+        <span><strong>${name}</strong> hasn't submitted today's standup yet</span>
+      </div>`;
+    return`
+    <div class="standup-card">
+      <div class="sc-header">
+        <div class="sc-avatar">${avatarChar(name)}</div>
+        <div><div class="sc-name">${name}</div><div class="sc-time">Submitted ${timeStr(s.submitted_at)}</div></div>
+      </div>
+      <div class="sc-body">
+        ${s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${s.yesterday}</div></div>`:""}
+        ${s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${s.today}</div></div>`:""}
+        ${s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${s.blockers}</div></div>`:""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function loadAlerts(){
+  if(!ADMIN_IDS.includes(UID)) return;
+  document.getElementById("alerts-panel").style.display="block";
+  const res = await fetch(`${API}/api/alerts?user_id=${UID}`);
+  const data = await res.json();
+  const alerts = data.alerts || [];
+  document.getElementById("alert-count").textContent = alerts.length ? `(${alerts.length} active)` : "(none)";
+  const wrap = document.getElementById("alerts-list");
+  if(!alerts.length){wrap.innerHTML='<div class="empty" style="text-align:left;padding:10px 0">✅ No at-risk or critical tasks.</div>';return;}
+  wrap.innerHTML = alerts.map(a=>`
+    <div class="alert-card alert-${a.risk_level}">
+      <div>
+        <div class="alert-title">${a.assignee_name} — ${a.title}</div>
+        <div class="alert-sub">📁 ${a.client_name} · Due: ${a.due_date||"N/A"}</div>
+      </div>
+      <span class="risk-pill rp-${a.risk_level}">${a.risk_level==="critical"?"🚨 CRITICAL":"🔴 AT RISK"}</span>
+    </div>`).join("");
+}
+
+async function runCheck(){
+  const res = await fetch(`${API}/api/alerts/run-check`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID})});
+  const d = await res.json();
+  alert(`Check complete. ${d.alerts_fired||0} new alert(s) fired.`);
+  loadAlerts();
+}
+
+// Check if already submitted today
+async function checkIfSubmittedToday(){
+  const res = await fetch(`${API}/api/standup/today?user_id=${UID}`);
+  const data = await res.json();
+  if(data.standups && data.standups.length > 0){
+    document.getElementById("submitted-banner").style.display="block";
+    document.getElementById("submit-btn").style.display="none";
+    // Pre-fill from existing
+    const s = data.standups[0];
+    document.getElementById("f-yesterday").value = s.yesterday||"";
+    document.getElementById("f-today").value     = s.today||"";
+    document.getElementById("f-blockers").value  = s.blockers||"";
+  }
+}
+
+checkIfSubmittedToday();
+loadTeamStandups();
+loadAlerts();
+
+// Auto-refresh team standups every 2 minutes
+setInterval(loadTeamStandups, 120000);
+</script>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>New Client Onboarding | Claude Office Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="auth.js"></script>
+  <style>
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:640px}
+    .back{color:var(--muted);font-size:.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:5px;margin-bottom:26px;transition:color .2s}
+    .back:hover{color:var(--acc)}
+    h1{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;margin-bottom:4px}
+    h1 span{color:var(--acc)}
+    .sub{color:var(--muted);font-size:.875rem;margin-bottom:30px}
+
+    /* Steps */
+    .steps{display:flex;gap:0;margin-bottom:30px;border-radius:var(--rs);overflow:hidden;border:1px solid var(--bdr)}
+    .step{flex:1;padding:10px;text-align:center;font-size:.72rem;font-weight:600;color:var(--muted);border-right:1px solid var(--bdr);cursor:default;background:var(--s2)}
+    .step:last-child{border-right:none}
+    .step.active{background:var(--acc);color:#000}
+    .step.done{background:rgba(34,211,160,.15);color:var(--grn)}
+
+    /* Form groups */
+    .fg{margin-bottom:18px}
+    .fg label{display:block;font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+    .fg input,.fg textarea,.fg select{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:11px 14px;font-family:'DM Sans',sans-serif;font-size:.9rem;outline:none;transition:border-color .2s}
+    .fg textarea{min-height:90px;resize:vertical}
+    .fg input:focus,.fg textarea:focus,.fg select:focus{border-color:var(--acc)}
+    .fg select option{background:var(--s2)}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:500px){.two{grid-template-columns:1fr}}
+
+    /* Service checkboxes */
+    .services-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+    @media(max-width:480px){.services-grid{grid-template-columns:1fr}}
+    .svc-box{display:flex;align-items:center;gap:10px;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:12px 14px;cursor:pointer;transition:all .2s}
+    .svc-box:hover{border-color:var(--acc)}
+    .svc-box.selected{border-color:var(--acc);background:rgba(245,166,35,.08)}
+    .svc-box input[type=checkbox]{display:none}
+    .svc-icon{font-size:1.2rem}
+    .svc-info .svc-name{font-weight:600;font-size:.88rem}
+    .svc-info .svc-team{font-size:.72rem;color:var(--muted);margin-top:2px}
+    .svc-box.selected .svc-name{color:var(--acc)}
+
+    /* Preview task list */
+    .preview-section{margin-top:22px;padding-top:20px;border-top:1px solid var(--bdr)}
+    .preview-section h3{font-family:'Syne',sans-serif;font-size:1rem;margin-bottom:4px}
+    .preview-section .ps-sub{font-size:.78rem;color:var(--muted);margin-bottom:12px}
+    .task-preview{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr);font-size:.83rem}
+    .task-preview:last-child{border-bottom:none}
+    .tp-icon{width:24px;text-align:center}
+    .tp-title{flex:1;color:var(--txt)}
+    .tp-who{font-size:.72rem;color:var(--muted);background:var(--s2);padding:2px 8px;border-radius:100px}
+    .dep-arrow{font-size:.75rem;color:var(--red);margin-left:6px}
+    .no-preview{color:var(--muted);font-size:.82rem;font-style:italic;padding:8px 0}
+
+    /* Buttons */
+    .btn-row{display:flex;gap:10px;margin-top:24px;justify-content:flex-end}
+    .btn{padding:11px 24px;border-radius:var(--rs);border:none;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-acc{background:var(--acc);color:#000}.btn-acc:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 20px rgba(245,166,35,.3)}
+    .btn-back-btn{background:var(--s2);border:1px solid var(--bdr);color:var(--muted)}
+    .btn-back-btn:hover{color:var(--txt)}
+
+    /* Success */
+    .success{display:none;text-align:center;padding:20px 0}
+    .success .icon{font-size:3.5rem;margin-bottom:14px}
+    .success h2{font-family:'Syne',sans-serif;font-size:1.4rem;margin-bottom:8px}
+    .success p{color:var(--muted);margin-bottom:22px;font-size:.875rem}
+    .success a{display:inline-block;padding:10px 22px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--txt);text-decoration:none;font-size:.875rem;margin:4px;transition:all .2s}
+    .success a:hover{border-color:var(--acc);color:var(--acc)}
+    .err{color:var(--red);font-size:.8rem;margin-top:8px;display:none}
+  </style>
+</head>
+<body>
+<div class="card" id="main-card">
+  <a href="projects.html" class="back">← Back to Project Board</a>
+  <h1>🏢 Client <span>Onboarding</span></h1>
+  <p class="sub">New client in 2 minutes — fills in services, auto-assigns the team.</p>
+
+  <div class="steps">
+    <div class="step active" id="step1-dot">1 · Client Info</div>
+    <div class="step" id="step2-dot">2 · Services</div>
+    <div class="step" id="step3-dot">3 · Review & Create</div>
+  </div>
+
+  <!-- Step 1 -->
+  <div id="step1">
+    <div class="two">
+      <div class="fg"><label>Client Name *</label><input type="text" id="name" placeholder="Acme Corp"/></div>
+      <div class="fg"><label>Contact (Email / Phone)</label><input type="text" id="contact" placeholder="raj@acme.com"/></div>
+    </div>
+    <div class="fg"><label>Requirements / Project Scope</label><textarea id="requirements" placeholder="Describe what the client needs — website redesign, social media package, video production..."></textarea></div>
+    <div class="two">
+      <div class="fg"><label>Project Deadline</label><input type="date" id="deadline"/></div>
+      <div class="fg"><label>Budget (₹)</label><input type="text" id="budget" placeholder="e.g. 50,000"/></div>
+    </div>
+    <div class="fg"><label>Special Notes</label><input type="text" id="notes" placeholder="Any special requirements, restrictions, or context..."/></div>
+    <p class="err" id="err1">Please enter the client name.</p>
+    <div class="btn-row"><button class="btn btn-acc" onclick="goStep2()">Next: Select Services →</button></div>
+  </div>
+
+  <!-- Step 2 -->
+  <div id="step2" style="display:none">
+    <div class="fg">
+      <label>What services does this client need?</label>
+      <div class="services-grid">
+        <div class="svc-box" id="svc-content" onclick="toggleSvc('content',this)">
+          <input type="checkbox" value="content"/><span class="svc-icon">✍️</span>
+          <div class="svc-info"><div class="svc-name">Content Writing</div><div class="svc-team">→ Mohit</div></div>
+        </div>
+        <div class="svc-box" id="svc-video" onclick="toggleSvc('video',this)">
+          <input type="checkbox" value="video"/><span class="svc-icon">🎬</span>
+          <div class="svc-info"><div class="svc-name">Video Production</div><div class="svc-team">→ Raj + Happy</div></div>
+        </div>
+        <div class="svc-box" id="svc-design" onclick="toggleSvc('design',this)">
+          <input type="checkbox" value="design"/><span class="svc-icon">🎨</span>
+          <div class="svc-info"><div class="svc-name">UI/UX Design</div><div class="svc-team">→ Nupur</div></div>
+        </div>
+        <div class="svc-box" id="svc-website" onclick="toggleSvc('website',this)">
+          <input type="checkbox" value="website"/><span class="svc-icon">💻</span>
+          <div class="svc-info"><div class="svc-name">Website Development</div><div class="svc-team">→ Vidit + Abhinav</div></div>
+        </div>
+        <div class="svc-box" id="svc-social" onclick="toggleSvc('social',this)">
+          <input type="checkbox" value="social"/><span class="svc-icon">📱</span>
+          <div class="svc-info"><div class="svc-name">Social Media</div><div class="svc-team">→ Mohit + Nupur</div></div>
+        </div>
+        <div class="svc-box" id="svc-accounts" onclick="toggleSvc('accounts',this)">
+          <input type="checkbox" value="accounts"/><span class="svc-icon">📊</span>
+          <div class="svc-info"><div class="svc-name">Accounts & Reports</div><div class="svc-team">→ Tanaya</div></div>
+        </div>
+      </div>
+    </div>
+    <p class="err" id="err2">Please select at least one service.</p>
+    <div class="btn-row">
+      <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
+      <button class="btn btn-acc" onclick="goStep3()">Review Tasks →</button>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div id="step3" style="display:none">
+    <div class="two">
+      <div class="fg"><label>Client</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
+      <div class="fg"><label>Deadline</label><div id="r-deadline" style="font-size:.9rem;padding:6px 0;color:var(--muted)"></div></div>
+    </div>
+    <div class="preview-section">
+      <h3>📋 Tasks to be created</h3>
+      <p class="ps-sub">Tasks are auto-wired with dependencies. Each team member sees only their tasks.</p>
+      <div id="task-preview-list"></div>
+    </div>
+    <p class="err" id="err3"></p>
+    <div class="btn-row">
+      <button class="btn btn-back-btn" onclick="goStep(2)">← Back</button>
+      <button class="btn btn-acc" id="create-btn" onclick="createClient()">🚀 Create Project</button>
+    </div>
+  </div>
+</div>
+
+<div class="success" id="success">
+  <div class="icon">🎉</div>
+  <h2>Project Created!</h2>
+  <p id="success-msg">Client and tasks have been set up. Team members will see their tasks on login.</p>
+  <a href="projects.html">📋 View Project Board</a>
+  <a href="client-onboard.html">+ Onboard Another Client</a>
+</div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
+const UID = user.user_id || "emp003";
+
+// ── Admin-only access: only Vidit (emp001), Abhinav (emp003), Kshitij (emp004)
+const ONBOARD_ADMINS = ["emp001", "emp003", "emp004"];
+if (!ONBOARD_ADMINS.includes(user.user_id)) {
+  document.getElementById("main-card").innerHTML = `
+    <div style="text-align:center;padding:40px 20px">
+      <div style="font-size:3rem;margin-bottom:16px">🔒</div>
+      <h2 style="font-family:'Syne',sans-serif;margin-bottom:8px">Access Restricted</h2>
+      <p style="color:var(--muted);font-size:.875rem;margin-bottom:24px">Only Kshitij, Abhinav, and Vidit can onboard new clients.</p>
+      <a href="my-tasks.html" style="display:inline-block;padding:10px 22px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--txt);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--bdr)'">← Back to My Tasks</a>
+    </div>`;
+}
+
+const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
+const SVC_TASKS = {
+  content:[{title:"Content Brief & Research",who:"emp006"},{title:"Write Copy / Content Draft",who:"emp006"},{title:"Content Review & Approval",who:"emp004"}],
+  video:[{title:"Video Script Writing",who:"emp006"},{title:"Video Shoot / Production",who:"emp005"},{title:"Video Editing & Post",who:"emp005"},{title:"AI Video Enhancements",who:"emp008"}],
+  design:[{title:"Design Brief & Moodboard",who:"emp002"},{title:"UI/UX Design — Wireframes",who:"emp002"},{title:"Final Design Handoff",who:"emp002"}],
+  website:[{title:"Website Architecture Plan",who:"emp001"},{title:"Frontend Development",who:"emp003"},{title:"Backend / Integrations",who:"emp001"},{title:"QA & Launch",who:"emp003"}],
+  social:[{title:"Social Media Strategy",who:"emp006"},{title:"Content Calendar",who:"emp006"},{title:"Graphics & Templates",who:"emp002"}],
+  accounts:[{title:"Invoice & Payment Setup",who:"emp007"},{title:"Monthly Reporting",who:"emp007"}],
+};
+
+let selected = new Set();
+
+function toggleSvc(svc, el){
+  el.classList.toggle("selected");
+  if(selected.has(svc)) selected.delete(svc); else selected.add(svc);
+}
+
+function goStep(n){
+  [1,2,3].forEach(i=>{
+    document.getElementById("step"+i).style.display=i===n?"":"none";
+    const dot=document.getElementById("step"+i+"-dot");
+    dot.className="step"+(i===n?" active":i<n?" done":"");
+  });
+}
+
+function goStep2(){
+  const name=document.getElementById("name").value.trim();
+  if(!name){document.getElementById("err1").style.display="block";return;}
+  document.getElementById("err1").style.display="none";
+  goStep(2);
+}
+
+function goStep3(){
+  if(!selected.size){document.getElementById("err2").style.display="block";return;}
+  document.getElementById("err2").style.display="none";
+  // Populate review
+  document.getElementById("r-name").textContent=document.getElementById("name").value.trim();
+  const dl=document.getElementById("deadline").value;
+  document.getElementById("r-deadline").textContent=dl||"No deadline set";
+
+  // Preview tasks
+  const wrap=document.getElementById("task-preview-list");
+  const allTasks=[];
+  for(const svc of selected) allTasks.push(...SVC_TASKS[svc]);
+  if(!allTasks.length){wrap.innerHTML='<p class="no-preview">No tasks for selected services.</p>';goStep(3);return;}
+
+  wrap.innerHTML=allTasks.map((t,i)=>`
+    <div class="task-preview">
+      <span class="tp-icon">${i===0?"🔑":"→"}</span>
+      <span class="tp-title">${t.title}</span>
+      <span class="tp-who">${EMP[t.who]||t.who}</span>
+      ${i>0?`<span class="dep-arrow">↳ dep</span>`:""}
+    </div>`).join("");
+  goStep(3);
+}
+
+async function createClient(){
+  const name=document.getElementById("name").value.trim();
+  const btn=document.getElementById("create-btn");
+  btn.disabled=true; btn.textContent="Creating...";
+
+  // 1. Create client
+  const cr=await fetch(`${API}/api/clients`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+    user_id:UID, name, contact:document.getElementById("contact").value.trim(),
+    requirements:document.getElementById("requirements").value.trim(),
+    deadline:document.getElementById("deadline").value,
+    status:"active"
+  })});
+  const cd=await cr.json();
+  if(!cd.success){document.getElementById("err3").textContent=cd.error||"Failed to create client.";document.getElementById("err3").style.display="block";btn.disabled=false;btn.textContent="🚀 Create Project";return;}
+
+  // 2. Auto-generate tasks
+  const ar=await fetch(`${API}/api/clients/${cd.client_id}/auto-tasks`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+    user_id:UID,services:[...selected],deadline:document.getElementById("deadline").value
+  })});
+  const ad=await ar.json();
+
+  // Show success
+  document.getElementById("main-card").style.display="none";
+  document.getElementById("success-msg").textContent=`"${name}" created with ${ad.tasks_created||0} tasks auto-assigned to the team.`;
+  document.getElementById("success").style.display="block";
+}
+</script>
+</body>
+</html>

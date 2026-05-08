@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="auth.js"></script>
   <style>
     :root {
       --bg:       #0a0a0f;
@@ -229,6 +230,15 @@
         <span>🤖 Uses Claude Sonnet</span>
         <span>~$0.002 per gen</span>
       </div>
+
+      <!-- Generation History (#8) -->
+      <div style="margin-top:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Recent Generations</span>
+          <button onclick="clearHistory()" style="font-size:.7rem;color:var(--muted);background:transparent;border:none;cursor:pointer;padding:2px 6px;border-radius:4px;transition:color .2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">Clear</button>
+        </div>
+        <div id="history-list"></div>
+      </div>
     </aside>
 
     <!-- Output Panel -->
@@ -298,27 +308,83 @@ async function generateHTML() {
   const fullDescription = extra ? `${description}\n\nAdditional: ${extra}` : description;
 
   setLoading(true);
+  generatedHTML = "";
+  
+  // Show code tab immediately to watch it stream
+  switchTab('code');
+  document.getElementById("code-display").textContent = "";
 
   try {
-    const res  = await fetch(`${API}/api/html/generate`, {
+    const res = await fetch(`${API}/api/html/generate/stream`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ description: fullDescription, style_hints: selectedStyle, user_id: "html_gen" }),
     });
-    const data = await res.json();
 
-    if (!res.ok || !data.success) {
-      alert("Error: " + (data.error || "Generation failed"));
+    if (!res.ok) {
+      alert("Error starting generation stream.");
+      setLoading(false);
       return;
     }
 
-    generatedHTML = data.html_code || data.response;
-    renderOutput(generatedHTML, data);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop(); // Keep incomplete chunk in buffer
+      
+      for (const part of parts) {
+        if (part.startsWith("data: ")) {
+          const payload = part.slice(6);
+          try {
+            const ev = JSON.parse(payload);
+            if (ev.type === "text") {
+              generatedHTML += ev.text;
+              document.getElementById("code-display").textContent = generatedHTML;
+              // auto-scroll
+              const wrap = document.querySelector(".code-wrap");
+              wrap.scrollTop = wrap.scrollHeight;
+            } else if (ev.type === "error") {
+              alert("Error: " + ev.error);
+              setLoading(false);
+              return;
+            } else if (ev.type === "done") {
+              // Strip code fences if present
+              if (generatedHTML.trim().startsWith("```")) {
+                let lines = generatedHTML.trim().split("\n");
+                let inner = lines.length > 1 ? lines.slice(1) : lines;
+                if (inner.length > 0 && inner[inner.length - 1].trim() === "```") {
+                  inner.pop();
+                }
+                generatedHTML = inner.join("\n").trim();
+              }
+              
+              // Frontend validation check
+              if (!generatedHTML.toLowerCase().includes("</html>")) {
+                 console.warn("HTML seems incomplete (missing </html>)");
+              }
+              
+              renderOutput(generatedHTML, ev);
+              // Save to localStorage history (#8)
+              saveHistory(document.getElementById("description").value.trim(), generatedHTML);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            console.error("Parse error", e);
+          }
+        }
+      }
+    }
   } catch (e) {
     alert("Could not connect to Flask server. Make sure it's running on port 5000.");
     console.error(e);
-  } finally {
     setLoading(false);
   }
 }
@@ -347,6 +413,9 @@ function renderOutput(html, data) {
   if (data.budget) {
     document.getElementById("us-budget").textContent = `Budget: $${data.budget.remaining.toFixed(2)} remaining`;
   }
+
+  // Refresh history panel
+  renderHistory();
 }
 
 function switchTab(tab) {
@@ -385,10 +454,55 @@ function setLoading(v) {
     icon.outerHTML = '<div class="spinner" id="btn-icon"></div>';
     text.textContent = "Generating...";
   } else {
-    document.getElementById("btn-icon").outerHTML = '<span id="btn-icon">✦</span>';
+    document.getElementById("btn-icon").outerHTML = '<span id="btn-icon">❆</span>';
     text.textContent = "Generate HTML";
   }
 }
+
+// ── localStorage history (#8) ──
+const HIST_KEY = "html_gen_history";
+const MAX_HIST = 10;
+
+function saveHistory(prompt, html) {
+  const hist = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
+  hist.unshift({ prompt, html, ts: new Date().toISOString() });
+  if (hist.length > MAX_HIST) hist.pop();
+  localStorage.setItem(HIST_KEY, JSON.stringify(hist));
+}
+
+function renderHistory() {
+  const wrap = document.getElementById("history-list");
+  if (!wrap) return;
+  const hist = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
+  if (!hist.length) {
+    wrap.innerHTML = '<p style="color:var(--muted);font-size:.78rem;text-align:center;padding:12px">No history yet</p>';
+    return;
+  }
+  wrap.innerHTML = hist.map((h, i) => `
+    <div style="padding:10px 12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:border-color .2s"
+         onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"
+         onclick="restoreHistory(${i})">
+      <div style="font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.prompt.slice(0,55)}${h.prompt.length>55?'...':''}</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:3px">${new Date(h.ts).toLocaleString()}</div>
+    </div>`).join("");
+}
+
+function restoreHistory(i) {
+  const hist = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
+  if (!hist[i]) return;
+  generatedHTML = hist[i].html;
+  document.getElementById("description").value = hist[i].prompt;
+  renderOutput(hist[i].html, {});
+  switchTab('preview');
+}
+
+function clearHistory() {
+  localStorage.removeItem(HIST_KEY);
+  renderHistory();
+}
+
+// Init history on load
+renderHistory();
 </script>
 </body>
 </html>

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>My Tasks | Claude Office Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="auth.js"></script>
+  <style>
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:12px;--rs:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+    .wrap{max-width:760px;margin:0 auto;padding:28px 20px}
+    .hdr{margin-bottom:24px}
+    .hdr h1{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800}
+    .hdr h1 span{color:var(--acc)}
+    .hdr p{color:var(--muted);font-size:.84rem;margin-top:4px}
+    .nav{display:flex;gap:8px;margin-top:12px}
+    .nl{padding:7px 14px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--muted);text-decoration:none;font-size:.8rem;transition:all .2s}
+    .nl:hover{color:var(--txt);border-color:var(--acc)}
+
+    /* Alert banner */
+    .alert-banner{background:rgba(255,92,92,.08);border:1px solid rgba(255,92,92,.3);border-radius:var(--r);padding:14px 18px;margin-bottom:20px;display:none}
+    .alert-banner .al-title{font-size:.85rem;font-weight:600;color:var(--red);margin-bottom:6px}
+    .alert-banner .al-item{font-size:.8rem;color:var(--muted);line-height:1.7}
+    .alert-banner .al-item span{color:var(--red);font-weight:600}
+
+    /* Section headers */
+    .sec-lbl{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
+    .sec-lbl::after{content:"";flex:1;height:1px;background:var(--bdr)}
+
+    /* Task cards */
+    .tc{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:18px;margin-bottom:12px;transition:border-color .2s}
+    .tc.overdue{border-color:rgba(255,92,92,.35)}
+    .tc.blocked{opacity:.55}
+    .tc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
+    .tc-title{font-family:'Syne',sans-serif;font-weight:700;font-size:.98rem}
+    .tc-meta{font-size:.75rem;color:var(--muted);margin-top:3px;display:flex;flex-wrap:wrap;gap:8px}
+    .tc-meta .tag{background:var(--s2);padding:2px 8px;border-radius:100px}
+    .tc-meta .overdue-tag{background:rgba(255,92,92,.15);color:var(--red)}
+    .sp{padding:3px 10px;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap;flex-shrink:0}
+    .sp-not_started{background:rgba(107,107,138,.2);color:var(--muted)}
+    .sp-unlocked{background:rgba(245,166,35,.15);color:var(--acc)}
+    .sp-in_progress{background:rgba(91,163,255,.15);color:var(--blu)}
+    .sp-pending_review{background:rgba(245,166,35,.2);color:var(--acc)}
+    .sp-approved{background:rgba(34,211,160,.15);color:var(--grn)}
+    .sp-rejected{background:rgba(255,92,92,.15);color:var(--red)}
+
+    /* Progress */
+    .prog{background:rgba(255,255,255,.07);border-radius:100px;height:7px;overflow:hidden;margin-bottom:4px}
+    .prog-fill{height:7px;border-radius:100px;transition:width .4s;background:linear-gradient(90deg,var(--acc),#ff8c42)}
+    .prog-label{font-size:.7rem;color:var(--muted);text-align:right}
+
+    /* Impact warning */
+    .impact-box{background:rgba(255,92,92,.06);border:1px solid rgba(255,92,92,.2);border-radius:var(--rs);padding:10px 14px;margin-top:10px;font-size:.78rem;color:var(--muted);line-height:1.7}
+    .impact-box .impact-title{color:var(--red);font-weight:600;margin-bottom:4px;font-size:.8rem}
+
+    /* Rejection note */
+    .rej-box{background:rgba(255,92,92,.06);border:1px solid rgba(255,92,92,.2);border-radius:var(--rs);padding:12px;margin-top:10px}
+    .rej-title{font-size:.7rem;color:var(--red);text-transform:uppercase;font-weight:700;margin-bottom:6px}
+    .rej-box p{font-size:.83rem;line-height:1.6}
+
+    /* Approved state */
+    .done-box{display:flex;align-items:center;gap:10px;background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.2);border-radius:var(--rs);padding:12px;margin-top:10px;font-size:.84rem;color:var(--grn)}
+
+    /* Submit form */
+    .submit-form{margin-top:14px;border-top:1px solid var(--bdr);padding-top:14px}
+    .submit-form label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;font-weight:600}
+    .submit-form textarea,.submit-form input[type=url]{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:10px;font-family:'DM Sans',sans-serif;font-size:.875rem;outline:none;margin-bottom:10px}
+    .submit-form textarea{min-height:80px;resize:vertical}
+    .submit-form textarea:focus,.submit-form input:focus{border-color:var(--acc)}
+    .form-row{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{padding:10px 22px;border-radius:var(--rs);border:none;font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-acc{background:var(--acc);color:#000}.btn-acc:hover{opacity:.9;transform:translateY(-1px)}
+    .btn-quick{background:var(--s2);border:1px solid var(--bdr);color:var(--txt);font-size:.84rem;padding:8px 16px}
+    .btn-quick:hover{border-color:var(--acc);color:var(--acc)}
+
+    .empty{text-align:center;color:var(--muted);padding:48px;font-size:.875rem}
+    #toast{position:fixed;bottom:20px;right:20px;background:var(--s1);border:1px solid var(--bdr);padding:11px 18px;border-radius:var(--rs);font-size:.84rem;display:none;z-index:200}
+    #toast.ok{border-color:var(--grn);color:var(--grn)}
+    #toast.err{border-color:var(--red);color:var(--red)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>✅ My <span>Tasks</span></h1>
+    <p id="greeting">Loading...</p>
+    <div class="nav">
+      <a href="index.html" class="nl">⌨️ Chat</a>
+      <a href="projects.html" class="nl">📋 Board</a>
+      <a href="dashboard.html" class="nl">📊 Dashboard</a>
+    </div>
+  </div>
+
+  <div class="alert-banner" id="alert-banner">
+    <div class="al-title">⚠️ Your delays are blocking teammates</div>
+    <div id="alert-items"></div>
+  </div>
+
+  <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
+const UID = user.user_id || "emp002";
+const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
+
+document.getElementById("greeting").textContent = `Showing tasks for ${EMP[UID]||UID}`;
+
+function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
+
+function spLabel(s){return{not_started:"Not Started",unlocked:"Unlocked 🔓",in_progress:"In Progress",pending_review:"⏳ In Review",approved:"✅ Approved",rejected:"↩ Changes Needed"}[s]||s}
+
+async function load(){
+  const today = new Date().toISOString().slice(0,10);
+
+  // Load my tasks
+  const res = await fetch(`${API}/api/projects?user_id=${UID}`);
+  const data = await res.json();
+  const wrap = document.getElementById("tasks-wrap");
+  const myTasks = [];
+  for(const c of (data.clients||[])){
+    for(const t of (c.tasks||[])){
+      if(t.assigned_to===UID) myTasks.push({...t,client_name:c.name});
+    }
+  }
+
+  // Auto-mark as opened (10%)
+  for(const t of myTasks){
+    if(!t.opened_at && !["not_started","approved"].includes(t.status)){
+      await fetch(`${API}/api/tasks/${t.id}/open`,{method:"POST"});
+    }
+  }
+
+  // Load blocker info
+  let blockerMap = {};
+  try{
+    const br=await fetch(`${API}/api/blockers?user_id=emp003`); // use admin to load
+    const bd=await br.json();
+    // Find blockers caused by this user
+    for(const b of (bd.blockers||[])){
+      if(b.blocker_task.assigned_to===UID){
+        if(!blockerMap[b.blocker_task.id])blockerMap[b.blocker_task.id]=[];
+        blockerMap[b.blocker_task.id].push(b.blocked_task);
+      }
+    }
+  }catch(e){}
+
+  // Alert banner
+  if(Object.keys(blockerMap).length){
+    const banner=document.getElementById("alert-banner");
+    banner.style.display="block";
+    document.getElementById("alert-items").innerHTML = Object.values(blockerMap).flat()
+      .map(b=>`<div class="al-item">└─▶ <span>${b.name}</span> is waiting on you (${b.title})</div>`).join("");
+  }
+
+  if(!myTasks.length){wrap.innerHTML='<div class="empty">🎉 No tasks assigned to you yet!</div>';return;}
+
+  const active  = myTasks.filter(t=>!["approved","not_started"].includes(t.status));
+  const pending = myTasks.filter(t=>t.status==="not_started"||t.status==="unlocked");
+  const done    = myTasks.filter(t=>t.status==="approved");
+
+  let html="";
+  if(active.length){html+=`<div class="sec-lbl">🔥 Active — ${active.length} task${active.length>1?"s":""}</div>`+active.map(t=>renderTask(t,today,blockerMap)).join("");}
+  if(pending.length){html+=`<div class="sec-lbl">📋 Up Next — ${pending.length}</div>`+pending.map(t=>renderTask(t,today,blockerMap)).join("");}
+  if(done.length){html+=`<div class="sec-lbl">✅ Done — ${done.length}</div>`+done.map(t=>renderTask(t,today,{})).join("");}
+  wrap.innerHTML=html;
+
+  // Attach submit handlers
+  wrap.querySelectorAll("form.sf").forEach(form=>{
+    form.addEventListener("submit",async e=>{
+      e.preventDefault();
+      const tid=form.dataset.tid;
+      const note=form.querySelector("textarea").value.trim();
+      const file=form.querySelector(".file-input").value.trim();
+      if(!note){toast("Add a note first","err");return;}
+      const btn=form.querySelector("button[type=submit]");
+      btn.disabled=true; btn.textContent="Submitting...";
+      const r=await fetch(`${API}/api/tasks/${tid}/submit`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({note,file_url:file})});
+      const d=await r.json();
+      if(d.success){toast(`✅ Submitted — ${d.progress}% progress`);load();}
+      else{toast(d.error||"Error","err");btn.disabled=false;btn.textContent="Submit Work →";}
+    });
+  });
+}
+
+function renderTask(t, today, blockerMap){
+  const pct = t.progress||0;
+  const isBlocked = t.status==="not_started" && t.depends_on && t.depends_on.length;
+  const isOverdue = t.due_date && t.due_date<today && t.status!=="approved";
+  const blocking = blockerMap[t.id]||[];
+  const subCount = t.submission_count||0;
+
+  let body="";
+  // Rejection note
+  if(t.rejection_note) body+=`<div class="rej-box"><div class="rej-title">↩ Revision Required</div><p>${t.rejection_note}</p></div>`;
+  // Approved
+  if(t.status==="approved") body+=`<div class="done-box">🎉 Approved by founder — great work!</div>`;
+  // In review
+  if(t.status==="pending_review") body+=`<div class="done-box" style="color:var(--acc);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)">⏳ Submitted — waiting for review. Submission #${subCount}.</div>`;
+  // Blocked
+  if(isBlocked) body+=`<div class="impact-box"><div class="impact-title">⛔ Task Blocked</div>Waiting for a dependency to be approved before you can start.</div>`;
+  // Blocking others
+  if(blocking.length) body+=`<div class="impact-box"><div class="impact-title">⚠️ You're blocking ${blocking.length} teammate${blocking.length>1?"s":""}</div>${blocking.map(b=>`<div>└─▶ ${b.name} — ${b.title}</div>`).join("")}</div>`;
+
+  // Submit form
+  if(!["approved","pending_review","not_started"].includes(t.status)){
+    const placeholder = subCount===0 ? "What did you do on this task?" : "What changed since your last submission?";
+    body+=`<form class="submit-form sf" data-tid="${t.id}">
+      <label>Progress Update ${subCount>0?`(Revision #${subCount+1})`:"(First Submission)"}</label>
+      <textarea placeholder="${placeholder}" required></textarea>
+      <label>Proof of Work — Link or File URL <span style="color:var(--s2)">(optional — adds +20%)</span></label>
+      <input type="url" class="file-input" placeholder="https://drive.google.com/... or figma.com/..." />
+      <div class="form-row">
+        <button type="submit" class="btn btn-acc">Submit Work →</button>
+        <button type="button" class="btn btn-quick" onclick="quickDone(${t.id})">⚡ Quick Mark Done</button>
+      </div>
+    </form>`;
+  }
+
+  return`<div class="tc ${isOverdue?"overdue":""} ${isBlocked?"blocked":""}" id="tc-${t.id}">
+    <div class="tc-top">
+      <div>
+        <div class="tc-title">${t.title}</div>
+        <div class="tc-meta">
+          <span class="tag">📁 ${t.client_name}</span>
+          ${t.due_date?`<span class="tag ${isOverdue?"overdue-tag":""}">📅 ${isOverdue?"⚠️ ":""}${t.due_date}</span>`:""}
+          ${subCount>0?`<span class="tag">📝 ${subCount} submission${subCount>1?"s":""}</span>`:""}
+        </div>
+      </div>
+      <span class="sp sp-${t.status}">${spLabel(t.status)}</span>
+    </div>
+    <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
+    <div class="prog-label">${pct}% complete</div>
+    ${body}
+  </div>`;
+}
+
+async function quickDone(id){
+  const r=await fetch(`${API}/api/tasks/${id}/done`,{method:"POST"});
+  const d=await r.json();
+  if(d.success){toast("Marked for review!");load();}else toast(d.error||"Error","err");
+}
+
+load();
+</script>
+</body>
+</html>

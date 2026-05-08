@@ -156,4 +156,25 @@ def get_context_messages(conv_id: str, limit: int = MAX_CONTEXT_MESSAGES) -> lis
     messages = []
     for m in conv.get("messages", []):
         messages.append({"role": m["role"], "content": m["content"]})
-    return messages[-limit:]
+        
+    messages = messages[-limit:]
+    
+    if len(messages) > 10:
+        old_messages = messages[:-10]
+        recent_messages = messages[-10:]
+        
+        # Compress old context
+        summary_lines = []
+        for m in old_messages:
+            content = m["content"]
+            if isinstance(content, list):
+                content = " ".join([b.get("text", "") for b in content if b.get("type") == "text"])
+            summary_lines.append(f"{m['role'].upper()}: {content[:100]}...")
+            
+        compressed = {
+            "role": "user", 
+            "content": "[SYSTEM NOTE: Older conversation context compressed for token efficiency]\n" + "\n".join(summary_lines)
+        }
+        return [compressed] + recent_messages
+        
+    return messages

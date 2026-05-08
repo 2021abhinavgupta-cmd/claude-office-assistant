@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Login | Claude Office Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:44px 40px;width:100%;max-width:420px}
+    .logo{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+    .logo-icon{width:40px;height:40px;background:var(--acc);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+    .logo-text{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800}
+    h1{font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;margin-bottom:4px}
+    h1 span{color:var(--acc)}
+    .sub{color:var(--muted);font-size:.84rem;margin-bottom:28px}
+
+    /* Employee selector */
+    .emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+    .emp-btn{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:12px;cursor:pointer;transition:all .2s;text-align:left}
+    .emp-btn:hover{border-color:var(--acc)}
+    .emp-btn.selected{border-color:var(--acc);background:rgba(245,166,35,.08)}
+    .emp-btn .en{font-weight:600;font-size:.88rem;color:var(--txt)}
+    .emp-btn .er{font-size:.72rem;color:var(--muted);margin-top:2px}
+
+    /* PIN */
+    .pin-section{display:none}
+    .pin-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px}
+    .pin-dots{display:flex;gap:10px;justify-content:center;margin-bottom:18px}
+    .dot{width:14px;height:14px;border-radius:50%;background:var(--s2);border:1px solid var(--bdr);transition:all .2s}
+    .dot.filled{background:var(--acc);border-color:var(--acc)}
+    .numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .key{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:14px;text-align:center;font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .15s}
+    .key:hover{background:var(--s1);border-color:var(--acc);color:var(--acc)}
+    .key:active{transform:scale(.95)}
+    .key.del{color:var(--muted);font-size:.85rem}
+
+    .err-msg{color:var(--red);font-size:.82rem;text-align:center;margin-top:10px;min-height:20px}
+    .btn-back{background:transparent;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;margin-top:12px;display:block;width:100%;text-align:center;transition:color .2s}
+    .btn-back:hover{color:var(--txt)}
+    .loading{display:none;text-align:center;color:var(--muted);font-size:.85rem;padding:10px}
+
+    /* Preferences step */
+    .prefs-section{display:none}
+    .prefs-q{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:6px}
+    .prefs-sub{font-size:.78rem;color:var(--muted);margin-bottom:16px}
+    .toggle-row{display:flex;gap:10px;margin-bottom:22px}
+    .tog{flex:1;padding:12px;border-radius:var(--rs);border:1px solid var(--bdr);background:var(--s2);color:var(--muted);font-weight:600;font-size:.88rem;cursor:pointer;text-align:center;transition:all .2s}
+    .tog.on{border-color:var(--acc);background:rgba(245,166,35,.1);color:var(--acc)}
+    .task-chips{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px}
+    .chip{padding:9px 12px;border-radius:var(--rs);border:1px solid var(--bdr);background:var(--s2);color:var(--muted);font-size:.8rem;font-weight:600;cursor:pointer;text-align:center;transition:all .2s}
+    .chip.on{border-color:var(--acc);background:rgba(245,166,35,.1);color:var(--acc)}
+    .btn-go{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--acc);color:#000;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s}
+    .btn-go:hover{opacity:.88}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">🤖</div>
+    <div class="logo-text">Claude Office</div>
+  </div>
+  <h1>Welcome <span>back</span></h1>
+  <p class="sub">Select your name, then enter your PIN.</p>
+
+  <!-- Step 1: Pick employee -->
+  <div id="step-emp">
+    <div class="emp-grid" id="emp-grid"></div>
+  </div>
+
+  <!-- Step 2: Enter PIN -->
+  <div class="pin-section" id="step-pin">
+    <div class="pin-label" id="pin-label">Enter PIN for <strong></strong></div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="dot" id="d0"></div><div class="dot" id="d1"></div>
+      <div class="dot" id="d2"></div><div class="dot" id="d3"></div>
+    </div>
+    <div class="numpad">
+      ${[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(k=>`
+        <div class="key ${k==="⌫"?"del":""}" onclick="pressKey('${k}')">${k}</div>
+      `).join("")}
+    </div>
+    <div class="err-msg" id="err-msg"></div>
+    <div class="loading" id="loading">🔐 Verifying...</div>
+    <button class="btn-back" onclick="goBack()">← Choose different person</button>
+  </div>
+
+  <!-- Step 3: Preferences -->
+  <div class="prefs-section" id="step-prefs">
+    <div class="prefs-q">Have you used Claude before? 🤔</div>
+    <div class="prefs-sub">This helps us personalise your experience.</div>
+    <div class="toggle-row">
+      <div class="tog" id="tog-yes" onclick="setClaudeUse(true)">Yes, I use it ✅</div>
+      <div class="tog" id="tog-no"  onclick="setClaudeUse(false)">Not yet 👋</div>
+    </div>
+    <div class="prefs-q" style="margin-top:4px">Which tasks do you care about? 🎯</div>
+    <div class="prefs-sub">Select all that apply — filters your task board.</div>
+    <div class="task-chips">
+      <div class="chip on" data-cat="content"   onclick="toggleChip(this)">✍️ Content</div>
+      <div class="chip on" data-cat="video"     onclick="toggleChip(this)">🎥 Video</div>
+      <div class="chip on" data-cat="design"    onclick="toggleChip(this)">🎨 Design</div>
+      <div class="chip on" data-cat="website"   onclick="toggleChip(this)">💻 Website</div>
+      <div class="chip on" data-cat="accounts"  onclick="toggleChip(this)">📊 Accounts</div>
+      <div class="chip on" data-cat="review"    onclick="toggleChip(this)">🔍 Review</div>
+    </div>
+    <button class="btn-go" onclick="savePrefsAndGo()">Continue →</button>
+  </div>
+</div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+const EMPLOYEES = [
+  {id:"emp001",name:"Vidit",role:"Co-Founder"},
+  {id:"emp002",name:"Nupur",role:"UI/UX Designer"},
+  {id:"emp003",name:"Abhinav",role:"Backend Developer"},
+  {id:"emp004",name:"Kshitij",role:"Founder"},
+  {id:"emp005",name:"Raj",role:"Video Editor"},
+  {id:"emp006",name:"Mohit",role:"Media"},
+  {id:"emp007",name:"Tanaya",role:"Accounts"},
+  {id:"emp008",name:"Happy",role:"AI Video Generator"},
+];
+
+let selectedEmp = null;
+let pin = "";
+
+// If already logged in with valid session, redirect
+(async()=>{
+  const token = localStorage.getItem("_session_token");
+  if(token){
+    const r = await fetch(`${API}/api/auth/verify?token=${token}`);
+    if(r.ok){ const d=await r.json(); if(d.valid){ redirect(d); return; } }
+  }
+  // Build employee grid
+  document.getElementById("emp-grid").innerHTML = EMPLOYEES.map(e=>`
+    <div class="emp-btn" id="eb-${e.id}" onclick="selectEmp('${e.id}','${e.name}')">
+      <div class="en">${e.name}</div><div class="er">${e.role}</div>
+    </div>`).join("");
+})();
+
+function selectEmp(id, name){
+  selectedEmp = {id, name};
+  document.querySelectorAll(".emp-btn").forEach(b=>b.classList.remove("selected"));
+  document.getElementById("eb-"+id)?.classList.add("selected");
+  document.getElementById("step-emp").style.display="none";
+  document.getElementById("step-pin").style.display="block";
+  document.getElementById("pin-label").innerHTML = `Enter PIN for <strong>${name}</strong>`;
+  pin=""; updateDots();
+}
+
+function pressKey(k){
+  if(k==="⌫"||k===""){if(k==="⌫"){pin=pin.slice(0,-1);updateDots();}return;}
+  if(pin.length>=4) return;
+  pin+=k; updateDots();
+  if(pin.length===4) submitPin();
+}
+
+function updateDots(){
+  for(let i=0;i<4;i++) document.getElementById("d"+i).className="dot"+(i<pin.length?" filled":"");
+  document.getElementById("err-msg").textContent="";
+}
+
+async function submitPin(){
+  document.getElementById("loading").style.display="block";
+  const r = await fetch(`${API}/api/auth/login`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({user_id:selectedEmp.id,pin})});
+  const d = await r.json();
+  document.getElementById("loading").style.display="none";
+  if(d.success){
+    localStorage.setItem("_session_token", d.token);
+    localStorage.setItem("claude_office_user", JSON.stringify({...d.user, user_id: d.user.id}));
+    redirect(d.user);
+  } else {
+    document.getElementById("err-msg").textContent = d.error||"Wrong PIN — try again";
+    pin=""; updateDots();
+  }
+}
+
+function redirect(user){
+  // Show the preferences step before final navigation
+  showPrefs();
+}
+
+function showPrefs(){
+  document.getElementById("step-pin").style.display = "none";
+  document.getElementById("step-prefs").style.display = "block";
+}
+
+let usesClaudeVal = null;
+function setClaudeUse(val){
+  usesClaudeVal = val;
+  document.getElementById("tog-yes").classList.toggle("on", val);
+  document.getElementById("tog-no").classList.toggle("on", !val);
+}
+function toggleChip(el){ el.classList.toggle("on"); }
+
+function savePrefsAndGo(){
+  const cats = [...document.querySelectorAll(".chip.on")].map(c => c.dataset.cat);
+  const prefs = { usesClaude: usesClaudeVal, taskCategories: cats, setAt: new Date().toISOString() };
+  localStorage.setItem("claude_prefs", JSON.stringify(prefs));
+  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+  const dest = user.is_admin ? "dashboard.html" : "my-tasks.html";
+  window.location.href = dest;
+}
+function goBack(){
+  document.getElementById("step-pin").style.display="none";
+  document.getElementById("step-emp").style.display="block";
+  selectedEmp=null; pin=""; updateDots();
+}
+// Handle numpad template literal issue (static render)
+document.querySelector(".numpad").innerHTML=[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(k=>
+  `<div class="key ${k==="⌫"?"del":""}" onclick="pressKey('${k}')">${k===""?"&nbsp;":k}</div>`
+).join("");
+</script>
+</body>
+</html>

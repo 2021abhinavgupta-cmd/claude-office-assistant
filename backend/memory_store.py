@@ -25,8 +25,39 @@ def get_memories(user_id: str) -> list:
         return list(reversed(json.loads(row[0])))
     return []
 
+def update_profile(user_id: str, profile_json: str):
+    """Updates the user's structured JSON profile."""
+    try:
+        new_data = json.loads(profile_json)
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
+        row = cursor.fetchone()
+        
+        mems = json.loads(row[0]) if row else {}
+        
+        # If the existing memory is a list (legacy), convert it to dict
+        if isinstance(mems, list):
+            mems = {"legacy_notes": [m.get("content") for m in mems]}
+            
+        # Deep merge new data into mems
+        for k, v in new_data.items():
+            if isinstance(v, dict) and isinstance(mems.get(k), dict):
+                mems[k].update(v)
+            elif isinstance(v, list) and isinstance(mems.get(k), list):
+                # Ensure unique items without breaking order, or just extend
+                mems[k] = list({str(item): item for item in (mems[k] + v)}.values())
+            else:
+                mems[k] = v
+                
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO memory (user_id, data) VALUES (?, ?)", (user_id, json.dumps(mems)))
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to update profile for {user_id}: {e}")
+
 def add_memory(user_id: str, content: str, source: str = "manual") -> dict:
-    """Add a memory. Returns the new memory dict."""
+    """Add a memory manually."""
     content = content.strip()[:500]
     if not content: return {}
     
@@ -35,13 +66,17 @@ def add_memory(user_id: str, content: str, source: str = "manual") -> dict:
     cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
     
-    mems = json.loads(row[0]) if row else []
+    mems = json.loads(row[0]) if row else {}
+    if isinstance(mems, list):
+        mems = {"legacy_notes": [m.get("content") for m in mems]}
+        
+    if "legacy_notes" not in mems:
+        mems["legacy_notes"] = []
+    
     mem = {"id": uuid.uuid4().hex[:10], "content": content,
            "source": source, "created_at": _now()}
-    mems.append(mem)
-    if len(mems) > MAX_PER_USER:
-        mems = mems[-MAX_PER_USER:]
-        
+    mems["legacy_notes"].append(content)
+    
     with conn:
         conn.execute("INSERT OR REPLACE INTO memory (user_id, data) VALUES (?, ?)", (user_id, json.dumps(mems)))
     conn.close()
@@ -70,10 +105,22 @@ def delete_memory(user_id: str, memory_id: str) -> bool:
 
 def format_for_prompt(user_id: str) -> str:
     """Format memories for injection into Claude's system prompt."""
-    mems = get_memories(user_id)
-    if not mems: return ""
-    lines = "\n".join(f"• {m['content']}" for m in mems[-20:])
-    return f"\n\n## What you remember about this user:\n{lines}"
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row: return ""
+    try:
+        data = json.loads(row[0])
+        if isinstance(data, list):
+            lines = "\n".join(f"• {m['content']}" for m in data[-20:])
+            return f"\n\n## What you remember about this user:\n{lines}"
+        else:
+            return f"\n\n## What you remember about this user:\n```json\n{json.dumps(data, indent=2)}\n```"
+    except:
+        return ""
 
 def format_team_memories() -> str:
     """Format all team memories to allow cross-pollination of writing styles."""

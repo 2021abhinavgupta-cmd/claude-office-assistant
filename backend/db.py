@@ -29,6 +29,45 @@ def init_db():
         
         # Attendance tracking
         conn.execute("CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, action TEXT, timestamp TEXT)")
+
+        # Daily standups
+        conn.execute("""CREATE TABLE IF NOT EXISTS standups (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT NOT NULL,
+            date        TEXT NOT NULL,
+            yesterday   TEXT,
+            today       TEXT,
+            blockers    TEXT,
+            submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, date)
+        )""")
+
+        # Task risk escalation log (tracks alert level per task)
+        conn.execute("""CREATE TABLE IF NOT EXISTS task_risk (
+            task_id     INTEGER PRIMARY KEY,
+            risk_level  TEXT DEFAULT 'normal',
+            alerted_day1 INTEGER DEFAULT 0,
+            alerted_day2 INTEGER DEFAULT 0,
+            alerted_day3 INTEGER DEFAULT 0,
+            alerted_day5 INTEGER DEFAULT 0,
+            last_checked TEXT,
+            updated_at  TEXT
+        )""")
+
+        # Server-side auth sessions (#1)
+        conn.execute("""CREATE TABLE IF NOT EXISTS sessions (
+            token       TEXT PRIMARY KEY,
+            user_id     TEXT NOT NULL,
+            created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+            expires_at  TEXT NOT NULL
+        )""")
+
+        # Add category column to tasks if not already present
+        try:
+            conn.execute("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT 'general'")
+        except Exception:
+            pass  # Column already exists
+
     conn.close()
 
 init_db()

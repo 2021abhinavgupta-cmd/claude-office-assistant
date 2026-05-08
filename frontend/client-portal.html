@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Client Portal | Claude Office Assistant</title>
+  <meta name="description" content="Read-only project status portal for clients — see task progress, deliverables, and timelines without needing internal access."/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root{
+      --bg:#0c0c12;--s1:#14141e;--s2:#1c1c28;--bdr:rgba(255,255,255,.07);
+      --txt:#e8e8f2;--muted:#6b6b8a;--acc:#7c6fff;--grn:#22d3a0;--yel:#fbbf24;--red:#ef4444;
+      --r:14px;--rs:8px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+
+    /* BG */
+    .orbs{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+    .orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.09;animation:drift 22s ease-in-out infinite}
+    .orb1{width:500px;height:500px;background:var(--acc);top:-10%;left:-5%}
+    .orb2{width:350px;height:350px;background:var(--grn);bottom:-8%;right:-5%;animation-delay:-9s}
+    @keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,-20px)}}
+
+    .container{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:32px 24px}
+
+    /* Header */
+    .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:36px;flex-wrap:wrap;gap:16px}
+    .logo{display:flex;align-items:center;gap:10px}
+    .logo-icon{width:38px;height:38px;background:var(--acc);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+    .logo-text{font-family:'Syne',sans-serif;font-weight:800;font-size:1.1rem}
+    .portal-badge{background:rgba(124,111,255,.15);border:1px solid rgba(124,111,255,.3);color:var(--acc);font-size:.7rem;font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:100px;text-transform:uppercase}
+
+    /* Client selector */
+    .client-selector{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:28px;padding:20px;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r)}
+    .client-selector label{font-size:.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+    .client-select{flex:1;min-width:200px;background:var(--s2);border:1px solid var(--bdr);color:var(--txt);padding:10px 14px;border-radius:var(--rs);font-size:.9rem;font-family:inherit;cursor:pointer}
+    .client-select:focus{outline:none;border-color:var(--acc)}
+    .load-btn{padding:10px 20px;background:var(--acc);color:#fff;border:none;border-radius:var(--rs);font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .2s;white-space:nowrap}
+    .load-btn:hover{opacity:.85}
+
+    /* Summary cards */
+    .summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px}
+    .sum-card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:18px;text-align:center}
+    .sum-card .sv{font-size:1.8rem;font-weight:700;font-family:'Syne',sans-serif;margin-bottom:4px}
+    .sum-card .sl{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+    .sv.green{color:var(--grn)}.sv.yellow{color:var(--yel)}.sv.red{color:var(--red)}.sv.purple{color:var(--acc)}
+
+    /* Task table */
+    .panel{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:24px;margin-bottom:20px}
+    .panel h2{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+    table{width:100%;border-collapse:collapse;font-size:.85rem}
+    th{text-align:left;padding:10px 12px;color:var(--muted);font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--bdr)}
+    td{padding:12px;border-bottom:1px solid rgba(255,255,255,.04)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:var(--s2)}
+
+    /* Status badges */
+    .badge{display:inline-block;padding:3px 10px;border-radius:100px;font-size:.72rem;font-weight:700}
+    .badge.approved{background:rgba(34,211,160,.15);color:var(--grn)}
+    .badge.submitted{background:rgba(124,111,255,.15);color:var(--acc)}
+    .badge.in_progress{background:rgba(251,191,36,.15);color:var(--yel)}
+    .badge.overdue{background:rgba(239,68,68,.15);color:var(--red)}
+    .badge.not_started{background:rgba(107,107,138,.15);color:var(--muted)}
+
+    /* Progress bar */
+    .prog-wrap{width:100%;height:6px;background:var(--s2);border-radius:3px;overflow:hidden;margin-top:6px}
+    .prog-fill{height:100%;border-radius:3px;background:var(--grn);transition:width .4s ease}
+
+    /* Empty / loading */
+    .empty{text-align:center;padding:48px;color:var(--muted);font-size:.9rem}
+    .skeleton-row td{padding:12px}
+    .skel{height:14px;border-radius:4px;background:var(--s2);animation:sh 1.4s infinite}
+    @keyframes sh{0%,100%{opacity:.4}50%{opacity:.9}}
+
+    /* Footer */
+    footer{margin-top:40px;text-align:center;font-size:.72rem;color:var(--muted)}
+
+    /* Responsive */
+    @media(max-width:600px){th:nth-child(4),td:nth-child(4),th:nth-child(5),td:nth-child(5){display:none}.summary-grid{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+<div class="orbs" aria-hidden="true">
+  <div class="orb orb1"></div><div class="orb orb2"></div>
+</div>
+
+<div class="container">
+
+  <!-- Header -->
+  <header class="page-header">
+    <div class="logo">
+      <div class="logo-icon">🔒</div>
+      <div class="logo-text">Client Portal</div>
+    </div>
+    <span class="portal-badge">Read-Only View</span>
+  </header>
+
+  <!-- Client selector -->
+  <div class="client-selector">
+    <label for="client-select">Select Client</label>
+    <select class="client-select" id="client-select">
+      <option value="">— Choose a client —</option>
+    </select>
+    <button class="load-btn" onclick="loadClientData()">View Status →</button>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="summary-grid" id="summary-grid" style="display:none">
+    <div class="sum-card"><div class="sv purple" id="sm-total">—</div><div class="sl">Total Tasks</div></div>
+    <div class="sum-card"><div class="sv green"  id="sm-done">—</div><div class="sl">Completed</div></div>
+    <div class="sum-card"><div class="sv yellow" id="sm-wip">—</div><div class="sl">In Progress</div></div>
+    <div class="sum-card"><div class="sv red"    id="sm-over">—</div><div class="sl">Overdue</div></div>
+    <div class="sum-card">
+      <div class="sv purple" id="sm-pct">—</div>
+      <div class="sl">Overall Progress</div>
+      <div class="prog-wrap"><div class="prog-fill" id="sm-bar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Task list -->
+  <div class="panel" id="tasks-panel" style="display:none">
+    <h2>📋 Deliverables</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Assigned To</th>
+            <th>Status</th>
+            <th>Due Date</th>
+            <th>Progress</th>
+          </tr>
+        </thead>
+        <tbody id="task-tbody">
+          <tr class="skeleton-row"><td colspan="5" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty-state" class="panel" style="display:none">
+    <div class="empty">🔍 No tasks found for this client yet.</div>
+  </div>
+
+  <footer>Client Portal · Claude Office Assistant · Data refreshes on page load</footer>
+</div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1"
+  ? "http://localhost:5000" : location.origin;
+
+const EMP_NAMES = {
+  emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",
+  emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",
+  emp007:"Tanaya",emp008:"Happy",
+};
+
+// Load client list
+(async()=>{
+  try {
+    const r = await fetch(`${API}/api/clients`);
+    const d = await r.json();
+    const sel = document.getElementById("client-select");
+    (d.clients||[]).forEach(c=>{
+      const o = document.createElement("option");
+      o.value = c.id; o.textContent = c.name;
+      sel.appendChild(o);
+    });
+    // Auto-load from ?client= param
+    const params = new URLSearchParams(location.search);
+    if(params.get("client")){
+      sel.value = params.get("client");
+      loadClientData();
+    }
+  } catch(e){ console.warn("Could not load clients",e); }
+})();
+
+async function loadClientData(){
+  const clientId = document.getElementById("client-select").value;
+  if(!clientId) return;
+
+  // Show loading skeleton
+  document.getElementById("summary-grid").style.display = "";
+  document.getElementById("tasks-panel").style.display  = "";
+  document.getElementById("empty-state").style.display  = "none";
+  document.getElementById("task-tbody").innerHTML =
+    '<tr class="skeleton-row"><td colspan="5"><div class="skel" style="width:60%"></div></td></tr>'.repeat(4);
+
+  try {
+    const r = await fetch(`${API}/api/clients/${clientId}/tasks`);
+    const d = await r.json();
+    const tasks = d.tasks || [];
+
+    if(!tasks.length){
+      document.getElementById("summary-grid").style.display = "none";
+      document.getElementById("tasks-panel").style.display  = "none";
+      document.getElementById("empty-state").style.display  = "";
+      return;
+    }
+
+    // Compute stats
+    const total   = tasks.length;
+    const done    = tasks.filter(t=>t.status==="approved").length;
+    const wip     = tasks.filter(t=>t.status==="in_progress"||t.status==="submitted").length;
+    const today   = new Date().toISOString().slice(0,10);
+    const overdue = tasks.filter(t=>t.due_date && t.due_date < today && t.status !== "approved").length;
+    const pct     = total ? Math.round(done/total*100) : 0;
+
+    document.getElementById("sm-total").textContent = total;
+    document.getElementById("sm-done").textContent  = done;
+    document.getElementById("sm-wip").textContent   = wip;
+    document.getElementById("sm-over").textContent  = overdue;
+    document.getElementById("sm-pct").textContent   = pct + "%";
+    document.getElementById("sm-bar").style.width   = pct + "%";
+
+    // Render tasks table (no internal data like cost/IDs)
+    const statusClass = s => {
+      if(s==="approved")    return "approved";
+      if(s==="submitted")   return "submitted";
+      if(s==="in_progress") return "in_progress";
+      if(s==="not_started") return "not_started";
+      return "";
+    };
+    const statusLabel = s => ({
+      approved:"✅ Approved", submitted:"📤 Submitted",
+      in_progress:"🔄 In Progress", not_started:"⏳ Not Started",
+    }[s] || s);
+
+    const isOverdue = t => t.due_date && t.due_date < today && t.status !== "approved";
+
+    document.getElementById("task-tbody").innerHTML = tasks.map(t=>`
+      <tr>
+        <td><strong>${escHtml(t.title)}</strong>
+          ${t.description ? `<div style="color:var(--muted);font-size:.75rem;margin-top:3px">${escHtml(t.description.slice(0,80))}${t.description.length>80?"...":""}</div>` : ""}
+        </td>
+        <td>${EMP_NAMES[t.assigned_to]||t.assigned_to||"—"}</td>
+        <td>
+          <span class="badge ${isOverdue(t)?"overdue":statusClass(t.status)}">
+            ${isOverdue(t)?"⚠️ Overdue":statusLabel(t.status)}
+          </span>
+        </td>
+        <td style="color:var(--muted);font-size:.82rem">${t.due_date||"—"}</td>
+        <td>
+          <div class="prog-wrap"><div class="prog-fill" style="width:${progressPct(t.status)}%;background:${progressColor(t.status)}"></div></div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:3px">${progressPct(t.status)}%</div>
+        </td>
+      </tr>`).join("");
+
+  } catch(e){
+    document.getElementById("task-tbody").innerHTML =
+      `<tr><td colspan="5" class="empty">⚠️ Could not load data. Please try again.</td></tr>`;
+    console.error(e);
+  }
+}
+
+function progressPct(status){
+  return {approved:100,submitted:75,in_progress:40,not_started:0}[status]??0;
+}
+function progressColor(status){
+  return {approved:"var(--grn)",submitted:"var(--acc)",in_progress:"var(--yel)",not_started:"var(--muted)"}[status]??"var(--muted)";
+}
+function escHtml(str){
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+</body>
+</html>
