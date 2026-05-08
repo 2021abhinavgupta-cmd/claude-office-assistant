@@ -244,28 +244,76 @@ function goStep3(){
 async function createClient(){
   const name=document.getElementById("name").value.trim();
   const btn=document.getElementById("create-btn");
-  btn.disabled=true; btn.textContent="Creating...";
+  btn.disabled=true; btn.textContent="Creating in Notion...";
 
-  // 1. Create client
-  const cr=await fetch(`${API}/api/clients`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-    user_id:UID, name, contact:document.getElementById("contact").value.trim(),
-    requirements:document.getElementById("requirements").value.trim(),
-    deadline:document.getElementById("deadline").value,
-    status:"active"
-  })});
-  const cd=await cr.json();
-  if(!cd.success){document.getElementById("err3").textContent=cd.error||"Failed to create client.";document.getElementById("err3").style.display="block";btn.disabled=false;btn.textContent="🚀 Create Project";return;}
+  // Check if Notion is configured first
+  let useNotion = false;
+  try {
+    const ns = await fetch(`${API}/api/notion/status`);
+    const nd = await ns.json();
+    useNotion = nd.configured;
+  } catch(e) {}
 
-  // 2. Auto-generate tasks
-  const ar=await fetch(`${API}/api/clients/${cd.client_id}/auto-tasks`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-    user_id:UID,services:[...selected],deadline:document.getElementById("deadline").value
-  })});
-  const ad=await ar.json();
+  if (useNotion) {
+    // ── Notion path: single API call creates client + all tasks ──
+    const res = await fetch(`${API}/api/notion/clients`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        name,
+        contact:      document.getElementById("contact").value.trim(),
+        requirements: document.getElementById("requirements").value.trim(),
+        deadline:     document.getElementById("deadline").value,
+        budget:       document.getElementById("budget").value.trim(),
+        notes:        document.getElementById("notes").value.trim(),
+        services:     [...selected],
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      document.getElementById("err3").textContent = data.error || "Failed to create client in Notion.";
+      document.getElementById("err3").style.display = "block";
+      btn.disabled = false; btn.textContent = "🚀 Create Project";
+      return;
+    }
+    // Show success with Notion link
+    document.getElementById("main-card").style.display = "none";
+    document.getElementById("success-msg").innerHTML =
+      `"${name}" created in Notion with ${data.tasks_created||0} tasks auto-assigned. ` +
+      (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
+    document.getElementById("success").style.display = "block";
 
-  // Show success
-  document.getElementById("main-card").style.display="none";
-  document.getElementById("success-msg").textContent=`"${name}" created with ${ad.tasks_created||0} tasks auto-assigned to the team.`;
-  document.getElementById("success").style.display="block";
+  } else {
+    // ── Fallback: SQLite path ──
+    btn.textContent = "Creating...";
+    const cr = await fetch(`${API}/api/clients`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        user_id: UID, name,
+        contact:      document.getElementById("contact").value.trim(),
+        requirements: document.getElementById("requirements").value.trim(),
+        deadline:     document.getElementById("deadline").value,
+        status: "active",
+      }),
+    });
+    const cd = await cr.json();
+    if (!cd.success) {
+      document.getElementById("err3").textContent = cd.error || "Failed to create client.";
+      document.getElementById("err3").style.display = "block";
+      btn.disabled = false; btn.textContent = "🚀 Create Project";
+      return;
+    }
+    const ar = await fetch(`${API}/api/clients/${cd.client_id}/auto-tasks`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({user_id:UID, services:[...selected], deadline:document.getElementById("deadline").value}),
+    });
+    const ad = await ar.json();
+    document.getElementById("main-card").style.display = "none";
+    document.getElementById("success-msg").textContent = `"${name}" created with ${ad.tasks_created||0} tasks auto-assigned to the team.`;
+    document.getElementById("success").style.display = "block";
+  }
 }
 </script>
 </body>

@@ -37,6 +37,7 @@ import memory_store
 import file_processor
 import project_store
 import task_scheduler
+import notion_store
 
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
@@ -2374,6 +2375,150 @@ def run_alert_check():
         return jsonify({"error": "Unauthorized"}), 403
     fired = task_scheduler.check_overdue_tasks()
     return jsonify({"success": True, "alerts_fired": len(fired), "details": fired})
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NOTION INTEGRATION ROUTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/notion/status", methods=["GET"])
+def notion_status():
+    """Returns whether Notion is configured and reachable."""
+    configured = notion_store.is_configured()
+    return jsonify({
+        "configured": configured,
+        "message": "Notion is connected" if configured else (
+            "Set NOTION_TOKEN, NOTION_CLIENTS_DB_ID, NOTION_TASKS_DB_ID in config/.env"
+        ),
+    })
+
+
+@app.route("/api/notion/clients", methods=["GET"])
+def notion_list_clients():
+    """
+    List all clients from Notion.
+    Query params: status (active|completed|paused)
+    """
+    status_filter = request.args.get("status", "")
+    clients = notion_store.list_clients(status_filter=status_filter)
+    return jsonify({"clients": clients, "count": len(clients)})
+
+
+@app.route("/api/notion/clients", methods=["POST"])
+def notion_create_client():
+    """
+    Create a new client in Notion AND auto-generate tasks.
+    Body: { name, contact?, requirements?, deadline?, budget?, notes?, services[] }
+    """
+    body = request.get_json(silent=True) or {}
+    name = body.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    if not notion_store.is_configured():
+        return jsonify({"error": "Notion is not configured. Add NOTION_TOKEN and DB IDs to config/.env"}), 503
+
+    # 1. Create client page in Notion
+    client = notion_store.create_client(
+        name=name,
+        contact=body.get("contact", ""),
+        requirements=body.get("requirements", ""),
+        deadline=body.get("deadline", ""),
+        budget=body.get("budget", ""),
+        notes=body.get("notes", ""),
+        status="active",
+    )
+    if not client:
+        return jsonify({"error": "Failed to create client in Notion"}), 500
+
+    # 2. Auto-generate tasks based on selected services
+    SVC_TASKS = {
+        "content":  [("Content Brief & Research", "emp006"), ("Write Copy / Content Draft", "emp006"), ("Content Review & Approval", "emp004")],
+        "video":    [("Video Script Writing", "emp006"), ("Video Shoot / Production", "emp005"), ("Video Editing & Post", "emp005"), ("AI Video Enhancements", "emp008")],
+        "design":   [("Design Brief & Moodboard", "emp002"), ("UI/UX Design — Wireframes", "emp002"), ("Final Design Handoff", "emp002")],
+        "website":  [("Website Architecture Plan", "emp001"), ("Frontend Development", "emp003"), ("Backend / Integrations", "emp001"), ("QA & Launch", "emp003")],
+        "social":   [("Social Media Strategy", "emp006"), ("Content Calendar", "emp006"), ("Graphics & Templates", "emp002")],
+        "accounts": [("Invoice & Payment Setup", "emp007"), ("Monthly Reporting", "emp007")],
+    }
+    EMP_NAMES = {
+        "emp001": "Vidit", "emp002": "Nupur", "emp003": "Abhinav",
+        "emp004": "Kshitij", "emp005": "Raj", "emp006": "Mohit",
+        "emp007": "Tanaya", "emp008": "Happy",
+    }
+
+    services = body.get("services", [])
+    deadline = body.get("deadline", "")
+    tasks_created = 0
+
+    for svc in services:
+        for (task_title, emp_id) in SVC_TASKS.get(svc, []):
+            emp_name = EMP_NAMES.get(emp_id, emp_id)
+            result = notion_store.create_task(
+                title=task_title,
+                client_name=name,
+                client_notion_id=client["notion_id"],
+                assigned_to=emp_name,
+                due_date=deadline,
+                status="not_started",
+                service=svc,
+            )
+            if result:
+                tasks_created += 1
+
+    logger.info(f"Notion: onboarded client '{name}' with {tasks_created} tasks")
+    return jsonify({
+        "success": True,
+        "notion_id": client["notion_id"],
+        "name": name,
+        "tasks_created": tasks_created,
+        "notion_url": f"https://notion.so/{client['notion_id'].replace('-', '')}",
+    })
+
+
+@app.route("/api/notion/tasks", methods=["GET"])
+def notion_list_tasks():
+    """
+    List tasks from Notion.
+    Query params: assigned_to (employee name), client_id (notion page id), status
+    """
+    assigned_to      = request.args.get("assigned_to", "")
+    client_notion_id = request.args.get("client_id", "")
+    status_filter    = request.args.get("status", "")
+
+    tasks = notion_store.list_tasks(
+        assigned_to=assigned_to,
+        client_notion_id=client_notion_id,
+        status_filter=status_filter,
+    )
+    return jsonify({"tasks": tasks, "count": len(tasks)})
+
+
+@app.route("/api/notion/tasks/<string:notion_id>", methods=["PATCH"])
+def notion_update_task(notion_id: str):
+    """
+    Update a task's status, progress, and/or submission note in Notion.
+    Body: { status?, progress?, submission_note? }
+    """
+    body   = request.get_json(silent=True) or {}
+    result = notion_store.update_task(
+        notion_id=notion_id,
+        status=body.get("status"),
+        progress=body.get("progress"),
+        submission_note=body.get("submission_note"),
+    )
+    if result:
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to update task in Notion"}), 500
+
+
+@app.route("/api/notion/dashboard", methods=["GET"])
+def notion_dashboard():
+    """
+    Returns all clients with their tasks for the project board.
+    Powers projects.html when Notion mode is enabled.
+    """
+    data = notion_store.get_dashboard_data()
+    return jsonify(data)
+
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
 

@@ -181,12 +181,22 @@ const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "
 const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
 const UID = user.user_id || "emp003";
 
+// Employee lookups — works for both emp-id keys (SQLite) and name keys (Notion)
 const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
-// Role → category column
-const ROLE_COL = {emp001:"Website",emp002:"Design",emp003:"Website",emp004:"Review",emp005:"Video",emp006:"Content",emp007:"Accounts",emp008:"Video"};
+// Role column — supports both emp-id (SQLite) and name strings (Notion)
+const ROLE_COL = {
+  emp001:"Website", Vidit:"Website",
+  emp002:"Design",  Nupur:"Design",
+  emp003:"Website", Abhinav:"Website",
+  emp004:"Review",  Kshitij:"Review",
+  emp005:"Video",   Raj:"Video",
+  emp006:"Content", Mohit:"Content",
+  emp007:"Accounts",Tanaya:"Accounts",
+  emp008:"Video",   Happy:"Video",
+};
 const COLS = ["Content","Video","Design","Website","Accounts","Review"];
 
-let rejectTaskId=null, allData=null;
+let rejectTaskId=null, rejectNotionId=null, allData=null, notionMode=false;
 
 function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
 
@@ -204,43 +214,108 @@ function overallStatus(tasks){
   const hasOverdue=tasks.some(t=>t.due_date&&t.due_date<today&&t.status!=="approved");
   const hasBlocked=tasks.some(t=>t.status==="not_started"&&t.depends_on&&t.depends_on.length);
   if(hasOverdue||hasBlocked)return"at_risk";
-  const allDone=tasks.every(t=>["approved","pending_review"].includes(t.status));
-  return allDone?"on_track":"on_track";
+  return"on_track";
 }
 
 function cellForCol(col, tasks){
-  // Find tasks whose assignee maps to this column
   const colTasks=tasks.filter(t=>ROLE_COL[t.assigned_to]===col);
   if(!colTasks.length)return`<td><div class="cell cell-waiting"><span class="icon">—</span><span class="label" style="color:var(--bdr)">N/A</span></div></td>`;
   const today=new Date().toISOString().slice(0,10);
-  const hasApproved=colTasks.some(t=>t.status==="approved");
   const allApproved=colTasks.every(t=>t.status==="approved");
   const hasBlocked=colTasks.some(t=>t.status==="not_started"&&t.depends_on&&t.depends_on.length);
   const hasOverdue=colTasks.some(t=>t.due_date&&t.due_date<today&&t.status!=="approved");
-  const hasReview=colTasks.some(t=>t.status==="pending_review");
+  const hasReview=colTasks.some(t=>t.status==="pending_review"||t.status==="In Review");
   const avgPct=Math.round(colTasks.reduce((a,t)=>a+(t.progress||0),0)/colTasks.length);
-
   let cls,icon,label;
   if(allApproved){cls="cell-done";icon="✅";label="Done";}
   else if(hasOverdue){cls="cell-risk";icon="🔴";label="Delayed";}
   else if(hasBlocked){cls="cell-blocked";icon="⏸";label="Blocked";}
   else if(hasReview){cls="cell-review";icon="⏳";label="In Review";}
-  else if(colTasks.some(t=>t.status==="in_progress")){cls="cell-progress";icon="🔄";label="In Progress";}
+  else if(colTasks.some(t=>t.status==="in_progress"||t.status==="In Progress")){cls="cell-progress";icon="🔄";label="In Progress";}
   else{cls="cell-waiting";icon="⏳";label="Waiting";}
-
   return`<td><div class="cell ${cls}"><span class="icon">${icon}</span><span class="label">${label}</span><span class="pct">${avgPct}%</span></div></td>`;
 }
 
+// ── Notion badge helper ───────────────────────────────────────────────────────
+function showNotionBadge(on){
+  let badge = document.getElementById("notion-badge");
+  if(!badge){
+    badge = document.createElement("span");
+    badge.id = "notion-badge";
+    badge.style.cssText = "display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:100px;font-size:.72rem;font-weight:700;margin-left:10px;";
+    document.querySelector(".hdr h1").appendChild(badge);
+  }
+  if(on){
+    badge.style.background = "rgba(34,211,160,.15)";
+    badge.style.color = "var(--grn)";
+    badge.textContent = "✦ Notion";
+  } else {
+    badge.style.background = "rgba(107,107,138,.15)";
+    badge.style.color = "var(--muted)";
+    badge.textContent = "⚠ Local DB";
+  }
+}
+
+// ── Main load ─────────────────────────────────────────────────────────────────
 async function load(){
-  const res=await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
-  allData=await res.json();
-  if(allData.error){document.getElementById("matrix-body").innerHTML=`<tr><td colspan="99" class="empty">${allData.error}</td></tr>`;return;}
+  // 1. Detect Notion
+  try {
+    const ns = await fetch(`${API}/api/notion/status`);
+    const nd = await ns.json();
+    notionMode = nd.configured;
+  } catch(e){ notionMode = false; }
+
+  showNotionBadge(notionMode);
+
+  if(notionMode){
+    await loadNotion();
+  } else {
+    await loadSQLite();
+  }
+}
+
+async function loadNotion(){
+  const res = await fetch(`${API}/api/notion/dashboard`);
+  const data = await res.json();
+  allData = data;
+
+  if(!data.clients || !data.clients.length){
+    document.getElementById("matrix-body").innerHTML=`<tr><td colspan="${COLS.length+2}" class="empty">No clients in Notion yet. <a href="client-onboard.html" style="color:var(--acc)">+ Onboard your first client →</a></td></tr>`;
+    document.getElementById("detail-list").innerHTML='<div class="empty">No clients in Notion yet.</div>';
+    return;
+  }
+
+  // Normalise Notion client shape → add .id alias for rendering
+  data.clients.forEach(c => { c.id = c.notion_id; c.tasks.forEach(t => { t.id = t.notion_id; }); });
 
   // Matrix head
   const head=document.getElementById("matrix-head");
   head.innerHTML=`<th>Client</th>`+COLS.map(c=>`<th>${c}</th>`).join("")+`<th>Status</th>`;
 
   // Matrix body
+  const tbody=document.getElementById("matrix-body");
+  tbody.innerHTML=data.clients.map(c=>{
+    const ov=overallStatus(c.tasks);
+    const ovLabel={at_risk:"🔴 AT RISK",on_track:"✅ ON TRACK",upcoming:"🕐 UPCOMING",complete:"🏁 COMPLETE"}[ov]||ov;
+    const notionLink = c.url ? `<a href="${c.url}" target="_blank" style="font-size:.65rem;color:var(--acc);text-decoration:none;margin-left:6px">↗</a>` : "";
+    return`<tr>
+      <td><div class="client-td">${c.name}${notionLink}</div><div class="client-sub">${c.deadline?"Due: "+c.deadline:""} · ${c.tasks.length} tasks</div></td>
+      ${COLS.map(col=>cellForCol(col,c.tasks)).join("")}
+      <td><span class="ov-pill ov-${ov}">${ovLabel}</span></td>
+    </tr>`;
+  }).join("");
+
+  renderDetail(data.clients);
+}
+
+async function loadSQLite(){
+  const res=await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
+  allData=await res.json();
+  if(allData.error){document.getElementById("matrix-body").innerHTML=`<tr><td colspan="99" class="empty">${allData.error}</td></tr>`;return;}
+
+  const head=document.getElementById("matrix-head");
+  head.innerHTML=`<th>Client</th>`+COLS.map(c=>`<th>${c}</th>`).join("")+`<th>Status</th>`;
+
   const tbody=document.getElementById("matrix-body");
   if(!allData.clients.length){tbody.innerHTML=`<tr><td colspan="${COLS.length+2}" class="empty">No clients yet.</td></tr>`;return;}
 
@@ -254,7 +329,6 @@ async function load(){
     </tr>`;
   }).join("");
 
-  // Detail view
   renderDetail(allData.clients);
 }
 
@@ -263,20 +337,22 @@ function renderDetail(clients){
   if(!clients.length){wrap.innerHTML='<div class="empty">No clients yet.</div>';return;}
   wrap.innerHTML=clients.map(c=>{
     const approved=c.tasks.filter(t=>t.status==="approved").length;
+    const notionLink = c.url ? `<a href="${c.url}" target="_blank" style="font-size:.72rem;color:var(--acc);text-decoration:none;margin-left:8px">↗ Notion</a>` : "";
     return`<div class="cb">
-      <div class="cb-head" onclick="toggleDetail(${c.id})">
-        <div><div class="cb-name">🏢 ${c.name}</div>
+      <div class="cb-head" onclick="toggleDetail('${c.id}')">
+        <div><div class="cb-name">🏢 ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
         <span style="color:var(--muted);font-size:.8rem">▼</span>
       </div>
       <div class="tasks-grid" id="dtasks-${c.id}" style="display:none">
         ${c.tasks.length?c.tasks.map(t=>renderTaskCard(t)).join(""):'<div style="color:var(--muted);font-size:.8rem">No tasks.</div>'}
+        ${!notionMode ? `
         <div class="add-task-row">
           <input type="text" id="nt-${c.id}" placeholder="New task..." />
           <select id="na-${c.id}"><option value="">Assign...</option>${Object.entries(EMP).map(([id,n])=>`<option value="${id}">${n}</option>`).join("")}</select>
           <input type="date" id="nd-${c.id}" />
           <button class="btn btn-sm btn-acc" style="padding:7px 14px" onclick="addTask(${c.id})">Add</button>
-        </div>
+        </div>` : `<p style="color:var(--muted);font-size:.75rem;padding:8px 0">✦ Manage tasks directly in <a href="${c.url||'https://notion.so'}" target="_blank" style="color:var(--acc)">Notion ↗</a></p>`}
       </div>
     </div>`;
   }).join("");
@@ -286,29 +362,62 @@ function toggleDetail(id){const el=document.getElementById("dtasks-"+id);el.styl
 
 function renderTaskCard(t){
   const pct=t.progress||0;
-  return`<div class="tc" id="tc-${t.id}">
+  // Support both emp-id (SQLite) and name (Notion) for assignee display
+  const assigneeName = EMP[t.assigned_to] || t.assigned_to || "—";
+  const taskId = t.notion_id || t.id;
+  const statusLabel = {not_started:"Not Started","Not Started":"Not Started",unlocked:"Unlocked",in_progress:"In Progress","In Progress":"In Progress",pending_review:"⏳ Review","In Review":"⏳ Review",approved:"✅ Approved","Done":"✅ Done",rejected:"↩ Changes"}[t.status]||t.status;
+  const statusKey = t.status?.toLowerCase().replace(/ /g,"_").replace(/-/g,"_") || "not_started";
+
+  return`<div class="tc" id="tc-${taskId}">
     <div class="tc-top">
       <div><div class="tc-title">${t.title}</div>
-        <div class="tc-who">👤 ${EMP[t.assigned_to]||t.assigned_to||"—"}${t.due_date?" · Due: "+t.due_date:""}</div></div>
-      <span class="sp sp-${t.status}">${{not_started:"Not Started",unlocked:"Unlocked",in_progress:"In Progress",pending_review:"⏳ Review",approved:"✅ Approved",rejected:"↩ Changes"}[t.status]||t.status}</span>
+        <div class="tc-who">👤 ${assigneeName}${t.due_date?" · Due: "+t.due_date:""}</div></div>
+      <span class="sp sp-${statusKey}">${statusLabel}</span>
     </div>
     <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
-    ${t.submission_note?`<div class="sub-box"><div class="sub-label">Submission</div>${t.submission_note}${t.submission_file?`<br><a href="${t.submission_file}" target="_blank" style="color:var(--acc)">📎 File</a>`:""}</div>`:""}
-    ${t.status==="pending_review"?`<div class="tc-actions">
+    ${t.submission_note?`<div class="sub-box"><div class="sub-label">Submission</div>${t.submission_note}</div>`:""}
+    ${(t.status==="pending_review"||t.status==="In Review")&&!notionMode?`<div class="tc-actions">
       <button class="btn-sm btn-approve" onclick="approveTask(${t.id})">✅ Approve</button>
       <button class="btn-sm btn-reject" onclick="openModal(${t.id})">↩ Changes</button>
+    </div>`:""}
+    ${(t.status==="pending_review"||t.status==="In Review")&&notionMode?`<div class="tc-actions">
+      <button class="btn-sm btn-approve" onclick="approveTaskNotion('${t.notion_id}')">✅ Approve</button>
     </div>`:""}
   </div>`;
 }
 
 async function loadBlockers(){
+  if(notionMode){
+    // In Notion mode — compute blockers client-side from dashboard data
+    const data = allData || {clients:[]};
+    const today = new Date().toISOString().slice(0,10);
+    const blockers = [];
+    (data.clients||[]).forEach(c=>{
+      c.tasks.forEach(t=>{
+        if(t.status!=="approved"&&t.due_date&&t.due_date<today){
+          blockers.push({client:c.name,task:t.title,assignee:EMP[t.assigned_to]||t.assigned_to,days:Math.floor((new Date()-new Date(t.due_date))/86400000)});
+        }
+      });
+    });
+    document.getElementById("blocker-count").textContent=blockers.length;
+    if(!blockers.length){document.getElementById("blockers-list").innerHTML=`<div class="empty">🎉 No blockers right now.</div>`;return;}
+    document.getElementById("blockers-list").innerHTML=blockers.map(b=>`
+      <div class="blocker-card">
+        <div class="blocker-top">
+          <div><div class="blocker-who">👤 ${b.assignee} <span style="color:var(--muted);font-weight:400">on</span> ${b.client}</div>
+            <div class="blocker-task">${b.task}</div></div>
+          <span class="overdue-badge overdue-yes">${b.days}d overdue</span>
+        </div>
+        <div class="action-note">⚡ Action needed: Follow up with ${b.assignee}</div>
+      </div>`).join("");
+    return;
+  }
+  // SQLite blockers
   const res=await fetch(`${API}/api/blockers?user_id=${UID}`);
   const data=await res.json();
   if(data.error){document.getElementById("blockers-list").innerHTML=`<div class="empty">${data.error}</div>`;return;}
   document.getElementById("blocker-count").textContent=data.blockers.length;
   if(!data.blockers.length){document.getElementById("blockers-list").innerHTML=`<div class="empty">🎉 No blockers right now. Everything is flowing smoothly.</div>`;return;}
-
-  // Group by blocker task
   const grouped={};
   for(const b of data.blockers){
     const key=b.blocker_task.id;
@@ -331,12 +440,13 @@ async function loadBlockers(){
   }).join("");
 }
 
+// SQLite approve/reject
 async function approveTask(id){
   const r=await fetch(`${API}/api/tasks/${id}/approve`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID})});
   const d=await r.json();
   if(d.success){toast("✅ Task approved!");load();}else toast(d.error||"Error","err");
 }
-function openModal(id){rejectTaskId=id;document.getElementById("reject-note").value="";document.getElementById("reject-modal").classList.add("open");}
+function openModal(id){rejectTaskId=id;rejectNotionId=null;document.getElementById("reject-note").value="";document.getElementById("reject-modal").classList.add("open");}
 function closeModal(){document.getElementById("reject-modal").classList.remove("open");}
 async function confirmReject(){
   const note=document.getElementById("reject-note").value.trim();
@@ -346,6 +456,15 @@ async function confirmReject(){
   closeModal();
   if(d.success){toast("↩ Changes requested");load();}else toast(d.error||"Error","err");
 }
+
+// Notion approve
+async function approveTaskNotion(notionId){
+  const r=await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved",progress:100})});
+  const d=await r.json();
+  if(d.success){toast("✅ Task approved in Notion!");load();}else toast(d.error||"Error","err");
+}
+
+// SQLite add task
 async function addTask(cid){
   const title=document.getElementById("nt-"+cid).value.trim();
   const assignee=document.getElementById("na-"+cid).value;
