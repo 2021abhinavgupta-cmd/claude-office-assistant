@@ -472,35 +472,41 @@ async function loadReview(){
     list.innerHTML='<div class="empty">ℹ️ Review panel available in Notion mode only.</div>';
     return;
   }
-  try {
-    const r = await fetch(`${API}/api/notion/tasks?status=submitted`, {signal:AbortSignal.timeout(15000)});
-    const d = await r.json();
-    const tasks = d.tasks || [];
-    document.getElementById("review-count").textContent = tasks.length;
-    if(!tasks.length){
-      list.innerHTML='<div class="empty">🎉 No tasks awaiting review right now!</div>';
-      return;
-    }
-    list.innerHTML = tasks.map(t=>{
-      const assignee = EMP[t.assigned_to]||t.assigned_to||"—";
-      return`<div class="blocker-card" id="rv-${t.notion_id}">
-        <div class="blocker-top">
-          <div>
-            <div class="blocker-who">📋 ${t.title||"Untitled"}</div>
-            <div class="blocker-task">👤 ${assignee} · 📁 ${t.client||"—"}${t.due_date?" · 📅 "+t.due_date:""}</div>
-          </div>
-          <span class="overdue-badge overdue-no" style="background:rgba(245,166,35,.15);color:var(--acc);border:none">⏳ In Review</span>
-        </div>
-        ${t.submission_note?`<div class="sub-box" style="margin-top:10px"><div class="sub-label">📝 Employee Note</div>${t.submission_note}</div>`:""}
-        <div class="tc-actions" style="margin-top:12px">
-          <button class="btn-sm btn-approve" onclick="approveTaskNotion('${t.notion_id}')">✅ Approve</button>
-          <button class="btn-sm btn-reject" onclick="openModal(null,'${t.notion_id}')">↩ Request Changes</button>
-        </div>
-      </div>`;
-    }).join("");
-  } catch(e){
-    list.innerHTML=`<div class="empty">⚠️ Could not load review queue: ${e.message}</div>`;
+  
+  // Compute review queue instantly from pre-loaded dashboard data
+  const data = allData || {clients:[]};
+  const tasks = [];
+  (data.clients||[]).forEach(c=>{
+    c.tasks.forEach(t=>{
+      if(isInReview(t)){
+        tasks.push({...t, clientName: c.name});
+      }
+    });
+  });
+
+  document.getElementById("review-count").textContent = tasks.length;
+  if(!tasks.length){
+    list.innerHTML='<div class="empty">🎉 No tasks awaiting review right now!</div>';
+    return;
   }
+  list.innerHTML = tasks.map(t=>{
+    const assignee = EMP[t.assigned_to]||t.assigned_to||"—";
+    const tid = t.notion_id || t.id;
+    return`<div class="blocker-card" id="rv-${tid}">
+      <div class="blocker-top">
+        <div>
+          <div class="blocker-who">📋 ${t.title||"Untitled"}</div>
+          <div class="blocker-task">👤 ${assignee} · 📁 ${t.clientName||t.client||"—"}${t.due_date?" · 📅 "+t.due_date:""}</div>
+        </div>
+        <span class="overdue-badge overdue-no" style="background:rgba(245,166,35,.15);color:var(--acc);border:none">⏳ In Review</span>
+      </div>
+      ${t.submission_note?`<div class="sub-box" style="margin-top:10px"><div class="sub-label">📝 Employee Note</div>${t.submission_note}</div>`:""}
+      <div class="tc-actions" style="margin-top:12px">
+        <button class="btn-sm btn-approve" onclick="approveTaskNotion('${tid}')">✅ Approve</button>
+        <button class="btn-sm btn-reject" onclick="openModal(null,'${tid}')">↩ Request Changes</button>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 function openModal(id, notionId){
