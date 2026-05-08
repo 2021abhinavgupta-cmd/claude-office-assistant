@@ -151,37 +151,51 @@
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1"
   ? "http://localhost:5000" : location.origin;
 
-const EMP_NAMES = {
-  emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",
-  emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",
-  emp007:"Tanaya",emp008:"Happy",
-};
+let useNotion = false;
 
-// Load client list
+// Normalise Notion status strings ("Not Started" → "not_started" etc.)
+function normStatus(s){
+  if(!s) return "not_started";
+  return s.toLowerCase().replace(/\s+/g,"_").replace(/-/g,"_");
+}
+
+// Load client list — Notion first, SQLite fallback
 (async()=>{
   try {
-    const r = await fetch(`${API}/api/clients`);
+    // Detect Notion
+    const ns = await fetch(`${API}/api/notion/status`, {signal:AbortSignal.timeout(5000)});
+    const nd = await ns.json();
+    useNotion = nd.configured;
+  } catch(e) {}
+
+  try {
+    const endpoint = useNotion ? `${API}/api/notion/clients` : `${API}/api/clients`;
+    const r = await fetch(endpoint);
     const d = await r.json();
     const sel = document.getElementById("client-select");
-    (d.clients||[]).forEach(c=>{
+    const clients = d.clients || [];
+
+    clients.forEach(c=>{
       const o = document.createElement("option");
-      o.value = c.id; o.textContent = c.name;
+      // Notion uses 'notion_id'; SQLite uses 'id'
+      o.value = c.notion_id || c.id;
+      o.textContent = c.name;
       sel.appendChild(o);
     });
+
     // Auto-load from ?client= param
     const params = new URLSearchParams(location.search);
     if(params.get("client")){
       sel.value = params.get("client");
       loadClientData();
     }
-  } catch(e){ console.warn("Could not load clients",e); }
+  } catch(e){ console.warn("Could not load clients", e); }
 })();
 
 async function loadClientData(){
   const clientId = document.getElementById("client-select").value;
   if(!clientId) return;
 
-  // Show loading skeleton
   document.getElementById("summary-grid").style.display = "";
   document.getElementById("tasks-panel").style.display  = "";
   document.getElementById("empty-state").style.display  = "none";
@@ -189,9 +203,21 @@ async function loadClientData(){
     '<tr class="skeleton-row"><td colspan="5"><div class="skel" style="width:60%"></div></td></tr>'.repeat(4);
 
   try {
-    const r = await fetch(`${API}/api/clients/${clientId}/tasks`);
-    const d = await r.json();
-    const tasks = d.tasks || [];
+    let tasks = [];
+    if(useNotion){
+      // Notion: filter tasks by client_id (notion page id)
+      const r = await fetch(`${API}/api/notion/tasks?client_id=${encodeURIComponent(clientId)}`, {signal:AbortSignal.timeout(15000)});
+      const d = await r.json();
+      tasks = (d.tasks || []).map(t=>({
+        ...t,
+        status: normStatus(t.status),
+        // assigned_to from Notion is already a name string
+      }));
+    } else {
+      const r = await fetch(`${API}/api/clients/${clientId}/tasks`);
+      const d = await r.json();
+      tasks = d.tasks || [];
+    }
 
     if(!tasks.length){
       document.getElementById("summary-grid").style.display = "none";
@@ -200,42 +226,37 @@ async function loadClientData(){
       return;
     }
 
-    // Compute stats
+    // Stats
     const total   = tasks.length;
     const done    = tasks.filter(t=>t.status==="approved").length;
     const wip     = tasks.filter(t=>t.status==="in_progress"||t.status==="submitted").length;
     const today   = new Date().toISOString().slice(0,10);
-    const overdue = tasks.filter(t=>t.due_date && t.due_date < today && t.status !== "approved").length;
-    const pct     = total ? Math.round(done/total*100) : 0;
+    const overdue = tasks.filter(t=>t.due_date && t.due_date<today && t.status!=="approved").length;
+    const pct     = total ? Math.round(tasks.reduce((a,t)=>a+(t.progress||progressPct(t.status)),0)/total) : 0;
 
     document.getElementById("sm-total").textContent = total;
     document.getElementById("sm-done").textContent  = done;
     document.getElementById("sm-wip").textContent   = wip;
     document.getElementById("sm-over").textContent  = overdue;
-    document.getElementById("sm-pct").textContent   = pct + "%";
-    document.getElementById("sm-bar").style.width   = pct + "%";
+    document.getElementById("sm-pct").textContent   = pct+"%";
+    document.getElementById("sm-bar").style.width   = pct+"%";
 
-    // Render tasks table (no internal data like cost/IDs)
-    const statusClass = s => {
-      if(s==="approved")    return "approved";
-      if(s==="submitted")   return "submitted";
-      if(s==="in_progress") return "in_progress";
-      if(s==="not_started") return "not_started";
-      return "";
-    };
+    const statusClass = s => ({
+      approved:"approved", submitted:"submitted",
+      in_progress:"in_progress", not_started:"not_started",
+    }[s] || "not_started");
+
     const statusLabel = s => ({
       approved:"✅ Approved", submitted:"📤 Submitted",
       in_progress:"🔄 In Progress", not_started:"⏳ Not Started",
     }[s] || s);
 
-    const isOverdue = t => t.due_date && t.due_date < today && t.status !== "approved";
+    const isOverdue = t => t.due_date && t.due_date<today && t.status!=="approved";
 
     document.getElementById("task-tbody").innerHTML = tasks.map(t=>`
       <tr>
-        <td><strong>${escHtml(t.title)}</strong>
-          ${t.description ? `<div style="color:var(--muted);font-size:.75rem;margin-top:3px">${escHtml(t.description.slice(0,80))}${t.description.length>80?"...":""}</div>` : ""}
-        </td>
-        <td>${EMP_NAMES[t.assigned_to]||t.assigned_to||"—"}</td>
+        <td><strong>${escHtml(t.title||"")}</strong></td>
+        <td>${escHtml(t.assigned_to||"—")}</td>
         <td>
           <span class="badge ${isOverdue(t)?"overdue":statusClass(t.status)}">
             ${isOverdue(t)?"⚠️ Overdue":statusLabel(t.status)}
@@ -243,14 +264,14 @@ async function loadClientData(){
         </td>
         <td style="color:var(--muted);font-size:.82rem">${t.due_date||"—"}</td>
         <td>
-          <div class="prog-wrap"><div class="prog-fill" style="width:${progressPct(t.status)}%;background:${progressColor(t.status)}"></div></div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:3px">${progressPct(t.status)}%</div>
+          <div class="prog-wrap"><div class="prog-fill" style="width:${t.progress||progressPct(t.status)}%;background:${progressColor(t.status)}"></div></div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:3px">${t.progress||progressPct(t.status)}%</div>
         </td>
       </tr>`).join("");
 
   } catch(e){
     document.getElementById("task-tbody").innerHTML =
-      `<tr><td colspan="5" class="empty">⚠️ Could not load data. Please try again.</td></tr>`;
+      `<tr><td colspan="5" class="empty">⚠️ Could not load data: ${e.message||"please try again."}</td></tr>`;
     console.error(e);
   }
 }
@@ -262,7 +283,7 @@ function progressColor(status){
   return {approved:"var(--grn)",submitted:"var(--acc)",in_progress:"var(--yel)",not_started:"var(--muted)"}[status]??"var(--muted)";
 }
 function escHtml(str){
-  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 </script>
 </body>
