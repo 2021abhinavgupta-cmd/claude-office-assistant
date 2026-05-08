@@ -269,6 +269,7 @@ function removeTask(btn){
 async function createClient(){
   const name=document.getElementById("name").value.trim();
   const btn=document.getElementById("create-btn");
+  const errEl=document.getElementById("err3");
 
   // Collect tasks from the editable DOM rows
   const taskRows=[...document.querySelectorAll(".task-row")];
@@ -278,80 +279,87 @@ async function createClient(){
   })).filter(t=>t.title);
 
   if(!customTasks.length){
-    document.getElementById("err3").textContent="Please add at least one task.";
-    document.getElementById("err3").style.display="block"; return;
+    errEl.textContent="Please add at least one task.";
+    errEl.style.display="block"; return;
   }
+  errEl.style.display="none";
 
-  btn.disabled=true; btn.textContent="Creating in Notion...";
+  const resetBtn = () => { btn.disabled=false; btn.textContent="🚀 Create Project"; };
+  const showErr  = (msg) => { errEl.textContent=msg; errEl.style.display="block"; resetBtn(); };
 
-  // Check if Notion is configured first
-  let useNotion = false;
+  btn.disabled=true; btn.textContent="⏳ Creating...";
+
   try {
-    const ns = await fetch(`${API}/api/notion/status`);
-    const nd = await ns.json();
-    useNotion = nd.configured;
-  } catch(e) {}
+    // Check if Notion is configured
+    let useNotion = false;
+    try {
+      const ns = await fetch(`${API}/api/notion/status`, {signal: AbortSignal.timeout(5000)});
+      const nd = await ns.json();
+      useNotion = nd.configured;
+    } catch(e) { /* Notion status check failed — use SQLite */ }
 
-  if (useNotion) {
-    // ── Notion path: send client + fully-custom task list ──
-    const res = await fetch(`${API}/api/notion/clients`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        name,
-        contact:      document.getElementById("contact").value.trim(),
-        requirements: document.getElementById("requirements").value.trim(),
-        deadline:     document.getElementById("deadline").value,
-        budget:       document.getElementById("budget").value.trim(),
-        notes:        document.getElementById("notes").value.trim(),
-        services:     [...selected],
-        tasks:        customTasks,   // user-edited task list overrides auto-gen
-      }),
-    });
-    const data = await res.json();
-    if (!data.success) {
-      document.getElementById("err3").textContent = data.error || "Failed to create client in Notion.";
-      document.getElementById("err3").style.display = "block";
-      btn.disabled = false; btn.textContent = "🚀 Create Project";
-      return;
-    }
-    // Show success with Notion link
-    document.getElementById("main-card").style.display = "none";
-    document.getElementById("success-msg").innerHTML =
-      `"${name}" created in Notion with ${data.tasks_created||0} tasks auto-assigned. ` +
-      (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
-    document.getElementById("success").style.display = "block";
+    if (useNotion) {
+      btn.textContent="⏳ Saving to Notion...";
+      const res = await fetch(`${API}/api/notion/clients`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          name,
+          contact:      document.getElementById("contact").value.trim(),
+          requirements: document.getElementById("requirements").value.trim(),
+          deadline:     document.getElementById("deadline").value,
+          budget:       document.getElementById("budget").value.trim(),
+          notes:        document.getElementById("notes").value.trim(),
+          services:     [...selected],
+          tasks:        customTasks,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const data = await res.json();
+      if (!data.success) { showErr(data.error || "Failed to create client in Notion."); return; }
 
-  } else {
-    // ── Fallback: SQLite path ──
-    btn.textContent = "Creating...";
-    const cr = await fetch(`${API}/api/clients`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        user_id: UID, name,
-        contact:      document.getElementById("contact").value.trim(),
-        requirements: document.getElementById("requirements").value.trim(),
-        deadline:     document.getElementById("deadline").value,
-        status: "active",
-      }),
-    });
-    const cd = await cr.json();
-    if (!cd.success) {
-      document.getElementById("err3").textContent = cd.error || "Failed to create client.";
-      document.getElementById("err3").style.display = "block";
-      btn.disabled = false; btn.textContent = "🚀 Create Project";
-      return;
+      // Success
+      document.getElementById("main-card").style.display = "none";
+      document.getElementById("success-msg").innerHTML =
+        `"${name}" created in Notion with ${data.tasks_created||0} tasks auto-assigned. ` +
+        (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
+      document.getElementById("success").style.display = "block";
+
+    } else {
+      btn.textContent="⏳ Saving...";
+      const cr = await fetch(`${API}/api/clients`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          user_id: UID, name,
+          contact:      document.getElementById("contact").value.trim(),
+          requirements: document.getElementById("requirements").value.trim(),
+          deadline:     document.getElementById("deadline").value,
+          status: "active",
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const cd = await cr.json();
+      if (!cd.success) { showErr(cd.error || "Failed to create client."); return; }
+
+      const ar = await fetch(`${API}/api/clients/${cd.client_id}/auto-tasks`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({user_id:UID, services:[...selected], deadline:document.getElementById("deadline").value}),
+        signal: AbortSignal.timeout(10000),
+      });
+      const ad = await ar.json();
+      document.getElementById("main-card").style.display = "none";
+      document.getElementById("success-msg").textContent = `"${name}" created with ${ad.tasks_created||0} tasks auto-assigned to the team.`;
+      document.getElementById("success").style.display = "block";
     }
-    const ar = await fetch(`${API}/api/clients/${cd.client_id}/auto-tasks`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({user_id:UID, services:[...selected], deadline:document.getElementById("deadline").value}),
-    });
-    const ad = await ar.json();
-    document.getElementById("main-card").style.display = "none";
-    document.getElementById("success-msg").textContent = `"${name}" created with ${ad.tasks_created||0} tasks auto-assigned to the team.`;
-    document.getElementById("success").style.display = "block";
+
+  } catch(err) {
+    if (err.name === "TimeoutError") {
+      showErr("Request timed out — check your server is running and Notion env vars are set on Railway.");
+    } else {
+      showErr(`Error: ${err.message || "Something went wrong. Please try again."}`);
+    }
   }
 }
 </script>
