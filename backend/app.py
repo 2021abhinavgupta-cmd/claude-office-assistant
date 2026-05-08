@@ -1050,7 +1050,7 @@ def create_presentation():
         f"Include: Title slide (#1), {slide_count-2} content slides, Summary/CTA slide (#{slide_count})."
     )
 
-    result = call_claude("presentations", prompt, user_id, max_tokens=8192)
+    result = call_claude("presentations", prompt, user_id, max_tokens=25000)
     if not result["success"]:
         return jsonify({"error": result.get("error", "Generation failed")}), 500
 
@@ -1419,8 +1419,10 @@ def call_claude_with_context(task_type: str, messages: list,
         api_messages = api_messages[:-1] + [{"role": "user", "content": content_blocks}]
 
     try:
+        # Coding tasks need more room — full functions/modules can exceed 4096 tokens
+        effective_max = 8192 if task_type in ("coding", "html_design") else MAX_TOKENS
         response      = client.messages.create(
-            model=model_name, max_tokens=MAX_TOKENS,
+            model=model_name, max_tokens=effective_max,
             system=system_prompt, messages=api_messages,
         )
         output_text   = response.content[0].text
