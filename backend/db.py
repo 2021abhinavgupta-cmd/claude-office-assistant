@@ -62,6 +62,13 @@ def init_db():
             expires_at  TEXT NOT NULL
         )""")
 
+        # Projects
+        conn.execute("""CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            data TEXT
+        )""")
+
         # Add category column to tasks if not already present
         try:
             conn.execute("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT 'general'")

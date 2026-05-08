@@ -93,7 +93,14 @@ def delete_memory(user_id: str, memory_id: str) -> bool:
         return False
         
     mems = json.loads(row[0])
-    new = [m for m in mems if m["id"] != memory_id]
+    # Handle dict structure
+    if isinstance(mems, dict):
+        # legacy_notes stores strings, not dicts — can't delete by ID
+        conn.close()
+        return False
+
+    # Handle legacy list structure
+    new = [m for m in mems if m.get("id") != memory_id]
     if len(new) == len(mems):
         conn.close()
         return False
@@ -144,10 +151,16 @@ def format_team_memories() -> str:
     for uid, data in rows:
         name = emp_map.get(uid, uid)
         try:
-            mems = list(reversed(json.loads(data)))
-            if mems:
-                lines = "\n".join(f"  • {m['content']}" for m in mems[-10:])
-                res.append(f"[{name}'s Preferences]:\n{lines}")
+            data_obj = json.loads(data)
+            if isinstance(data_obj, dict):
+                notes = data_obj.get("legacy_notes", [])
+                if notes:
+                    lines = "\n".join(f"  • {n}" for n in notes[-10:])
+                    res.append(f"[{name}'s Preferences]:\n{lines}")
+            elif isinstance(data_obj, list):
+                if data_obj:
+                    lines = "\n".join(f"  • {m['content']}" for m in data_obj[-10:])
+                    res.append(f"[{name}'s Preferences]:\n{lines}")
         except:
             pass
             
