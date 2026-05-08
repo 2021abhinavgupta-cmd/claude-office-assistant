@@ -7,7 +7,7 @@
       "whatsapp": "+919558461099",
       "department": "Engineering",
       "status": "active",
-      "pin": "0000",
+      "pin": "9090",
       "tone_profile": "Formal, detailed and highly analytical.",
       "checkins": []
     },
@@ -29,7 +29,7 @@
       "whatsapp": "+919702908716",
       "department": "Engineering",
       "status": "active",
-      "pin": "0000",
+      "pin": "2523",
       "tone_profile": "Technical, use bullet points, and provide code-centric context.",
       "checkins": []
     },
@@ -51,7 +51,7 @@
       "whatsapp": "+918097002108",
       "department": "General",
       "status": "active",
-      "pin": "0000",
+      "pin": "6969",
       "tone_profile": "Creative, engaging, and visually descriptive.",
       "checkins": []
     },
@@ -73,7 +73,7 @@
       "whatsapp": "+918855933855",
       "department": "General",
       "status": "active",
-      "pin": "0000",
+      "pin": "1000",
       "tone_profile": "Professional, precise, and numbers-driven.",
       "checkins": []
     },
@@ -84,7 +84,7 @@
       "whatsapp": "+918529820540",
       "department": "Engineering",
       "status": "active",
-      "pin": "0000",
+      "pin": "0230",
       "tone_profile": "Creative, highly visual, and focused on video generation mechanics.",
       "checkins": []
     }
