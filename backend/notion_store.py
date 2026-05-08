@@ -225,14 +225,14 @@ def create_task(title: str, client_name: str, client_notion_id: str,
     payload = {
         "parent": {"database_id": TASKS_DB_ID},
         "properties": {
-            "Title":      _title(title),
-            "Client":     _text(client_name),
-            "ClientID":   _text(client_notion_id),
-            "AssignedTo": _select(assigned_to),
-            "DueDate":    _date(due_date),
-            "Status":     _select(status),
-            "Progress":   _number(progress),
-            "Service":    _select(service),
+            "Task":          _title(title),
+            "Customer Name": _text(client_name),
+            "Client ID":     _text(client_notion_id),
+            "Assigned To":   _select(assigned_to),
+            "Due Date":      _date(due_date),
+            "Status":        _select(status),
+            "Progress":      _number(progress),
+            "Task Type":     _select(service),
         },
     }
 
@@ -263,9 +263,9 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
 
     filters = []
     if assigned_to:
-        filters.append({"property": "AssignedTo", "select": {"equals": assigned_to}})
+        filters.append({"property": "Assigned To", "select": {"equals": assigned_to}})
     if client_notion_id:
-        filters.append({"property": "ClientID", "rich_text": {"equals": client_notion_id}})
+        filters.append({"property": "Client ID", "rich_text": {"equals": client_notion_id}})
     if status_filter:
         filters.append({"property": "Status", "select": {"equals": status_filter}})
 
@@ -289,14 +289,14 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             props = p.get("properties", {})
             tasks.append({
                 "notion_id":   p["id"],
-                "title":       _get_text(props.get("Title", {})),
-                "client":      _get_text(props.get("Client", {})),
-                "client_id":   _get_text(props.get("ClientID", {})),
-                "assigned_to": _get_select(props.get("AssignedTo", {})),
-                "due_date":    _get_date(props.get("DueDate", {})),
+                "title":       _get_text(props.get("Task", {})),
+                "client":      _get_text(props.get("Customer Name", {})),
+                "client_id":   _get_text(props.get("Client ID", {})),
+                "assigned_to": _get_select(props.get("Assigned To", {})),
+                "due_date":    _get_date(props.get("Due Date", {})),
                 "status":      _get_select(props.get("Status", {})),
                 "progress":    _get_number(props.get("Progress", {})),
-                "service":     _get_select(props.get("Service", {})),
+                "service":     _get_select(props.get("Task Type", {})),
                 "url":         p.get("url", ""),
             })
         return tasks
@@ -320,7 +320,7 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
     if progress is not None:
         props["Progress"] = _number(progress)
     if submission_note is not None:
-        props["SubmissionNote"] = _text(submission_note)
+        props["Notes"] = _text(submission_note)
 
     if not props:
         return True  # nothing to update
