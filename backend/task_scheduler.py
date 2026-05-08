@@ -8,6 +8,9 @@ from db import get_connection
 
 logger = logging.getLogger(__name__)
 
+import json
+from pathlib import Path
+
 # Risk escalation thresholds (days overdue)
 RISK_THRESHOLDS = {
     "day1": 1,   # Friendly reminder to assignee
@@ -16,11 +19,13 @@ RISK_THRESHOLDS = {
     "day5": 5,   # Mark CRITICAL
 }
 
-EMP_NAMES = {
-    "emp001": "Vidit",  "emp002": "Nupur",   "emp003": "Abhinav",
-    "emp004": "Kshitij","emp005": "Raj",     "emp006": "Mohit",
-    "emp007": "Tanaya", "emp008": "Happy",
-}
+def _load_emp_names() -> dict:
+    try:
+        emp_path = Path(__file__).parent.parent / "config" / "employees.json"
+        with open(emp_path) as f:
+            return {e["id"]: e["name"] for e in json.load(f).get("employees", [])}
+    except Exception:
+        return {}
 
 def _today_str():
     return date.today().isoformat()
@@ -54,13 +59,14 @@ def check_overdue_tasks():
     tasks = cur.fetchall()
 
     alerts_fired = []
+    emp_names = _load_emp_names()
 
     for (tid, title, assignee, due_date, status, client_name) in tasks:
         days = _days_overdue(due_date)
         if days == 0:
             continue
 
-        emp_name = EMP_NAMES.get(assignee, assignee)
+        emp_name = emp_names.get(assignee, assignee)
 
         # Fetch current risk row
         cur.execute("SELECT risk_level, alerted_day1, alerted_day2, alerted_day3, alerted_day5, last_checked FROM task_risk WHERE task_id=?", (tid,))
@@ -184,6 +190,9 @@ def get_all_alerts(days_back: int = 7) -> list:
     """)
     rows = cur.fetchall()
     conn.close()
+    
+    emp_names = _load_emp_names()
+    
     return [
         {
             "task_id":     r[0],
@@ -191,7 +200,7 @@ def get_all_alerts(days_back: int = 7) -> list:
             "updated_at":  r[2],
             "title":       r[3],
             "assigned_to": r[4],
-            "assignee_name": EMP_NAMES.get(r[4], r[4]),
+            "assignee_name": emp_names.get(r[4], r[4]),
             "due_date":    r[5],
             "status":      r[6],
             "client_name": r[7],

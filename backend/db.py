@@ -10,6 +10,8 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
     # Enable Write-Ahead Logging for high concurrency
     conn.execute("PRAGMA journal_mode=WAL")
+    # NORMAL is the recommended synchronous setting for WAL
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 def init_db():
@@ -20,6 +22,8 @@ def init_db():
         
         # Conversations (storing the entire JSON dict to minimize refactoring)
         conn.execute("CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, data TEXT)")
+        # Index to prevent full table scans when querying by user_id
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations (json_extract(data, '$.user_id'))")
         
         # User Memory
         conn.execute("CREATE TABLE IF NOT EXISTS memory (user_id TEXT PRIMARY KEY, data TEXT)")
