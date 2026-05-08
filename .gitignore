@@ -10,3 +10,15 @@ dist/
 build/
 *.json.tmp
 .env
+
+# SQLite WAL/SHM temp files
+*.db-shm
+*.db-wal
+
+# Git merge artifacts
+*.resolved
+
+# macOS
+**/.DS_Store
+.AppleDouble
+.LSOverride
