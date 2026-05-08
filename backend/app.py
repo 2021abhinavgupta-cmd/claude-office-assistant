@@ -1289,25 +1289,30 @@ def get_employees():
 def employee_checkin():
     """
     Records an employee check-in or check-out.
-    Body: { whatsapp, action: 'in'|'out', notes? }
+    Body: { emp_id OR whatsapp, action: 'in'|'out', notes? }
+    emp_id is preferred for the admin dashboard.
     """
     body     = request.get_json(silent=True) or {}
+    emp_id   = body.get("emp_id", "").strip()
     whatsapp = body.get("whatsapp", "").strip()
     action   = body.get("action", "in").strip()
     notes    = body.get("notes", "")
 
-    if not whatsapp:
-        return jsonify({"error": "whatsapp number required"}), 400
+    if not emp_id and not whatsapp:
+        return jsonify({"error": "emp_id or whatsapp required"}), 400
 
     data = _load_employees()
     found = None
     for emp in data["employees"]:
-        if emp.get("whatsapp") == whatsapp:
+        if emp_id and emp.get("id") == emp_id:
+            found = emp
+            break
+        if whatsapp and emp.get("whatsapp") == whatsapp:
             found = emp
             break
 
     if not found:
-        return jsonify({"error": "Employee not found", "whatsapp": whatsapp}), 404
+        return jsonify({"error": "Employee not found"}), 404
 
     entry = {
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -1342,6 +1347,7 @@ def employee_summary():
             if c["timestamp"].startswith(today)
         ]
         summary.append({
+            "emp_id":     emp.get("id", ""),
             "name":       emp["name"],
             "role":       emp["role"],
             "department": emp["department"],

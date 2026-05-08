@@ -374,14 +374,20 @@
     </div>
   </div>
 
-  <!-- Admin Attendance Logs -->
-  <div class="panel" style="margin-bottom:24px" id="admin-attendance-panel" style="display:none;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h2 style="margin-bottom:0">🕒 Employee Attendance (Admin Only)</h2>
-      <a href="#" id="export-attendance-btn" target="_blank" style="display:none; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Export Full CSV</a>
+  <!-- Admin Attendance Panel -->
+  <div class="panel" style="margin-bottom:24px" id="admin-attendance-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <div>
+        <h2 style="margin-bottom:4px">🕒 Live Attendance</h2>
+        <div style="color:var(--muted);font-size:.8rem" id="att-date">Loading...</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="att-summary-badge" style="font-size:.8rem;background:var(--surface2);border:1px solid var(--border);padding:4px 12px;border-radius:100px">—</span>
+        <a href="#" id="export-attendance-btn" target="_blank" style="display:none; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ CSV</a>
+      </div>
     </div>
-    <div id="attendance-wrap" style="overflow-x:auto">
-      <div class="empty-state">Verifying admin access...</div>
+    <div id="attendance-wrap">
+      <div class="empty-state">Checking access...</div>
     </div>
   </div>
 
@@ -636,59 +642,87 @@ function renderDashboard(d) {
 
 async function loadAttendance() {
   const panel = document.getElementById("admin-attendance-panel");
-  const wrap = document.getElementById("attendance-wrap");
-  
+  const wrap  = document.getElementById("attendance-wrap");
+  const badge = document.getElementById("att-summary-badge");
+  const dateEl = document.getElementById("att-date");
+
   const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  if (user.user_id !== "emp001" && user.user_id !== "emp003" && user.user_id !== "emp004") {
-    panel.style.display = "none";
-    return;
-  }
-  
-  panel.style.display = "block";
+  const isAdmin = ["emp001","emp003","emp004"].includes(user.user_id);
+
+  // Show export button for admins
   const exportBtn = document.getElementById("export-attendance-btn");
-  exportBtn.style.display = "inline-flex";
-  exportBtn.href = `/api/attendance/export?user_id=${user.user_id}`;
+  if (isAdmin) {
+    exportBtn.style.display = "inline-flex";
+    exportBtn.href = `${API}/api/attendance/export?user_id=${user.user_id}`;
+  }
+
   try {
-    const res = await fetch(`${API}/api/attendance/logs?user_id=${user.user_id}`);
+    const res  = await fetch(`${API}/api/employees/summary`);
     const data = await res.json();
-    if (!res.ok) {
-      wrap.innerHTML = `<div class="empty-state">Unauthorized</div>`;
+    const emps = data.employees || [];
+    const today = new Date().toLocaleDateString("en-IN", {weekday:"long",day:"numeric",month:"short"});
+    if (dateEl) dateEl.textContent = today;
+
+    const inCount = emps.filter(e => e.status === "in").length;
+    badge.textContent = `${inCount} / ${emps.length} in office`;
+    badge.style.color = inCount > 0 ? "var(--green)" : "var(--muted)";
+
+    if (!emps.length) {
+      wrap.innerHTML = '<div class="empty-state">No employees found.</div>';
       return;
     }
-    
-    if (data.logs.length === 0) {
-      wrap.innerHTML = `<div class="empty-state">No attendance records yet</div>`;
-      return;
-    }
-    
-    let html = `
-      <table class="calls-table">
-        <tr>
-          <th>Timestamp</th>
-          <th>Employee</th>
-          <th>Action</th>
-        </tr>
-    `;
-    data.logs.forEach(log => {
-      const ts = new Date(log.timestamp).toLocaleString();
-      const empName = formatUser(log.user_id);
-      const actionHtml = log.action === "in" 
-        ? `<span class="tier-badge haiku">Clocked In</span>` 
-        : `<span class="tier-badge crit">Clocked Out</span>`;
-        
-      html += `
-        <tr>
-          <td>${ts}</td>
-          <td><strong>${empName}</strong></td>
-          <td>${actionHtml}</td>
-        </tr>
-      `;
+
+    wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${
+      emps.map(emp => {
+        const isIn     = emp.status === "in";
+        const lastSeen = emp.last_seen ? new Date(emp.last_seen).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : null;
+        const statusDot = isIn
+          ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22d3a0;margin-right:6px"></span>'
+          : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px"></span>';
+        const timeLabel = lastSeen
+          ? `<div style="color:var(--muted);font-size:.72rem;margin-top:2px">${isIn ? '🟢 In since' : '🔴 Out at'} ${lastSeen}</div>`
+          : `<div style="color:var(--muted);font-size:.72rem;margin-top:2px">Not checked in yet</div>`;
+
+        const canAct = isAdmin;
+        const btnIn  = canAct ? `<button onclick="doCheckin('${emp.emp_id}','in',this)" style="flex:1;padding:7px;border-radius:8px;border:none;background:rgba(34,211,160,.15);color:#22d3a0;font-size:.75rem;cursor:pointer;font-weight:600;transition:all .15s" onmouseover="this.style.background='rgba(34,211,160,.3)'" onmouseout="this.style.background='rgba(34,211,160,.15)'">✅ In</button>` : "";
+        const btnOut = canAct ? `<button onclick="doCheckin('${emp.emp_id}','out',this)" style="flex:1;padding:7px;border-radius:8px;border:none;background:rgba(239,68,68,.12);color:#f87171;font-size:.75rem;cursor:pointer;font-weight:600;transition:all .15s" onmouseover="this.style.background='rgba(239,68,68,.25)'" onmouseout="this.style.background='rgba(239,68,68,.12)'">🚪 Out</button>` : "";
+
+        return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:border-color .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div>
+            <div style="font-weight:700;font-size:.95rem">${statusDot}${emp.name}</div>
+            <div style="color:var(--muted);font-size:.75rem;margin-top:2px">${emp.role}</div>
+            ${timeLabel}
+          </div>
+          ${canAct ? `<div style="display:flex;gap:6px">${btnIn}${btnOut}</div>` : ""}
+        </div>`;
+      }).join("")
+    }</div>`;
+
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty-state">⚠️ Could not load attendance: ${e.message}</div>`;
+  }
+}
+
+async function doCheckin(empId, action, btn) {
+  const orig = btn.textContent;
+  btn.textContent = "...";
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/employees/checkin`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ emp_id: empId, action })
     });
-    html += `</table>`;
-    wrap.innerHTML = html;
-    
-  } catch (err) {
-    wrap.innerHTML = `<div class="empty-state">Failed to load attendance logs.</div>`;
+    const d = await r.json();
+    if (d.success) {
+      await loadAttendance(); // Refresh the grid
+    } else {
+      btn.textContent = "⚠️";
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    }
+  } catch(e) {
+    btn.textContent = "⚠️";
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
   }
 }
 
