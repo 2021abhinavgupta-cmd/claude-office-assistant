@@ -105,130 +105,142 @@
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
 const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
-const UID = user.user_id || "emp002";
+const USER_NAME = user.user_name || user.name || "";
+const UID = user.user_id || user.id || "";
 const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
 
-document.getElementById("greeting").textContent = `Showing tasks for ${EMP[UID]||UID}`;
+document.getElementById("greeting").textContent = `Showing tasks for ${USER_NAME || EMP[UID] || "you"}`;
 
-function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
+function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3500)}
 
-function spLabel(s){return{not_started:"Not Started",unlocked:"Unlocked 🔓",in_progress:"In Progress",pending_review:"⏳ In Review",approved:"✅ Approved",rejected:"↩ Changes Needed"}[s]||s}
+// Normalise Notion status strings
+function normStatus(s){
+  if(!s) return "not_started";
+  const map={"not started":"not_started","in progress":"in_progress","in_review":"submitted","pending review":"submitted","done":"approved"};
+  const lower=s.toLowerCase().replace(/[-\s]+/g,"_");
+  return map[s.toLowerCase()]||lower;
+}
+
+function spLabel(s){return{not_started:"Not Started",in_progress:"In Progress 🔄",submitted:"⏳ In Review",approved:"✅ Approved"}[s]||s}
+function progressPct(s){return{not_started:0,in_progress:40,submitted:75,approved:100}[s]??0}
+
+let useNotion = false;
 
 async function load(){
   const today = new Date().toISOString().slice(0,10);
-
-  // Load my tasks
-  const res = await fetch(`${API}/api/projects?user_id=${UID}`);
-  const data = await res.json();
   const wrap = document.getElementById("tasks-wrap");
-  const myTasks = [];
-  for(const c of (data.clients||[])){
-    for(const t of (c.tasks||[])){
-      if(t.assigned_to===UID) myTasks.push({...t,client_name:c.name});
-    }
+
+  // Detect Notion
+  try {
+    const ns = await fetch(`${API}/api/notion/status`, {signal:AbortSignal.timeout(5000)});
+    const nd = await ns.json();
+    useNotion = nd.configured;
+  } catch(e){}
+
+  if(!useNotion){
+    wrap.innerHTML='<div class="empty">⚙️ Notion is not configured. Add NOTION_TOKEN and DB IDs to Railway env vars.</div>';
+    return;
   }
 
-  // Auto-mark as opened (10%)
-  for(const t of myTasks){
-    if(!t.opened_at && !["not_started","approved"].includes(t.status)){
-      await fetch(`${API}/api/tasks/${t.id}/open`,{method:"POST"});
-    }
+  // Fetch tasks assigned to this user
+  const assignedName = USER_NAME || EMP[UID] || "";
+  if(!assignedName){
+    wrap.innerHTML='<div class="empty">⚠️ Could not determine your name. Please log in again.</div>';
+    return;
   }
 
-  // Load blocker info
-  let blockerMap = {};
-  try{
-    const br=await fetch(`${API}/api/blockers?user_id=emp003`); // use admin to load
-    const bd=await br.json();
-    // Find blockers caused by this user
-    for(const b of (bd.blockers||[])){
-      if(b.blocker_task.assigned_to===UID){
-        if(!blockerMap[b.blocker_task.id])blockerMap[b.blocker_task.id]=[];
-        blockerMap[b.blocker_task.id].push(b.blocked_task);
-      }
-    }
-  }catch(e){}
-
-  // Alert banner
-  if(Object.keys(blockerMap).length){
-    const banner=document.getElementById("alert-banner");
-    banner.style.display="block";
-    document.getElementById("alert-items").innerHTML = Object.values(blockerMap).flat()
-      .map(b=>`<div class="al-item">└─▶ <span>${b.name}</span> is waiting on you (${b.title})</div>`).join("");
+  let tasks = [];
+  try {
+    const r = await fetch(`${API}/api/notion/tasks?assigned_to=${encodeURIComponent(assignedName)}`, {signal:AbortSignal.timeout(15000)});
+    const d = await r.json();
+    tasks = (d.tasks||[]).map(t=>({...t, status: normStatus(t.status)}));
+  } catch(e){
+    wrap.innerHTML=`<div class="empty">⚠️ Could not load tasks: ${e.message}</div>`;
+    return;
   }
 
-  if(!myTasks.length){wrap.innerHTML='<div class="empty">🎉 No tasks assigned to you yet!</div>';return;}
+  if(!tasks.length){
+    wrap.innerHTML='<div class="empty">🎉 No tasks assigned to you yet!</div>';
+    return;
+  }
 
-  const active  = myTasks.filter(t=>!["approved","not_started"].includes(t.status));
-  const pending = myTasks.filter(t=>t.status==="not_started"||t.status==="unlocked");
-  const done    = myTasks.filter(t=>t.status==="approved");
+  const active  = tasks.filter(t=>t.status==="in_progress");
+  const pending = tasks.filter(t=>t.status==="not_started");
+  const review  = tasks.filter(t=>t.status==="submitted");
+  const done    = tasks.filter(t=>t.status==="approved");
 
   let html="";
-  if(active.length){html+=`<div class="sec-lbl">🔥 Active — ${active.length} task${active.length>1?"s":""}</div>`+active.map(t=>renderTask(t,today,blockerMap)).join("");}
-  if(pending.length){html+=`<div class="sec-lbl">📋 Up Next — ${pending.length}</div>`+pending.map(t=>renderTask(t,today,blockerMap)).join("");}
-  if(done.length){html+=`<div class="sec-lbl">✅ Done — ${done.length}</div>`+done.map(t=>renderTask(t,today,{})).join("");}
+  if(active.length)  html+=`<div class="sec-lbl">🔥 Active — ${active.length} task${active.length>1?"s":""}</div>`+active.map(t=>renderTask(t,today)).join("");
+  if(pending.length) html+=`<div class="sec-lbl">📋 Up Next — ${pending.length}</div>`+pending.map(t=>renderTask(t,today)).join("");
+  if(review.length)  html+=`<div class="sec-lbl">⏳ In Review — ${review.length}</div>`+review.map(t=>renderTask(t,today)).join("");
+  if(done.length)    html+=`<div class="sec-lbl">✅ Done — ${done.length}</div>`+done.map(t=>renderTask(t,today)).join("");
   wrap.innerHTML=html;
 
-  // Attach submit handlers
+  // Submit form handlers
   wrap.querySelectorAll("form.sf").forEach(form=>{
-    form.addEventListener("submit",async e=>{
+    form.addEventListener("submit", async e=>{
       e.preventDefault();
-      const tid=form.dataset.tid;
-      const note=form.querySelector("textarea").value.trim();
-      const file=form.querySelector(".file-input").value.trim();
+      const nid   = form.dataset.nid;
+      const note  = form.querySelector("textarea").value.trim();
+      const fileEl= form.querySelector(".file-input");
+      const file  = fileEl ? fileEl.value.trim() : "";
       if(!note){toast("Add a note first","err");return;}
       const btn=form.querySelector("button[type=submit]");
       btn.disabled=true; btn.textContent="Submitting...";
-      const r=await fetch(`${API}/api/tasks/${tid}/submit`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({note,file_url:file})});
-      const d=await r.json();
-      if(d.success){toast(`✅ Submitted — ${d.progress}% progress`);load();}
-      else{toast(d.error||"Error","err");btn.disabled=false;btn.textContent="Submit Work →";}
+      try{
+        const r = await fetch(`${API}/api/notion/tasks/${nid}`,{
+          method:"PATCH",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({status:"submitted",progress:75,submission_note:note+(file?`\nProof: ${file}`:"")}),
+          signal:AbortSignal.timeout(10000),
+        });
+        const d = await r.json();
+        if(d.success){toast("✅ Submitted for review — 75% progress");load();}
+        else{toast(d.error||"Error","err");btn.disabled=false;btn.textContent="Submit Work →";}
+      }catch(err){toast("Error: "+err.message,"err");btn.disabled=false;btn.textContent="Submit Work →";}
     });
   });
 }
 
-function renderTask(t, today, blockerMap){
-  const pct = t.progress||0;
-  const isBlocked = t.status==="not_started" && t.depends_on && t.depends_on.length;
+function renderTask(t, today){
+  const pct     = t.progress || progressPct(t.status);
   const isOverdue = t.due_date && t.due_date<today && t.status!=="approved";
-  const blocking = blockerMap[t.id]||[];
-  const subCount = t.submission_count||0;
 
   let body="";
-  // Rejection note
-  if(t.rejection_note) body+=`<div class="rej-box"><div class="rej-title">↩ Revision Required</div><p>${t.rejection_note}</p></div>`;
-  // Approved
-  if(t.status==="approved") body+=`<div class="done-box">🎉 Approved by founder — great work!</div>`;
-  // In review
-  if(t.status==="pending_review") body+=`<div class="done-box" style="color:var(--acc);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)">⏳ Submitted — waiting for review. Submission #${subCount}.</div>`;
-  // Blocked
-  if(isBlocked) body+=`<div class="impact-box"><div class="impact-title">⛔ Task Blocked</div>Waiting for a dependency to be approved before you can start.</div>`;
-  // Blocking others
-  if(blocking.length) body+=`<div class="impact-box"><div class="impact-title">⚠️ You're blocking ${blocking.length} teammate${blocking.length>1?"s":""}</div>${blocking.map(b=>`<div>└─▶ ${b.name} — ${b.title}</div>`).join("")}</div>`;
 
-  // Submit form
-  if(!["approved","pending_review","not_started"].includes(t.status)){
-    const placeholder = subCount===0 ? "What did you do on this task?" : "What changed since your last submission?";
-    body+=`<form class="submit-form sf" data-tid="${t.id}">
-      <label>Progress Update ${subCount>0?`(Revision #${subCount+1})`:"(First Submission)"}</label>
-      <textarea placeholder="${placeholder}" required></textarea>
-      <label>Proof of Work — Link or File URL <span style="color:var(--s2)">(optional — adds +20%)</span></label>
+  // Approved state
+  if(t.status==="approved") body+=`<div class="done-box">🎉 Approved — great work!</div>`;
+  // In review
+  if(t.status==="submitted") body+=`<div class="done-box" style="color:var(--acc);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)">⏳ Submitted — waiting for founder review.</div>`;
+  // Submission note (if any)
+  if(t.submission_note && t.status==="submitted") body+=`<div class="rej-box" style="border-color:rgba(245,166,35,.3)"><div class="rej-title" style="color:var(--acc)">📝 Your Note</div><p>${t.submission_note}</p></div>`;
+
+  // Start button for not_started
+  if(t.status==="not_started"){
+    body+=`<button class="btn btn-quick" style="margin-top:10px" onclick="startTask('${t.notion_id}')">▶ Start Task</button>`;
+  }
+
+  // Submit form for in_progress
+  if(t.status==="in_progress"){
+    body+=`<form class="submit-form sf" data-nid="${t.notion_id}">
+      <label>Progress Update</label>
+      <textarea placeholder="What did you do on this task?" required></textarea>
+      <label>Proof of Work — link or file URL <span style="color:var(--muted)">(optional)</span></label>
       <input type="url" class="file-input" placeholder="https://drive.google.com/... or figma.com/..." />
       <div class="form-row">
         <button type="submit" class="btn btn-acc">Submit Work →</button>
-        <button type="button" class="btn btn-quick" onclick="quickDone(${t.id})">⚡ Quick Mark Done</button>
+        <button type="button" class="btn btn-quick" onclick="quickDone('${t.notion_id}')">⚡ Quick Mark Done</button>
       </div>
     </form>`;
   }
 
-  return`<div class="tc ${isOverdue?"overdue":""} ${isBlocked?"blocked":""}" id="tc-${t.id}">
+  return`<div class="tc ${isOverdue?"overdue":""}" id="tc-${t.notion_id}">
     <div class="tc-top">
       <div>
-        <div class="tc-title">${t.title}</div>
+        <div class="tc-title">${t.title||"Untitled"}</div>
         <div class="tc-meta">
-          <span class="tag">📁 ${t.client_name}</span>
+          ${t.client?`<span class="tag">📁 ${t.client}</span>`:""}
           ${t.due_date?`<span class="tag ${isOverdue?"overdue-tag":""}">📅 ${isOverdue?"⚠️ ":""}${t.due_date}</span>`:""}
-          ${subCount>0?`<span class="tag">📝 ${subCount} submission${subCount>1?"s":""}</span>`:""}
         </div>
       </div>
       <span class="sp sp-${t.status}">${spLabel(t.status)}</span>
@@ -239,10 +251,32 @@ function renderTask(t, today, blockerMap){
   </div>`;
 }
 
-async function quickDone(id){
-  const r=await fetch(`${API}/api/tasks/${id}/done`,{method:"POST"});
-  const d=await r.json();
-  if(d.success){toast("Marked for review!");load();}else toast(d.error||"Error","err");
+async function startTask(nid){
+  try{
+    const r = await fetch(`${API}/api/notion/tasks/${nid}`,{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({status:"in_progress",progress:10}),
+      signal:AbortSignal.timeout(10000),
+    });
+    const d = await r.json();
+    if(d.success){toast("Task started! 🚀");load();}
+    else toast(d.error||"Error","err");
+  }catch(err){toast("Error: "+err.message,"err");}
+}
+
+async function quickDone(nid){
+  try{
+    const r = await fetch(`${API}/api/notion/tasks/${nid}`,{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({status:"submitted",progress:75}),
+      signal:AbortSignal.timeout(10000),
+    });
+    const d = await r.json();
+    if(d.success){toast("Marked for review!");load();}
+    else toast(d.error||"Error","err");
+  }catch(err){toast("Error: "+err.message,"err");}
 }
 
 load();
