@@ -125,9 +125,8 @@ const EMPLOYEES = [
 let selectedEmp = null;
 let pin = "";
 
-// If already logged in with valid session, redirect
-(async()=>{
-  const token = localStorage.getItem("_session_token");
+  // sessionStorage clears automatically on tab close — auto-logout
+  const token = sessionStorage.getItem("_session_token");
   if(token){
     const r = await fetch(`${API}/api/auth/verify?token=${token}`);
     if(r.ok){ const d=await r.json(); if(d.valid){ redirect(d); return; } }
@@ -168,7 +167,7 @@ async function submitPin(){
   const d = await r.json();
   document.getElementById("loading").style.display="none";
   if(d.success){
-    localStorage.setItem("_session_token", d.token);
+    sessionStorage.setItem("_session_token", d.token);  // cleared on tab close
     localStorage.setItem("claude_office_user", JSON.stringify({...d.user, user_id: d.user.id}));
     redirect(d.user);
   } else {

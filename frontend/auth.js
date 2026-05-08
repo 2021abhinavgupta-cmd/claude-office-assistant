@@ -8,7 +8,8 @@
     ? "http://localhost:5000"
     : location.origin;
 
-  const token = localStorage.getItem("_session_token");
+  // sessionStorage is cleared when the tab is closed — auto-logout on tab close
+  const token = sessionStorage.getItem("_session_token");
 
   // If no token at all → go to login
   if (!token) {
@@ -21,7 +22,7 @@
     const data = await res.json();
 
     if (!data.valid) {
-      localStorage.removeItem("_session_token");
+      sessionStorage.removeItem("_session_token");
       localStorage.removeItem("claude_office_user");
       window.location.href = "login.html";
       return;
@@ -58,7 +59,7 @@ window.authLogout = async function () {
       body: JSON.stringify({ token }),
     }).catch(() => {});
   }
-  localStorage.removeItem("_session_token");
+  sessionStorage.removeItem("_session_token");
   localStorage.removeItem("claude_office_user");
   window.location.href = "login.html";
 };

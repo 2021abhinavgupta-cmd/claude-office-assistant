@@ -46,16 +46,18 @@
     .svc-info .svc-team{font-size:.72rem;color:var(--muted);margin-top:2px}
     .svc-box.selected .svc-name{color:var(--acc)}
 
-    /* Preview task list */
-    .preview-section{margin-top:22px;padding-top:20px;border-top:1px solid var(--bdr)}
-    .preview-section h3{font-family:'Syne',sans-serif;font-size:1rem;margin-bottom:4px}
-    .preview-section .ps-sub{font-size:.78rem;color:var(--muted);margin-bottom:12px}
-    .task-preview{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr);font-size:.83rem}
-    .task-preview:last-child{border-bottom:none}
-    .tp-icon{width:24px;text-align:center}
-    .tp-title{flex:1;color:var(--txt)}
-    .tp-who{font-size:.72rem;color:var(--muted);background:var(--s2);padding:2px 8px;border-radius:100px}
-    .dep-arrow{font-size:.75rem;color:var(--red);margin-left:6px}
+    /* Editable task rows */
+    .task-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bdr)}
+    .task-row:last-of-type{border-bottom:none}
+    .tp-icon{width:22px;text-align:center;flex-shrink:0;font-size:.9rem;color:var(--muted)}
+    .tp-title-input{flex:1;background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:.83rem;outline:none;transition:border-color .2s}
+    .tp-title-input:focus{border-color:var(--acc)}
+    .tp-who-select{background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;outline:none;cursor:pointer;transition:border-color .2s}
+    .tp-who-select:focus{border-color:var(--acc);color:var(--txt)}
+    .tp-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:4px 6px;border-radius:4px;transition:color .2s;flex-shrink:0}
+    .tp-del:hover{color:var(--red)}
+    .add-task-btn{display:flex;align-items:center;gap:7px;background:transparent;border:1px dashed var(--bdr);border-radius:var(--rs);color:var(--muted);padding:8px 14px;font-size:.82rem;cursor:pointer;width:100%;margin-top:10px;transition:all .2s}
+    .add-task-btn:hover{border-color:var(--acc);color:var(--acc)}
     .no-preview{color:var(--muted);font-size:.82rem;font-style:italic;padding:8px 0}
 
     /* Buttons */
@@ -148,9 +150,10 @@
       <div class="fg"><label>Deadline</label><div id="r-deadline" style="font-size:.9rem;padding:6px 0;color:var(--muted)"></div></div>
     </div>
     <div class="preview-section">
-      <h3>📋 Tasks to be created</h3>
-      <p class="ps-sub">Tasks are auto-wired with dependencies. Each team member sees only their tasks.</p>
+      <h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
+      <p class="ps-sub">Edit task names or assignees, delete unwanted tasks, or add custom ones.</p>
       <div id="task-preview-list"></div>
+      <button class="add-task-btn" onclick="addTask()">＋ Add custom task</button>
     </div>
     <p class="err" id="err3"></p>
     <div class="btn-row">
@@ -220,30 +223,65 @@ function goStep2(){
 function goStep3(){
   if(!selected.size){document.getElementById("err2").style.display="block";return;}
   document.getElementById("err2").style.display="none";
-  // Populate review
   document.getElementById("r-name").textContent=document.getElementById("name").value.trim();
   const dl=document.getElementById("deadline").value;
   document.getElementById("r-deadline").textContent=dl||"No deadline set";
 
-  // Preview tasks
+  // Build editable task rows
   const wrap=document.getElementById("task-preview-list");
   const allTasks=[];
   for(const svc of selected) allTasks.push(...SVC_TASKS[svc]);
-  if(!allTasks.length){wrap.innerHTML='<p class="no-preview">No tasks for selected services.</p>';goStep(3);return;}
-
-  wrap.innerHTML=allTasks.map((t,i)=>`
-    <div class="task-preview">
-      <span class="tp-icon">${i===0?"🔑":"→"}</span>
-      <span class="tp-title">${t.title}</span>
-      <span class="tp-who">${EMP[t.who]||t.who}</span>
-      ${i>0?`<span class="dep-arrow">↳ dep</span>`:""}
-    </div>`).join("");
+  if(!allTasks.length){wrap.innerHTML='<p class="no-preview">No tasks — add them below.</p>';goStep(3);return;}
+  wrap.innerHTML="";
+  allTasks.forEach((t,i)=>addTaskRow(wrap,t.title,t.who,i));
   goStep(3);
+}
+
+const EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<option value="${id}">${name}</option>`).join("");
+
+function addTaskRow(container, title="", who="", idx=0){
+  const row=document.createElement("div");
+  row.className="task-row";
+  row.innerHTML=`
+    <span class="tp-icon">${idx===0?"🔑":"→"}</span>
+    <input class="tp-title-input" value="${title.replace(/"/g,'&quot;')}" placeholder="Task name…" />
+    <select class="tp-who-select">${EMP_OPTS}</select>
+    <button class="tp-del" onclick="removeTask(this)" title="Remove task">✕</button>`;
+  row.querySelector(".tp-who-select").value=who||"emp001";
+  container.appendChild(row);
+}
+
+function addTask(){
+  const wrap=document.getElementById("task-preview-list");
+  const existing=wrap.querySelectorAll(".task-row").length;
+  addTaskRow(wrap,"","emp001",existing);
+  wrap.querySelector(".task-row:last-child .tp-title-input").focus();
+}
+
+function removeTask(btn){
+  btn.closest(".task-row").remove();
+  // re-number icons
+  document.querySelectorAll(".task-row").forEach((r,i)=>{
+    r.querySelector(".tp-icon").textContent=i===0?"🔑":"→";
+  });
 }
 
 async function createClient(){
   const name=document.getElementById("name").value.trim();
   const btn=document.getElementById("create-btn");
+
+  // Collect tasks from the editable DOM rows
+  const taskRows=[...document.querySelectorAll(".task-row")];
+  const customTasks=taskRows.map(row=>({
+    title: row.querySelector(".tp-title-input").value.trim(),
+    who:   row.querySelector(".tp-who-select").value,
+  })).filter(t=>t.title);
+
+  if(!customTasks.length){
+    document.getElementById("err3").textContent="Please add at least one task.";
+    document.getElementById("err3").style.display="block"; return;
+  }
+
   btn.disabled=true; btn.textContent="Creating in Notion...";
 
   // Check if Notion is configured first
@@ -255,7 +293,7 @@ async function createClient(){
   } catch(e) {}
 
   if (useNotion) {
-    // ── Notion path: single API call creates client + all tasks ──
+    // ── Notion path: send client + fully-custom task list ──
     const res = await fetch(`${API}/api/notion/clients`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -267,6 +305,7 @@ async function createClient(){
         budget:       document.getElementById("budget").value.trim(),
         notes:        document.getElementById("notes").value.trim(),
         services:     [...selected],
+        tasks:        customTasks,   // user-edited task list overrides auto-gen
       }),
     });
     const data = await res.json();

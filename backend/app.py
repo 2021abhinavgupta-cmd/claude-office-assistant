@@ -2430,7 +2430,12 @@ def notion_create_client():
     if not client:
         return jsonify({"error": "Failed to create client in Notion"}), 500
 
-    # 2. Auto-generate tasks based on selected services
+    # 2. Create tasks — use custom list from frontend if provided, else auto-generate from services
+    EMP_NAMES = {
+        "emp001": "Vidit", "emp002": "Nupur", "emp003": "Abhinav",
+        "emp004": "Kshitij", "emp005": "Raj", "emp006": "Mohit",
+        "emp007": "Tanaya", "emp008": "Happy",
+    }
     SVC_TASKS = {
         "content":  [("Content Brief & Research", "emp006"), ("Write Copy / Content Draft", "emp006"), ("Content Review & Approval", "emp004")],
         "video":    [("Video Script Writing", "emp006"), ("Video Shoot / Production", "emp005"), ("Video Editing & Post", "emp005"), ("AI Video Enhancements", "emp008")],
@@ -2439,19 +2444,23 @@ def notion_create_client():
         "social":   [("Social Media Strategy", "emp006"), ("Content Calendar", "emp006"), ("Graphics & Templates", "emp002")],
         "accounts": [("Invoice & Payment Setup", "emp007"), ("Monthly Reporting", "emp007")],
     }
-    EMP_NAMES = {
-        "emp001": "Vidit", "emp002": "Nupur", "emp003": "Abhinav",
-        "emp004": "Kshitij", "emp005": "Raj", "emp006": "Mohit",
-        "emp007": "Tanaya", "emp008": "Happy",
-    }
 
-    services = body.get("services", [])
     deadline = body.get("deadline", "")
     tasks_created = 0
 
-    for svc in services:
-        for (task_title, emp_id) in SVC_TASKS.get(svc, []):
+    # Frontend sends edited `tasks` array → use it directly
+    custom_tasks = body.get("tasks", [])
+    if custom_tasks:
+        for t in custom_tasks:
+            task_title = t.get("title", "").strip()
+            emp_id     = t.get("who", "emp001")
+            if not task_title:
+                continue
             emp_name = EMP_NAMES.get(emp_id, emp_id)
+            # Guess service from emp_id for categorisation
+            svc_map = {"emp001":"website","emp002":"design","emp003":"website",
+                       "emp004":"accounts","emp005":"video","emp006":"content",
+                       "emp007":"accounts","emp008":"video"}
             result = notion_store.create_task(
                 title=task_title,
                 client_name=name,
@@ -2459,10 +2468,25 @@ def notion_create_client():
                 assigned_to=emp_name,
                 due_date=deadline,
                 status="not_started",
-                service=svc,
+                service=svc_map.get(emp_id, "general"),
             )
             if result:
                 tasks_created += 1
+    else:
+        # Fallback: auto-generate from services[]
+        for svc in body.get("services", []):
+            for (task_title, emp_id) in SVC_TASKS.get(svc, []):
+                result = notion_store.create_task(
+                    title=task_title,
+                    client_name=name,
+                    client_notion_id=client["notion_id"],
+                    assigned_to=EMP_NAMES.get(emp_id, emp_id),
+                    due_date=deadline,
+                    status="not_started",
+                    service=svc,
+                )
+                if result:
+                    tasks_created += 1
 
     logger.info(f"Notion: onboarded client '{name}' with {tasks_created} tasks")
     return jsonify({

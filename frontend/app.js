@@ -794,6 +794,13 @@ function saveUserToStorage(user) {
 }
 function loadUserFromStorage() {
   try {
+    // Require active session token — sessionStorage is cleared on tab close (auto-logout)
+    if (!sessionStorage.getItem('_session_token')) {
+      // No live session — clear stale user data and force re-login
+      localStorage.removeItem('claude_office_user');
+      window.location.href = 'login.html';
+      return null;
+    }
     const raw = localStorage.getItem("claude_office_user");
     if (!raw) return null;
     const u = JSON.parse(raw);
