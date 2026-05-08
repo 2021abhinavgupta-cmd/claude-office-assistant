@@ -135,6 +135,7 @@
   <div class="tabs">
     <button class="tab on" onclick="switchTab('matrix',this)">📊 Matrix View</button>
     <button class="tab" onclick="switchTab('blockers',this)">🔴 Blockers</button>
+    <button class="tab" id="review-tab" onclick="switchTab('review',this)">⏳ In Review</button>
     <button class="tab" onclick="switchTab('detail',this)">📋 Detail View</button>
   </div>
 
@@ -155,6 +156,16 @@
       <span class="blocker-count" id="blocker-count">—</span>
     </div>
     <div id="blockers-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- In Review -->
+  <div id="tab-review" style="display:none">
+    <div class="blocker-header">
+      <h2>⏳ Awaiting Approval</h2>
+      <span class="blocker-count" id="review-count" style="background:rgba(245,166,35,.2);color:var(--acc)">—</span>
+    </div>
+    <p style="color:var(--muted);font-size:.82rem;margin-bottom:18px">Tasks submitted by the team — review and approve or request changes.</p>
+    <div id="review-list"><div class="empty">Loading...</div></div>
   </div>
 
   <!-- Detail -->
@@ -201,10 +212,11 @@ let rejectTaskId=null, rejectNotionId=null, allData=null, notionMode=false;
 function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
 
 function switchTab(name,btn){
-  ["matrix","blockers","detail"].forEach(n=>document.getElementById("tab-"+n).style.display=n===name?"":"none");
+  ["matrix","blockers","review","detail"].forEach(n=>document.getElementById("tab-"+n).style.display=n===name?"":"none");
   document.querySelectorAll(".tab").forEach(b=>b.classList.remove("on"));
   btn.classList.add("on");
-  if(name==="blockers")loadBlockers();
+  if(name==="blockers") loadBlockers();
+  if(name==="review")   loadReview();
 }
 
 function overallStatus(tasks){
@@ -376,14 +388,22 @@ function renderTaskCard(t){
     </div>
     <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
     ${t.submission_note?`<div class="sub-box"><div class="sub-label">Submission</div>${t.submission_note}</div>`:""}
-    ${(t.status==="pending_review"||t.status==="In Review")&&!notionMode?`<div class="tc-actions">
+    ${isInReview(t)&&!notionMode?`<div class="tc-actions">
       <button class="btn-sm btn-approve" onclick="approveTask(${t.id})">✅ Approve</button>
-      <button class="btn-sm btn-reject" onclick="openModal(${t.id})">↩ Changes</button>
+      <button class="btn-sm btn-reject" onclick="openModal(${t.id},null)">↩ Changes</button>
     </div>`:""}
-    ${(t.status==="pending_review"||t.status==="In Review")&&notionMode?`<div class="tc-actions">
+    ${isInReview(t)&&notionMode?`<div class="tc-actions">
       <button class="btn-sm btn-approve" onclick="approveTaskNotion('${t.notion_id}')">✅ Approve</button>
+      <button class="btn-sm btn-reject" onclick="openModal(null,'${t.notion_id}')">↩ Changes</button>
     </div>`:""}
   </div>`;
+}
+
+// Task is in review if status matches any submitted variant
+function isInReview(t){
+  const s = (t.status||"").toLowerCase().replace(/[\s-]+/g,"_");
+  return ["submitted","pending_review","in_review"].includes(s) || t.status==="In Review";
+}
 }
 
 async function loadBlockers(){
@@ -446,22 +466,77 @@ async function approveTask(id){
   const d=await r.json();
   if(d.success){toast("✅ Task approved!");load();}else toast(d.error||"Error","err");
 }
-function openModal(id){rejectTaskId=id;rejectNotionId=null;document.getElementById("reject-note").value="";document.getElementById("reject-modal").classList.add("open");}
+async function loadReview(){
+  const list = document.getElementById("review-list");
+  if(!notionMode){
+    list.innerHTML='<div class="empty">ℹ️ Review panel available in Notion mode only.</div>';
+    return;
+  }
+  try {
+    const r = await fetch(`${API}/api/notion/tasks?status=submitted`, {signal:AbortSignal.timeout(15000)});
+    const d = await r.json();
+    const tasks = d.tasks || [];
+    document.getElementById("review-count").textContent = tasks.length;
+    if(!tasks.length){
+      list.innerHTML='<div class="empty">🎉 No tasks awaiting review right now!</div>';
+      return;
+    }
+    list.innerHTML = tasks.map(t=>{
+      const assignee = EMP[t.assigned_to]||t.assigned_to||"—";
+      return`<div class="blocker-card" id="rv-${t.notion_id}">
+        <div class="blocker-top">
+          <div>
+            <div class="blocker-who">📋 ${t.title||"Untitled"}</div>
+            <div class="blocker-task">👤 ${assignee} · 📁 ${t.client||"—"}${t.due_date?" · 📅 "+t.due_date:""}</div>
+          </div>
+          <span class="overdue-badge overdue-no" style="background:rgba(245,166,35,.15);color:var(--acc);border:none">⏳ In Review</span>
+        </div>
+        ${t.submission_note?`<div class="sub-box" style="margin-top:10px"><div class="sub-label">📝 Employee Note</div>${t.submission_note}</div>`:""}
+        <div class="tc-actions" style="margin-top:12px">
+          <button class="btn-sm btn-approve" onclick="approveTaskNotion('${t.notion_id}')">✅ Approve</button>
+          <button class="btn-sm btn-reject" onclick="openModal(null,'${t.notion_id}')">↩ Request Changes</button>
+        </div>
+      </div>`;
+    }).join("");
+  } catch(e){
+    list.innerHTML=`<div class="empty">⚠️ Could not load review queue: ${e.message}</div>`;
+  }
+}
+
+function openModal(id, notionId){
+  rejectTaskId=id; rejectNotionId=notionId;
+  document.getElementById("reject-note").value="";
+  document.getElementById("reject-modal").classList.add("open");
+}
 function closeModal(){document.getElementById("reject-modal").classList.remove("open");}
 async function confirmReject(){
   const note=document.getElementById("reject-note").value.trim();
   if(!note){toast("Enter revision notes","err");return;}
-  const r=await fetch(`${API}/api/tasks/${rejectTaskId}/reject`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID,note})});
-  const d=await r.json();
   closeModal();
-  if(d.success){toast("↩ Changes requested");load();}else toast(d.error||"Error","err");
+  if(rejectNotionId){
+    rejectTaskNotion(rejectNotionId, note);
+  } else if(rejectTaskId){
+    const r=await fetch(`${API}/api/tasks/${rejectTaskId}/reject`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID,note})});
+    const d=await r.json();
+    if(d.success){toast("↩ Changes requested");load();}else toast(d.error||"Error","err");
+  }
 }
 
 // Notion approve
 async function approveTaskNotion(notionId){
-  const r=await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved",progress:100})});
-  const d=await r.json();
-  if(d.success){toast("✅ Task approved in Notion!");load();}else toast(d.error||"Error","err");
+  try {
+    const r=await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved",progress:100}),signal:AbortSignal.timeout(10000)});
+    const d=await r.json();
+    if(d.success){toast("✅ Task approved in Notion!");load();loadReview();}else toast(d.error||"Error","err");
+  } catch(e){toast("Error: "+e.message,"err");}
+}
+
+async function rejectTaskNotion(notionId, note){
+  try {
+    const r=await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"not_started",progress:0,submission_note:"Changes requested: "+note}),signal:AbortSignal.timeout(10000)});
+    const d=await r.json();
+    if(d.success){toast("↩ Changes requested");load();loadReview();}else toast(d.error||"Error","err");
+  } catch(e){toast("Error: "+e.message,"err");}
 }
 
 // SQLite add task
