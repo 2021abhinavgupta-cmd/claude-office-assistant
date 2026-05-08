@@ -641,17 +641,17 @@ function renderDashboard(d) {
 }
 
 async function loadAttendance() {
-  const panel = document.getElementById("admin-attendance-panel");
   const wrap  = document.getElementById("attendance-wrap");
   const badge = document.getElementById("att-summary-badge");
   const dateEl = document.getElementById("att-date");
 
   const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  const isAdmin = ["emp001","emp003","emp004"].includes(user.user_id);
+  const ADMINS = ["emp001", "emp003", "emp004"]; // Vidit, Abhinav, Kshitij
+  const isAdmin = ADMINS.includes(user.user_id);
 
-  // Show export button for admins
+  // Export button — admins only
   const exportBtn = document.getElementById("export-attendance-btn");
-  if (isAdmin) {
+  if (isAdmin && exportBtn) {
     exportBtn.style.display = "inline-flex";
     exportBtn.href = `${API}/api/attendance/export?user_id=${user.user_id}`;
   }
@@ -659,31 +659,46 @@ async function loadAttendance() {
   try {
     const res  = await fetch(`${API}/api/employees/summary`);
     const data = await res.json();
-    const emps = data.employees || [];
-    const today = new Date().toLocaleDateString("en-IN", {weekday:"long",day:"numeric",month:"short"});
+    const allEmps = data.employees || [];
+    const today = new Date().toLocaleDateString("en-IN", {weekday:"long", day:"numeric", month:"short"});
     if (dateEl) dateEl.textContent = today;
 
-    const inCount = emps.filter(e => e.status === "in").length;
-    badge.textContent = `${inCount} / ${emps.length} in office`;
-    badge.style.color = inCount > 0 ? "var(--green)" : "var(--muted)";
+    // Admins see everyone; regular employees see only themselves
+    const visibleEmps = isAdmin
+      ? allEmps
+      : allEmps.filter(emp => emp.emp_id === user.user_id);
 
-    if (!emps.length) {
-      wrap.innerHTML = '<div class="empty-state">No employees found.</div>';
+    const inCount = allEmps.filter(e => e.status === "in").length;
+    if (badge) {
+      badge.textContent = isAdmin ? `${inCount} / ${allEmps.length} in office` : "My Attendance";
+      badge.style.color = inCount > 0 ? "var(--green)" : "var(--muted)";
+    }
+
+    if (!visibleEmps.length) {
+      wrap.innerHTML = '<div class="empty-state">No data found for your account.</div>';
       return;
     }
 
     wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${
-      emps.map(emp => {
-        const isIn     = emp.status === "in";
-        const lastSeen = emp.last_seen ? new Date(emp.last_seen).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : null;
+      visibleEmps.map(emp => {
+        const isIn = emp.status === "in";
+
+        // Fix: validate date before parsing — "—" and null cause Invalid Date
+        const rawDate = emp.last_seen && emp.last_seen !== "—" ? new Date(emp.last_seen) : null;
+        const validDate = rawDate && !isNaN(rawDate.getTime());
+        const lastSeen = validDate ? rawDate.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : null;
+
         const statusDot = isIn
           ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22d3a0;margin-right:6px"></span>'
           : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px"></span>';
+
         const timeLabel = lastSeen
           ? `<div style="color:var(--muted);font-size:.72rem;margin-top:2px">${isIn ? '🟢 In since' : '🔴 Out at'} ${lastSeen}</div>`
-          : `<div style="color:var(--muted);font-size:.72rem;margin-top:2px">Not checked in yet</div>`;
+          : `<div style="color:var(--muted);font-size:.72rem;margin-top:2px">Not checked in today</div>`;
 
-        const canAct = isAdmin;
+        // Admins can act on everyone; regular employees only on themselves
+        const canAct = isAdmin || emp.emp_id === user.user_id;
+
         const btnIn  = canAct ? `<button onclick="doCheckin('${emp.emp_id}','in',this)" style="flex:1;padding:7px;border-radius:8px;border:none;background:rgba(34,211,160,.15);color:#22d3a0;font-size:.75rem;cursor:pointer;font-weight:600;transition:all .15s" onmouseover="this.style.background='rgba(34,211,160,.3)'" onmouseout="this.style.background='rgba(34,211,160,.15)'">✅ In</button>` : "";
         const btnOut = canAct ? `<button onclick="doCheckin('${emp.emp_id}','out',this)" style="flex:1;padding:7px;border-radius:8px;border:none;background:rgba(239,68,68,.12);color:#f87171;font-size:.75rem;cursor:pointer;font-weight:600;transition:all .15s" onmouseover="this.style.background='rgba(239,68,68,.25)'" onmouseout="this.style.background='rgba(239,68,68,.12)'">🚪 Out</button>` : "";
 
@@ -715,7 +730,7 @@ async function doCheckin(empId, action, btn) {
     });
     const d = await r.json();
     if (d.success) {
-      await loadAttendance(); // Refresh the grid
+      await loadAttendance();
     } else {
       btn.textContent = "⚠️";
       setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
