@@ -224,7 +224,7 @@ _TASK_KEYWORDS = {
                       "subject line", "email template", "follow up email"],
     "content":       ["blog", "article", "content", "copywriting", "write about", "seo",
                       "product description", "tagline", "brand voice", "headline"],
-    "analysis":      ["analyse", "analyze", "analysis", "breakdown", "compare", "review",
+    "data_analysis": ["analyse", "analyze", "analysis", "breakdown", "compare", "review",
                       "evaluate", "pros and cons", "research", "insights", "report"],
 }
 
@@ -566,14 +566,13 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
             "system": system_prompt,
             "messages": [{"role": "user", "content": reasoning_context + message}],
         }
-        # Extended output header — use correct beta per model family
+        # Extended output & prompt caching headers
+        kwargs["extra_headers"] = {"anthropic-beta": "prompt-caching-2024-07-31"}
         if max_tokens > 8192:
             if "claude-3-5" in model_name:
-                # Legacy extended output beta for claude-3-5 models
-                kwargs["extra_headers"] = {"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"}
+                kwargs["extra_headers"]["anthropic-beta"] += ",max-tokens-3-5-sonnet-2024-07-15"
             else:
-                # claude-3-7 / claude-4 / claude-sonnet-4-x models use the newer beta
-                kwargs["extra_headers"] = {"anthropic-beta": "output-128k-2025-02-19"}
+                kwargs["extra_headers"]["anthropic-beta"] += ",output-128k-2025-02-19"
 
         response = client.messages.create(**kwargs)
         output_text   = response.content[0].text
@@ -974,11 +973,12 @@ def html_generate_stream():
             "system": system_prompt,
             "messages": [{"role": "user", "content": prompt}],
         }
-        # Use correct extended-output beta per model family
+        # Use correct extended-output and prompt caching beta per model family
+        kwargs["extra_headers"] = {"anthropic-beta": "prompt-caching-2024-07-31"}
         if "claude-3-5" in model_name:
-            kwargs["extra_headers"] = {"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"}
+            kwargs["extra_headers"]["anthropic-beta"] += ",max-tokens-3-5-sonnet-2024-07-15"
         else:
-            kwargs["extra_headers"] = {"anthropic-beta": "output-128k-2025-02-19"}
+            kwargs["extra_headers"]["anthropic-beta"] += ",output-128k-2025-02-19"
 
         logger.info(f"HTML Stream | model={model_tier} | user={user_id}")
 
@@ -1256,7 +1256,7 @@ def auth_login():
 @app.route("/api/auth/verify", methods=["GET"])
 def auth_verify():
     """Verify a session token. Used by frontend auth guard."""
-    token = request.headers.get("X-Session-Token", "") or request.args.get("token", "")
+    token = request.headers.get("Authorization", "").replace("Bearer ", "") or request.headers.get("X-Session-Token", "") or request.args.get("token", "")
     user_id = _verify_session(token)
     if not user_id:
         return jsonify({"valid": False}), 401
@@ -1269,7 +1269,7 @@ def auth_verify():
 def auth_logout():
     """Invalidate a session token."""
     body  = request.get_json(silent=True) or {}
-    token = body.get("token", "") or request.headers.get("X-Session-Token", "")
+    token = body.get("token", "") or request.headers.get("Authorization", "").replace("Bearer ", "") or request.headers.get("X-Session-Token", "")
     if token:
         conn = _sessions_conn()
         with conn:
@@ -1427,9 +1427,18 @@ def call_claude_with_context(task_type: str, messages: list,
     try:
         # Coding tasks need more room — full functions/modules can exceed 4096 tokens
         effective_max = 8192 if task_type in ("coding", "html_design") else MAX_TOKENS
+        
+        headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
+        if effective_max > 8192:
+            if "claude-3-5" in model_name:
+                headers["anthropic-beta"] += ",max-tokens-3-5-sonnet-2024-07-15"
+            else:
+                headers["anthropic-beta"] += ",output-128k-2025-02-19"
+                
         response      = client.messages.create(
             model=model_name, max_tokens=effective_max,
             system=system_prompt, messages=api_messages,
+            extra_headers=headers
         )
         output_text   = response.content[0].text
         input_tokens  = response.usage.input_tokens
@@ -1661,6 +1670,7 @@ def conversation_stream(conv_id):
             with client.messages.stream(
                 model=model_name, max_tokens=MAX_TOKENS,
                 system=system_prompt, messages=api_messages,
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
             ) as stream:
                 for text_chunk in stream.text_stream:
                     full_response += text_chunk

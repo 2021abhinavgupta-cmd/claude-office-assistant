@@ -55,6 +55,7 @@
     .btn-go{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--acc);color:#000;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s}
     .btn-go:hover{opacity:.88}
   </style>
+<script src="shared-config.js"></script>
 </head>
 <body>
 <div class="card">
@@ -77,11 +78,7 @@
       <div class="dot" id="d0"></div><div class="dot" id="d1"></div>
       <div class="dot" id="d2"></div><div class="dot" id="d3"></div>
     </div>
-    <div class="numpad">
-      ${[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(k=>`
-        <div class="key ${k==="⌫"?"del":""}" onclick="pressKey('${k}')">${k}</div>
-      `).join("")}
-    </div>
+    <div class="numpad" id="numpad-container"></div>
     <div class="err-msg" id="err-msg"></div>
     <div class="loading" id="loading">🔐 Verifying...</div>
     <button class="btn-back" onclick="goBack()">← Choose different person</button>
@@ -111,17 +108,6 @@
 
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
-const EMPLOYEES = [
-  {id:"emp001",name:"Vidit",role:"Co-Founder"},
-  {id:"emp002",name:"Nupur",role:"UI/UX Designer"},
-  {id:"emp003",name:"Abhinav",role:"Backend Developer"},
-  {id:"emp004",name:"Kshitij",role:"Founder"},
-  {id:"emp005",name:"Raj",role:"Video Editor"},
-  {id:"emp006",name:"Mohit",role:"Media"},
-  {id:"emp007",name:"Tanaya",role:"Accounts"},
-  {id:"emp008",name:"Happy",role:"AI Video Generator"},
-];
-
 let selectedEmp = null;
 let pin = "";
 
@@ -130,11 +116,17 @@ let pin = "";
   // sessionStorage clears automatically on tab close — auto-logout
   const token = sessionStorage.getItem("_session_token");
   if(token){
-    const r = await fetch(`${API}/api/auth/verify?token=${token}`);
+    const r = await fetch(`${API}/api/auth/verify`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
     if(r.ok){ const d=await r.json(); if(d.valid){ redirect(d); return; } }
   }
+  
+  // Load employees from shared config
+  const employees = await loadEmployees();
+  
   // Build employee grid
-  document.getElementById("emp-grid").innerHTML = EMPLOYEES.map(e=>`
+  document.getElementById("emp-grid").innerHTML = employees.map(e=>`
     <div class="emp-btn" id="eb-${e.id}" onclick="selectEmp('${e.id}','${e.name}')">
       <div class="en">${e.name}</div><div class="er">${e.role}</div>
     </div>`).join("");
@@ -209,10 +201,11 @@ function goBack(){
   document.getElementById("step-emp").style.display="block";
   selectedEmp=null; pin=""; updateDots();
 }
-// Handle numpad template literal issue (static render)
-document.querySelector(".numpad").innerHTML=[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(k=>
-  `<div class="key ${k==="⌫"?"del":""}" onclick="pressKey('${k}')">${k===""?"&nbsp;":k}</div>`
-).join("");
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("numpad-container").innerHTML = [1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(k=>
+    `<div class="key ${k==="⌫"?"del":""}" onclick="pressKey('${k}')">${k===""?"&nbsp;":k}</div>`
+  ).join("");
+});
 </script>
 </body>
 </html>

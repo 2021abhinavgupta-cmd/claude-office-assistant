@@ -18,7 +18,9 @@
   }
 
   try {
-    const res = await fetch(`${API}/api/auth/verify?token=${encodeURIComponent(token)}`);
+    const res = await fetch(`${API}/api/auth/verify`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
     const data = await res.json();
 
     if (!data.valid) {
@@ -39,8 +41,9 @@
     window.__currentUser = user;
 
   } catch (e) {
-    // Network error — allow through (offline graceful degradation)
-    console.warn("[auth.js] Network error during verify — allowing through:", e.message);
+    // Network error — redirect to login, don't allow through
+    console.warn("[auth.js] Network error during verify — redirecting to login:", e.message);
+    window.location.href = "login.html?error=network";
   }
 })();
 
@@ -55,7 +58,10 @@ window.authLogout = async function () {
   if (token) {
     await fetch(`${API}/api/auth/logout`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
       body: JSON.stringify({ token }),
     }).catch(() => {});
   }

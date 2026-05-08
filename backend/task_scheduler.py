@@ -154,10 +154,22 @@ def check_overdue_tasks():
     if alerts_fired:
         for a in alerts_fired:
             logger.warning(f"[TASK ALERT][{a['level']}] {a['message']}")
+        _send_alert_to_dashboard(alerts_fired)
     else:
         logger.info("✅ No new overdue alerts today.")
 
     return alerts_fired
+
+def _send_alert_to_dashboard(alerts):
+    """Store alerts in DB so founder dashboard can display them."""
+    conn = get_connection()
+    with conn:
+        for alert in alerts:
+            conn.execute(
+                "INSERT INTO usage_logs (data) VALUES (?)",
+                (json.dumps({"type": "task_alert", **alert}),)
+            )
+    conn.close()
 
 
 def get_task_risk_levels() -> dict:

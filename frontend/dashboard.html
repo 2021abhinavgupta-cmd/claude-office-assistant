@@ -646,8 +646,7 @@ async function loadAttendance() {
   const dateEl = document.getElementById("att-date");
 
   const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  const ADMINS = ["emp001", "emp003", "emp004"]; // Vidit, Abhinav, Kshitij
-  const isAdmin = ADMINS.includes(user.user_id);
+  const isAdmin = user.is_admin === true;
 
   // Export button — admins only
   const exportBtn = document.getElementById("export-attendance-btn");
@@ -770,10 +769,10 @@ async function loadBudgetBanner() {
 }
 loadBudgetBanner();
 
-// ── Show "Onboard Client" only for admins (emp001/003/004) ──
+// ── Show "Onboard Client" only for admins ──
 (function(){
   const u = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  if (["emp001","emp003","emp004"].includes(u.user_id)) {
+  if (u.is_admin === true) {
     const el = document.getElementById("onboard-link");
     if (el) el.style.display = "flex";
   }

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Daily Standup | Claude Office Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="shared-config.js"></script>
   <script src="auth.js"></script>
   <style>
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:14px;--rs:8px}
@@ -144,17 +145,34 @@
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
 const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
-const UID = user.user_id || "emp002";
-const ADMIN_IDS = ["emp001","emp003","emp004"];
+const UID = user.user_id;
+if (!UID) window.location.href = "login.html";
+const IS_ADMIN = user.is_admin === true;
 
-const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
-const ALL_EMPS = Object.keys(EMP);
+// XSS protection
+function escHtml(str) {
+  if (!str) return "";
+  return str.replace(/[&<>"']/g, function(m) {
+    return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[m];
+  });
+}
 
-// Greet
-const hour = new Date().getHours();
-const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-document.getElementById("greeting-line").textContent = `${greet}, ${EMP[UID]||UID}! Quick update — takes under 60 seconds.`;
-document.getElementById("user-label").innerHTML = `Submitting as <strong>${EMP[UID]||UID}</strong>`;
+(async()=>{
+  await loadEmployees();
+  
+  // Greet
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  document.getElementById("greeting-line").textContent = `${greet}, ${window.EMP_DICT[UID]||UID}! Quick update — takes under 60 seconds.`;
+  document.getElementById("user-label").innerHTML = `Submitting as <strong>${window.EMP_DICT[UID]||UID}</strong>`;
+
+  checkIfSubmittedToday();
+  loadTeamStandups();
+  loadAlerts();
+  
+  // Auto-refresh team standups every 2 minutes
+  setInterval(loadTeamStandups, 120000);
+})();
 
 async function submitStandup(){
   const yesterday = document.getElementById("f-yesterday").value.trim();
@@ -193,9 +211,10 @@ async function loadTeamStandups(){
   const avatarChar = name => name[0].toUpperCase();
   const timeStr = iso => iso ? new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
 
-  wrap.innerHTML = ALL_EMPS.map(eid=>{
+  wrap.innerHTML = window.EMPLOYEES.map(e=>{
+    const eid = e.id;
     const s = submitted.get(eid);
-    const name = EMP[eid]||eid;
+    const name = window.EMP_DICT[eid]||eid;
     if(!s) return `
       <div class="not-submitted">
         <span style="font-size:1.1rem">⏳</span>
@@ -208,16 +227,16 @@ async function loadTeamStandups(){
         <div><div class="sc-name">${name}</div><div class="sc-time">Submitted ${timeStr(s.submitted_at)}</div></div>
       </div>
       <div class="sc-body">
-        ${s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${s.yesterday}</div></div>`:""}
-        ${s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${s.today}</div></div>`:""}
-        ${s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${s.blockers}</div></div>`:""}
+        ${s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${escHtml(s.yesterday)}</div></div>`:""}
+        ${s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${escHtml(s.today)}</div></div>`:""}
+        ${s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${escHtml(s.blockers)}</div></div>`:""}
       </div>
     </div>`;
   }).join("");
 }
 
 async function loadAlerts(){
-  if(!ADMIN_IDS.includes(UID)) return;
+  if(!IS_ADMIN) return;
   document.getElementById("alerts-panel").style.display="block";
   const res = await fetch(`${API}/api/alerts?user_id=${UID}`);
   const data = await res.json();
@@ -257,12 +276,6 @@ async function checkIfSubmittedToday(){
   }
 }
 
-checkIfSubmittedToday();
-loadTeamStandups();
-loadAlerts();
-
-// Auto-refresh team standups every 2 minutes
-setInterval(loadTeamStandups, 120000);
 </script>
 </body>
 </html>

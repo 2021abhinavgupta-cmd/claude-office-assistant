@@ -102,14 +102,16 @@
 </div>
 <div id="toast"></div>
 
+<script src="shared-config.js"></script>
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
 const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
-const USER_NAME = user.user_name || user.name || "";
-const UID = user.user_id || user.id || "";
-const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
+const UID = user.user_id || user.id;
+if (!UID) { window.location.href = "login.html"; }
 
-document.getElementById("greeting").textContent = `Showing tasks for ${USER_NAME || EMP[UID] || "you"}`;
+const USER_NAME = user.user_name || user.name || "";
+
+document.getElementById("greeting").textContent = `Showing tasks for ${USER_NAME || "you"}`;
 
 function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3500)}
 
@@ -143,7 +145,7 @@ async function load(){
   }
 
   // Fetch tasks assigned to this user
-  const assignedName = USER_NAME || EMP[UID] || "";
+  const assignedName = USER_NAME || "";
   if(!assignedName){
     wrap.innerHTML='<div class="empty">⚠️ Could not determine your name. Please log in again.</div>';
     return;
