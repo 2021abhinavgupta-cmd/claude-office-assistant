@@ -166,10 +166,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const saved = loadUserFromStorage();
   if (saved) {
+    // Hide modal immediately — before anything that might throw
+    employeeModal.classList.add("hidden");
     currentUser = saved;
     applyUser(saved);
     loadConversations();
-    employeeModal.classList.add("hidden");
   } else {
     loadEmployeeList();
   }
@@ -226,8 +227,10 @@ function selectUser(userId, userName) {
 }
 
 function applyUser(user) {
-  userAvatar.textContent   = user.user_name.charAt(0).toUpperCase();
-  userNameText.textContent = user.user_name;
+  // Normalize: login.html stores 'name', app.js legacy uses 'user_name'
+  const displayName = user.user_name || user.name || "?";
+  userAvatar.textContent   = displayName.charAt(0).toUpperCase();
+  userNameText.textContent = displayName;
   
   // Show punch out button if logged in
   const existingBtn = document.getElementById("punch-out-btn");
@@ -792,7 +795,13 @@ function saveUserToStorage(user) {
 function loadUserFromStorage() {
   try {
     const raw = localStorage.getItem("claude_office_user");
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    // Normalize field names: login.html saves 'name'+'id', app.js expects 'user_name'+'user_id'
+    if (u.name && !u.user_name) u.user_name = u.name;
+    if (u.id   && !u.user_id)  u.user_id   = u.id;
+    // Only return if we have a usable identity
+    return (u.user_name && u.user_id) ? u : null;
   } catch (_) { return null; }
 }
 
