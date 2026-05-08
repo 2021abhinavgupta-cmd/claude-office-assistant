@@ -114,7 +114,7 @@ def create_client(name: str, contact: str = "", requirements: str = "",
     payload = {
         "parent": {"database_id": CLIENTS_DB_ID},
         "properties": {
-            "Name":         _title(name),
+            "Client":       _title(name),
             "Contact":      _text(contact),
             "Requirements": _text(requirements),
             "Deadline":     _date(deadline),
@@ -169,7 +169,7 @@ def list_clients(status_filter: str = "") -> list:
             props = p.get("properties", {})
             clients.append({
                 "notion_id":    p["id"],
-                "name":         _get_text(props.get("Name", {})),
+                "name":         _get_text(props.get("Client", {})),
                 "contact":      _get_text(props.get("Contact", {})),
                 "requirements": _get_text(props.get("Requirements", {})),
                 "deadline":     _get_date(props.get("Deadline", {})),
