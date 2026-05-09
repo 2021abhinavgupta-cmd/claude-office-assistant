@@ -11,6 +11,7 @@
   <script src="auth.js"></script>
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -284,7 +285,11 @@
         <div style="font-size:0.85rem; font-weight:600; display:flex; align-items:center; gap:8px;">
           <span id="artifact-icon">✨</span> <span id="artifact-title">Live Preview</span>
         </div>
-        <button onclick="closeArtifact()" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem;">&times;</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button onclick="downloadArtifactPDF()" title="Download as PDF" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">📄 PDF</button>
+          <button onclick="downloadArtifactDOCX()" title="Download as DOCX" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">📝 DOCX</button>
+          <button onclick="closeArtifact()" title="Close Preview" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem; margin-left:8px;">&times;</button>
+        </div>
       </div>
       <div id="artifact-content" style="flex:1; overflow:hidden; padding:0; background:#fff;">
         <iframe id="artifact-iframe" style="width:100%; height:100%; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
@@ -371,5 +376,54 @@
 
 <script src="app.js"></script>
 <script src="optimizer.js"></script>
+<script>
+// Artifact Download Functions
+function getArtifactHTML() {
+  const iframe = document.getElementById("artifact-iframe");
+  if (!iframe || !iframe.contentWindow) return "";
+  return iframe.contentWindow.document.documentElement.outerHTML;
+}
+
+function downloadArtifactPDF() {
+  const iframe = document.getElementById("artifact-iframe");
+  if (!iframe || !iframe.contentWindow) return;
+  const element = iframe.contentWindow.document.body;
+  const title = document.getElementById("artifact-title").textContent.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'document';
+  
+  const opt = {
+    margin:       0.5,
+    filename:     `${title}.pdf`,
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2 },
+    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+  };
+  
+  html2pdf().set(opt).from(element).save();
+}
+
+function downloadArtifactDOCX() {
+  const html = getArtifactHTML();
+  if (!html) return;
+  const title = document.getElementById("artifact-title").textContent.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'document';
+  
+  // Wrap HTML in Word-compatible boilerplate
+  const docxHtml = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head><meta charset='utf-8'><title>${title}</title></head>
+    <body>${html}</body>
+    </html>
+  `;
+  
+  const blob = new Blob(['\ufeff', docxHtml], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title}.doc`; // .doc ensures Word opens the HTML payload smoothly
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>
 </body>
 </html>
