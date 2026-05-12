@@ -710,12 +710,15 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
     prs.slide_width  = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    # ── Color palette ─────────────────────────────────────────────────────────
-    DARK_BG   = RGBColor(0x0f, 0x14, 0x2a)
-    ACCENT    = RGBColor(0x1a, 0x56, 0xdb)
-    LIGHT_TXT = RGBColor(0xf0, 0xf4, 0xff)
-    MUTED     = RGBColor(0x9a, 0xa8, 0xcc)
+    # ── Professional deck palette (navy + gold, closer to polished product decks) ─
+    DARK_BG   = RGBColor(0x1a, 0x2b, 0x48)
+    GOLD      = RGBColor(0xd4, 0xaf, 0x37)
+    LIGHT_TXT = RGBColor(0xf5, 0xf6, 0xf8)
+    MUTED     = RGBColor(0xb8, 0xc4, 0xdc)
     WHITE     = RGBColor(0xff, 0xff, 0xff)
+
+    TITLE_FACE = "Georgia"
+    BODY_FACE  = "Calibri"
 
     blank_layout = prs.slide_layouts[6]  # Completely blank
 
@@ -726,70 +729,93 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
         fill.solid()
         fill.fore_color.rgb = color
 
-    def title_slide(heading: str, subtitle: str = ""):
+    def add_slide_footer(slide, slide_num: int, total_slides: int) -> None:
+        """Small page indicator bottom-right (matches common deck UX)."""
+        foot = slide.shapes.add_textbox(
+            Inches(11.35), Inches(7.05), Inches(1.85), Inches(0.38)
+        )
+        tf = foot.text_frame
+        tf.word_wrap = False
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.RIGHT
+        r = p.add_run()
+        r.text = f"Page {slide_num} / {total_slides}"
+        r.font.name = BODY_FACE
+        r.font.size = Pt(10)
+        r.font.color.rgb = MUTED
+
+    def title_slide(heading: str, subtitle: str = "", slide_num: int = 1, total_slides: int = 1):
         slide = prs.slides.add_slide(blank_layout)
         hex_bg(slide, DARK_BG)
 
-        # Accent bar on left
-        bar = slide.shapes.add_shape(
-            1, Inches(0), Inches(0), Inches(0.08), Inches(7.5)
-        )
-        bar.fill.solid()
-        bar.fill.fore_color.rgb = ACCENT
-        bar.line.fill.background()
+        # Gold bands top + bottom (executive deck style)
+        from pptx.util import Emu
 
-        # Title
-        txBox = slide.shapes.add_textbox(Inches(0.5), Inches(2.4), Inches(12.3), Inches(2))
+        for y in (Inches(0), Inches(7.42)):
+            band = slide.shapes.add_shape(1, Inches(0), y, Inches(13.33), Emu(2400))
+            band.fill.solid()
+            band.fill.fore_color.rgb = GOLD
+            band.line.fill.background()
+
+        # Title — centered
+        txBox = slide.shapes.add_textbox(Inches(0.9), Inches(2.55), Inches(11.5), Inches(1.35))
         tf = txBox.text_frame
         tf.word_wrap = True
         p = tf.paragraphs[0]
-        p.alignment = PP_ALIGN.LEFT
+        p.alignment = PP_ALIGN.CENTER
         run = p.add_run()
-        run.text = heading
-        run.font.name  = "Calibri"
-        run.font.size  = Pt(48)
+        run.text = heading.upper() if len(heading) < 80 else heading
+        run.font.name  = TITLE_FACE
+        run.font.size  = Pt(44)
         run.font.bold  = True
         run.font.color.rgb = WHITE
 
         if subtitle:
             p2 = tf.add_paragraph()
-            p2.alignment = PP_ALIGN.LEFT
+            p2.alignment = PP_ALIGN.CENTER
             r2 = p2.add_run()
             r2.text = subtitle
-            r2.font.name  = "Calibri"
-            r2.font.size  = Pt(20)
-            r2.font.color.rgb = MUTED
+            r2.font.name  = BODY_FACE
+            r2.font.size  = Pt(18)
+            r2.font.color.rgb = GOLD
 
-    def content_slide(heading: str, bullets: list, image_bytes: Optional[bytes] = None):
+        add_slide_footer(slide, slide_num, total_slides)
+
+    def content_slide(
+        heading: str,
+        bullets: list,
+        image_bytes: Optional[bytes] = None,
+        slide_num: int = 2,
+        total_slides: int = 2,
+    ):
         slide = prs.slides.add_slide(blank_layout)
         hex_bg(slide, DARK_BG)
 
-        # Top accent bar
-        bar = slide.shapes.add_shape(
-            1, Inches(0), Inches(0), Inches(13.33), Inches(0.08)
-        )
+        # Top gold band
+        from pptx.util import Emu
+
+        bar = slide.shapes.add_shape(1, Inches(0), Inches(0), Inches(13.33), Emu(2800))
         bar.fill.solid()
-        bar.fill.fore_color.rgb = ACCENT
+        bar.fill.fore_color.rgb = GOLD
         bar.line.fill.background()
 
         # Heading
-        hbox = slide.shapes.add_textbox(Inches(0.6), Inches(0.25), Inches(12), Inches(0.9))
+        hbox = slide.shapes.add_textbox(Inches(0.6), Inches(0.42), Inches(12), Inches(0.95))
         hf = hbox.text_frame
         hp = hf.paragraphs[0]
         hr = hp.add_run()
         hr.text = heading
-        hr.font.name  = "Calibri"
-        hr.font.size  = Pt(30)
-        hr.font.bold  = True
-        hr.font.color.rgb = WHITE
+        hr.font.name = TITLE_FACE
+        hr.font.size = Pt(28)
+        hr.font.bold = True
+        hr.font.color.rgb = DARK_BG
 
-        # Divider line
-        from pptx.util import Emu
+        # Gold underline under title
         line = slide.shapes.add_shape(
-            1, Inches(0.6), Inches(1.2), Inches(12.1), Emu(3000)
+            1, Inches(0.6), Inches(1.28), Inches(7.2) if image_bytes else Inches(12.1), Emu(2800)
         )
         line.fill.solid()
-        line.fill.fore_color.rgb = ACCENT
+        line.fill.fore_color.rgb = GOLD
         line.line.fill.background()
 
         # Bullets (narrower when image present)
@@ -814,7 +840,9 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
                 run.text = f"• {text}"
                 run.font.size  = Pt(18)
                 run.font.color.rgb = LIGHT_TXT
-            run.font.name = "Calibri"
+            run.font.name = BODY_FACE
+
+        add_slide_footer(slide, slide_num, total_slides)
 
         if image_bytes:
             import os
@@ -846,13 +874,16 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
 
     # Title card: explicit '# deck' row is empty bullets; else use API title
     if slides_list[0][1] == []:
-        title_slide(slides_list[0][0], "")
+        opening_title = slides_list[0][0]
         content_rows = slides_list[1:]
     else:
-        title_slide(title, "")
+        opening_title = title
         content_rows = slides_list
 
-    for heading, bullets, img_url in content_rows:
+    total_slides = 1 + len(content_rows)
+    title_slide(opening_title, "", slide_num=1, total_slides=total_slides)
+
+    for i, (heading, bullets, img_url) in enumerate(content_rows):
         pic: Optional[bytes] = None
         if img_url:
             pic = _fetch_image_bytes(img_url)
@@ -860,7 +891,13 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
             pic = _placeholder_image_bytes(f"{heading}|{title}")
         if pic is None:
             pic = _offline_gradient_placeholder_png(f"{heading}|{title}")
-        content_slide(heading, bullets if bullets else [], pic)
+        content_slide(
+            heading,
+            bullets if bullets else [],
+            pic,
+            slide_num=i + 2,
+            total_slides=total_slides,
+        )
 
     buf = io.BytesIO()
     prs.save(buf)
