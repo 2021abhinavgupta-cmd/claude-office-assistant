@@ -9,9 +9,6 @@ from __future__ import annotations
 
 import re
 import logging
-import os
-import json
-import math
 from typing import List, Dict, Optional
 
 from db import get_connection
@@ -25,6 +22,26 @@ def _normalize_query(q: str) -> str:
     q = re.sub(r"[^\w\s\-:/\.]", " ", q)
     q = " ".join(q.split())
     return q[:400]
+
+def _fts_query(q: str) -> str:
+    """
+    Turn a user query into a forgiving FTS5 MATCH expression.
+    - Uses OR between tokens so partial matches still retrieve context.
+    - Quotes long-ish tokens to prefer phrase-like matches.
+    """
+    qn = _normalize_query(q)
+    if not qn:
+        return ""
+    toks = [t for t in qn.split() if len(t) >= 2]
+    if not toks:
+        return ""
+    parts = []
+    for t in toks[:24]:
+        if len(t) >= 6:
+            parts.append(f"\"{t}\"")
+        else:
+            parts.append(t)
+    return " OR ".join(parts)
 
 
 def chunk_text(text: str, *, max_chars: int = 900, overlap: int = 120) -> List[str]:
@@ -61,20 +78,12 @@ def index_doc(project_id: str, user_id: str, doc_id: str, filename: str, content
                 "DELETE FROM kb_chunks_fts WHERE project_id=? AND user_id=? AND doc_id=?",
                 (project_id, user_id, doc_id),
             )
-            conn.execute(
-                "DELETE FROM kb_vectors WHERE project_id=? AND user_id=? AND doc_id=?",
-                (project_id, user_id, doc_id),
-            )
             for c in chunks:
                 conn.execute(
                     "INSERT INTO kb_chunks_fts (project_id, user_id, doc_id, filename, chunk) VALUES (?, ?, ?, ?, ?)",
                     (project_id, user_id, doc_id, filename, c),
                 )
         conn.close()
-
-        # Semantic index (optional). If OPENAI_API_KEY isn't set, skip silently.
-        if _openai_available():
-            _index_vectors(project_id, user_id, doc_id, filename, chunks)
     except Exception as e:
         logger.warning(f"KB index failed (non-fatal): {e}")
 
@@ -87,10 +96,6 @@ def delete_doc_index(project_id: str, user_id: str, doc_id: str) -> None:
                 "DELETE FROM kb_chunks_fts WHERE project_id=? AND user_id=? AND doc_id=?",
                 (project_id, user_id, doc_id),
             )
-            conn.execute(
-                "DELETE FROM kb_vectors WHERE project_id=? AND user_id=? AND doc_id=?",
-                (project_id, user_id, doc_id),
-            )
         conn.close()
     except Exception as e:
         logger.warning(f"KB deindex failed (non-fatal): {e}")
@@ -100,14 +105,8 @@ def search(project_id: str, user_id: str, query: str, *, limit: int = 6) -> List
     """
     Return top matching chunks for a project/user.
     """
-    # Prefer semantic retrieval when configured; fall back to FTS.
-    if _openai_available():
-        sem = _semantic_search(project_id, user_id, query, limit=limit)
-        if sem:
-            return sem
-
-    q = _normalize_query(query)
-    if not q:
+    mq = _fts_query(query)
+    if not mq:
         return []
 
     try:
@@ -122,7 +121,7 @@ def search(project_id: str, user_id: str, query: str, *, limit: int = 6) -> List
             ORDER BY score
             LIMIT ?
             """,
-            (project_id, user_id, q, int(limit)),
+            (project_id, user_id, mq, int(limit)),
         )
         rows = cur.fetchall()
         conn.close()
@@ -149,111 +148,4 @@ def format_for_prompt(matches: List[Dict]) -> Optional[str]:
             if c:
                 lines.append(f"- {c}")
     return "\n".join(lines).strip()
-
-
-def _openai_available() -> bool:
-    return bool(os.getenv("OPENAI_API_KEY"))
-
-
-def _get_openai_client():
-    # Lazy import so the app runs without OpenAI installed/configured.
-    try:
-        from openai import OpenAI
-        return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    except Exception:
-        return None
-
-
-def _embed_texts(texts: List[str]) -> Optional[List[List[float]]]:
-    client = _get_openai_client()
-    if not client:
-        return None
-    try:
-        resp = client.embeddings.create(
-            model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
-            input=texts,
-        )
-        return [d.embedding for d in resp.data]
-    except Exception as e:
-        logger.warning(f"Embeddings failed (non-fatal): {e}")
-        return None
-
-
-def _index_vectors(project_id: str, user_id: str, doc_id: str, filename: str, chunks: List[str]) -> None:
-    if not chunks:
-        return
-    embs = _embed_texts(chunks)
-    if not embs:
-        return
-    try:
-        conn = get_connection()
-        with conn:
-            for chunk, emb in zip(chunks, embs):
-                conn.execute(
-                    "INSERT INTO kb_vectors (project_id, user_id, doc_id, filename, chunk, embedding) VALUES (?, ?, ?, ?, ?, ?)",
-                    (project_id, user_id, doc_id, filename, chunk, json.dumps(emb)),
-                )
-        conn.close()
-    except Exception as e:
-        logger.warning(f"Vector index write failed (non-fatal): {e}")
-
-
-def _cosine(a: List[float], b: List[float]) -> float:
-    dot = 0.0
-    na = 0.0
-    nb = 0.0
-    for x, y in zip(a, b):
-        dot += x * y
-        na += x * x
-        nb += y * y
-    if na <= 0.0 or nb <= 0.0:
-        return 0.0
-    return dot / (math.sqrt(na) * math.sqrt(nb))
-
-
-def _semantic_search(project_id: str, user_id: str, query: str, *, limit: int = 6) -> List[Dict]:
-    q = " ".join((query or "").split())
-    if not q:
-        return []
-
-    qembs = _embed_texts([q])
-    if not qembs:
-        return []
-    qemb = qembs[0]
-
-    # Pull a bounded set of candidate chunks to score in Python.
-    # This keeps it simple and reliable without external vector DBs.
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT filename, doc_id, chunk, embedding
-            FROM kb_vectors
-            WHERE project_id=? AND user_id=?
-            ORDER BY id DESC
-            LIMIT 400
-            """,
-            (project_id, user_id),
-        )
-        rows = cur.fetchall()
-        conn.close()
-    except Exception as e:
-        logger.warning(f"Vector read failed (non-fatal): {e}")
-        return []
-
-    scored = []
-    for filename, doc_id, chunk, emb_json in rows:
-        try:
-            emb = json.loads(emb_json)
-            score = _cosine(qemb, emb)
-            scored.append((score, filename, doc_id, chunk))
-        except Exception:
-            continue
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    out = []
-    for score, filename, doc_id, chunk in scored[: int(limit)]:
-        out.append({"filename": filename, "doc_id": doc_id, "chunk": chunk, "score": score})
-    return out
 

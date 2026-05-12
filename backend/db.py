@@ -101,20 +101,8 @@ def init_db():
             # FTS5 might be unavailable in some SQLite builds; app will gracefully fall back.
             pass
 
-        # Semantic KB retrieval (embeddings). We keep it simple: store embeddings
-        # as JSON text; retrieval happens in Python with cosine similarity.
-        conn.execute("""CREATE TABLE IF NOT EXISTS kb_vectors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id TEXT NOT NULL,
-            user_id    TEXT NOT NULL,
-            doc_id     TEXT NOT NULL,
-            filename   TEXT NOT NULL,
-            chunk      TEXT NOT NULL,
-            embedding  TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )""")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_kb_vectors_project_user ON kb_vectors (project_id, user_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_kb_vectors_doc ON kb_vectors (project_id, user_id, doc_id)")
+        # NOTE: Semantic KB retrieval (embeddings) intentionally not enabled by default
+        # to avoid requiring an additional embeddings API key.
 
         # Add category column to tasks if not already present
         try:
