@@ -13,6 +13,7 @@ from db import get_connection
 
 MAX_CONTEXT_MESSAGES = 40
 MAX_TITLE_WORDS      = 7
+MAX_CONTEXT_CHARS    = 24_000  # rough budget for message contents (excludes system prompt)
 
 logger = logging.getLogger(__name__)
 
@@ -159,22 +160,59 @@ def get_context_messages(conv_id: str, limit: int = MAX_CONTEXT_MESSAGES) -> lis
         
     messages = messages[-limit:]
     
+    # If the context is long, compress older turns into a compact, readable summary.
     if len(messages) > 10:
         old_messages = messages[:-10]
         recent_messages = messages[-10:]
         
         # Compress old context
-        summary_lines = []
+        def _as_text(c):
+            if isinstance(c, list):
+                return " ".join([b.get("text", "") for b in c if b.get("type") == "text"]).strip()
+            return str(c or "").strip()
+
+        user_bits = []
+        assistant_bits = []
         for m in old_messages:
-            content = m["content"]
-            if isinstance(content, list):
-                content = " ".join([b.get("text", "") for b in content if b.get("type") == "text"])
-            summary_lines.append(f"{m['role'].upper()}: {content[:100]}...")
+            t = " ".join(_as_text(m["content"]).split())
+            if not t:
+                continue
+            # Keep slightly more signal than the previous 100-char truncation
+            t = t[:280]
+            if m["role"] == "user":
+                user_bits.append(t)
+            else:
+                assistant_bits.append(t)
+
+        summary_parts = []
+        if user_bits:
+            summary_parts.append("User (earlier):\n- " + "\n- ".join(user_bits[-12:]))
+        if assistant_bits:
+            summary_parts.append("Assistant (earlier):\n- " + "\n- ".join(assistant_bits[-12:]))
             
         compressed = {
             "role": "user", 
-            "content": "[SYSTEM NOTE: Older conversation context compressed for token efficiency]\n" + "\n".join(summary_lines)
+            "content": "[SYSTEM NOTE: Older conversation context compressed for token efficiency]\n" + "\n\n".join(summary_parts)
         }
-        return [compressed] + recent_messages
+        messages = [compressed] + recent_messages
+    else:
+        messages = messages
+    
+    # Final pass: enforce a rough character budget by dropping oldest non-summary turns.
+    total = 0
+    kept = []
+    # Always keep the last message; iterate from the end.
+    for m in reversed(messages):
+        t = m.get("content", "")
+        if isinstance(t, list):
+            t = " ".join([b.get("text", "") for b in t if b.get("type") == "text"])
+        t = str(t or "")
+        if total + len(t) > MAX_CONTEXT_CHARS and kept:
+            continue
+        kept.append(m)
+        total += len(t)
+        if total >= MAX_CONTEXT_CHARS:
+            break
+    return list(reversed(kept))
         
     return messages

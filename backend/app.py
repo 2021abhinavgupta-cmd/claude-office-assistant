@@ -1743,6 +1743,9 @@ def conversation_stream(conv_id):
         input_tokens   = 0
         output_tokens  = 0
         stream_error   = None
+        model_used_for_call = model_name
+        sent_thinking_start = False
+        sent_thinking_end   = False
 
         logger.info(f"Stream | task={task_type} | model={model_tier} | user={user_id}")
 
@@ -1754,12 +1757,16 @@ def conversation_stream(conv_id):
                 "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"}
             }
             if use_thinking:
-                stream_kwargs["model"] = "claude-3-7-sonnet-20250219"
+                # Thinking is only available on Sonnet-class models. We pin to the
+                # same Sonnet model shown in the UI for clarity/consistency.
+                stream_kwargs["model"] = "claude-sonnet-4-6"
                 stream_kwargs["max_tokens"] = 16000
                 stream_kwargs["thinking"] = {"type": "enabled", "budget_tokens": 8000}
+                model_used_for_call = stream_kwargs["model"]
             else:
                 stream_kwargs["model"] = model_name
                 stream_kwargs["max_tokens"] = MAX_TOKENS
+                model_used_for_call = stream_kwargs["model"]
 
             with client.messages.stream(**stream_kwargs) as stream:
                 for event in stream:
@@ -1767,8 +1774,10 @@ def conversation_stream(conv_id):
                         if event.type == "content_block_start":
                             if hasattr(event, "content_block"):
                                 if event.content_block.type == "thinking":
+                                    sent_thinking_start = True
                                     yield "data: {\"type\":\"thinking_start\"}\n\n"
                                 elif event.content_block.type == "text":
+                                    sent_thinking_end = True
                                     yield "data: {\"type\":\"thinking_end\"}\n\n"
                         elif event.type == "content_block_delta":
                             if hasattr(event, "delta") and event.delta.type == "text_delta":
@@ -1790,6 +1799,9 @@ def conversation_stream(conv_id):
             stream_error = "Internal server error during stream"
 
         if stream_error:
+            # Ensure the UI doesn't get stuck in a "thinking" state.
+            if sent_thinking_start and not sent_thinking_end:
+                yield "data: {\"type\":\"thinking_end\"}\n\n"
             yield f"data: {json.dumps({'type':'error','error':stream_error})}\n\n"
             return
 
@@ -1807,17 +1819,17 @@ def conversation_stream(conv_id):
 
         # Persist assistant reply + record usage
         cost = calculate_cost(model_tier, input_tokens, output_tokens)
-        record_usage(task_type=task_type, model_tier=model_tier, model_name=model_name,
+        record_usage(task_type=task_type, model_tier=model_tier, model_name=model_used_for_call,
                      input_tokens=input_tokens, output_tokens=output_tokens,
                      cost=cost, user_id=user_id)
         conversation_store.add_message(conv_id, "assistant", clean_response, {
-            "model_tier": model_tier, "model_used": model_name,
+            "model_tier": model_tier, "model_used": model_used_for_call,
             "cost_usd": cost, "task_type": task_type,
         })
 
         updated_conv   = conversation_store.get_conversation(conv_id)
         updated_budget = check_budget_available()
-        yield f"data: {json.dumps({'type':'done','model_tier':model_tier,'model_used':model_name,'cost_usd':cost,'task_type':task_type,'title':updated_conv['title'] if updated_conv else '','budget':{'spent':updated_budget['spent'],'remaining':updated_budget['remaining'],'limit':updated_budget['limit']}})}\n\n"
+        yield f"data: {json.dumps({'type':'done','model_tier':model_tier,'model_used':model_used_for_call,'cost_usd':cost,'task_type':task_type,'title':updated_conv['title'] if updated_conv else '','budget':{'spent':updated_budget['spent'],'remaining':updated_budget['remaining'],'limit':updated_budget['limit']}})}\n\n"
 
     return Response(
         stream_with_context(generate()),

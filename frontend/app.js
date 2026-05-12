@@ -690,7 +690,13 @@ if (typeof marked !== "undefined") {
 
     return `<div class="code-block-wrapper" style="margin: 16px 0;">${headerHtml}<pre style="margin-top:0; border-top-left-radius:0; border-top-right-radius:0; border:1px solid var(--border); padding:16px; overflow-x:auto; background:#282c34;"><code class="hljs language-${langStr}">${highlighted}</code></pre></div>`;
   };
-  marked.setOptions({ renderer: renderer, breaks: true, gfm: true });
+  marked.setOptions({
+    renderer: renderer,
+    breaks: true,
+    gfm: true,
+    headerIds: false,
+    mangle: false,
+  });
 }
 
 function formatText(text) {
@@ -700,7 +706,9 @@ function formatText(text) {
     if (codeBlocks % 2 !== 0) {
       text += "\n```"; 
     }
-    return marked.parse(text);
+    // Claude-like small touch: avoid rendering empty output as "null"/"undefined"
+    const out = marked.parse(String(text || ""));
+    return out || "";
   }
   return `<p>${escHtml(text).replace(/\n/g, "<br>")}</p>`;
 }
@@ -1514,28 +1522,43 @@ if (pFileInput) {
   pFileInput.addEventListener("change", async (e) => {
     if (!currentProjectId || !e.target.files.length) return;
     const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      let content = ev.target.result;
-      try {
-        const res = await fetch(`${API}/api/projects/${currentProjectId}/knowledge`, {
-          method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({
-            user_id: currentUser.user_id,
-            filename: file.name,
-            content: content.slice(0, 50000)
-          })
-        });
-        if (res.ok) {
-          showToast("Document added to Knowledge Base", "success");
-          window.openProject(currentProjectId); // reload
-        } else {
-          const err = await res.json().catch(() => ({}));
-          showToast(err.error || "Failed to upload document", "error");
-        }
-      } catch (err) { showToast("Failed to upload document", "error"); }
-    };
-    reader.readAsText(file);
+    try {
+      // 1) Extract text using the same backend pipeline as chat attachments
+      const form = new FormData();
+      form.append("file", file);
+      const up = await fetch(`${API}/api/upload`, { method: "POST", body: form });
+      if (!up.ok) {
+        const err = await up.json().catch(() => ({}));
+        showToast(err.error || "Upload failed", "error");
+        return;
+      }
+      const extracted = await up.json();
+      if (!extracted || extracted.type !== "document") {
+        showToast("This file type can’t be stored in the Project Knowledge Base yet (needs text extraction).", "info");
+        return;
+      }
+
+      // 2) Save extracted text into the project KB (bounded to keep prompts sane)
+      const content = (extracted.content || "").slice(0, 50000);
+      const res = await fetch(`${API}/api/projects/${currentProjectId}/knowledge`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          user_id: currentUser.user_id,
+          filename: extracted.filename || file.name,
+          content,
+        })
+      });
+      if (res.ok) {
+        showToast("Document added to Knowledge Base", "success");
+        window.openProject(currentProjectId); // reload
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Failed to save to Knowledge Base", "error");
+      }
+    } catch (_) {
+      showToast("Failed to upload document", "error");
+    }
     pFileInput.value = ""; // clear
   });
 }
