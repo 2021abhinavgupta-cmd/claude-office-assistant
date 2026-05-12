@@ -86,6 +86,21 @@ def init_db():
             data TEXT
         )""")
 
+        # Project Knowledge Base search index (FTS5)
+        # Stores chunked text for fast, Claude-Projects-like retrieval.
+        try:
+            conn.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5(
+                project_id UNINDEXED,
+                user_id    UNINDEXED,
+                doc_id     UNINDEXED,
+                filename   UNINDEXED,
+                chunk,
+                tokenize='porter'
+            )""")
+        except Exception:
+            # FTS5 might be unavailable in some SQLite builds; app will gracefully fall back.
+            pass
+
         # Add category column to tasks if not already present
         try:
             conn.execute("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT 'general'")

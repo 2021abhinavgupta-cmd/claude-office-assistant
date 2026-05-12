@@ -35,6 +35,7 @@ from budget_tracker import check_budget_available, record_usage, get_usage_summa
 from skills import get_all_skills, get_skill
 from custom_skills_store import create_skill, get_skills_for_user, delete_skill
 from system_prompt import MASTER_SYSTEM_PROMPT
+import kb_retriever
 import conversation_store
 import memory_store
 import file_processor
@@ -499,12 +500,12 @@ Valid USER_IDs you can assign memories to:
         if project:
             if project.get("custom_instructions"):
                 sections.append(f"## Custom Instructions\n{project['custom_instructions']}")
-            if project.get("knowledge_base"):
-                kb_text = "\n\n---\n\n".join(
-                    f"### {doc['filename']}\n{doc['content']}"
-                    for doc in project["knowledge_base"]
-                )
-                sections.append(f"## Project Knowledge Base\nThe following documents have been provided for context:\n\n{kb_text}")
+            # Claude-Projects-like behavior: retrieve only relevant KB excerpts
+            if message:
+                matches = kb_retriever.search(project_id, user_id, message, limit=6)
+                kb_ctx = kb_retriever.format_for_prompt(matches)
+                if kb_ctx:
+                    sections.append(kb_ctx)
     
     final_text = "\n\n".join(sections)
     return [
@@ -2006,6 +2007,11 @@ def add_project_knowledge(project_id):
     content = data.get("content", "")
     doc = project_store.add_knowledge_base_doc(project_id, user_id, filename, content)
     if not doc: return jsonify({"error": "Project not found"}), 404
+    # Index for retrieval (non-fatal if FTS is unavailable)
+    try:
+        kb_retriever.index_doc(project_id, user_id, doc["id"], filename, content)
+    except Exception:
+        pass
     return jsonify(doc), 201
 
 @app.route("/api/projects/<project_id>/knowledge/<doc_id>", methods=["DELETE"])
@@ -2013,6 +2019,10 @@ def delete_project_knowledge(project_id, doc_id):
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id") or request.args.get("user_id")
     if project_store.delete_knowledge_base_doc(project_id, user_id, doc_id):
+        try:
+            kb_retriever.delete_doc_index(project_id, user_id, doc_id)
+        except Exception:
+            pass
         return jsonify({"success": True})
     return jsonify({"error": "Not found"}), 404
 
