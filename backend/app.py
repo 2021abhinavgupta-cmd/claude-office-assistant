@@ -32,8 +32,6 @@ import anthropic
 # Local modules
 from model_router import get_model_for_task, calculate_cost, get_all_routes
 from budget_tracker import check_budget_available, record_usage, get_usage_summary, get_all_usage_logs
-from skills import get_all_skills, get_skill
-from custom_skills_store import create_skill, get_skills_for_user, delete_skill
 from system_prompt import MASTER_SYSTEM_PROMPT
 import kb_retriever
 import conversation_store
@@ -410,17 +408,6 @@ TASK_TIMEOUTS = {
 
 
 
-def _get_user_tone_profile(user_id: str) -> Optional[str]:
-    try:
-        with open(EMPLOYEES_DB, "r") as f:
-            data = json.load(f)
-            for emp in data.get("employees", []):
-                if emp.get("id") == user_id:
-                    return emp.get("tone_profile")
-    except Exception:
-        pass
-    return None
-
 def _get_all_users_str() -> str:
     try:
         with open(EMPLOYEES_DB, "r") as f:
@@ -428,21 +415,6 @@ def _get_all_users_str() -> str:
             return ", ".join([e.get("id") for e in data.get("employees", []) if e.get("id")])
     except Exception:
         return "api"
-
-def _get_team_context() -> str:
-    """Returns a directory of all team members and their default tone profiles."""
-    try:
-        with open(EMPLOYEES_DB, "r") as f:
-            data = json.load(f)
-            lines = []
-            for emp in data.get("employees", []):
-                role = emp.get('role', 'Staff')
-                tone = emp.get('tone_profile', 'Standard professional')
-                lines.append(f"- {emp.get('name')} ({role}): {tone}")
-            return "\n".join(lines)
-    except Exception:
-        pass
-    return ""
 
 def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None, message: str = "") -> list:
     base_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
@@ -475,25 +447,16 @@ Valid USER_IDs you can assign memories to:
             "Do not present uncertain information as fact."
         )
 
-    tone_profile = _get_user_tone_profile(user_id)
-    if tone_profile:
-        base_prompt += f"\n\nCRITICAL OUTPUT STYLE REQUIREMENT: You MUST strictly adhere to the following writing style and tone for this user: {tone_profile}"
-    
     mem_ctx = memory_store.format_for_prompt(user_id)
     team_mem_ctx = memory_store.format_team_memories()
-    team_directory = _get_team_context()
     
     sections = [base_prompt]
     if mem_ctx:
         sections.append(mem_ctx)
         
-    if team_directory or team_mem_ctx:
-        team_section = "## TEAM DIRECTORY & SHARED STYLES\n(If the user asks you to write like someone else on the team, use the profiles and memories below.)"
-        if team_directory:
-            team_section += f"\n\n### Team Tone Profiles:\n{team_directory}"
-        if team_mem_ctx:
-            team_section += f"\n{team_mem_ctx}"
-        sections.append(team_section)
+    # Shared team memories only (no HR tone profiles — aligns with Claude Projects + memory).
+    if team_mem_ctx:
+        sections.append("## Shared team memories\n" + team_mem_ctx)
     
     if project_id:
         project = project_store.get_project(project_id, user_id)
@@ -758,35 +721,6 @@ def export_usage():
     )
 
 # ── Main Chat ─────────────────────────────────────────────────────────────────
-@app.route("/api/skills", methods=["GET"])
-def list_skills():
-    """Return all available skills (built-in + custom) for the frontend skills bar."""
-    user_id = request.args.get("user_id", "anonymous")
-    builtin = get_all_skills()
-    custom  = get_skills_for_user(user_id)
-    return jsonify({"skills": builtin, "custom_skills": custom})
-
-@app.route("/api/skills/custom", methods=["POST"])
-def create_custom_skill():
-    data      = request.json
-    user_id   = data.get("user_id")
-    name      = data.get("name", "").strip()
-    emoji     = data.get("emoji", "⚡").strip()
-    model     = data.get("model", "haiku")
-    prompt    = data.get("prompt", "").strip()
-    is_shared = data.get("is_shared", False)
-    if not name or not prompt:
-        return jsonify({"error": "Name and instructions are required"}), 400
-    skill_id = create_skill(user_id, name, emoji, model, prompt, is_shared)
-    return jsonify({"success": True, "skill_id": skill_id})
-
-@app.route("/api/skills/custom/<skill_id>", methods=["DELETE"])
-def delete_custom_skill(skill_id):
-    user_id = request.json.get("user_id")
-    delete_skill(skill_id, user_id)
-    return jsonify({"success": True})
-
-
 @app.route("/api/chat", methods=["POST"])
 def chat():
     """
@@ -1662,49 +1596,21 @@ def conversation_stream(conv_id):
 
     # Build context + attachments
     context = conversation_store.get_context_messages(conv_id)
-    skill_id    = data.get("skill_id")
     model_override = data.get("model_override")
 
-    # ── Skill injection: override model + task_type + system prompt ───────────
-    skill_prompt_prefix = None
-    if skill_id:
-        if skill_id.startswith("sk_"):
-            from custom_skills_store import get_skills_for_user
-            user_skills = get_skills_for_user(user_id)
-            skill = next((s for s in user_skills if s["id"] == skill_id), None)
-            if skill:
-                task_type           = "general"
-                model_tier          = skill["model"]
-                # Map model tier to model name
-                skill_model_config  = get_model_for_task(model_tier)
-                model_name          = skill_model_config["name"]
-                skill_prompt_prefix = skill["prompt"]
-                logger.info(f"Custom Skill active: {skill_id} | model={model_tier} | task={task_type}")
-        else:
-            skill = get_skill(skill_id)
-            if skill:
-                task_type         = skill["task_type"]
-                skill_model_config = get_model_for_task(task_type)
-                model_name        = skill_model_config["name"]
-                model_tier        = skill_model_config["tier"]
-                skill_prompt_prefix = skill["prompt"]
-                logger.info(f"Skill active: {skill_id} | model={model_tier} | task={task_type}")
+    if model_override and model_override != "auto":
+        model_name = model_override
+        model_tier = "sonnet" if "sonnet" in model_name.lower() or "pro" in model_name.lower() else "haiku"
+    else:
+        model_config = get_model_for_task(task_type)
+        model_name   = model_config["name"]
+        model_tier   = model_config["tier"]
 
-    if not skill_id:
-        if model_override and model_override != "auto":
-            model_name = model_override
-            model_tier = "sonnet" if "sonnet" in model_name.lower() or "pro" in model_name.lower() else "haiku"
-        else:
-            model_config = get_model_for_task(task_type)
-            model_name   = model_config["name"]
-            model_tier   = model_config["tier"]
-
-    memory_context = _build_system_prompt(task_type, user_id, conv.get("project_id"))
+    mem_blocks = _build_system_prompt(task_type, user_id, conv.get("project_id"), message=message)
+    mem_text = mem_blocks[0]["text"] if mem_blocks else ""
     final_system = MASTER_SYSTEM_PROMPT
-    if skill_prompt_prefix:
-        final_system = skill_prompt_prefix + "\n\n" + final_system
-    if memory_context:
-        final_system = final_system + "\n\n" + memory_context
+    if mem_text:
+        final_system = final_system + "\n\n" + mem_text
 
     system_prompt = [{
         "type": "text",

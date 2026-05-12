@@ -210,16 +210,6 @@
       <!-- File Chips (shown when files are attached) -->
       <div class="file-chips" id="file-chips"></div>
 
-      <!-- Skills Bar -->
-      <div class="skills-bar" id="skills-bar" style="display:none;">
-        <button class="skill-btn skill-clear active" id="skill-clear-btn" onclick="clearSkill()">
-          ✦ No Skill
-        </button>
-        <div class="skills-scroll" id="skills-scroll">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
       <footer class="input-bar">
         <div class="input-wrap" id="input-wrap">
           <button class="upload-btn" id="upload-btn" title="Attach file">
@@ -392,39 +382,6 @@
       <button class="opt-btn secondary" id="opt-keep-btn">✕ Keep original</button>
       <button class="opt-btn primary" id="opt-use-btn">✓ Use optimized →</button>
     </div>
-  </div>
-</div>
-
-<!-- Skills manager modal -->
-<div id="skills-modal-backdrop" class="sk-modal-backdrop hidden" onclick="closeSkillsModal()"></div>
-<div id="skills-modal" class="sk-modal hidden">
-  <div class="sk-modal-header">
-    <h3>⚡ My Skills</h3>
-    <button onclick="closeSkillsModal()">✕</button>
-  </div>
-
-  <!-- Existing custom skills list -->
-  <div id="custom-skills-list"></div>
-
-  <!-- Create new skill form -->
-  <div class="sk-form">
-    <div class="sk-form-title">+ Create New Skill</div>
-    <div class="sk-form-row">
-      <input id="sk-emoji"  placeholder="⚡" maxlength="2"  class="sk-input sk-emoji-input"/>
-      <input id="sk-name"   placeholder="Skill name"        class="sk-input sk-name-input"/>
-    </div>
-    <select id="sk-model" class="sk-input">
-      <option value="haiku">Haiku — Fast (emails, captions, summaries)</option>
-      <option value="sonnet">Sonnet — Powerful (code, design, analysis)</option>
-    </select>
-    <textarea id="sk-prompt" placeholder="Instructions for Claude — e.g. You write in a casual Gen-Z tone. Always use emojis. Keep responses under 5 lines." class="sk-textarea"></textarea>
-    <div class="sk-share-row">
-      <label class="sk-toggle-label">
-        <input type="checkbox" id="sk-shared"/> Share with whole team
-      </label>
-      <span class="sk-share-hint">Team members will see this skill too</span>
-    </div>
-    <button onclick="saveCustomSkill()" class="sk-save-btn">Save Skill →</button>
   </div>
 </div>
 

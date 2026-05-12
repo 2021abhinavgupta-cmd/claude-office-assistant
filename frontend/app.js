@@ -171,7 +171,6 @@ document.addEventListener("DOMContentLoaded", () => {
     currentUser = saved;
     applyUser(saved);
     loadConversations();
-    loadSkills();
   } else {
     loadEmployeeList();
   }
@@ -1159,7 +1158,6 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
     const override = modelOverrideEl ? modelOverrideEl.value : "auto";
     const bodyPayload = { message: text, attachments: atts };
     if (override !== "auto") bodyPayload.model_override = override;
-    if (window.activeSkill)  bodyPayload.skill_id = window.activeSkill;
     if (truncateFromIndex !== null) bodyPayload.truncate_from_index = truncateFromIndex;
 
     const response = await fetch(`${API}/api/conversations/${currentConvId}/stream`, {
@@ -1687,128 +1685,3 @@ window.toggleTheme = function() {
 window.exportAllCalls = function() {
   window.open(`${API}/api/usage/export`, "_blank");
 };
-
-// ── Skills System ─────────────────────────────────────────────────────────────
-window.activeSkill = null;
-
-window.toggleSkill = function(id, emoji, name) {
-  if (window.activeSkill === id) {
-    clearSkill();
-    return;
-  }
-  window.activeSkill = id;
-  document.querySelectorAll('.sk-chip, .skill-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.getElementById(`sk-${id}`);
-  if (btn) btn.classList.add('active');
-  const clearBtn = document.getElementById('skill-clear-btn');
-  if (clearBtn) clearBtn.classList.remove('active');
-  const msgInput = document.getElementById('msg-input');
-  if (msgInput) msgInput.placeholder = `Message Claude as ${name}...`;
-};
-
-window.clearSkill = function() {
-  window.activeSkill = null;
-  document.querySelectorAll('.sk-chip, .skill-btn').forEach(b => b.classList.remove('active'));
-  const clearBtn = document.getElementById('skill-clear-btn');
-  if (clearBtn) clearBtn.classList.add('active');
-  const msgInput = document.getElementById('msg-input');
-  if (msgInput) msgInput.placeholder = `Message Claude… (or drop a file here)`;
-};
-
-async function loadSkills() {
-  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  if (!user.user_id) return;
-
-  const res  = await fetch(`${API}/api/skills?user_id=${user.user_id}`);
-  const data = await res.json();
-  const list = document.getElementById("skills-scroll");
-  
-  if (document.getElementById("skills-bar")) {
-      document.getElementById("skills-bar").style.display = "flex";
-  }
-
-  // UI simplification: only show "+ Add Skill" in the bar (chips live in the modal).
-  list.innerHTML = `<button class="sk-manage-btn" onclick="openSkillsModal()">+ Add Skill</button>`;
-
-  if (window.activeSkill) {
-      const btn = document.getElementById(`sk-${window.activeSkill}`);
-      if (btn) btn.classList.add('active');
-  }
-
-  renderCustomSkillsList(data.custom_skills || []);
-}
-
-function renderCustomSkillsList(skills) {
-  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  const wrap = document.getElementById("custom-skills-list");
-  if (!wrap) return;
-
-  if (!skills.length) {
-    wrap.innerHTML = `<div class="sk-empty">No custom skills yet — create your first one below.</div>`;
-    return;
-  }
-  wrap.innerHTML = skills.map(s => `
-    <div class="sk-item">
-      <div class="sk-item-left">
-        <span class="sk-item-emoji">${s.emoji}</span>
-        <div>
-          <div class="sk-item-name">${s.name}
-            ${s.is_shared ? '<span class="sk-tag">Team</span>' : '<span class="sk-tag sk-tag-personal">Personal</span>'}
-          </div>
-          <div class="sk-item-prompt">${s.prompt.slice(0, 80)}...</div>
-        </div>
-      </div>
-      ${s.user_id === user.user_id
-        ? `<button class="sk-delete-btn" onclick="deleteCustomSkill('${s.id}')">✕</button>`
-        : ""}
-    </div>`
-  ).join("");
-}
-
-window.saveCustomSkill = async function() {
-  const user   = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  const name   = document.getElementById("sk-name").value.trim();
-  const emoji  = document.getElementById("sk-emoji").value.trim() || "⚡";
-  const model  = document.getElementById("sk-model").value;
-  const prompt = document.getElementById("sk-prompt").value.trim();
-  const shared = document.getElementById("sk-shared").checked;
-
-  if (!name || !prompt) { alert("Name and instructions are required."); return; }
-
-  const res = await fetch(`${API}/api/skills/custom`, {
-    method:  "POST",
-    headers: {"Content-Type":"application/json"},
-    body:    JSON.stringify({user_id: user.user_id, name, emoji, model, prompt, is_shared: shared})
-  });
-  const data = await res.json();
-  if (data.success) {
-    document.getElementById("sk-name").value   = "";
-    document.getElementById("sk-emoji").value  = "";
-    document.getElementById("sk-prompt").value = "";
-    document.getElementById("sk-shared").checked = false;
-    loadSkills();
-  }
-};
-
-window.deleteCustomSkill = async function(skillId) {
-  if (!confirm("Are you sure you want to delete this skill?")) return;
-  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
-  await fetch(`${API}/api/skills/custom/${skillId}`, {
-    method:  "DELETE",
-    headers: {"Content-Type":"application/json"},
-    body:    JSON.stringify({user_id: user.user_id})
-  });
-  if (window.activeSkill === skillId) clearSkill();
-  loadSkills();
-};
-
-window.openSkillsModal = function() {
-  document.getElementById("skills-modal-backdrop").classList.remove("hidden");
-  document.getElementById("skills-modal").classList.remove("hidden");
-};
-
-window.closeSkillsModal = function() {
-  document.getElementById("skills-modal-backdrop").classList.add("hidden");
-  document.getElementById("skills-modal").classList.add("hidden");
-};
-
