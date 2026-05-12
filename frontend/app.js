@@ -1727,23 +1727,8 @@ async function loadSkills() {
       document.getElementById("skills-bar").style.display = "flex";
   }
 
-  // Built-in skills
-  const builtinHtml = (data.skills || []).map(s =>
-    `<button class="skill-btn sk-chip" id="sk-${s.id}" onclick="toggleSkill('${s.id}','${s.emoji}','${s.name.replace(/'/g, "\\'")}')">
-       ${s.emoji} ${s.name}
-     </button>`
-  ).join("");
-
-  // Custom skills
-  const customHtml = (data.custom_skills || []).map(s =>
-    `<button class="skill-btn sk-chip sk-chip-custom" id="sk-${s.id}" onclick="toggleSkill('${s.id}','${s.emoji}','${s.name.replace(/'/g, "\\'")}')">
-       ${s.emoji} ${s.name}
-       ${s.is_shared ? '<span class="sk-shared-dot" title="Shared with team">●</span>' : ""}
-     </button>`
-  ).join("");
-
-  list.innerHTML = builtinHtml + customHtml +
-    `<button class="sk-manage-btn" onclick="openSkillsModal()">+ Add Skill</button>`;
+  // UI simplification: only show "+ Add Skill" in the bar (chips live in the modal).
+  list.innerHTML = `<button class="sk-manage-btn" onclick="openSkillsModal()">+ Add Skill</button>`;
 
   if (window.activeSkill) {
       const btn = document.getElementById(`sk-${window.activeSkill}`);
