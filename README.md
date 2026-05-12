@@ -40,6 +40,19 @@ python app.py
 ```
 Then open: **http://localhost:5000**
 
+### PowerPoint (.pptx) export fails (“No module named 'pptx'”)
+
+The PyPI package name is **`python-pptx`**; Python imports it as **`pptx`**.
+
+```bash
+source venv/bin/activate
+pip install python-pptx
+# or reinstall everything:
+pip install -r backend/requirements.txt
+```
+
+`GET /api/health` includes **`pptx_export_ready: true`** when the library is installed.
+
 ---
 
 ## 🌐 Pages

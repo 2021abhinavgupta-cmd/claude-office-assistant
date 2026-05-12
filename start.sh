@@ -27,7 +27,13 @@ if [ ! -d "venv" ]; then
   python3 -m venv venv
 fi
 source venv/bin/activate
-pip install -q -r backend/requirements.txt 2>/dev/null
+echo "⚙️  Installing Python dependencies…"
+if ! pip install -q -r backend/requirements.txt; then
+  echo ""
+  echo "❌ pip install failed. Fix errors above, then run:"
+  echo "   source venv/bin/activate && pip install -r backend/requirements.txt"
+  exit 1
+fi
 
 # ── 3. Free port 5000 if in use ──────────────────────────────────────────────
 if lsof -ti:5000 > /dev/null 2>&1; then

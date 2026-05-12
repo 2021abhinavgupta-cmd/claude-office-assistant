@@ -608,10 +608,17 @@ def _pptx_parse_slide_blocks(markdown_text: str, default_title: str) -> List[Tup
 # ─── PPTX Export ─────────────────────────────────────────────────────────────
 
 def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
-    from pptx import Presentation as Prs
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
+    try:
+        from pptx import Presentation as Prs
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+        from pptx.enum.text import PP_ALIGN
+    except ImportError as e:
+        raise RuntimeError(
+            "PowerPoint export needs the python-pptx package. "
+            "Install it with: pip install python-pptx "
+            "(from your project folder: pip install -r backend/requirements.txt)"
+        ) from e
 
     prs = Prs()
     prs.slide_width  = Inches(13.33)

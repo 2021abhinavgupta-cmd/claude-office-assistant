@@ -644,12 +644,15 @@ def _save_employees(data: dict):
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check endpoint."""
+    import importlib.util
+
     budget = get_usage_summary()
     return jsonify({
         "status": "ok",
         "service": "Claude Office Assistant API",
         "budget_remaining": budget["remaining"],
         "budget_percent_used": budget["percent_used"],
+        "pptx_export_ready": importlib.util.find_spec("pptx") is not None,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     })
 
