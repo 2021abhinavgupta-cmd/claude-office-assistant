@@ -1307,6 +1307,45 @@ msgInput.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); window.sendMessage(); }
 });
 
+/**
+ * Adds visual “presentation wrapping” around assistant replies (card + optional deliverable ribbon).
+ * Claude web bundles layout polish in-product; here we frame the same story more clearly.
+ */
+function decorateAssistantReply(el, rawText) {
+  if (!el || !el.classList.contains("assistant") || el.classList.contains("typing-indicator")) return;
+  el.classList.add("assistant-reply-framed");
+  const body = el.querySelector(".msg-body");
+  if (!body) return;
+  body.classList.add("assistant-reply-frame");
+
+  const text = rawText || "";
+  const looksDeck = /\b(?:slide\s+\d+|##\s*slide\s+\d+)/i.test(text);
+  const looksFormalDoc =
+    /^#\s+\S/m.test(text) && text.length > 160 &&
+    /\b(?:introduction|summary|conclusion|abstract)\b/i.test(text);
+
+  if (!looksDeck && !looksFormalDoc) return;
+  if (body.querySelector(".reply-deliverable-hint")) return;
+
+  const nameEl = body.querySelector(".msg-name");
+  if (!nameEl) return;
+
+  const hint = document.createElement("div");
+  hint.className = "reply-deliverable-hint";
+  hint.setAttribute("role", "note");
+  if (looksDeck) {
+    hint.innerHTML =
+      '<span class="hint-label">Deliverable</span>' +
+      '<span class="hint-text">Use <strong>📊 PPT</strong> for a formatted slide file ' +
+      "(theme + optional images), or <strong>📝 DOCX</strong> for Word.</span>";
+  } else {
+    hint.innerHTML =
+      '<span class="hint-label">Deliverable</span>' +
+      '<span class="hint-text">Use <strong>📝 DOCX</strong> or <strong>📄 PDF</strong> from the footer above the input.</span>';
+  }
+  nameEl.after(hint);
+}
+
 // ── Streaming DOM helpers ─────────────────────────────────────────────────────
 function createStreamingMessage() {
   const el  = document.createElement("div");
@@ -1384,6 +1423,8 @@ function finalizeStreamingMessage(el, text, meta = {}) {
       if (content) { msgInput.value = content; window.sendMessage(); }
     }
   });
+
+  decorateAssistantReply(el, text);
 }
 
 // Also add action buttons to appendMessage (for loaded conversation history)
@@ -1422,6 +1463,8 @@ window.appendMessage = function(role, content, meta = {}) {
                         || "Claude Export";
       window.setLastAIResponse(content, convTitle);
     }
+
+    decorateAssistantReply(el, content);
   }
   return el;
 };
