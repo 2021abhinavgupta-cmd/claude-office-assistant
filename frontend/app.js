@@ -1104,6 +1104,20 @@ function hideThinkingIndicator() {
   if (el) el.style.display = "none";
 }
 
+/** User asked for an actual Word / DOCX file (export), not just markdown in chat */
+function userAskedForWordExport(question) {
+  if (!question || !question.trim()) return false;
+  const q = question;
+  return (
+    /\b(docx|\.doc\b)/i.test(q) ||
+    /\bmicrosoft\s+word\b/i.test(q) ||
+    /\bword\s+document\b/i.test(q) ||
+    /\bmake\s+(?:me\s+)?(?:a\s+)?word\b/i.test(q) ||
+    /\b(?:save|create|give|generate|export)\s+(?:me\s+)?(?:a\s+)?(?:word|docx)\b/i.test(q) ||
+    /\ba\s+word\s+(?:file|doc|document)\b/i.test(q)
+  );
+}
+
 window.sendMessage = async function(overrideText = null, truncateFromIndex = null) {
   const text = overrideText || msgInput.value.trim();
   if (!text || isLoading || !currentConvId) return;
@@ -1213,6 +1227,14 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
             model_used: event.model_used,
             cost_usd:   event.cost_usd,
           });
+          if (userAskedForWordExport(text) && typeof exportDocument === "function") {
+            setTimeout(() => {
+              try {
+                exportDocument("docx");
+                showToast("📝 Downloading Word document…", "success");
+              } catch (_) {}
+            }, 80);
+          }
           updateHeaderChips(event.task_type || "general", event.model_tier || "haiku");
           updateInputMeta(event.task_type || "general", event.model_used || "");
           convTitleHeader.textContent = event.title || convTitleHeader.textContent;
@@ -1288,6 +1310,13 @@ function finalizeStreamingMessage(el, text, meta = {}) {
   const textEl = el.querySelector(".msg-text");
   textEl.innerHTML = formatText(text);
 
+  // Keep artifact/export pane in sync (streaming bypassed appendMessage wrapper).
+  if (window.setLastAIResponse) {
+    const convTitle = document.getElementById("conv-title-header")?.textContent?.trim()
+                      || "Claude Export";
+    window.setLastAIResponse(text, convTitle);
+  }
+
   // Cost + model chips
   if (meta.model_tier || meta.cost_usd) {
     const metaEl = document.createElement("div");
@@ -1303,8 +1332,14 @@ function finalizeStreamingMessage(el, text, meta = {}) {
   actions.className = "msg-actions";
   actions.innerHTML = `
     <button class="msg-action-btn copy-btn" title="Copy response">📋 Copy</button>
+    <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>
     <button class="msg-action-btn regen-btn" title="Regenerate response">↺ Retry</button>`;
   body.appendChild(actions);
+
+  const docxBtn = actions.querySelector(".export-docx-btn");
+  if (docxBtn && typeof exportDocument === "function") {
+    docxBtn.addEventListener("click", () => exportDocument("docx", docxBtn));
+  }
 
   actions.querySelector(".copy-btn").addEventListener("click", function() {
     navigator.clipboard.writeText(text).then(() => {
@@ -1332,8 +1367,15 @@ window.appendMessage = function(role, content, meta = {}) {
     const body    = el.querySelector(".msg-body");
     const actions = document.createElement("div");
     actions.className = "msg-actions";
-    actions.innerHTML = `<button class="msg-action-btn copy-btn" title="Copy">📋 Copy</button>`;
+    actions.innerHTML = `
+      <button class="msg-action-btn copy-btn" title="Copy">📋 Copy</button>
+      <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>`;
     body.appendChild(actions);
+    const docxBtn = actions.querySelector(".export-docx-btn");
+    if (docxBtn && typeof exportDocument === "function") {
+      docxBtn.addEventListener("click", () => exportDocument("docx", docxBtn));
+    }
+
     actions.querySelector(".copy-btn").addEventListener("click", function() {
       navigator.clipboard.writeText(content).then(() => {
         this.textContent = "✓ Copied";

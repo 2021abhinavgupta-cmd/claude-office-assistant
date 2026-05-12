@@ -296,9 +296,9 @@
           <span id="artifact-icon">✨</span> <span id="artifact-title">Live Preview</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <button onclick="exportDocument('pdf')" title="Download as PDF" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📄 PDF</button>
-          <button onclick="exportDocument('docx')" title="Download as DOCX" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📝 DOCX</button>
-          <button onclick="exportDocument('pptx')" title="Download as PowerPoint" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📊 PPT</button>
+          <button onclick="exportDocument('pdf', this)" title="Download as PDF" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📄 PDF</button>
+          <button onclick="exportDocument('docx', this)" title="Download as DOCX" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📝 DOCX</button>
+          <button onclick="exportDocument('pptx', this)" title="Download as PowerPoint" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📊 PPT</button>
           <button onclick="closeArtifact()" title="Close Preview" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem; margin-left:6px;">&times;</button>
         </div>
       </div>
@@ -396,18 +396,43 @@ window.setLastAIResponse = function(text, title) {
   window._lastAIResponse = { text, title: title || "Claude Export" };
 };
 
+// Strip chat preamble / fake labels so DOCX matches what users expect (like Claude artifacts)
+function markdownBodyForExport(md) {
+  if (!md || !String(md).trim()) return md;
+  let s = String(md).trim();
+  s = s.replace(/^\s*(DOCUMENT:|MARKDOWN|Download)\s*:?\s*$/gim, "");
+  const lines = s.split(/\r?\n/);
+  const firstH = lines.findIndex(l => /^#{1,6}\s+\S/.test(l.trim()));
+  if (firstH > 0) {
+    const fluff = lines.slice(0, firstH).join("\n").trim();
+    if (
+      fluff.length > 60 ||
+      /\b(here'?s|i['']?ll\s+create|word-?ready|complete\s+markdown|below\s+(is|you))/i.test(fluff)
+    ) {
+      s = lines.slice(firstH).join("\n").trim();
+    }
+  }
+  return s;
+}
+
 // ── Server-side Export ───────────────────────────────────────────────────────
-async function exportDocument(format) {
-  const { text, title } = window._lastAIResponse;
+async function exportDocument(format, triggerEl) {
+  let { text, title } = window._lastAIResponse;
   if (!text) {
     alert("No AI response found yet. Ask Claude something first!");
     return;
   }
 
-  const btn = event.target;
-  const origLabel = btn.textContent;
-  btn.textContent = "⏳ Generating...";
-  btn.disabled = true;
+  if (format === "docx" || format === "pdf") {
+    text = markdownBodyForExport(text);
+  }
+
+  const btn = triggerEl || (typeof event !== "undefined" ? event.target : null);
+  const origLabel = btn ? btn.textContent : "";
+  if (btn) {
+    btn.textContent = "⏳ Generating...";
+    btn.disabled = true;
+  }
 
   try {
     const API = window.API || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'http://localhost:5000' : location.origin);
@@ -435,10 +460,14 @@ async function exportDocument(format) {
   } catch (e) {
     alert(`❌ Export error: ${e.message}`);
   } finally {
-    btn.textContent = origLabel;
-    btn.disabled = false;
+    if (btn) {
+      btn.textContent = origLabel;
+      btn.disabled = false;
+    }
   }
 }
+
+window.exportDocument = exportDocument;
 
 // Legacy client-side functions removed — now server-backed
 function downloadArtifactPDF()  { exportDocument('pdf');  }
