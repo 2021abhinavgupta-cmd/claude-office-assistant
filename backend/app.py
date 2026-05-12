@@ -32,6 +32,9 @@ import anthropic
 # Local modules
 from model_router import get_model_for_task, calculate_cost, get_all_routes
 from budget_tracker import check_budget_available, record_usage, get_usage_summary, get_all_usage_logs
+from skills import get_all_skills, get_skill
+from custom_skills_store import create_skill, get_skills_for_user, delete_skill
+from system_prompt import MASTER_SYSTEM_PROMPT
 import conversation_store
 import memory_store
 import file_processor
@@ -754,6 +757,35 @@ def export_usage():
     )
 
 # ── Main Chat ─────────────────────────────────────────────────────────────────
+@app.route("/api/skills", methods=["GET"])
+def list_skills():
+    """Return all available skills (built-in + custom) for the frontend skills bar."""
+    user_id = request.args.get("user_id", "anonymous")
+    builtin = get_all_skills()
+    custom  = get_skills_for_user(user_id)
+    return jsonify({"skills": builtin, "custom_skills": custom})
+
+@app.route("/api/skills/custom", methods=["POST"])
+def create_custom_skill():
+    data      = request.json
+    user_id   = data.get("user_id")
+    name      = data.get("name", "").strip()
+    emoji     = data.get("emoji", "⚡").strip()
+    model     = data.get("model", "haiku")
+    prompt    = data.get("prompt", "").strip()
+    is_shared = data.get("is_shared", False)
+    if not name or not prompt:
+        return jsonify({"error": "Name and instructions are required"}), 400
+    skill_id = create_skill(user_id, name, emoji, model, prompt, is_shared)
+    return jsonify({"success": True, "skill_id": skill_id})
+
+@app.route("/api/skills/custom/<skill_id>", methods=["DELETE"])
+def delete_custom_skill(skill_id):
+    user_id = request.json.get("user_id")
+    delete_skill(skill_id, user_id)
+    return jsonify({"success": True})
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     """
@@ -1629,15 +1661,55 @@ def conversation_stream(conv_id):
 
     # Build context + attachments
     context = conversation_store.get_context_messages(conv_id)
+    skill_id    = data.get("skill_id")
     model_override = data.get("model_override")
-    if model_override and model_override != "auto":
-        model_name = model_override
-        model_tier = "sonnet" if "sonnet" in model_name.lower() else "haiku"
-    else:
-        model_config = get_model_for_task(task_type)
-        model_name   = model_config["name"]
-        model_tier   = model_config["tier"]
-    system_prompt = _build_system_prompt(task_type, user_id, conv.get("project_id"))
+
+    # ── Skill injection: override model + task_type + system prompt ───────────
+    skill_prompt_prefix = None
+    if skill_id:
+        if skill_id.startswith("sk_"):
+            from custom_skills_store import get_skills_for_user
+            user_skills = get_skills_for_user(user_id)
+            skill = next((s for s in user_skills if s["id"] == skill_id), None)
+            if skill:
+                task_type           = "general"
+                model_tier          = skill["model"]
+                # Map model tier to model name
+                skill_model_config  = get_model_for_task(model_tier)
+                model_name          = skill_model_config["name"]
+                skill_prompt_prefix = skill["prompt"]
+                logger.info(f"Custom Skill active: {skill_id} | model={model_tier} | task={task_type}")
+        else:
+            skill = get_skill(skill_id)
+            if skill:
+                task_type         = skill["task_type"]
+                skill_model_config = get_model_for_task(task_type)
+                model_name        = skill_model_config["name"]
+                model_tier        = skill_model_config["tier"]
+                skill_prompt_prefix = skill["prompt"]
+                logger.info(f"Skill active: {skill_id} | model={model_tier} | task={task_type}")
+
+    if not skill_id:
+        if model_override and model_override != "auto":
+            model_name = model_override
+            model_tier = "sonnet" if "sonnet" in model_name.lower() or "pro" in model_name.lower() else "haiku"
+        else:
+            model_config = get_model_for_task(task_type)
+            model_name   = model_config["name"]
+            model_tier   = model_config["tier"]
+
+    memory_context = _build_system_prompt(task_type, user_id, conv.get("project_id"))
+    final_system = MASTER_SYSTEM_PROMPT
+    if skill_prompt_prefix:
+        final_system = skill_prompt_prefix + "\n\n" + final_system
+    if memory_context:
+        final_system = final_system + "\n\n" + memory_context
+
+    system_prompt = [{
+        "type": "text",
+        "text": final_system,
+        "cache_control": {"type": "ephemeral"}
+    }]
 
     api_messages = list(context)
     if attachments and api_messages and api_messages[-1]["role"] == "user":
@@ -1658,6 +1730,14 @@ def conversation_stream(conv_id):
             yield f"data: {json.dumps({'type':'error','error':'Monthly budget limit reached'})}\n\n"
         return Response(stream_with_context(_budget_err()), mimetype="text/event-stream")
 
+    def should_think(prompt: str, t_type: str) -> bool:
+        THINKING_TASKS = ["coding", "data_analysis", "html_design", "presentations", "analysis"]
+        THINKING_KEYWORDS = ["why", "how", "explain", "analyse", "analyze", "compare", "difference", "best way", "should i", "help me think", "strategy", "plan", "review", "feedback", "debug", "fix"]
+        if t_type in THINKING_TASKS: return True
+        if len(prompt.split()) > 30: return True
+        if any(k in prompt.lower() for k in THINKING_KEYWORDS): return True
+        return False
+
     def generate():
         full_response  = ""
         input_tokens   = 0
@@ -1667,14 +1747,33 @@ def conversation_stream(conv_id):
         logger.info(f"Stream | task={task_type} | model={model_tier} | user={user_id}")
 
         try:
-            with client.messages.stream(
-                model=model_name, max_tokens=MAX_TOKENS,
-                system=system_prompt, messages=api_messages,
-                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
-            ) as stream:
-                for text_chunk in stream.text_stream:
-                    full_response += text_chunk
-                    yield f"data: {json.dumps({'type':'text','text':text_chunk})}\n\n"
+            use_thinking = should_think(message, task_type)
+            stream_kwargs = {
+                "system": system_prompt,
+                "messages": api_messages,
+                "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"}
+            }
+            if use_thinking:
+                stream_kwargs["model"] = "claude-3-7-sonnet-20250219"
+                stream_kwargs["max_tokens"] = 16000
+                stream_kwargs["thinking"] = {"type": "enabled", "budget_tokens": 8000}
+            else:
+                stream_kwargs["model"] = model_name
+                stream_kwargs["max_tokens"] = MAX_TOKENS
+
+            with client.messages.stream(**stream_kwargs) as stream:
+                for event in stream:
+                    if hasattr(event, "type"):
+                        if event.type == "content_block_start":
+                            if hasattr(event, "content_block"):
+                                if event.content_block.type == "thinking":
+                                    yield "data: {\"type\":\"thinking_start\"}\n\n"
+                                elif event.content_block.type == "text":
+                                    yield "data: {\"type\":\"thinking_end\"}\n\n"
+                        elif event.type == "content_block_delta":
+                            if hasattr(event, "delta") and event.delta.type == "text_delta":
+                                full_response += event.delta.text
+                                yield f"data: {json.dumps({'type':'text','text':event.delta.text})}\n\n"
 
                 final_msg     = stream.get_final_message()
                 input_tokens  = final_msg.usage.input_tokens
@@ -2613,10 +2712,61 @@ def notion_dashboard():
     return jsonify(data)
 
 
+# ── Document Export ───────────────────────────────────────────────────────────
+
+@app.route("/api/export", methods=["POST"])
+def export_document():
+    """
+    Convert AI-generated markdown to a downloadable DOCX, PDF, or PPTX file.
+    Body: { content: str, format: "docx"|"pdf"|"pptx", title: str }
+    """
+    from flask import send_file
+    from document_exporter import export_docx, export_pdf, export_pptx
+
+    body   = request.get_json(silent=True) or {}
+    content = body.get("content", "").strip()
+    fmt     = body.get("format", "pdf").lower()
+    title   = body.get("title", "Claude Export")[:120]
+
+    if not content:
+        return jsonify({"error": "No content provided"}), 400
+    if fmt not in ("docx", "pdf", "pptx"):
+        return jsonify({"error": "Unsupported format. Use docx, pdf, or pptx."}), 400
+
+    try:
+        if fmt == "docx":
+            buf      = export_docx(content, title=title)
+            mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ext      = "docx"
+        elif fmt == "pdf":
+            buf      = export_pdf(content, title=title)
+            mimetype = "application/pdf"
+            ext      = "pdf"
+        else:  # pptx
+            buf      = export_pptx(content, title=title)
+            mimetype = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ext      = "pptx"
+
+        safe_name = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_") or "export"
+        return send_file(
+            buf,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=f"{safe_name}.{ext}"
+        )
+
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        logger.exception("Export failed")
+        return jsonify({"error": f"Export failed: {str(e)}"}), 500
+
+
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 
 if __name__ == "__main__":
+
     port  = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
     logger.info(f"Starting Claude Office Assistant API on port {port}")

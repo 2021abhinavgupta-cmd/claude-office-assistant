@@ -197,8 +197,28 @@
 
       <section class="messages" id="messages" aria-live="polite" aria-label="Messages"></section>
 
+      <!-- Thinking indicator — shown while Claude thinks -->
+      <div id="thinking-indicator" style="display:none">
+          <div class="thinking-bubble">
+              <div class="thinking-dots">
+                  <span></span><span></span><span></span>
+              </div>
+              <span class="thinking-label">Thinking...</span>
+          </div>
+      </div>
+
       <!-- File Chips (shown when files are attached) -->
       <div class="file-chips" id="file-chips"></div>
+
+      <!-- Skills Bar -->
+      <div class="skills-bar" id="skills-bar" style="display:none;">
+        <button class="skill-btn skill-clear active" id="skill-clear-btn" onclick="clearSkill()">
+          ✦ No Skill
+        </button>
+        <div class="skills-scroll" id="skills-scroll">
+          <!-- Populated by JS -->
+        </div>
+      </div>
 
       <footer class="input-bar">
         <div class="input-wrap" id="input-wrap">
@@ -286,9 +306,10 @@
           <span id="artifact-icon">✨</span> <span id="artifact-title">Live Preview</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <button onclick="downloadArtifactPDF()" title="Download as PDF" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">📄 PDF</button>
-          <button onclick="downloadArtifactDOCX()" title="Download as DOCX" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">📝 DOCX</button>
-          <button onclick="closeArtifact()" title="Close Preview" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem; margin-left:8px;">&times;</button>
+          <button onclick="exportDocument('pdf')" title="Download as PDF" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📄 PDF</button>
+          <button onclick="exportDocument('docx')" title="Download as DOCX" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📝 DOCX</button>
+          <button onclick="exportDocument('pptx')" title="Download as PowerPoint" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; transition:all 0.15s;">📊 PPT</button>
+          <button onclick="closeArtifact()" title="Close Preview" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem; margin-left:6px;">&times;</button>
         </div>
       </div>
       <div id="artifact-content" style="flex:1; overflow:hidden; padding:0; background:#fff;">
@@ -374,56 +395,97 @@
   </div>
 </div>
 
+<!-- Skills manager modal -->
+<div id="skills-modal-backdrop" class="sk-modal-backdrop hidden" onclick="closeSkillsModal()"></div>
+<div id="skills-modal" class="sk-modal hidden">
+  <div class="sk-modal-header">
+    <h3>⚡ My Skills</h3>
+    <button onclick="closeSkillsModal()">✕</button>
+  </div>
+
+  <!-- Existing custom skills list -->
+  <div id="custom-skills-list"></div>
+
+  <!-- Create new skill form -->
+  <div class="sk-form">
+    <div class="sk-form-title">+ Create New Skill</div>
+    <div class="sk-form-row">
+      <input id="sk-emoji"  placeholder="⚡" maxlength="2"  class="sk-input sk-emoji-input"/>
+      <input id="sk-name"   placeholder="Skill name"        class="sk-input sk-name-input"/>
+    </div>
+    <select id="sk-model" class="sk-input">
+      <option value="haiku">Haiku — Fast (emails, captions, summaries)</option>
+      <option value="sonnet">Sonnet — Powerful (code, design, analysis)</option>
+    </select>
+    <textarea id="sk-prompt" placeholder="Instructions for Claude — e.g. You write in a casual Gen-Z tone. Always use emojis. Keep responses under 5 lines." class="sk-textarea"></textarea>
+    <div class="sk-share-row">
+      <label class="sk-toggle-label">
+        <input type="checkbox" id="sk-shared"/> Share with whole team
+      </label>
+      <span class="sk-share-hint">Team members will see this skill too</span>
+    </div>
+    <button onclick="saveCustomSkill()" class="sk-save-btn">Save Skill →</button>
+  </div>
+</div>
+
 <script src="app.js"></script>
 <script src="optimizer.js"></script>
 <script>
-// Artifact Download Functions
-function getArtifactHTML() {
-  const iframe = document.getElementById("artifact-iframe");
-  if (!iframe || !iframe.contentWindow) return "";
-  return iframe.contentWindow.document.documentElement.outerHTML;
+// ── Export State ────────────────────────────────────────────────────────────
+window._lastAIResponse = { text: "", title: "Claude Export" };
+
+// Call from app.js after each AI reply
+window.setLastAIResponse = function(text, title) {
+  window._lastAIResponse = { text, title: title || "Claude Export" };
+};
+
+// ── Server-side Export ───────────────────────────────────────────────────────
+async function exportDocument(format) {
+  const { text, title } = window._lastAIResponse;
+  if (!text) {
+    alert("No AI response found yet. Ask Claude something first!");
+    return;
+  }
+
+  const btn = event.target;
+  const origLabel = btn.textContent;
+  btn.textContent = "⏳ Generating...";
+  btn.disabled = true;
+
+  try {
+    const API = window.API || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'http://localhost:5000' : location.origin);
+    const res = await fetch(`${API}/api/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: text, format, title })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Export failed");
+    }
+
+    // Trigger browser download
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `${title.replace(/[^\w\s-]/g,"").trim().replace(/\s+/g,"_") || "export"}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert(`❌ Export error: ${e.message}`);
+  } finally {
+    btn.textContent = origLabel;
+    btn.disabled = false;
+  }
 }
 
-function downloadArtifactPDF() {
-  const iframe = document.getElementById("artifact-iframe");
-  if (!iframe || !iframe.contentWindow) return;
-  const element = iframe.contentWindow.document.body;
-  const title = document.getElementById("artifact-title").textContent.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'document';
-  
-  const opt = {
-    margin:       0.5,
-    filename:     `${title}.pdf`,
-    image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2 },
-    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
-  };
-  
-  html2pdf().set(opt).from(element).save();
-}
-
-function downloadArtifactDOCX() {
-  const html = getArtifactHTML();
-  if (!html) return;
-  const title = document.getElementById("artifact-title").textContent.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'document';
-  
-  // Wrap HTML in Word-compatible boilerplate
-  const docxHtml = `
-    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head><meta charset='utf-8'><title>${title}</title></head>
-    <body>${html}</body>
-    </html>
-  `;
-  
-  const blob = new Blob(['\ufeff', docxHtml], { type: 'application/msword' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${title}.doc`; // .doc ensures Word opens the HTML payload smoothly
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+// Legacy client-side functions removed — now server-backed
+function downloadArtifactPDF()  { exportDocument('pdf');  }
+function downloadArtifactDOCX() { exportDocument('docx'); }
 </script>
 </body>
 </html>

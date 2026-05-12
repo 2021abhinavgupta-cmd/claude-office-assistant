@@ -28,6 +28,19 @@ def init_db():
         # User Memory
         conn.execute("CREATE TABLE IF NOT EXISTS memory (user_id TEXT PRIMARY KEY, data TEXT)")
         
+        # Custom Skills
+        conn.execute("""CREATE TABLE IF NOT EXISTS custom_skills (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            emoji TEXT DEFAULT '⚡',
+            model TEXT DEFAULT 'haiku',
+            task_type TEXT DEFAULT 'general',
+            prompt TEXT NOT NULL,
+            is_shared INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        
         # Usage Logs
         conn.execute("CREATE TABLE IF NOT EXISTS usage_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT)")
         
