@@ -98,39 +98,27 @@ SYSTEM_PROMPTS = {
         "- Point out security issues if you spot any"
     ),
     "html_design": (
-        "You are an expert frontend designer and developer.\n"
-        "You are a world-class senior web designer and front-end engineer.\n\n"
-        "COMPLETENESS (CRITICAL):\n"
-        "- Write the FULL file every single time — never abbreviate, truncate, or use comments like '...' or 'rest of styles here'\n"
-        "- A landing page MUST have: hero, features/services, social proof, CTA, footer — all sections fully written\n"
-        "- CSS must be extensive: custom properties, responsive breakpoints, animations, hover effects, scroll effects\n"
-        "- JavaScript must be functional: smooth scroll, scroll-triggered animations (IntersectionObserver), form validation, interactive elements\n"
-        "- Aim for 400–800+ lines of dense, production-quality code\n\n"
-        "DESIGN EXCELLENCE:\n"
-        "- Use distinctive, characterful font pairs (Bebas Neue+DM Sans, Playfair Display+Source Sans, Syne+Inter, Clash Display+Satoshi)\n"
-        "- Choose a strong, committed aesthetic — dark editorial, warm luxury, vibrant geometric, clean editorial\n"
-        "- Use creative layouts: CSS Grid, overlapping elements, asymmetric sections, strong whitespace rhythm\n"
-        "- Add rich micro-interactions: hover transforms, staggered reveals, smooth transitions (all CSS)\n"
-        "- Every section must feel designed, not templated\n\n"
-        "TECHNICAL REQUIREMENTS:\n"
-        "- Single self-contained HTML file: all CSS in <style>, all JS in <script>\n"
-        "- Only allowed external resource: Google Fonts import\n"
-        "- Mobile-first responsive design with at least 2 breakpoints\n"
-        "- Semantic HTML5: header, main, section, article, footer\n"
-        "- Valid, lint-clean code — no syntax errors\n\n"
-        "NEVER:\n"
-        "- Use purple gradients on dark backgrounds\n"
-        "- Use glassmorphism as the primary style\n"
-        "- Use floating orb/blob backgrounds\n"
-        "- Write generic AI aesthetics\n"
-        "- Truncate or abbreviate ANY part of the code\n"
-        "- Output placeholder comments instead of real code\n\n"
-        "The output must look like it was built by a senior designer at a premium agency."
+        "TASK-SPECIFIC OUTPUT: One complete, self-contained HTML page.\n\n"
+        "TECHNICAL:\n"
+        "- Raw HTML from <!DOCTYPE html> through </html>; all CSS in <style>, all JS in <script>\n"
+        "- External resources: Google Fonts links only\n"
+        "- Semantic HTML5; mobile-first with ≥2 breakpoints; valid, lint-clean code\n\n"
+        "STRUCTURE (unless the user specifies otherwise):\n"
+        "- Nav, hero, substantive sections (features/value/social proof as fits), CTA, footer\n"
+        "- CSS variables for colours/spacing; transitions/hover states; meaningful motion (e.g. IntersectionObserver reveals)\n\n"
+        "Follow the global HTML/CSS rules above (distinctive fonts, no generic AI templates, never truncate CSS/JS)."
     ),
     "presentations": (
-        "You are a professional presentation strategist. Create clear, engaging slide content. "
-        "Format each slide as:\n## SLIDE N: Title\n**Key Point 1**\n**Key Point 2**\n**Key Point 3**\n"
-        "Include a title slide and summary slide. Use compelling headlines and concise bullet points."
+        "TASK-SPECIFIC OUTPUT: Slide decks as markdown matching the global presentation rules.\n\n"
+        "Every slide, exactly:\n"
+        "## SLIDE N: [Statement headline — not a vague topic label]\n"
+        "- Bullet or key point\n"
+        "- Bullet or key point\n"
+        "- Bullet or key point\n"
+        "[NOTES: Short speaker notes]\n\n"
+        "- Slide 1 = hook or tension (not a generic title slide unless the user asks)\n"
+        "- One idea per slide; rule of three where it helps\n"
+        "- Last slide = clear next step / CTA — not “Thank you” alone\n"
     ),
     "captions": (
         "You are a social media content expert. Write punchy, engaging captions "
@@ -471,10 +459,12 @@ Valid USER_IDs you can assign memories to:
                     sections.append(kb_ctx)
     
     final_text = "\n\n".join(sections)
+    # Same global behaviour stack as main chat (HTML/PPT/docs routes use this too).
+    combined = MASTER_SYSTEM_PROMPT.rstrip() + "\n\n" + final_text
     return [
         {
             "type": "text",
-            "text": final_text,
+            "text": combined,
             "cache_control": {"type": "ephemeral"}
         }
     ]
@@ -762,7 +752,10 @@ def html_generate():
     """
     data        = request.get_json(silent=True) or {}
     description = data.get("description", "").strip()
-    style_hints = data.get("style_hints", "modern, dark mode, glassmorphism").strip()
+    style_hints = data.get(
+        "style_hints",
+        "modern, distinctive typography, CSS variables, strong colour direction — avoid glassmorphism",
+    ).strip()
     user_id     = data.get("user_id", "anonymous")
 
     if not description:
@@ -781,7 +774,7 @@ def html_generate():
     font_pairs = [
         ("Bebas Neue", "DM Sans", "Bold display + clean body"),
         ("Playfair Display", "Source Sans Pro", "Elegant serif + modern body"),
-        ("Syne", "Inter", "Geometric display — only case Inter is acceptable"),
+        ("Syne", "Manrope", "Geometric display + readable UI body (avoid Inter as primary display)"),
         ("Cabinet Grotesk", "Lora", "Modern grotesk + literary body"),
         ("Clash Display", "Satoshi", "Contemporary display pair"),
     ]
@@ -862,7 +855,10 @@ def html_generate_stream():
     """
     data        = request.get_json(silent=True) or {}
     description = data.get("description", "").strip()
-    style_hints = data.get("style_hints", "modern, dark mode, glassmorphism").strip()
+    style_hints = data.get(
+        "style_hints",
+        "modern, distinctive typography, CSS variables, strong colour direction — avoid glassmorphism",
+    ).strip()
     user_id     = data.get("user_id", "anonymous")
 
     if not description:
@@ -881,7 +877,7 @@ def html_generate_stream():
     font_pairs = [
         ("Bebas Neue", "DM Sans", "Bold display + clean body"),
         ("Playfair Display", "Source Sans Pro", "Elegant serif + modern body"),
-        ("Syne", "Inter", "Geometric display — only case Inter is acceptable"),
+        ("Syne", "Manrope", "Geometric display + readable UI body (avoid Inter as primary display)"),
         ("Cabinet Grotesk", "Lora", "Modern grotesk + literary body"),
         ("Clash Display", "Satoshi", "Contemporary display pair"),
     ]
@@ -1008,13 +1004,14 @@ def create_presentation():
         f"Create a {slide_count}-slide presentation on: {topic}\n\n"
         f"Audience: {audience}\n"
         f"Tone: {tone}\n\n"
+        "Follow your system instructions for slide structure (hook first slide, statement headlines, CTA last).\n"
         "Format each slide EXACTLY as:\n"
-        "## SLIDE N: [Title]\n"
-        "- [Bullet 1]\n"
-        "- [Bullet 2]\n"
-        "- [Bullet 3]\n"
-        "[NOTES: Speaker notes here]\n\n"
-        f"Include: Title slide (#1), {slide_count-2} content slides, Summary/CTA slide (#{slide_count})."
+        "## SLIDE N: [Statement headline]\n"
+        "- [Point]\n"
+        "- [Point]\n"
+        "- [Point]\n"
+        "[NOTES: Speaker notes]\n\n"
+        f"Number slides 1–{slide_count}. Slide 1 must grab attention; slide {slide_count} must drive a specific action."
     )
 
     result = call_claude("presentations", prompt, user_id, max_tokens=25000)
@@ -1607,10 +1604,7 @@ def conversation_stream(conv_id):
         model_tier   = model_config["tier"]
 
     mem_blocks = _build_system_prompt(task_type, user_id, conv.get("project_id"), message=message)
-    mem_text = mem_blocks[0]["text"] if mem_blocks else ""
-    final_system = MASTER_SYSTEM_PROMPT
-    if mem_text:
-        final_system = final_system + "\n\n" + mem_text
+    final_system = mem_blocks[0]["text"] if mem_blocks else MASTER_SYSTEM_PROMPT
 
     system_prompt = [{
         "type": "text",

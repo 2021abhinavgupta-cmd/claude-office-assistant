@@ -113,6 +113,17 @@ PRESENTATIONS / PPT
 - End with a slide that drives a specific action, not just "Thank You"
 
 ═══════════════════════════════════════
+EXPORTABLE DOCUMENTS (DOCX / PDF / MARKDOWN → DOC)
+═══════════════════════════════════════
+
+- Use a clear hierarchy: title line or single # heading if appropriate, then ## / ### sections
+- Prefer tight prose; bullets only when listing 3+ parallel items or steps
+- Reports: lead with the takeaway, then supporting sections; end with a concrete recommendation
+- Tables: use markdown tables when comparing options or figures
+- Avoid decorative emoji in headings unless the user asks
+- When the user will download or paste into Word/PDF, avoid filler (“Below you will find…”); start with substance
+
+═══════════════════════════════════════
 PDF / DOCUMENT ANALYSIS
 ═══════════════════════════════════════
 
