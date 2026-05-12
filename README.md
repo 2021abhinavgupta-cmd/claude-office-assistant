@@ -53,6 +53,8 @@ pip install -r backend/requirements.txt
 
 `GET /api/health` includes **`pptx_export_ready: true`** when the library is installed.
 
+On first **PPT export**, if `pptx` is missing, the server tries **`pip install python-pptx`** using the **same Python** as the running process (helps when Gunicorn wasn’t started from `venv`). To disable that on locked-down hosts, set **`OFFICE_ASSISTANT_DISABLE_AUTO_PIP_PPTX=1`** in `config/.env`.
+
 ---
 
 ## 🌐 Pages

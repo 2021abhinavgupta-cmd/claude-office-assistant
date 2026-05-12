@@ -5,9 +5,93 @@ Uses python-docx for Word, WeasyPrint for PDF, python-pptx for PowerPoint.
 """
 
 import io
+import logging
+import os
 import re
+import subprocess
+import sys
 import html as html_module
 from typing import List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+_pptx_pip_attempted = False
+
+
+def _pptx_install_help() -> str:
+    return (
+        "PowerPoint export needs the python-pptx package. "
+        "Install it with: pip install python-pptx "
+        "(from your project folder: pip install -r backend/requirements.txt). "
+        "Use the same Python as your server (e.g. venv/bin/python)."
+    )
+
+
+def _ensure_python_pptx_installed() -> None:
+    """
+    Ensure `pptx` can be imported. If missing, try `pip install python-pptx` using **this**
+    interpreter (matches gunicorn / `python app.py`). Set OFFICE_ASSISTANT_DISABLE_AUTO_PIP_PPTX=1
+    to skip auto-install (locked-down hosts).
+    """
+    global _pptx_pip_attempted
+    try:
+        import pptx  # noqa: F401
+        return
+    except ImportError:
+        pass
+
+    if os.getenv("OFFICE_ASSISTANT_DISABLE_AUTO_PIP_PPTX", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        raise RuntimeError(_pptx_install_help())
+
+    if _pptx_pip_attempted:
+        raise RuntimeError(_pptx_install_help())
+
+    _pptx_pip_attempted = True
+    logger.warning(
+        "python-pptx not importable — running pip install into %s",
+        sys.executable,
+    )
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "python-pptx>=0.6.23",
+            ],
+            check=False,
+            timeout=180,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            logger.error(
+                "pip install python-pptx failed (exit %s): %s",
+                proc.returncode,
+                (proc.stderr or proc.stdout or "")[:2000],
+            )
+            raise RuntimeError(_pptx_install_help())
+    except subprocess.TimeoutExpired as e:
+        logger.error("pip install python-pptx timed out")
+        raise RuntimeError(_pptx_install_help()) from e
+    except OSError as e:
+        logger.error("could not run pip: %s", e)
+        raise RuntimeError(_pptx_install_help()) from e
+
+    import importlib
+
+    importlib.invalidate_caches()
+    try:
+        import pptx  # noqa: F401
+    except ImportError as e:
+        logger.error("pptx still not importable after pip install")
+        raise RuntimeError(_pptx_install_help()) from e
 
 # ─── DOCX Export ─────────────────────────────────────────────────────────────
 
@@ -608,17 +692,11 @@ def _pptx_parse_slide_blocks(markdown_text: str, default_title: str) -> List[Tup
 # ─── PPTX Export ─────────────────────────────────────────────────────────────
 
 def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
-    try:
-        from pptx import Presentation as Prs
-        from pptx.util import Inches, Pt
-        from pptx.dml.color import RGBColor
-        from pptx.enum.text import PP_ALIGN
-    except ImportError as e:
-        raise RuntimeError(
-            "PowerPoint export needs the python-pptx package. "
-            "Install it with: pip install python-pptx "
-            "(from your project folder: pip install -r backend/requirements.txt)"
-        ) from e
+    _ensure_python_pptx_installed()
+    from pptx import Presentation as Prs
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
 
     prs = Prs()
     prs.slide_width  = Inches(13.33)
