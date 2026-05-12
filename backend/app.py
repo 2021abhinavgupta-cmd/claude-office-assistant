@@ -287,7 +287,7 @@ def _quality_check(response: str, task_type: str, model_name: str) -> str:
             }],
         )
         logger.info(f"Quality check fixed issues: {issues}")
-        return fix_resp.content[0].text
+        return _anthropic_response_text(fix_resp) or response
     except Exception as e:
         logger.warning(f"Quality check fix failed (non-fatal): {e}")
         return response
@@ -345,7 +345,7 @@ def _smart_file_context(file_content: str, user_question: str, haiku_model: str)
             }],
         )
         logger.info(f"Smart file context: reduced {len(file_content)} chars for question")
-        return extract_resp.content[0].text
+        return _anthropic_response_text(extract_resp) or file_content[:4000]
     except Exception as e:
         logger.warning(f"Smart file context failed (non-fatal): {e}")
         return file_content[:4000]
@@ -375,7 +375,7 @@ def _analyze_conversation_state(history: list, haiku_model: str) -> Optional[str
                 )
             }],
         )
-        return state_resp.content[0].text
+        return _anthropic_response_text(state_resp)
     except Exception as e:
         logger.warning(f"Conversation state analysis failed (non-fatal): {e}")
         return None
@@ -470,6 +470,44 @@ Valid USER_IDs you can assign memories to:
         }
     ]
 
+# ── Anthropic response parsing ─────────────────────────────────────────────────
+def _anthropic_response_text(response, *, include_thinking: bool = False) -> str:
+    """
+    Concatenate text from a Messages API response. Skips tool_use blocks.
+    When include_thinking is False (default), skips thinking blocks — use that for
+    user-facing answers. Set True only for internal reasoning snippets.
+    Models that emit extended thinking often put a non-text block first; using only
+    content[0].text raises or returns empty.
+    """
+    skip_tool = frozenset({"tool_use", "server_tool_use"})
+    parts: list = []
+    for block in getattr(response, "content", None) or []:
+        typ = getattr(block, "type", None)
+        if typ in skip_tool:
+            continue
+        if typ == "thinking":
+            if include_thinking:
+                parts.append(getattr(block, "thinking", "") or "")
+            continue
+        if typ == "redacted_thinking":
+            if include_thinking:
+                parts.append("")
+            continue
+        if typ == "text":
+            t = getattr(block, "text", None)
+            if t:
+                parts.append(t)
+        elif hasattr(block, "text") and getattr(block, "text", None):
+            parts.append(block.text)
+    out = "".join(parts).strip()
+    if out:
+        return out
+    blocks = getattr(response, "content", None) or []
+    if len(blocks) == 1 and hasattr(blocks[0], "text") and getattr(blocks[0], "text", None):
+        return (blocks[0].text or "").strip()
+    return ""
+
+
 # ── Helper: call Claude ───────────────────────────────────────────────────────
 def call_claude(task_type: str, message: str, user_id: str = "api",
                 max_tokens: int = MAX_TOKENS, force_tier: Optional[str] = None,
@@ -511,7 +549,8 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
                 }],
             }
             think_resp = client.messages.create(**think_kwargs)
-            reasoning_context = f"\n\n[Thinking]\n{think_resp.content[0].text}\n\n[Now answer the original request]\n"
+            think_txt = _anthropic_response_text(think_resp, include_thinking=True)
+            reasoning_context = f"\n\n[Thinking]\n{think_txt}\n\n[Now answer the original request]\n"
             logger.info(f"Reasoning step added for complex task | user={user_id}")
         except Exception as e:
             logger.warning(f"Reasoning step failed (non-fatal): {e}")
@@ -533,7 +572,10 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
                 kwargs["extra_headers"]["anthropic-beta"] += ",output-128k-2025-02-19"
 
         response = client.messages.create(**kwargs)
-        output_text   = response.content[0].text
+        output_text = _anthropic_response_text(response)
+        if not output_text:
+            logger.error("Claude returned no text blocks (present?). content=%r", getattr(response, "content", None))
+            return {"success": False, "error": "Claude returned an empty response. Try again or shorten the deck."}
         # ── Quality check (auto-fix filler phrases & incomplete responses) ──
         output_text = _quality_check(output_text, task_type, model_name)
         # ── End quality check ──
@@ -1012,15 +1054,21 @@ def create_presentation():
         "- [Point]\n"
         "- [Point]\n"
         "[NOTES: Speaker notes]\n\n"
+        "If the user asked for images or visuals, add one optional line per slide with a real https URL, e.g. "
+        "IMAGE: https://images.unsplash.com/... (pick relevant stock imagery).\n\n"
         f"Number slides 1–{slide_count}. Slide 1 must grab attention; slide {slide_count} must drive a specific action."
     )
 
     result = call_claude("presentations", prompt, user_id, max_tokens=25000)
     if not result["success"]:
-        return jsonify({"error": result.get("error", "Generation failed")}), 500
+        return jsonify({"success": False, "error": result.get("error", "Generation failed")}), 500
 
     # Parse slides from markdown
-    slides = _parse_slides(result["response"])
+    try:
+        slides = _parse_slides(result["response"])
+    except Exception as e:
+        logger.exception("Slide parse failed: %s", e)
+        return jsonify({"success": False, "error": "Could not parse slide format from Claude response."}), 500
 
     return jsonify({
         **result,
@@ -1034,22 +1082,28 @@ def _parse_slides(markdown: str) -> list:
     """Parse ## SLIDE N: Title format into structured slide objects."""
     import re
     slides = []
-    blocks = re.split(r"(?=## SLIDE \d+:)", markdown)
+    blocks = re.split(r"(?=##\s*SLIDE\s+\d+\s*:)", markdown, flags=re.IGNORECASE)
+    hdr_re = re.compile(r"^##\s*SLIDE\s+\d+:\s*(.+)$", re.IGNORECASE)
     for block in blocks:
         if not block.strip():
             continue
         lines   = block.strip().split("\n")
         header  = lines[0]
-        title_m = re.match(r"## SLIDE \d+:\s*(.+)", header)
-        title   = title_m.group(1).strip() if title_m else header.strip()
+        title_m = hdr_re.match(header.strip())
+        title   = title_m.group(1).strip() if title_m else header.strip().lstrip("#").strip()
 
         bullets = []
         notes   = ""
         for line in lines[1:]:
-            if line.startswith("[NOTES:"):
-                notes = line.replace("[NOTES:", "").rstrip("]").strip()
-            elif line.startswith("- "):
-                bullets.append(line[2:].strip())
+            ls = line.strip()
+            low = ls.lower()
+            if low.startswith("[notes:") or low.startswith("[notes :"):
+                inner = ls.split(":", 1)[-1].rstrip("]").strip()
+                notes = inner
+            elif ls.startswith("- "):
+                bullets.append(ls[2:].strip())
+            elif re.match(r"^\s*(?:IMAGE|IMG|img)\s*:", ls, re.I):
+                continue
 
         slides.append({"title": title, "bullets": bullets, "notes": notes})
     return slides
@@ -1405,7 +1459,10 @@ def call_claude_with_context(task_type: str, messages: list,
             system=system_prompt, messages=api_messages,
             extra_headers=headers
         )
-        output_text   = response.content[0].text
+        output_text = _anthropic_response_text(response)
+        if not output_text:
+            logger.error("Claude returned no text (conversation path). content=%r", getattr(response, "content", None))
+            return {"success": False, "error": "Claude returned an empty response. Try again."}
         input_tokens  = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
         cost          = calculate_cost(model_tier, input_tokens, output_tokens)
@@ -1772,7 +1829,7 @@ def optimize_prompt():
             system=OPTIMIZER_SYSTEM,
             messages=[{"role": "user", "content": f"Optimize this prompt:\n\n{prompt}"}],
         )
-        optimized     = response.content[0].text.strip()
+        optimized = (_anthropic_response_text(response) or "").strip()
         input_tokens  = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
         cost          = calculate_cost("haiku", input_tokens, output_tokens)
