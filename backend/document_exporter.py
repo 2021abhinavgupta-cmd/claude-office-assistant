@@ -416,7 +416,11 @@ def export_pdf(markdown_text: str, title: str = "Document") -> io.BytesIO:
 # ─── PPTX helpers ────────────────────────────────────────────────────────────
 
 _MD_IMG = re.compile(r"!\[[^\]]*\]\((https?://[^\)]+)\)")
-_IMG_LINE = re.compile(r"^\s*(?:IMAGE|IMG|img)\s*:\s*(https?://\S+)\s*$", re.I)
+# Allow optional list marker so "- IMAGE: https://..." is stripped (not shown as body text)
+_IMG_LINE = re.compile(
+    r"^\s*(?:[-*+•]\s+)?(?:IMAGE|IMG|img)\s*:\s*(https?://\S+)\s*$",
+    re.I,
+)
 # Headline lines like "Slide 1: Topic" or "**Slide 1:** **Topic**"; multiline so $ is end-of-line
 _SLIDE_HEAD = re.compile(
     r"^\s*\*{0,3}\s*Slide\s+(\d+)\s*:\s*\*{0,3}\s*(.+?)\s*(?:\*{0,3}\s*)?$",
@@ -519,13 +523,17 @@ def _extract_slide_image_urls(bullets: list) -> Tuple[List[str], Optional[str]]:
         raw = b.strip()
         ml = _IMG_LINE.match(raw)
         if ml and not url:
-            url = ml.group(1).strip()
+            url = ml.group(1).strip().rstrip(").,;")
+            continue
+        # Bare URL line (common from models): treat as image-only row
+        if not url and re.match(r"^\s*(?:[-*+•]\s+)?https?://\S+\s*$", raw):
+            url = re.sub(r"^\s*(?:[-*+•]\s+)?", "", raw).strip().rstrip(").,;")
             continue
         m = _MD_IMG.search(raw)
         if m and not url:
             url = m.group(1).strip()
             raw = _MD_IMG.sub("", raw).strip()
-            if not raw:
+            if not raw or raw in "-*+•":
                 continue
         if raw:
             cleaned.append(raw if raw.startswith("-") else f"- {raw}")
