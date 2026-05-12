@@ -415,6 +415,26 @@ function markdownBodyForExport(md) {
   return s;
 }
 
+/** Drop UI chrome before the first SLIDE N: so PPTX export gets a clean deck body. */
+function slideMarkdownForExport(md) {
+  if (!md || !String(md).trim()) return md;
+  const lines = String(md).split(/\r?\n/);
+  const slideRe = /^(\*{0,3}\s*)?SLIDE\s+\d+\s*:/i;
+  const mdSlideRe = /^##\s*SLIDE\s+\d+\s*:/i;
+  let idx = lines.findIndex((l) => slideRe.test(l.trim()) || mdSlideRe.test(l.trim()));
+  if (idx <= 0) return String(md).trim();
+  const junk = /^(?:✏️\s*)?edit\s*$|^(?:✦)+\s*$|^claude\s*$/i;
+  const goodPre = [];
+  for (let i = 0; i < idx; i++) {
+    const t = lines[i].trim();
+    if (!t || junk.test(t)) continue;
+    goodPre.push(lines[i]);
+  }
+  const rest = lines.slice(idx).join("\n").trim();
+  if (!goodPre.length) return rest;
+  return [...goodPre, "", rest].join("\n").trim();
+}
+
 // ── Server-side Export ───────────────────────────────────────────────────────
 async function exportDocument(format, triggerEl) {
   let { text, title } = window._lastAIResponse;
@@ -425,6 +445,9 @@ async function exportDocument(format, triggerEl) {
 
   if (format === "docx" || format === "pdf") {
     text = markdownBodyForExport(text);
+  }
+  if (format === "pptx") {
+    text = slideMarkdownForExport(markdownBodyForExport(text));
   }
 
   const btn = triggerEl || (typeof event !== "undefined" ? event.target : null);

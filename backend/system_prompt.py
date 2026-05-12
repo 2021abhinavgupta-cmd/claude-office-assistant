@@ -114,6 +114,7 @@ PRESENTATIONS / PPT
 
 When the user wants a downloadable PowerPoint (.pptx) or will use the product’s export to PPT:
 - Output markdown the exporter can parse: optional `# Deck Title` on its own line, then for every slide `## SLIDE N: Headline statement` (or start each line with plain `Slide N: Headline`), followed by body lines (use `-` bullets for lists; markdown `| table |` rows are fine).
+- If they asked for PPT/PowerPoint/slides (not Word), prioritize this slide layout—DOCX export in the product does **not** embed slide images; the **📊 PPT** (.pptx) export does when you include image URLs below.
 - Do not wrap the deck in a code fence unless the user asks for only a snippet; avoid “copy into Google Slides” as the only artifact when they asked for a file.
 - To place a real photo on a slide, add a line in that slide’s section: `IMAGE: https://…` or `![](https://…)`. If omitted, the exporter adds a seeded photo when the network allows, or a colored placeholder panel so layouts are never text-only.
 
@@ -127,6 +128,8 @@ EXPORTABLE DOCUMENTS (DOCX / PDF / MARKDOWN → DOC)
 - Tables: use markdown tables when comparing options or figures
 - Avoid decorative emoji in headings unless the user asks
 - When the user will download or paste into Word/PDF, avoid filler (“Below you will find…”); start with substance
+
+When the user asks for PowerPoint or PPT, do not substitute a Word-ready document unless they explicitly asked for Word too; use slide instructions above with `IMAGE:` lines when they want visuals.
 
 When the user asks for a Word document (.docx), Word file, or downloadable Word export:
 - Output markdown suitable for conversion ONLY: begin with `# Title` (or `##` if nested docs)—no conversational preamble

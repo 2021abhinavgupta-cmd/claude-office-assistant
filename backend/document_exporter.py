@@ -448,12 +448,31 @@ def _extract_slide_image_urls(bullets: list) -> Tuple[List[str], Optional[str]]:
     return cleaned, url
 
 
-def _fetch_image_bytes(url: str, timeout: int = 12) -> Optional[bytes]:
+def _fetch_image_bytes(url: str, timeout: int = 24) -> Optional[bytes]:
     try:
         import requests as req
         if not url.startswith(("http://", "https://")):
             return None
-        r = req.get(url, timeout=timeout, headers={"User-Agent": "ClaudeOfficeExport/1.0"})
+        u = url.split("#")[0].strip()
+        host = ""
+        try:
+            from urllib.parse import urlparse
+
+            host = urlparse(u).hostname or ""
+        except Exception:
+            pass
+        ref = None
+        if "unsplash.com" in host:
+            ref = "https://unsplash.com/"
+        elif host:
+            ref = f"https://{host}/"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; ClaudeOfficeExport/1.0; +office-assistant)",
+            "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+        }
+        if ref:
+            headers["Referer"] = ref
+        r = req.get(u, timeout=timeout, headers=headers, allow_redirects=True)
         if r.ok and not r.content.startswith(b"<htm") and len(r.content) > 100:
             return r.content
     except Exception:
