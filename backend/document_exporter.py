@@ -7,6 +7,7 @@ Uses python-docx for Word, WeasyPrint for PDF, python-pptx for PowerPoint.
 import io
 import re
 import html as html_module
+from typing import List, Optional, Tuple
 
 # ─── DOCX Export ─────────────────────────────────────────────────────────────
 
@@ -328,6 +329,263 @@ def export_pdf(markdown_text: str, title: str = "Document") -> io.BytesIO:
         )
 
 
+# ─── PPTX helpers ────────────────────────────────────────────────────────────
+
+_MD_IMG = re.compile(r"!\[[^\]]*\]\((https?://[^\)]+)\)")
+_IMG_LINE = re.compile(r"^\s*(?:IMAGE|IMG|img)\s*:\s*(https?://\S+)\s*$", re.I)
+# Headline lines like "Slide 1: Topic" or "**Slide 1:** **Topic**"; multiline so $ is end-of-line
+_SLIDE_HEAD = re.compile(
+    r"^\s*\*{0,3}\s*Slide\s+(\d+)\s*:\s*\*{0,3}\s*(.+?)\s*(?:\*{0,3}\s*)?$",
+    re.I | re.M,
+)
+_MD_SLIDE = re.compile(r"^##\s+SLIDE\s+\d+\s*:\s*(.+)$", re.I)
+
+
+def normalize_slide_markdown_for_pptx(text: str, default_title: str = "Presentation") -> str:
+    """
+    Convert 'Slide N: headline' prose (common from Claude) into ## SLIDE N: markdown.
+    Preserves lines that already use ## SLIDE N: headers.
+    """
+    t = (text or "").strip()
+    if not t:
+        return f"# {default_title}\n"
+    if re.search(r"(?m)^##\s+SLIDE\s+\d+\s*:", t):
+        if not re.search(r"(?m)^#\s+", t):
+            return f"# {default_title}\n\n{t}".strip()
+        return t
+
+    lines = t.splitlines()
+    idx_first = None
+    for i, ln in enumerate(lines):
+        if _SLIDE_HEAD.match(ln.strip()):
+            idx_first = i
+            break
+
+    out: List[str] = []
+    scan = "\n".join(lines[idx_first:]) if idx_first is not None else t
+
+    if idx_first is not None and idx_first > 0:
+        raw_pre = [
+            x.strip().lstrip("#").strip()
+            for x in lines[:idx_first]
+            if x.strip()
+        ]
+        junk = re.compile(r"^(?:✏️\s*)?edit\s*$|^(?:✦)+\s*$|^claude\s*$|^.{1,6}$", re.I)
+        titleish = []
+        for p in raw_pre:
+            if junk.match(p):
+                continue
+            if _SLIDE_HEAD.match(p):
+                continue
+            if re.search(r"slide\s*\d+", p, re.I):
+                continue
+            if len(p) >= 12:
+                titleish.append(p)
+        if titleish:
+            deck = titleish[-1]
+            out.append(f"# {deck}")
+            out.append("")
+        elif raw_pre:
+            cand = raw_pre[-1]
+            out.append(f"# {cand if len(cand) >= 6 else default_title}")
+            out.append("")
+    elif idx_first is None:
+        return t  # unknown shape; export_pptx fallback will treat as single block
+
+    spans: List[tuple] = []
+    for m in _SLIDE_HEAD.finditer(scan):
+        spans.append((int(m.group(1)), m.group(2).strip(), m.start(), m.end()))
+
+    if not spans:
+        return t
+
+    for i, (_, headline, _, h_end) in enumerate(spans):
+        out.append(f"## SLIDE {spans[i][0]}: {headline}")
+        body_start = h_end
+        body_end = spans[i + 1][2] if i + 1 < len(spans) else len(scan)
+        body = scan[body_start:body_end].strip()
+        skip_notes = False
+        for raw in body.splitlines():
+            s = raw.strip()
+            if not s or _SLIDE_HEAD.match(s):
+                continue
+            ls = s.lower()
+            if ls.startswith("speaker notes") or ls.startswith("[notes:"):
+                skip_notes = True
+            if skip_notes:
+                continue
+            if s.startswith(("[NOTES:", "[notes:")):
+                continue
+            if "\t" in s and "|" not in s and not s.startswith("-"):
+                parts = [p.strip() for p in s.split("\t") if p.strip()]
+                if len(parts) >= 2:
+                    s = "- " + " · ".join(parts)
+            line_out = s if s.startswith(("-", "*", "•", "+", "|")) else f"- {s}"
+            out.append(line_out)
+        out.append("")
+
+    return "\n".join(out).strip()
+
+
+def _extract_slide_image_urls(bullets: list) -> Tuple[List[str], Optional[str]]:
+    """Pull first HTTPS image URL from bullets; return (clean_bullets, url or None)."""
+    url = None
+    cleaned = []
+    for b in bullets:
+        raw = b.strip()
+        ml = _IMG_LINE.match(raw)
+        if ml and not url:
+            url = ml.group(1).strip()
+            continue
+        m = _MD_IMG.search(raw)
+        if m and not url:
+            url = m.group(1).strip()
+            raw = _MD_IMG.sub("", raw).strip()
+            if not raw:
+                continue
+        if raw:
+            cleaned.append(raw if raw.startswith("-") else f"- {raw}")
+    return cleaned, url
+
+
+def _fetch_image_bytes(url: str, timeout: int = 12) -> Optional[bytes]:
+    try:
+        import requests as req
+        if not url.startswith(("http://", "https://")):
+            return None
+        r = req.get(url, timeout=timeout, headers={"User-Agent": "ClaudeOfficeExport/1.0"})
+        if r.ok and not r.content.startswith(b"<htm") and len(r.content) > 100:
+            return r.content
+    except Exception:
+        pass
+    return None
+
+
+def _placeholder_image_bytes(seed: str) -> Optional[bytes]:
+    """Lightweight thematic placeholder (no API key)."""
+    try:
+        import hashlib as hl
+        import requests as req
+        h = hl.md5(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+        u = f"https://picsum.photos/seed/{h}/520/340"
+        r = req.get(u, timeout=12, headers={"User-Agent": "ClaudeOfficeExport/1.0"})
+        if r.ok and len(r.content) > 500:
+            return r.content
+    except Exception:
+        pass
+    return None
+
+
+def _offline_gradient_placeholder_png(seed: str) -> bytes:
+    """Tiny two-tone PNG (no network); varies by seed so slides look distinct."""
+    import hashlib as hl
+    import struct
+    import zlib
+
+    d = hl.md5(seed.encode("utf-8"), usedforsecurity=False).digest()
+    r1 = 0x14 + d[0] % 50
+    g1 = 0x1c + d[1] % 60
+    b1 = 0x3a + d[2] % 80
+    r2 = min(255, r1 + 40)
+    g2 = min(255, g1 + 55)
+    b2 = min(255, b1 + 70)
+    w, h = 64, 42
+    row1 = b"\x00" + bytes([r1, g1, b1]) * w
+    row2 = b"\x00" + bytes([r2, g2, b2]) * w
+    half = h // 2
+    raw_data = row1 * half + row2 * (h - half)
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    return (
+        bytes([137, 80, 78, 71, 13, 10, 26, 10])
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(raw_data, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def _pptx_parse_slide_blocks(markdown_text: str, default_title: str) -> List[Tuple[str, List[str], Optional[str]]]:
+    """
+    Parsed slides: [(title, bullet_lines_with_dash_prefix, optional_image_https_url), ...]
+    Optional leading '# Deck Title' adds a dedicated title slide.
+    """
+    lines = markdown_text.splitlines()
+    i = 0
+    deck: Optional[str] = None
+
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and re.match(r"^#\s+", lines[i].strip()):
+        deck = lines[i].lstrip("# ").strip()
+        i += 1
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+
+    hdr_re = re.compile(r"^##\s+SLIDE\s+\d+\s*:\s*(.+)$", re.I)
+
+    blocks: List[Tuple[str, List[str], Optional[str]]] = []
+
+    def flush(acc_title: str, acc_lines: list) -> None:
+        bullets_raw = []
+        for ln in acc_lines:
+            s = ln.strip()
+            if not s:
+                continue
+            low = s.lower()
+            if low.startswith("speaker notes") or low.startswith("[notes:"):
+                break
+            if s.startswith(("[NOTES:", "[notes:")):
+                continue
+            if s.startswith(("-", "*", "•", "+")):
+                bullets_raw.append(s)
+            elif s.startswith("|"):
+                bullets_raw.append(f"- {s}")
+            else:
+                bullets_raw.append(f"- {s}")
+        bullets, img = _extract_slide_image_urls(bullets_raw)
+        blocks.append((acc_title, bullets, img))
+    cur_title = ""
+    cur_lines: list = []
+
+    while i < len(lines):
+        m = hdr_re.match(lines[i].strip())
+        if m:
+            if cur_title:
+                flush(cur_title, cur_lines)
+                cur_lines = []
+            else:
+                cur_lines = []
+            cur_title = m.group(1).strip()
+        else:
+            cur_lines.append(lines[i])
+        i += 1
+    if cur_title:
+        flush(cur_title, cur_lines)
+
+    result: List[Tuple[str, List[str], Optional[str]]] = []
+    if deck:
+        result.append((deck, [], None))
+    for title, bulls, img in blocks:
+        if not title:
+            title = default_title
+        result.append((title, bulls if bulls else [], img))
+
+    if not result and markdown_text.strip():
+        chunk = markdown_text.strip()[:2000]
+        result.append((default_title, [f"- {chunk}"], None))
+    elif not result:
+        result.append((default_title, [], None))
+    return result
+
+
 # ─── PPTX Export ─────────────────────────────────────────────────────────────
 
 def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
@@ -351,8 +609,6 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
 
     def hex_bg(slide, color: RGBColor):
         """Fill slide background with solid color."""
-        from pptx.oxml.ns import qn
-        from lxml import etree
         bg = slide.background
         fill = bg.fill
         fill.solid()
@@ -392,7 +648,7 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
             r2.font.size  = Pt(20)
             r2.font.color.rgb = MUTED
 
-    def content_slide(heading: str, bullets: list):
+    def content_slide(heading: str, bullets: list, image_bytes: Optional[bytes] = None):
         slide = prs.slides.add_slide(blank_layout)
         hex_bg(slide, DARK_BG)
 
@@ -424,8 +680,10 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
         line.fill.fore_color.rgb = ACCENT
         line.line.fill.background()
 
-        # Bullets
-        bBox = slide.shapes.add_textbox(Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.6))
+        # Bullets (narrower when image present)
+        bullet_w = Inches(6.85) if image_bytes else Inches(12.1)
+
+        bBox = slide.shapes.add_textbox(Inches(0.6), Inches(1.4), bullet_w, Inches(5.6))
         btf = bBox.text_frame
         btf.word_wrap = True
 
@@ -446,38 +704,51 @@ def export_pptx(markdown_text: str, title: str = "Presentation") -> io.BytesIO:
                 run.font.color.rgb = LIGHT_TXT
             run.font.name = "Calibri"
 
-    # ── Parse markdown into slides ────────────────────────────────────────────
-    slides_data = []  # list of (heading, bullets)
-    current_heading = title
-    current_bullets = []
+        if image_bytes:
+            import os
+            import tempfile
 
-    for line in markdown_text.splitlines():
-        m_h = re.match(r"^#{1,3}\s+(.*)", line)
-        if m_h:
-            if current_bullets or slides_data:
-                slides_data.append((current_heading, current_bullets))
-            current_heading = m_h.group(1).strip()
-            current_bullets = []
-        elif line.strip().startswith(("-", "*", "•", "+")):
-            current_bullets.append(line.strip())
-        elif line.strip() and not line.strip().startswith("#"):
-            current_bullets.append(line.strip())
+            ext = ".png" if image_bytes[:4] == b"\x89PNG" else ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                tmp.write(image_bytes)
+                path = tmp.name
+            try:
+                slide.shapes.add_picture(
+                    path,
+                    Inches(7.15),
+                    Inches(1.35),
+                    width=Inches(5.65),
+                )
+            finally:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
 
-    # Push last section
-    if current_heading or current_bullets:
-        slides_data.append((current_heading, current_bullets))
+    # ── Parse markdown into slides (normalize Slide N: prose + ## SLIDE blocks) ─
+    md = normalize_slide_markdown_for_pptx(markdown_text, title)
+    slides_list = _pptx_parse_slide_blocks(md, title)
 
-    # ── Build slides ──────────────────────────────────────────────────────────
-    if not slides_data:
-        slides_data = [(title, [markdown_text[:300]])]
+    if not slides_list:
+        slides_list = [(title, [f"- {markdown_text[:300]}"], None)]
 
-    # First slide = title card
-    first_heading = slides_data[0][0]
-    first_sub     = slides_data[0][1][0] if slides_data[0][1] else ""
-    title_slide(first_heading, first_sub[:120] if first_sub else "")
+    # Title card: explicit '# deck' row is empty bullets; else use API title
+    if slides_list[0][1] == []:
+        title_slide(slides_list[0][0], "")
+        content_rows = slides_list[1:]
+    else:
+        title_slide(title, "")
+        content_rows = slides_list
 
-    for heading, bullets in slides_data[1:]:
-        content_slide(heading, bullets)
+    for heading, bullets, img_url in content_rows:
+        pic: Optional[bytes] = None
+        if img_url:
+            pic = _fetch_image_bytes(img_url)
+        if pic is None:
+            pic = _placeholder_image_bytes(f"{heading}|{title}")
+        if pic is None:
+            pic = _offline_gradient_placeholder_png(f"{heading}|{title}")
+        content_slide(heading, bullets if bullets else [], pic)
 
     buf = io.BytesIO()
     prs.save(buf)

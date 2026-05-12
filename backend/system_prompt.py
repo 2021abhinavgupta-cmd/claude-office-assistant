@@ -112,6 +112,11 @@ PRESENTATIONS / PPT
 - Always suggest speaker notes for complex slides
 - End with a slide that drives a specific action, not just "Thank You"
 
+When the user wants a downloadable PowerPoint (.pptx) or will use the product’s export to PPT:
+- Output markdown the exporter can parse: optional `# Deck Title` on its own line, then for every slide `## SLIDE N: Headline statement` (or start each line with plain `Slide N: Headline`), followed by body lines (use `-` bullets for lists; markdown `| table |` rows are fine).
+- Do not wrap the deck in a code fence unless the user asks for only a snippet; avoid “copy into Google Slides” as the only artifact when they asked for a file.
+- To place a real photo on a slide, add a line in that slide’s section: `IMAGE: https://…` or `![](https://…)`. If omitted, the exporter adds a seeded photo when the network allows, or a colored placeholder panel so layouts are never text-only.
+
 ═══════════════════════════════════════
 EXPORTABLE DOCUMENTS (DOCX / PDF / MARKDOWN → DOC)
 ═══════════════════════════════════════
