@@ -657,12 +657,20 @@ def health():
     import importlib.util
 
     budget = get_usage_summary()
+    wp_ok = False
+    try:
+        import weasyprint  # noqa: F401
+
+        wp_ok = True
+    except ImportError:
+        pass
     return jsonify({
         "status": "ok",
         "service": "Claude Office Assistant API",
         "budget_remaining": budget["remaining"],
         "budget_percent_used": budget["percent_used"],
         "pptx_export_ready": importlib.util.find_spec("pptx") is not None,
+        "pdf_export_ready": wp_ok,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     })
 

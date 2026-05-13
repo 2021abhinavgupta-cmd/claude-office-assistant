@@ -1116,11 +1116,26 @@ function userAskedForPptExport(question) {
   );
 }
 
+/** User asked for PDF export — checked before Word */
+function userAskedForPdfExport(question) {
+  if (!question || !question.trim()) return false;
+  const q = question;
+  if (userAskedForPptExport(q)) return false;
+  return (
+    /\bpdf\b/i.test(q) ||
+    /\.pdf\b/i.test(q) ||
+    /\b(?:save|create|give|generate|make|export|download)\s+(?:me\s+)?(?:a\s+)?(?:the\s+)?(?:pdf|\.pdf)\b/i.test(q) ||
+    /\b(?:as|to)\s+(?:a\s+)?pdf\b/i.test(q) ||
+    /\bpdf\s+(?:of|for|from)\b/i.test(q)
+  );
+}
+
 /** User asked for an actual Word / DOCX file (export), not just markdown in chat */
 function userAskedForWordExport(question) {
   if (!question || !question.trim()) return false;
   const q = question;
   if (userAskedForPptExport(q)) return false;
+  if (userAskedForPdfExport(q)) return false;
   return (
     /\b(docx|\.doc\b)/i.test(q) ||
     /\bmicrosoft\s+word\b/i.test(q) ||
@@ -1248,6 +1263,13 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
                   showToast("📊 Downloading PowerPoint (.pptx)…", "success");
                 } catch (_) {}
               }, 80);
+            } else if (userAskedForPdfExport(text)) {
+              setTimeout(() => {
+                try {
+                  exportDocument("pdf");
+                  showToast("📄 Downloading PDF…", "success");
+                } catch (_) {}
+              }, 80);
             } else if (userAskedForWordExport(text)) {
               setTimeout(() => {
                 try {
@@ -1336,8 +1358,7 @@ function decorateAssistantReply(el, rawText) {
   if (looksDeck) {
     hint.innerHTML =
       '<span class="hint-label">Deliverable</span>' +
-      '<span class="hint-text">Use <strong>📊 PPT</strong> for a formatted slide file ' +
-      "(theme + optional images), or <strong>📝 DOCX</strong> for Word.</span>";
+      '<span class="hint-text">Use <strong>📊 PPT</strong> for slides, <strong>📝 DOCX</strong> for Word, or <strong>📄 PDF</strong> for a print-ready file.</span>';
   } else {
     hint.innerHTML =
       '<span class="hint-label">Deliverable</span>' +
@@ -1393,13 +1414,18 @@ function finalizeStreamingMessage(el, text, meta = {}) {
   actions.className = "msg-actions";
   actions.innerHTML = `
     <button class="msg-action-btn copy-btn" title="Copy response">📋 Copy</button>
+    <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF">📄 PDF</button>
     <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>
     <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">📊 PPT</button>
     <button class="msg-action-btn regen-btn" title="Regenerate response">↺ Retry</button>`;
   body.appendChild(actions);
 
+  const pdfBtn = actions.querySelector(".export-pdf-btn");
   const docxBtn = actions.querySelector(".export-docx-btn");
   const pptxBtn = actions.querySelector(".export-pptx-btn");
+  if (pdfBtn && typeof exportDocument === "function") {
+    pdfBtn.addEventListener("click", () => exportDocument("pdf", pdfBtn));
+  }
   if (docxBtn && typeof exportDocument === "function") {
     docxBtn.addEventListener("click", () => exportDocument("docx", docxBtn));
   }
@@ -1437,11 +1463,16 @@ window.appendMessage = function(role, content, meta = {}) {
     actions.className = "msg-actions";
     actions.innerHTML = `
       <button class="msg-action-btn copy-btn" title="Copy">📋 Copy</button>
+      <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF">📄 PDF</button>
       <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>
       <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">📊 PPT</button>`;
     body.appendChild(actions);
+    const pdfBtn = actions.querySelector(".export-pdf-btn");
     const docxBtn = actions.querySelector(".export-docx-btn");
     const pptxBtn = actions.querySelector(".export-pptx-btn");
+    if (pdfBtn && typeof exportDocument === "function") {
+      pdfBtn.addEventListener("click", () => exportDocument("pdf", pdfBtn));
+    }
     if (docxBtn && typeof exportDocument === "function") {
       docxBtn.addEventListener("click", () => exportDocument("docx", docxBtn));
     }
