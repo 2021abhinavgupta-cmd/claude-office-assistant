@@ -74,6 +74,7 @@
   <!-- Step 2: Enter PIN -->
   <div class="pin-section" id="step-pin">
     <div class="pin-label" id="pin-label">Enter PIN for <strong></strong></div>
+    <p class="pin-hint" style="color:var(--muted);font-size:.72rem;text-align:center;margin:-8px 0 12px">Use keyboard or numpad — no need to click the pad first</p>
     <div class="pin-dots" id="pin-dots">
       <div class="dot" id="d0"></div><div class="dot" id="d1"></div>
       <div class="dot" id="d2"></div><div class="dot" id="d3"></div>
@@ -142,12 +143,45 @@ function selectEmp(id, name){
   pin=""; updateDots();
 }
 
+function isPinStepActive(){
+  const el = document.getElementById("step-pin");
+  if(!el) return false;
+  return window.getComputedStyle(el).display !== "none";
+}
+
+function isPinSubmitting(){
+  const ld = document.getElementById("loading");
+  return ld && ld.style.display === "block";
+}
+
 function pressKey(k){
   if(k==="⌫"||k===""){if(k==="⌫"){pin=pin.slice(0,-1);updateDots();}return;}
   if(pin.length>=4) return;
   pin+=k; updateDots();
   if(pin.length===4) submitPin();
 }
+
+/* Physical keyboard / numpad — works without clicking the on-screen keys first */
+document.addEventListener("keydown", function(e){
+  if(!isPinStepActive() || isPinSubmitting()) return;
+  const t = e.target;
+  if(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+
+  const k = e.key;
+  let digit = null;
+  if(k.length === 1 && k >= "0" && k <= "9") digit = k;
+  else if(e.code && /^Numpad[0-9]$/.test(e.code)) digit = e.code.replace("Numpad", "");
+  if(digit){
+    e.preventDefault();
+    pressKey(digit);
+    return;
+  }
+  if(k === "Backspace" || k === "Delete"){
+    e.preventDefault();
+    pressKey("⌫");
+    return;
+  }
+}, true);
 
 function updateDots(){
   for(let i=0;i<4;i++) document.getElementById("d"+i).className="dot"+(i<pin.length?" filled":"");
