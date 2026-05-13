@@ -3,10 +3,14 @@
  * Usage: <script src="auth.js"></script>
  * The script auto-runs on load and redirects to login.html if session is invalid.
  */
-(async function authGuard() {
-  const API = location.hostname === "localhost" || location.hostname === "127.0.0.1"
+function getAuthApiBase() {
+  return location.hostname === "localhost" || location.hostname === "127.0.0.1"
     ? "http://localhost:5000"
     : location.origin;
+}
+
+(async function authGuard() {
+  const authApi = getAuthApiBase();
 
   // sessionStorage is cleared when the tab is closed — auto-logout on tab close
   const token = sessionStorage.getItem("_session_token");
@@ -18,7 +22,7 @@
   }
 
   try {
-    const res = await fetch(`${API}/api/auth/verify`, {
+    const res = await fetch(`${authApi}/api/auth/verify`, {
       headers: { "Authorization": `Bearer ${token}` }
     });
     const data = await res.json();
@@ -47,15 +51,12 @@
   }
 })();
 
-const API = location.hostname === "localhost" || location.hostname === "127.0.0.1"
-  ? "http://localhost:5000"
-  : location.origin;
-
 window.addEventListener("beforeunload", function() {
   const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
   if (!user.user_id) return;
+  const authApi = getAuthApiBase();
   navigator.sendBeacon(
-    `${API}/api/attendance/checkout`,
+    `${authApi}/api/attendance/checkout`,
     JSON.stringify({ user_id: user.user_id })
   );
 });
@@ -64,10 +65,11 @@ window.addEventListener("beforeunload", function() {
  * Logout helper — call window.authLogout() from any page.
  */
 window.authLogout = async function () {
+  const authApi = getAuthApiBase();
   const token = sessionStorage.getItem("_session_token") || localStorage.getItem("_session_token");
   const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
   if (user.user_id) {
-    await fetch(`${API}/api/attendance/checkout`, {
+    await fetch(`${authApi}/api/attendance/checkout`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: user.user_id }),
@@ -75,7 +77,7 @@ window.authLogout = async function () {
     }).catch(() => {});
   }
   if (token) {
-    await fetch(`${API}/api/auth/logout`, {
+    await fetch(`${authApi}/api/auth/logout`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",

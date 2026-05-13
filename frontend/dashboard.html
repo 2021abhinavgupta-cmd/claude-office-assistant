@@ -443,9 +443,11 @@
 
 <script>
 // Auto-detect API base: localhost in dev, same-origin in production
-const API = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+const API = (window.location.protocol === "file:" || !window.location.hostname)
   ? "http://localhost:5000"
-  : window.location.origin;
+  : (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+      ? "http://localhost:5000"
+      : window.location.origin);
 
 const TASK_ICONS = {
   coding: "⌨️", html_design: "🎨", presentations: "📊",
