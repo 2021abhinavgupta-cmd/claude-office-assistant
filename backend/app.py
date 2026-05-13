@@ -21,7 +21,7 @@ import os
 import re
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 from flask import Flask, request, jsonify, render_template_string, Response, stream_with_context
@@ -29,6 +29,16 @@ from flask_cors import CORS
 from flask_compress import Compress
 from dotenv import load_dotenv
 import anthropic
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def now_ist():
+    return datetime.now(IST).strftime("%H:%M:%S")
+
+
+def today_ist():
+    return datetime.now(IST).strftime("%Y-%m-%d")
 
 # Local modules
 from model_router import get_model_for_task, calculate_cost, get_all_routes
@@ -1121,10 +1131,6 @@ def _attendance_conn():
     from db import get_connection
     return get_connection()
 
-def _utc_now_parts():
-    now = datetime.utcnow()
-    return now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), now.isoformat() + "Z"
-
 def _attendance_payload():
     body = request.get_json(silent=True)
     if isinstance(body, dict):
@@ -1138,42 +1144,59 @@ def _attendance_payload():
         return {}
 
 def _attendance_checkin(user_id: str):
-    date_utc, time_utc, timestamp_utc = _utc_now_parts()
+    """First IST login of day wins; ON CONFLICT DO NOTHING prevents overwriting."""
+    d = today_ist()
+    t = now_ist()
+    ts = datetime.now(IST).isoformat(timespec="seconds")
     conn = _attendance_conn()
     with conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO daily_attendance (user_id, date, checkin_time) VALUES (?, ?, ?)",
-            (user_id, date_utc, time_utc),
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO daily_attendance (user_id, date, checkin_time)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id, date) DO NOTHING""",
+            (user_id, d, t),
         )
-        conn.execute(
-            "UPDATE daily_attendance SET checkin_time=? WHERE user_id=? AND date=? AND checkin_time IS NULL",
-            (time_utc, user_id, date_utc),
+        if cur.rowcount > 0:
+            conn.execute(
+                "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'in', ?)",
+                (user_id, ts),
+            )
+        cur.execute(
+            "SELECT checkin_time FROM daily_attendance WHERE user_id=? AND date=?",
+            (user_id, d),
         )
-        conn.execute(
-            "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'in', ?)",
-            (user_id, timestamp_utc),
-        )
+        row = cur.fetchone()
+        stored_checkin = row[0] if row else t
     conn.close()
-    return date_utc, time_utc
+    return d, stored_checkin
 
 def _attendance_checkout(user_id: str):
-    date_utc, time_utc, timestamp_utc = _utc_now_parts()
+    """Always updates checkout_time to latest IST logout (UPSERT)."""
+    d = today_ist()
+    t = now_ist()
+    ts = datetime.now(IST).isoformat(timespec="seconds")
     conn = _attendance_conn()
     with conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO daily_attendance (user_id, date) VALUES (?, ?)",
-            (user_id, date_utc),
-        )
-        conn.execute(
-            "UPDATE daily_attendance SET checkout_time=? WHERE user_id=? AND date=?",
-            (time_utc, user_id, date_utc),
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO daily_attendance (user_id, date, checkout_time)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id, date) DO UPDATE SET checkout_time = excluded.checkout_time""",
+            (user_id, d, t),
         )
         conn.execute(
             "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'out', ?)",
-            (user_id, timestamp_utc),
+            (user_id, ts),
         )
+        cur.execute(
+            "SELECT checkout_time FROM daily_attendance WHERE user_id=? AND date=?",
+            (user_id, d),
+        )
+        row = cur.fetchone()
+        stored_checkout = row[0] if row else t
     conn.close()
-    return date_utc, time_utc
+    return d, stored_checkout
 
 @app.route("/api/attendance/checkin", methods=["POST"])
 def attendance_checkin():
@@ -1181,8 +1204,14 @@ def attendance_checkin():
     user_id = str(body.get("user_id", "")).strip()
     if not user_id:
         return jsonify({"error": "user_id required"}), 400
-    date_utc, checkin_time = _attendance_checkin(user_id)
-    return jsonify({"success": True, "user_id": user_id, "date": date_utc, "checkin_time": checkin_time})
+    date_ist, checkin_time = _attendance_checkin(user_id)
+    return jsonify({
+        "success": True,
+        "user_id": user_id,
+        "date": date_ist,
+        "checkin_time": checkin_time,
+        "timezone": "IST",
+    })
 
 @app.route("/api/attendance/checkout", methods=["POST"])
 def attendance_checkout():
@@ -1190,8 +1219,14 @@ def attendance_checkout():
     user_id = str(body.get("user_id", "")).strip()
     if not user_id:
         return jsonify({"error": "user_id required"}), 400
-    date_utc, checkout_time = _attendance_checkout(user_id)
-    return jsonify({"success": True, "user_id": user_id, "date": date_utc, "checkout_time": checkout_time})
+    date_ist, checkout_time = _attendance_checkout(user_id)
+    return jsonify({
+        "success": True,
+        "user_id": user_id,
+        "date": date_ist,
+        "checkout_time": checkout_time,
+        "timezone": "IST",
+    })
 
 @app.route("/api/attendance/summary", methods=["GET"])
 def attendance_summary():
@@ -1208,6 +1243,7 @@ def attendance_summary():
     conn.close()
     return jsonify({
         "user_id": user_id,
+        "timezone": "IST",
         "records": [
             {"date": r[0], "checkin_time": r[1], "checkout_time": r[2]}
             for r in rows
@@ -1216,20 +1252,20 @@ def attendance_summary():
 
 @app.route("/api/attendance/today", methods=["GET"])
 def attendance_today():
-    date_utc = datetime.utcnow().strftime("%Y-%m-%d")
+    date_ist = today_ist()
     conn = _attendance_conn()
     cur = conn.cursor()
     cur.execute(
         "SELECT user_id, checkin_time, checkout_time FROM daily_attendance WHERE date=?",
-        (date_utc,),
+        (date_ist,),
     )
     rows = cur.fetchall()
     conn.close()
     records = [
-        {"user_id": r[0], "date": date_utc, "checkin_time": r[1], "checkout_time": r[2]}
+        {"user_id": r[0], "date": date_ist, "checkin_time": r[1], "checkout_time": r[2]}
         for r in rows
     ]
-    return jsonify({"date": date_utc, "records": records})
+    return jsonify({"date": date_ist, "timezone": "IST", "records": records})
 
 @app.route("/api/auth/change_pin", methods=["POST"])
 def auth_change_pin():
@@ -1331,7 +1367,6 @@ def attendance_export():
 # AUTH — Server-side session tokens (#1)
 # ══════════════════════════════════════════════════════════════════════════════
 import secrets
-from datetime import timedelta
 
 def _sessions_conn():
     from db import get_connection
@@ -1454,7 +1489,7 @@ def employee_checkin():
         return jsonify({"error": "Employee not found"}), 404
 
     entry = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(IST).isoformat(timespec="seconds"),
         "action":    action,
         "notes":     notes,
     }
@@ -1464,9 +1499,9 @@ def employee_checkin():
 
     _save_employees(data)
     if action == "out":
-        date_utc, time_utc = _attendance_checkout(found.get("id", ""))
+        date_ist, time_ist = _attendance_checkout(found.get("id", ""))
     else:
-        date_utc, time_utc = _attendance_checkin(found.get("id", ""))
+        date_ist, time_ist = _attendance_checkin(found.get("id", ""))
     logger.info(f"Employee {found['name']} checked {action} at {entry['timestamp']}")
 
     return jsonify({
@@ -1474,8 +1509,9 @@ def employee_checkin():
         "employee": found["name"],
         "action":   action,
         "time":     entry["timestamp"],
-        "date":     date_utc,
-        "time_utc": time_utc,
+        "date":     date_ist,
+        "time_ist": time_ist,
+        "timezone": "IST",
     })
 
 
@@ -1483,7 +1519,7 @@ def employee_checkin():
 def employee_summary():
     """Returns today's attendance summary."""
     data  = _load_employees()
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_ist()
     conn = _attendance_conn()
     cur = conn.cursor()
     cur.execute(

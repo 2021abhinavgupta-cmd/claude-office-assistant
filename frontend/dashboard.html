@@ -669,8 +669,8 @@ async function loadAttendance() {
     const attendanceMap = {};
     attendanceRows.forEach(row => { attendanceMap[row.user_id] = row; });
 
-    const utcDate = attendanceData.date || new Date().toISOString().slice(0, 10);
-    if (dateEl) dateEl.textContent = `UTC Date: ${utcDate}`;
+    const istDate = attendanceData.date || new Date().toISOString().slice(0, 10);
+    if (dateEl) dateEl.textContent = `Date: ${istDate} (IST)`;
 
     const allRows = employees.map(emp => {
       const daily = attendanceMap[emp.id] || {};
@@ -711,8 +711,8 @@ async function loadAttendance() {
 
     wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">${
       visibleRows.map(emp => {
-        const checkin = emp.checkin_time || "Not in yet";
-        const checkout = emp.checkout_time || "Still working";
+        const checkin = emp.checkin_time ? `${emp.checkin_time} IST` : "Not in yet";
+        const checkout = emp.checkout_time ? `${emp.checkout_time} IST` : "Still working";
         const inSec = toSeconds(emp.checkin_time);
         const outSec = toSeconds(emp.checkout_time);
         const total = (inSec != null && outSec != null && outSec >= inSec) ? formatDuration(outSec - inSec) : "—";

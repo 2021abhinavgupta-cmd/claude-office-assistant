@@ -43,6 +43,9 @@ def init_db():
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_attendance_date ON daily_attendance (date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_attendance_user_date ON daily_attendance (user_id, date)")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_user_date ON daily_attendance(user_id, date)"
+        )
 
         # Daily standups
         conn.execute("""CREATE TABLE IF NOT EXISTS standups (
