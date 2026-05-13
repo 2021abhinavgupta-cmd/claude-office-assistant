@@ -298,6 +298,72 @@ def export_docx(markdown_text: str, title: str = "Document") -> io.BytesIO:
 
 # ─── PDF Export ──────────────────────────────────────────────────────────────
 
+
+def export_pdf_reportlab(markdown_text: str, title: str = "Document") -> io.BytesIO:
+    """
+    Pure-Python PDF fallback when WeasyPrint is missing or fails (e.g. minimal Railway image).
+    Renders markdown-ish content as readable paragraphs (no full HTML styling).
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    from xml.sax.saxutils import escape
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        title=(title or "Export")[:120],
+        leftMargin=54,
+        rightMargin=54,
+        topMargin=54,
+        bottomMargin=54,
+    )
+    styles = getSampleStyleSheet()
+    story: List[object] = []
+
+    story.append(Paragraph(f"<b>{escape(title or 'Document')}</b>", styles["Title"]))
+    story.append(Spacer(1, 16))
+
+    raw = (markdown_text or "").strip()
+    if not raw:
+        story.append(Paragraph("<i>(empty)</i>", styles["Normal"]))
+        doc.build(story)
+        buf.seek(0)
+        return buf
+
+    blocks = re.split(r"\n\s*\n+", raw)
+    for blk in blocks:
+        for line in blk.splitlines():
+            ln = line.strip()
+            if not ln:
+                continue
+            if ln.startswith("```"):
+                continue
+            if re.match(r"^```\w*$", ln):
+                continue
+            # Heading lines → bold
+            if re.match(r"^#{1,6}\s+", ln):
+                inner = re.sub(r"^#{1,6}\s+", "", ln).strip()
+                story.append(Paragraph(f"<b>{escape(inner)}</b>", styles["Heading2"]))
+                continue
+            # Bullet / numbered
+            if re.match(r"^[-*+]\s+", ln):
+                inner = re.sub(r"^[-*+]\s+", "", ln).strip()
+                story.append(Paragraph(f"• {escape(inner)}", styles["Normal"]))
+                continue
+            if re.match(r"^\d+\.\s+", ln):
+                inner = re.sub(r"^\d+\.\s+", "", ln).strip()
+                story.append(Paragraph(escape(inner), styles["Normal"]))
+                continue
+            story.append(Paragraph(escape(ln).replace("\n", "<br/>"), styles["Normal"]))
+        story.append(Spacer(1, 8))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
 def export_pdf(markdown_text: str, title: str = "Document") -> io.BytesIO:
     try:
         import markdown as md_lib
@@ -402,15 +468,18 @@ def export_pdf(markdown_text: str, title: str = "Document") -> io.BytesIO:
 </body></html>"""
 
     try:
-        from weasyprint import HTML as WH, CSS
+        from weasyprint import HTML as WH
+
         buf = io.BytesIO()
         WH(string=full_html).write_pdf(buf)
         buf.seek(0)
         return buf
-    except ImportError:
-        raise RuntimeError(
-            "WeasyPrint is not installed. Run: pip install weasyprint"
-        )
+    except ImportError as e:
+        logger.warning("WeasyPrint not importable (%s); using ReportLab PDF fallback", e)
+        return export_pdf_reportlab(markdown_text, title=title)
+    except Exception as e:
+        logger.warning("WeasyPrint PDF failed (%s); using ReportLab PDF fallback", e)
+        return export_pdf_reportlab(markdown_text, title=title)
 
 
 # ─── PPTX helpers ────────────────────────────────────────────────────────────

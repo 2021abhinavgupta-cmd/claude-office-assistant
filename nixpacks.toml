@@ -1,2 +1,13 @@
 [phases.setup]
-nixPkgs = ["python311", "gcc", "libffi", "gnumake"]
+# Native libs for WeasyPrint (PDF). reportlab fallback works without them but quality is better with WeasyPrint.
+nixPkgs = [
+  "python311",
+  "gcc",
+  "libffi",
+  "gnumake",
+  "cairo",
+  "pango",
+  "harfbuzz",
+  "fontconfig",
+  "glib",
+]
