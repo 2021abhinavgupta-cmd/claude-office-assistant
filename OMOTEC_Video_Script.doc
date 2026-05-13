@@ -1,0 +1,136 @@
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><title>Video Script: Mother Behind Every Winner</title>
+<style>
+    body { font-family: 'Arial', sans-serif; font-size: 11pt; }
+    h1 { font-family: 'Arial', sans-serif; font-size: 16pt; text-align: center; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th { background-color: #f2f2f2; font-weight: bold; padding: 10px; border: 1px solid #000; text-align: left; }
+    td { padding: 10px; border: 1px solid #000; vertical-align: top; }
+    .scene-title { font-weight: bold; text-decoration: underline; background-color: #e6f2ff; }
+    .audio-text { font-style: italic; color: #333; }
+</style>
+</head>
+<body>
+    <h1>VIDEO SCRIPT: The Mother Behind Every Winner</h1>
+    <p><strong>Brand/Client:</strong> OMOTEC</p>
+    <p><strong>Goal:</strong> A heartfelt tribute to the silent, behind-the-scenes work mothers do to ensure their child's success.</p>
+    
+    <table>
+        <tr>
+            <th width="50%">VISUAL (What the Editor/Viewer Sees)</th>
+            <th width="50%">AUDIO & GRAPHICS (What we Hear/Read)</th>
+        </tr>
+
+        <!-- SCENE A -->
+        <tr>
+            <td colspan="2" class="scene-title">VISUAL A — BEDROOM. 2AM.</td>
+        </tr>
+        <tr>
+            <td>
+                <ul>
+                    <li>Clock on the wall shows 2:00am.</li>
+                    <li>Boy at his desk, screen glow illuminating his face. He is deep in code.</li>
+                    <li>Mother walks in softly from behind.</li>
+                    <li>Sets down a glass of milk and a small plate of snacks on his desk.</li>
+                    <li>Gently taps his shoulder once. Smiles. Walks back out.</li>
+                    <li>He doesn't look up, but he reaches for the glass.</li>
+                </ul>
+            </td>
+            <td>
+                <p><strong>TEXT ON SCREEN / VOICEOVER:</strong></p>
+                <p class="audio-text">"She never interrupted the work."</p>
+                <br>
+                <p class="audio-text">"She just made sure he could keep going."</p>
+            </td>
+        </tr>
+
+        <!-- SCENE B -->
+        <tr>
+            <td colspan="2" class="scene-title">VISUAL B — LIVING ROOM. DAY.</td>
+        </tr>
+        <tr>
+            <td>
+                <ul>
+                    <li>Mother is on her laptop. Screen shows a Calendly/calendar view (competition dates, practice slots, deadlines).</li>
+                    <li>She cross-checks with his open textbook beside her.</li>
+                    <li>Makes a note. Adjusts a schedule.</li>
+                    <li>He's not even in the room.</li>
+                </ul>
+            </td>
+            <td>
+                <p><strong>TEXT ON SCREEN / VOICEOVER:</strong></p>
+                <p class="audio-text">"His competition season was never an accident."</p>
+                <br>
+                <p class="audio-text">"She planned every step of it."</p>
+            </td>
+        </tr>
+
+        <!-- SCENE C -->
+        <tr>
+            <td colspan="2" class="scene-title">VISUAL C — NIGHT BEFORE COMPETITION.</td>
+        </tr>
+        <tr>
+            <td>
+                <ul>
+                    <li>Mother on her phone. Screen shows WhatsApp — she's typing to a shopkeeper.</li>
+                    <li>She sends a photo of a specific component. Multiple chats open with multiple shopkeepers.</li>
+                    <li>One reply pops up. <em>Found it.</em></li>
+                    <li><strong>CUT TO:</strong> Her hand placing that exact component into her child's palm.</li>
+                    <li>He looks at it. Looks at her.</li>
+                    <li>She just nods. <em>Go.</em></li>
+                </ul>
+            </td>
+            <td>
+                <p><strong>TEXT ON SCREEN / VOICEOVER:</strong></p>
+                <p class="audio-text">"One missing part."</p>
+                <p class="audio-text">"Four shopkeepers. One night."</p>
+                <br>
+                <p class="audio-text">"She said nothing about it the next morning."</p>
+            </td>
+        </tr>
+
+        <!-- SCENE D -->
+        <tr>
+            <td colspan="2" class="scene-title">VISUAL D — COMPETITION HALL.</td>
+        </tr>
+        <tr>
+            <td>
+                <ul>
+                    <li>Scoreboard goes up. His team wins. He walks to the podium.</li>
+                    <li><strong>CUT TO:</strong> Her face in the crowd. She's clapping. Eyes wet. Smile she can't contain.</li>
+                    <li>She pushes through the crowd.</li>
+                    <li>He sees her. Walks straight to her.</li>
+                    <li>She pulls him in. Holds tight.</li>
+                    <li><em>(Hold on this. Just this moment. Nothing else.)</em></li>
+                </ul>
+            </td>
+            <td>
+                <p><strong>TEXT ON SCREEN / VOICEOVER:</strong></p>
+                <p class="audio-text">"First to believe."</p>
+                <p class="audio-text">"Last to take credit."</p>
+            </td>
+        </tr>
+
+        <!-- CLOSING -->
+        <tr>
+            <td colspan="2" class="scene-title">CLOSING</td>
+        </tr>
+        <tr>
+            <td>
+                <ul>
+                    <li>FADE TO BLACK.</li>
+                    <li>Total silence.</li>
+                    <li>OMOTEC Logo appears subtly at the end.</li>
+                </ul>
+            </td>
+            <td>
+                <p><strong>TEXT ON SCREEN:</strong></p>
+                <p class="audio-text">"This is for the mother behind every winner."</p>
+                <p class="audio-text">"You know who you are."</p>
+                <br>
+                <p><strong>LOGO:</strong> OMOTEC</p>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

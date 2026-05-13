@@ -22,6 +22,12 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 ### Step 2 — Start the app (one command)
+Windows (PowerShell):
+```powershell
+.\start.ps1
+```
+
+macOS/Linux:
 ```bash
 bash start.sh
 ```
@@ -134,7 +140,8 @@ claude-office-assistant/
 │   └── memories.json          # User memories
 ├── whatsapp_bot/
 │   └── bot.py                 # WhatsApp integration (Twilio/Interakt)
-└── start.sh                   # ← RUN THIS to start the app
+├── start.ps1                  # ← RUN THIS on Windows (PowerShell)
+└── start.sh                   # ← RUN THIS on macOS/Linux
 ```
 
 ---
@@ -168,6 +175,12 @@ TWILIO_AUTH_TOKEN=...
 ```bash
 lsof -ti:5000 | xargs kill -9
 bash start.sh
+```
+
+Windows alternative:
+```powershell
+Get-NetTCPConnection -LocalPort 5000 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
+.\start.ps1
 ```
 
 **Module not found errors**
