@@ -766,7 +766,7 @@ function setupInputs() {
   msgInput.addEventListener("input", () => {
     autoResize(msgInput);
     const len = msgInput.value.length;
-    charCount.textContent = len > 6000 ? `${len}/8000` : "";
+    charCount.textContent = len > 6000 ? `${len} / 8000 characters` : "";
     charCount.style.color = len > 7000 ? "#ef4444" : "";
     sendBtn.disabled = !msgInput.value.trim() || isLoading;
   });
