@@ -47,14 +47,33 @@
   }
 })();
 
+const API = location.hostname === "localhost" || location.hostname === "127.0.0.1"
+  ? "http://localhost:5000"
+  : location.origin;
+
+window.addEventListener("beforeunload", function() {
+  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+  if (!user.user_id) return;
+  navigator.sendBeacon(
+    `${API}/api/attendance/checkout`,
+    JSON.stringify({ user_id: user.user_id })
+  );
+});
+
 /**
  * Logout helper — call window.authLogout() from any page.
  */
 window.authLogout = async function () {
-  const API = location.hostname === "localhost" || location.hostname === "127.0.0.1"
-    ? "http://localhost:5000"
-    : location.origin;
-  const token = localStorage.getItem("_session_token");
+  const token = sessionStorage.getItem("_session_token") || localStorage.getItem("_session_token");
+  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+  if (user.user_id) {
+    await fetch(`${API}/api/attendance/checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.user_id }),
+      keepalive: true,
+    }).catch(() => {});
+  }
   if (token) {
     await fetch(`${API}/api/auth/logout`, {
       method: "POST",

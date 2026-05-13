@@ -33,6 +33,16 @@ def init_db():
         
         # Attendance tracking
         conn.execute("CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, action TEXT, timestamp TEXT)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS daily_attendance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            checkin_time TEXT,
+            checkout_time TEXT,
+            UNIQUE(user_id, date)
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_attendance_date ON daily_attendance (date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_attendance_user_date ON daily_attendance (user_id, date)")
 
         # Daily standups
         conn.execute("""CREATE TABLE IF NOT EXISTS standups (

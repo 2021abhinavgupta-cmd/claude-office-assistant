@@ -1117,6 +1117,120 @@ def _parse_slides(markdown: str) -> list:
 # below (around line 1228) as the full token-session implementations.
 # The old attendance-only stubs have been removed to prevent Flask startup errors.
 
+def _attendance_conn():
+    from db import get_connection
+    return get_connection()
+
+def _utc_now_parts():
+    now = datetime.utcnow()
+    return now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), now.isoformat() + "Z"
+
+def _attendance_payload():
+    body = request.get_json(silent=True)
+    if isinstance(body, dict):
+        return body
+    raw = request.get_data(cache=False, as_text=True) or ""
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+def _attendance_checkin(user_id: str):
+    date_utc, time_utc, timestamp_utc = _utc_now_parts()
+    conn = _attendance_conn()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO daily_attendance (user_id, date, checkin_time) VALUES (?, ?, ?)",
+            (user_id, date_utc, time_utc),
+        )
+        conn.execute(
+            "UPDATE daily_attendance SET checkin_time=? WHERE user_id=? AND date=? AND checkin_time IS NULL",
+            (time_utc, user_id, date_utc),
+        )
+        conn.execute(
+            "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'in', ?)",
+            (user_id, timestamp_utc),
+        )
+    conn.close()
+    return date_utc, time_utc
+
+def _attendance_checkout(user_id: str):
+    date_utc, time_utc, timestamp_utc = _utc_now_parts()
+    conn = _attendance_conn()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO daily_attendance (user_id, date) VALUES (?, ?)",
+            (user_id, date_utc),
+        )
+        conn.execute(
+            "UPDATE daily_attendance SET checkout_time=? WHERE user_id=? AND date=?",
+            (time_utc, user_id, date_utc),
+        )
+        conn.execute(
+            "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'out', ?)",
+            (user_id, timestamp_utc),
+        )
+    conn.close()
+    return date_utc, time_utc
+
+@app.route("/api/attendance/checkin", methods=["POST"])
+def attendance_checkin():
+    body = _attendance_payload()
+    user_id = str(body.get("user_id", "")).strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    date_utc, checkin_time = _attendance_checkin(user_id)
+    return jsonify({"success": True, "user_id": user_id, "date": date_utc, "checkin_time": checkin_time})
+
+@app.route("/api/attendance/checkout", methods=["POST"])
+def attendance_checkout():
+    body = _attendance_payload()
+    user_id = str(body.get("user_id", "")).strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    date_utc, checkout_time = _attendance_checkout(user_id)
+    return jsonify({"success": True, "user_id": user_id, "date": date_utc, "checkout_time": checkout_time})
+
+@app.route("/api/attendance/summary", methods=["GET"])
+def attendance_summary():
+    user_id = request.args.get("user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    conn = _attendance_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT date, checkin_time, checkout_time FROM daily_attendance WHERE user_id=? ORDER BY date DESC",
+        (user_id,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify({
+        "user_id": user_id,
+        "records": [
+            {"date": r[0], "checkin_time": r[1], "checkout_time": r[2]}
+            for r in rows
+        ],
+    })
+
+@app.route("/api/attendance/today", methods=["GET"])
+def attendance_today():
+    date_utc = datetime.utcnow().strftime("%Y-%m-%d")
+    conn = _attendance_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT user_id, checkin_time, checkout_time FROM daily_attendance WHERE date=?",
+        (date_utc,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    records = [
+        {"user_id": r[0], "date": date_utc, "checkin_time": r[1], "checkout_time": r[2]}
+        for r in rows
+    ]
+    return jsonify({"date": date_utc, "records": records})
+
 @app.route("/api/auth/change_pin", methods=["POST"])
 def auth_change_pin():
     body = request.get_json(silent=True) or {}
@@ -1293,6 +1407,9 @@ def auth_logout():
     body  = request.get_json(silent=True) or {}
     token = body.get("token", "") or request.headers.get("Authorization", "").replace("Bearer ", "") or request.headers.get("X-Session-Token", "")
     if token:
+        user_id = _verify_session(token)
+        if user_id:
+            _attendance_checkout(user_id)
         conn = _sessions_conn()
         with conn:
             conn.execute("DELETE FROM sessions WHERE token=?", (token,))
@@ -1346,6 +1463,10 @@ def employee_checkin():
     found["last_seen"]   = entry["timestamp"]
 
     _save_employees(data)
+    if action == "out":
+        date_utc, time_utc = _attendance_checkout(found.get("id", ""))
+    else:
+        date_utc, time_utc = _attendance_checkin(found.get("id", ""))
     logger.info(f"Employee {found['name']} checked {action} at {entry['timestamp']}")
 
     return jsonify({
@@ -1353,6 +1474,8 @@ def employee_checkin():
         "employee": found["name"],
         "action":   action,
         "time":     entry["timestamp"],
+        "date":     date_utc,
+        "time_utc": time_utc,
     })
 
 
@@ -1361,21 +1484,35 @@ def employee_summary():
     """Returns today's attendance summary."""
     data  = _load_employees()
     today = datetime.utcnow().strftime("%Y-%m-%d")
+    conn = _attendance_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT user_id, checkin_time, checkout_time FROM daily_attendance WHERE date=?",
+        (today,),
+    )
+    attendance_map = {r[0]: {"checkin_time": r[1], "checkout_time": r[2]} for r in cur.fetchall()}
+    conn.close()
 
     summary = []
     for emp in data["employees"]:
-        today_checks = [
-            c for c in emp.get("checkins", [])
-            if c["timestamp"].startswith(today)
-        ]
+        daily = attendance_map.get(emp.get("id", ""), {})
+        checkin_time = daily.get("checkin_time")
+        checkout_time = daily.get("checkout_time")
+        if checkin_time and not checkout_time:
+            status = "in"
+        elif checkin_time and checkout_time:
+            status = "out"
+        else:
+            status = "not checked in"
         summary.append({
             "emp_id":     emp.get("id", ""),
             "name":       emp["name"],
             "role":       emp["role"],
             "department": emp["department"],
-            "status":     emp.get("last_action", "not checked in"),
-            "last_seen":  emp.get("last_seen", "—"),
-            "today_logs": today_checks,
+            "status":     status,
+            "checkin_time": checkin_time,
+            "checkout_time": checkout_time,
+            "today_logs": [],
         })
 
     return jsonify({"date": today, "employees": summary, "total": len(summary)})

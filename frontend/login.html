@@ -163,6 +163,11 @@ async function submitPin(){
   if(d.success){
     sessionStorage.setItem("_session_token", d.token);  // cleared on tab close
     localStorage.setItem("claude_office_user", JSON.stringify({...d.user, user_id: d.user.id}));
+    await fetch(`${API}/api/attendance/checkin`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ user_id: selectedEmp.id })
+    }).catch(() => {});
     redirect(d.user);
   } else {
     document.getElementById("err-msg").textContent = d.error||"Wrong PIN — try again";
