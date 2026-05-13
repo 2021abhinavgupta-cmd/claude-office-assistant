@@ -712,7 +712,10 @@ async function loadAttendance() {
     wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">${
       visibleRows.map(emp => {
         const checkin = emp.checkin_time ? `${emp.checkin_time} IST` : "Not in yet";
-        const checkout = emp.checkout_time ? `${emp.checkout_time} IST` : "Still working";
+        // "Still working" only if they actually checked in today but have not logged out yet
+        const checkout = !emp.checkin_time
+          ? "—"
+          : (emp.checkout_time ? `${emp.checkout_time} IST` : "Still working");
         const inSec = toSeconds(emp.checkin_time);
         const outSec = toSeconds(emp.checkout_time);
         const total = (inSec != null && outSec != null && outSec >= inSec) ? formatDuration(outSec - inSec) : "—";
