@@ -1162,6 +1162,12 @@ def _attendance_checkin(user_id: str):
                 "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'in', ?)",
                 (user_id, ts),
             )
+        # Logging in again the same day means the user is still active. Clear any checkout
+        # from an earlier tab close so only the *last* close of the day counts as final out.
+        conn.execute(
+            "UPDATE daily_attendance SET checkout_time = NULL WHERE user_id=? AND date=?",
+            (user_id, d),
+        )
         cur.execute(
             "SELECT checkin_time FROM daily_attendance WHERE user_id=? AND date=?",
             (user_id, d),
