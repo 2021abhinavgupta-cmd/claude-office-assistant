@@ -12,6 +12,8 @@ Routes:
   GET  /api/conversations/<id>            — Get conversation + messages
   DEL  /api/conversations/<id>            — Delete conversation
   POST /api/conversations/<id>/chat       — Multi-turn chat in conversation
+  POST /api/conversations/<id>/stream     — SSE streaming chat (optional web_search in JSON body)
+  GET  /api/web-search?q=                 — DuckDuckGo instant snippets (debug / reuse)
   PATCH /api/conversations/<id>/title     — Rename conversation
   GET  /api/employees                     — List employees
   POST /api/employees/checkin             — Check-in/out
@@ -20,6 +22,7 @@ Routes:
 import os
 import re
 import json
+import copy
 import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -29,6 +32,7 @@ from flask_cors import CORS
 from flask_compress import Compress
 from dotenv import load_dotenv
 import anthropic
+import requests
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -206,6 +210,39 @@ SYSTEM_PROMPTS = {
 DEFAULT_SYSTEM = SYSTEM_PROMPTS["general"]
 MAX_TOKENS     = 4096
 
+# Multi-turn chat: higher ceilings reduce mid-answer cutoffs (cost/latency tradeoff).
+_HAIKU_CONV_MAX_OUT   = 8192
+_SONNET_LONG_ARTIFACT = 16384
+LONG_OUTPUT_TASK_TYPES = frozenset({
+    "coding", "html_design", "presentations", "scripts", "content",
+    "meetings", "announcements", "email", "data_analysis",
+})
+
+
+def _anthropic_extra_headers(model_name: str, max_tokens: int) -> dict:
+    """Prompt cache + extended output beta when max_tokens exceeds the default 8k cap."""
+    headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
+    if max_tokens > 8192:
+        if "claude-3-5" in model_name:
+            headers["anthropic-beta"] += ",max-tokens-3-5-sonnet-2024-07-15"
+        else:
+            headers["anthropic-beta"] += ",output-128k-2025-02-19"
+    return headers
+
+
+def _conversation_max_tokens(task_type: str, model_tier: str) -> int:
+    """Per-task output budget for conversation API + stream (Haiku capped for API limits)."""
+    key = (task_type or "general").lower().replace(" ", "_")
+    if key == "captions":
+        want = MAX_TOKENS
+    elif key in LONG_OUTPUT_TASK_TYPES:
+        want = _SONNET_LONG_ARTIFACT
+    else:
+        want = _HAIKU_CONV_MAX_OUT
+    if (model_tier or "haiku").lower() == "haiku":
+        return min(want, _HAIKU_CONV_MAX_OUT)
+    return want
+
 
 # ── Task Auto-Detection ───────────────────────────────────────────────────────
 _TASK_KEYWORDS = {
@@ -283,7 +320,13 @@ def _quality_check(response: str, task_type: str, model_name: str) -> str:
         issues.append("Response appears incomplete — do not end with ellipsis, provide a full answer")
     if not issues:
         return response
-    
+
+    preview = (response[:240].replace("\n", " ") + ("..." if len(response) > 240 else ""))
+    logger.info(
+        "QUALITY_CHECK triggered | task=%s upstream_model=%s issues=%s out_chars=%d preview=%r",
+        task_type, model_name, issues, len(response), preview,
+    )
+
     issue_list = "\n".join(f"- {i}" for i in issues)
     try:
         _haiku = os.getenv("HAIKU_MODEL", "claude-haiku-4-5-20251001")
@@ -296,8 +339,15 @@ def _quality_check(response: str, task_type: str, model_name: str) -> str:
                 "content": f"Fix these issues in the response:\n{issue_list}\n\nOriginal response:\n{response}"
             }],
         )
-        logger.info(f"Quality check fixed issues: {issues}")
-        return _anthropic_response_text(fix_resp) or response
+        fixed = (_anthropic_response_text(fix_resp) or response).strip()
+        usage = getattr(fix_resp, "usage", None)
+        in_tok = getattr(usage, "input_tokens", None) if usage else None
+        out_tok = getattr(usage, "output_tokens", None) if usage else None
+        logger.info(
+            "QUALITY_CHECK applied | task=%s changed=%s fix_in=%s fix_out=%s new_chars=%d",
+            task_type, fixed != response.strip(), in_tok, out_tok, len(fixed),
+        )
+        return fixed or response
     except Exception as e:
         logger.warning(f"Quality check fix failed (non-fatal): {e}")
         return response
@@ -415,10 +465,119 @@ def _get_all_users_str() -> str:
     except Exception:
         return "api"
 
-def _build_system_prompt(task_type: str, user_id: str, project_id: Optional[str] = None, message: str = "") -> list:
+
+def _message_content_as_text(content) -> str:
+    if isinstance(content, list):
+        return " ".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+    return str(content or "").strip()
+
+
+HISTORY_SUMMARY_KEEP_LAST = 10
+HISTORY_SUMMARY_MIN_MESSAGES = 14
+HISTORY_SUMMARY_MIN_TOTAL_CHARS = 12_000
+
+
+def _maybe_summarize_history(messages: list, haiku_model: str) -> tuple[list, Optional[str]]:
+    """
+    When the thread is long, summarize older turns with Haiku and keep only the last
+    HISTORY_SUMMARY_KEEP_LAST messages in the API payload. Full history remains in SQLite.
+    """
+    if not messages:
+        return messages, None
+    if len(messages) <= HISTORY_SUMMARY_KEEP_LAST:
+        return messages, None
+    total_chars = sum(len(_message_content_as_text(m.get("content"))) for m in messages)
+    if len(messages) < HISTORY_SUMMARY_MIN_MESSAGES and total_chars < HISTORY_SUMMARY_MIN_TOTAL_CHARS:
+        return messages, None
+
+    old = messages[:-HISTORY_SUMMARY_KEEP_LAST]
+    recent = messages[-HISTORY_SUMMARY_KEEP_LAST:]
+    parts = []
+    for m in old:
+        t = _message_content_as_text(m.get("content"))
+        t = " ".join(t.split())
+        if not t:
+            continue
+        if len(t) > 4000:
+            t = t[:4000] + "…"
+        parts.append(f"{m.get('role', '?').upper()}: {t}")
+    transcript = "\n\n".join(parts)
+    if len(transcript) > 120_000:
+        transcript = transcript[:120_000] + "\n…(truncated for summarizer)"
+
+    try:
+        summ_resp = client.messages.create(
+            model=haiku_model,
+            max_tokens=2048,
+            system=(
+                "Summarize the conversation transcript for another AI that will continue helping the user. "
+                "Output dense bullet points: key facts, names, decisions, constraints, open questions, "
+                "and anything the assistant promised. No preamble. Max ~900 words."
+            ),
+            messages=[{"role": "user", "content": transcript}],
+        )
+        summary = (_anthropic_response_text(summ_resp) or "").strip()
+        if not summary or len(summary) < 40:
+            return messages, None
+        logger.info("History compressed for API | old_turns=%d kept=%d", len(old), len(recent))
+        return recent, summary
+    except Exception as e:
+        logger.warning("History summarization failed (non-fatal): %s", e)
+        return messages, None
+
+
+def _format_output_contract(oc: dict) -> str:
+    """Turn UI output-contract chips into a short instruction block."""
+    if not oc or not isinstance(oc, dict):
+        return ""
+    lines = []
+    fmt = (oc.get("format") or "").strip()
+    ln = (oc.get("length") or "").strip()
+    tone = (oc.get("tone") or "").strip()
+    aud = (oc.get("audience") or "").strip()
+    if fmt:
+        lines.append(f"- **Format:** {fmt}")
+    if ln:
+        lines.append(f"- **Length:** {ln}")
+    if tone:
+        lines.append(f"- **Tone:** {tone}")
+    if aud:
+        lines.append(f"- **Audience:** {aud}")
+    if not lines:
+        return ""
+    return "## Output the user requested\n" + "\n".join(lines)
+
+
+def _attachment_grounding_instruction() -> str:
+    return (
+        "\n\n## Source discipline (attachments)\n"
+        "The user's message includes attached files. When you rely on them, cite which file "
+        "as **[Attached: *filename*]** and quote only short spans (under ~25 words) when needed. "
+        "If the attachment does not contain the answer, say so clearly."
+    )
+
+
+def _build_system_prompt(
+    task_type: str,
+    user_id: str,
+    project_id: Optional[str] = None,
+    message: str = "",
+    *,
+    history_summary: Optional[str] = None,
+    output_contract_block: Optional[str] = None,
+    attachment_grounding: bool = False,
+) -> tuple[list, list]:
+    """
+    Returns (system_prompt_blocks, kb_sources) where kb_sources is a list of
+    {filename, doc_id} for UI attribution when project KB is used.
+    """
+    kb_sources: list = []
     base_prompt = SYSTEM_PROMPTS.get(task_type.lower().replace(" ", "_"), DEFAULT_SYSTEM)
     base_prompt += "\n\nBe concise and direct. No unnecessary preamble. No phrases like 'Certainly!' or 'Great question!'. Get to the answer immediately."
-    
+
     # Auto-memory extraction instruction
     users_str = _get_all_users_str()
     base_prompt += f"""
@@ -448,37 +607,44 @@ Valid USER_IDs you can assign memories to:
 
     mem_ctx = memory_store.format_for_prompt(user_id)
     team_mem_ctx = memory_store.format_team_memories()
-    
+
     sections = [base_prompt]
     if mem_ctx:
         sections.append(mem_ctx)
-        
-    # Shared team memories only (no HR tone profiles — aligns with Claude Projects + memory).
+
     if team_mem_ctx:
         sections.append("## Shared team memories\n" + team_mem_ctx)
-    
+
     if project_id:
         project = project_store.get_project(project_id, user_id)
         if project:
             if project.get("custom_instructions"):
                 sections.append(f"## Custom Instructions\n{project['custom_instructions']}")
-            # Claude-Projects-like behavior: retrieve only relevant KB excerpts
             if message:
-                matches = kb_retriever.search(project_id, user_id, message, limit=6)
+                matches = kb_retriever.search_hybrid(project_id, user_id, message, limit=8)
+                kb_sources = kb_retriever.unique_doc_labels(matches)
                 kb_ctx = kb_retriever.format_for_prompt(matches)
                 if kb_ctx:
                     sections.append(kb_ctx)
-    
+
+    if history_summary:
+        sections.append("## Earlier in this conversation (summarized)\n" + history_summary)
+
+    if output_contract_block:
+        sections.append(output_contract_block)
+
+    if attachment_grounding:
+        sections.append(_attachment_grounding_instruction().strip())
+
     final_text = "\n\n".join(sections)
-    # Same global behaviour stack as main chat (HTML/PPT/docs routes use this too).
     combined = MASTER_SYSTEM_PROMPT.rstrip() + "\n\n" + final_text
     return [
         {
             "type": "text",
             "text": combined,
-            "cache_control": {"type": "ephemeral"}
+            "cache_control": {"type": "ephemeral"},
         }
-    ]
+    ], kb_sources
 
 # ── Anthropic response parsing ─────────────────────────────────────────────────
 def _anthropic_response_text(response, *, include_thinking: bool = False) -> str:
@@ -533,7 +699,7 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
     model_config  = get_model_for_task(task_type) if not force_tier else _build_config(force_tier)
     model_name    = model_config["name"]
     model_tier    = model_config["tier"]
-    system_prompt = _build_system_prompt(task_type, user_id, project_id, message=message)
+    system_prompt, _ = _build_system_prompt(task_type, user_id, project_id, message=message)
 
     logger.info(f"Claude call | task={task_type} | model={model_tier} | user={user_id}")
 
@@ -573,13 +739,7 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
             "system": system_prompt,
             "messages": [{"role": "user", "content": reasoning_context + message}],
         }
-        # Extended output & prompt caching headers
-        kwargs["extra_headers"] = {"anthropic-beta": "prompt-caching-2024-07-31"}
-        if max_tokens > 8192:
-            if "claude-3-5" in model_name:
-                kwargs["extra_headers"]["anthropic-beta"] += ",max-tokens-3-5-sonnet-2024-07-15"
-            else:
-                kwargs["extra_headers"]["anthropic-beta"] += ",output-128k-2025-02-19"
+        kwargs["extra_headers"] = _anthropic_extra_headers(model_name, max_tokens)
 
         response = client.messages.create(**kwargs)
         output_text = _anthropic_response_text(response)
@@ -646,6 +806,93 @@ def _save_employees(data: dict):
         json.dump(data, f, indent=2)
 
 
+def _duckduckgo_instant(query: str) -> dict:
+    """Public instant-answer JSON (no API key). May return sparse results."""
+    q = (query or "").strip()[:240]
+    if len(q) < 2:
+        return {}
+    try:
+        r = requests.get(
+            "https://api.duckduckgo.com/",
+            params={"q": q, "format": "json", "no_html": 1, "skip_disambig": 1},
+            timeout=10,
+            headers={"User-Agent": "ClaudeOfficeAssistant/1.0 (+https://localhost)"},
+        )
+        r.raise_for_status()
+        try:
+            return r.json()
+        except Exception:
+            return {}
+    except Exception as e:
+        logger.warning("DuckDuckGo instant search failed: %s", e)
+        return {}
+
+
+def _web_search_snippets(query: str, max_chars: int = 4000) -> str:
+    """Format DDG instant results for injection into the user turn (not stored verbatim in UI)."""
+    data = _duckduckgo_instant(query)
+    if not data:
+        return ""
+    lines = []
+    abst = (data.get("AbstractText") or "").strip()
+    if abst:
+        lines.append(f"Instant summary: {abst}")
+        u = (data.get("AbstractURL") or "").strip()
+        if u:
+            lines.append(f"Primary URL: {u}")
+    heading = (data.get("Heading") or "").strip()
+    if heading and heading not in (abst or ""):
+        lines.append(f"Topic: {heading}")
+
+    def _walk_related(items, depth=0):
+        if depth > 4 or not items:
+            return
+        for item in items[:12]:
+            if isinstance(item, dict):
+                if item.get("Text"):
+                    lines.append(f"- {str(item['Text'])[:420]}")
+                if item.get("FirstURL"):
+                    lines.append(f"  URL: {item['FirstURL']}")
+                if "Topics" in item:
+                    _walk_related(item.get("Topics") or [], depth + 1)
+
+    _walk_related(data.get("RelatedTopics") or [])
+
+    if not lines:
+        return ""
+
+    body = "\n".join(lines[:24])
+    if len(body) > max_chars:
+        body = body[:max_chars] + "\n…(truncated)"
+    return (
+        "\n\n---\n[Web search context — public snippets only; may be incomplete, wrong, or outdated. "
+        "Verify anything time-sensitive, legal, medical, or financial.]\n"
+        f"Query: {query.strip()[:240]}\n\n{body}\n---\n"
+    )
+
+
+def _inject_web_context(msgs: list, snippet: str) -> list:
+    """Append web snippet to the last user message content (string or first text block in list)."""
+    if not snippet or not msgs or msgs[-1].get("role") != "user":
+        return msgs
+    out = list(msgs[:-1])
+    last = dict(msgs[-1])
+    c = last.get("content")
+    if isinstance(c, str):
+        last["content"] = c + snippet
+    elif isinstance(c, list):
+        new_blocks = copy.deepcopy(c)
+        if new_blocks and isinstance(new_blocks[0], dict) and new_blocks[0].get("type") == "text":
+            new_blocks[0]["text"] = (new_blocks[0].get("text") or "") + snippet
+        else:
+            new_blocks.insert(0, {"type": "text", "text": snippet.strip()})
+        last["content"] = new_blocks
+    else:
+        return msgs
+    out.append(last)
+    return out
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ROUTES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -669,6 +916,21 @@ def health():
         "pdf_export_ready": pdf_ready,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     })
+
+
+@app.route("/api/web-search", methods=["GET"])
+def web_search_api():
+    """
+    Debug / lightweight lookup: DuckDuckGo instant answer JSON formatted for clients.
+    Query param: q=
+    """
+    q = (request.args.get("q") or "").strip()[:240]
+    if len(q) < 2:
+        return jsonify({"error": "q must be at least 2 characters"}), 400
+    snippet = _web_search_snippets(q, max_chars=8000)
+    if not snippet:
+        return jsonify({"query": q, "snippet": "", "note": "No instant results returned — try a different query."})
+    return jsonify({"query": q, "snippet": snippet})
 
 
 # ── Routing Table ─────────────────────────────────────────────────────────────
@@ -983,7 +1245,7 @@ def html_generate_stream():
     model_config  = get_model_for_task("html_design")
     model_name    = model_config["name"]
     model_tier    = model_config["tier"]
-    system_prompt = _build_system_prompt("html_design", user_id, None)
+    system_prompt, _ = _build_system_prompt("html_design", user_id, None)
 
     def generate():
         full_response  = ""
@@ -1572,7 +1834,8 @@ def call_claude_with_context(task_type: str, messages: list,
                              user_id: str = "api",
                              attachments: list = None,
                              project_id: str = None,
-                             model_override: str = None) -> dict:
+                             model_override: str = None,
+                             output_contract: dict = None) -> dict:
     """
     Call Claude with full conversation history + optional file attachments.
     Memories are automatically injected into the system prompt.
@@ -1590,12 +1853,23 @@ def call_claude_with_context(task_type: str, messages: list,
         model_name    = model_config["name"]
         model_tier    = model_config["tier"]
 
-    # Inject user memories and project context into system prompt
     haiku_model = get_model_for_task("general")["name"]
-    system_prompt = _build_system_prompt(task_type, user_id, project_id, message=messages[-1].get("content", "") if messages else "")
-    
+    messages_for_api, hist_summary = _maybe_summarize_history(list(messages), haiku_model)
+    last_msg_text = messages[-1].get("content", "") if messages else ""
+    oc_block = _format_output_contract(output_contract or {})
+
+    system_prompt, _kb = _build_system_prompt(
+        task_type,
+        user_id,
+        project_id,
+        message=last_msg_text,
+        history_summary=hist_summary,
+        output_contract_block=oc_block or None,
+        attachment_grounding=bool(attachments),
+    )
+
     # ── Conversation state awareness ──
-    conv_state = _analyze_conversation_state(messages, haiku_model)
+    conv_state = _analyze_conversation_state(messages_for_api, haiku_model)
     if conv_state and "frustrated: yes" in conv_state.lower():
         system_prompt = list(system_prompt)  # copy
         system_prompt[0] = {
@@ -1603,10 +1877,10 @@ def call_claude_with_context(task_type: str, messages: list,
             "text": system_prompt[0]["text"] + "\n\nNOTE: The user seems frustrated. Be extra clear, concise, and directly address their core need. Acknowledge if previous responses may not have been helpful."
         }
 
-    logger.info(f"Multi-turn | task={task_type} | model={model_tier} | turns={len(messages)} | files={len(attachments or [])} | user={user_id}")
+    logger.info(f"Multi-turn | task={task_type} | model={model_tier} | turns={len(messages_for_api)} | files={len(attachments or [])} | user={user_id}")
 
     # Build message list — attach files to the last user message if any
-    api_messages = list(messages)
+    api_messages = list(messages_for_api)
     if attachments and api_messages and api_messages[-1]["role"] == "user":
         last_text = api_messages[-1]["content"]
         content_blocks = [{"type": "text", "text": last_text}]
@@ -1630,16 +1904,9 @@ def call_claude_with_context(task_type: str, messages: list,
         api_messages = api_messages[:-1] + [{"role": "user", "content": content_blocks}]
 
     try:
-        # Coding tasks need more room — full functions/modules can exceed 4096 tokens
-        effective_max = 8192 if task_type in ("coding", "html_design") else MAX_TOKENS
-        
-        headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
-        if effective_max > 8192:
-            if "claude-3-5" in model_name:
-                headers["anthropic-beta"] += ",max-tokens-3-5-sonnet-2024-07-15"
-            else:
-                headers["anthropic-beta"] += ",output-128k-2025-02-19"
-                
+        effective_max = _conversation_max_tokens(task_type, model_tier)
+        headers = _anthropic_extra_headers(model_name, effective_max)
+
         response      = client.messages.create(
             model=model_name, max_tokens=effective_max,
             system=system_prompt, messages=api_messages,
@@ -1768,8 +2035,12 @@ def conversation_chat(conv_id):
         or _detect_task(message)
     )
 
-    # Save user message to conversation
-    conversation_store.add_message(conv_id, "user", message)
+    # Save user message (or amend last user when regenerating)
+    if data.get("amend_last_user"):
+        if not conversation_store.amend_last_user_content(conv_id, message):
+            return jsonify({"error": "Could not update last user message"}), 400
+    else:
+        conversation_store.add_message(conv_id, "user", message)
 
     # Lock in task_type if not already set
     if not conv.get("task_type"):
@@ -1777,9 +2048,22 @@ def conversation_chat(conv_id):
 
     # Build context for Claude (full history including message just saved)
     context = conversation_store.get_context_messages(conv_id)
+    if data.get("web_search"):
+        snip = _web_search_snippets(message)
+        if snip:
+            context = _inject_web_context(list(context), snip)
+            logger.info("Chat | web_search context injected | len=%d", len(snip))
 
     # Call Claude with full conversation context + any file attachments
-    result = call_claude_with_context(task_type, context, conv.get("user_id", "api"), attachments=attachments, project_id=conv.get("project_id"), model_override=data.get("model_override"))
+    result = call_claude_with_context(
+        task_type,
+        context,
+        conv.get("user_id", "api"),
+        attachments=attachments,
+        project_id=conv.get("project_id"),
+        model_override=data.get("model_override"),
+        output_contract=data.get("output_contract") or {},
+    )
 
     if not result["success"]:
         err = result.get("error", "")
@@ -1830,13 +2114,22 @@ def conversation_stream(conv_id):
     if truncate_idx is not None:
         conversation_store.truncate_messages(conv_id, int(truncate_idx))
 
-    # Save user message and update task type
-    conversation_store.add_message(conv_id, "user", message)
+    amend_last = bool(data.get("amend_last_user"))
+    if amend_last:
+        if not conversation_store.amend_last_user_content(conv_id, message):
+            return jsonify({"error": "Could not update last user message"}), 400
+    else:
+        conversation_store.add_message(conv_id, "user", message)
     if not conv.get("task_type"):
         conversation_store.update_task_type(conv_id, task_type)
 
-    # Build context + attachments
+    # Build context + attachments (Haiku summary of older turns when very long)
     context = conversation_store.get_context_messages(conv_id)
+    haiku_m = get_model_for_task("general")["name"]
+    compressed_ctx, hist_summary = _maybe_summarize_history(list(context), haiku_m)
+    output_contract = data.get("output_contract") or {}
+    oc_block = _format_output_contract(output_contract) or None
+
     model_override = data.get("model_override")
 
     if model_override and model_override != "auto":
@@ -1847,7 +2140,15 @@ def conversation_stream(conv_id):
         model_name   = model_config["name"]
         model_tier   = model_config["tier"]
 
-    mem_blocks = _build_system_prompt(task_type, user_id, conv.get("project_id"), message=message)
+    mem_blocks, kb_sources = _build_system_prompt(
+        task_type,
+        user_id,
+        conv.get("project_id"),
+        message=message,
+        history_summary=hist_summary,
+        output_contract_block=oc_block,
+        attachment_grounding=bool(attachments),
+    )
     final_system = mem_blocks[0]["text"] if mem_blocks else MASTER_SYSTEM_PROMPT
 
     system_prompt = [{
@@ -1856,7 +2157,7 @@ def conversation_stream(conv_id):
         "cache_control": {"type": "ephemeral"}
     }]
 
-    api_messages = list(context)
+    api_messages = list(compressed_ctx)
     if attachments and api_messages and api_messages[-1]["role"] == "user":
         last_text      = api_messages[-1]["content"]
         content_blocks = [{"type": "text", "text": last_text}]
@@ -1865,8 +2166,18 @@ def conversation_stream(conv_id):
                 content_blocks.append({"type": "image",
                     "source": {"type": "base64", "media_type": att["media_type"], "data": att["data"]}})
             elif att.get("type") == "document":
-                content_blocks[0]["text"] += f"\n\n---\nAttached: {att['filename']}\n{att.get('content','')}\n---"
+                file_content = att.get("content", "") or ""
+                smart_content = _smart_file_context(file_content, last_text, haiku_m)
+                content_blocks[0]["text"] += (
+                    f"\n\n---\nAttached: {att['filename']}\n{smart_content}\n---"
+                )
         api_messages = api_messages[:-1] + [{"role": "user", "content": content_blocks}]
+
+    if data.get("web_search"):
+        snip = _web_search_snippets(message)
+        if snip:
+            api_messages = _inject_web_context(api_messages, snip)
+            logger.info("Stream | web_search context injected | len=%d", len(snip))
 
     # Check budget before opening stream
     budget = check_budget_available()
@@ -1876,11 +2187,27 @@ def conversation_stream(conv_id):
         return Response(stream_with_context(_budget_err()), mimetype="text/event-stream")
 
     def should_think(prompt: str, t_type: str) -> bool:
-        THINKING_TASKS = ["coding", "data_analysis", "html_design", "presentations", "analysis"]
-        THINKING_KEYWORDS = ["why", "how", "explain", "analyse", "analyze", "compare", "difference", "best way", "should i", "help me think", "strategy", "plan", "review", "feedback", "debug", "fix"]
-        if t_type in THINKING_TASKS: return True
-        if len(prompt.split()) > 30: return True
-        if any(k in prompt.lower() for k in THINKING_KEYWORDS): return True
+        THINKING_TASKS = [
+            "coding", "data_analysis", "html_design", "presentations", "analysis",
+            "scripts", "content", "meetings", "announcements", "email",
+        ]
+        THINKING_KEYWORDS = [
+            "why", "how", "explain", "analyse", "analyze", "compare", "difference",
+            "best way", "should i", "help me think", "strategy", "plan", "review",
+            "feedback", "debug", "fix", "report", "whitepaper", "document", "proposal",
+            "trade-off", "tradeoff", "risk", "architecture", "implications", "thoroughly",
+            "in depth", "deep dive", "evaluate", "critique", "assess", "recommendation",
+            "unclear", "uncertain", "what should i", "which option", "outline", "brainstorm",
+        ]
+        low = prompt.lower()
+        if t_type in THINKING_TASKS:
+            return True
+        if len(prompt) > 900:
+            return True
+        if len(prompt.split()) > 18:
+            return True
+        if any(k in low for k in THINKING_KEYWORDS):
+            return True
         return False
 
     def generate():
@@ -1896,22 +2223,27 @@ def conversation_stream(conv_id):
 
         try:
             use_thinking = should_think(message, task_type)
+            stream_max = _conversation_max_tokens(task_type, model_tier)
             stream_kwargs = {
                 "system": system_prompt,
                 "messages": api_messages,
-                "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"}
             }
             if use_thinking:
                 # Thinking is only available on Sonnet-class models. We pin to the
                 # same Sonnet model shown in the UI for clarity/consistency.
                 stream_kwargs["model"] = "claude-sonnet-4-6"
-                stream_kwargs["max_tokens"] = 16000
-                stream_kwargs["thinking"] = {"type": "enabled", "budget_tokens": 8000}
+                # budget_tokens counts toward max_tokens; leave headroom for long answers.
+                stream_kwargs["max_tokens"] = 36000
+                stream_kwargs["thinking"] = {"type": "enabled", "budget_tokens": 14000}
                 model_used_for_call = stream_kwargs["model"]
             else:
                 stream_kwargs["model"] = model_name
-                stream_kwargs["max_tokens"] = MAX_TOKENS
+                stream_kwargs["max_tokens"] = stream_max
                 model_used_for_call = stream_kwargs["model"]
+
+            stream_kwargs["extra_headers"] = _anthropic_extra_headers(
+                stream_kwargs["model"], stream_kwargs["max_tokens"]
+            )
 
             with client.messages.stream(**stream_kwargs) as stream:
                 for event in stream:
@@ -1974,7 +2306,7 @@ def conversation_stream(conv_id):
 
         updated_conv   = conversation_store.get_conversation(conv_id)
         updated_budget = check_budget_available()
-        yield f"data: {json.dumps({'type':'done','model_tier':model_tier,'model_used':model_used_for_call,'cost_usd':cost,'task_type':task_type,'title':updated_conv['title'] if updated_conv else '','budget':{'spent':updated_budget['spent'],'remaining':updated_budget['remaining'],'limit':updated_budget['limit']}})}\n\n"
+        yield f"data: {json.dumps({'type':'done','model_tier':model_tier,'model_used':model_used_for_call,'cost_usd':cost,'task_type':task_type,'title':updated_conv['title'] if updated_conv else '','budget':{'spent':updated_budget['spent'],'remaining':updated_budget['remaining'],'limit':updated_budget['limit']},'kb_sources': kb_sources or []})}\n\n"
 
     return Response(
         stream_with_context(generate()),

@@ -25,6 +25,8 @@ const TASK_MODELS = {
   coding: "sonnet", html_design: "sonnet", presentations: "sonnet",
   captions: "haiku", scripts: "haiku", general: "haiku",
 };
+/** Max characters in main chat input (HTML maxlength). API limit is ~200k tokens total context, not this number. */
+const MSG_MAX_CHARS = 500000;
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 const employeeModal  = document.getElementById("employee-modal");
@@ -137,27 +139,6 @@ window.editMessage = function(btn) {
   textContainer.appendChild(textarea);
   textContainer.appendChild(actionsDiv);
   textarea.focus();
-};
-
-window.previewArtifact = function(btn, ext) {
-  const code = decodeURIComponent(btn.dataset.code);
-  const pane = document.getElementById("artifacts-pane");
-  const iframe = document.getElementById("artifact-iframe");
-  
-  if (ext === "html") {
-    iframe.srcdoc = code;
-  } else if (ext === "svg") {
-    iframe.srcdoc = `<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;">${code}</body></html>`;
-  } else {
-    iframe.srcdoc = `<html><body style="font-family:monospace;white-space:pre-wrap;padding:16px;">${code.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`;
-  }
-  
-  pane.style.display = "flex";
-};
-
-window.closeArtifact = function() {
-  const pane = document.getElementById("artifacts-pane");
-  if (pane) pane.style.display = "none";
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -660,13 +641,14 @@ if (typeof marked !== "undefined") {
       langStr = code.lang;
     }
     
-    const ext = langStr || 'txt';
+    const ext = String(langStr || "txt").toLowerCase();
     const cleanCode = (textStr || "").trim();
     const encodedCode = cleanCode.length < 500000 ? encodeURIComponent(cleanCode) : encodeURIComponent(cleanCode.slice(0, 500000));
     
     let highlighted = cleanCode;
-    if (language && hljs.getLanguage(language)) {
-      highlighted = hljs.highlight(cleanCode, { language }).value;
+    const hlId = (langStr || ext || "").toLowerCase();
+    if (hlId && hljs.getLanguage(hlId)) {
+      highlighted = hljs.highlight(cleanCode, { language: hlId }).value;
     } else {
       highlighted = escHtml(cleanCode);
     }
@@ -687,7 +669,8 @@ if (typeof marked !== "undefined") {
         </div>
       </div>`;
 
-    return `<div class="code-block-wrapper" style="margin: 16px 0;">${headerHtml}<pre style="margin-top:0; border-top-left-radius:0; border-top-right-radius:0; border:1px solid var(--border); padding:16px; overflow-x:auto; background:#282c34;"><code class="hljs language-${langStr}">${highlighted}</code></pre></div>`;
+    const safeHlClass = hlId || "plain";
+    return `<div class="code-block-wrapper" style="margin: 16px 0;">${headerHtml}<pre style="margin-top:0; border-top-left-radius:0; border-top-right-radius:0; border:1px solid var(--border); padding:16px; overflow-x:auto; background:#282c34;"><code class="hljs language-${safeHlClass}">${highlighted}</code></pre></div>`;
   };
   marked.setOptions({
     renderer: renderer,
@@ -716,6 +699,85 @@ function escHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function extractFirstHtmlFence(text) {
+  if (!text || typeof text !== "string") return null;
+  const m = text.match(/```html\s*([\s\S]*?)```/i);
+  return m ? m[1].trim() : null;
+}
+
+function showArtifactSidePreview(ext, code) {
+  const pane = document.getElementById("artifacts-pane");
+  const iframe = document.getElementById("artifact-iframe");
+  const mainEl = document.getElementById("main");
+  const artTitle = document.getElementById("artifact-title");
+  if (!pane || !iframe || !mainEl) return;
+
+  const c = String(code || "");
+  let doc = "";
+  if (ext === "html") {
+    const t = c.trim();
+    doc = /<\s*html[\s>]/i.test(t)
+      ? t
+      : `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${t}</body></html>`;
+  } else if (ext === "svg") {
+    doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;display:flex;min-height:100dvh;align-items:center;justify-content:center;background:#f4f4f5;}</style></head><body>${c}</body></html>`;
+  } else {
+    doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:JetBrains Mono,ui-monospace,monospace;white-space:pre-wrap;padding:16px;margin:0;background:#fff;color:#111;}</style></head><body>${escHtml(c)}</body></html>`;
+  }
+
+  iframe.srcdoc = doc;
+  if (artTitle) {
+    artTitle.textContent =
+      ext === "html" ? "HTML preview" :
+      ext === "svg" ? "SVG preview" :
+      `${ext} preview`;
+  }
+  mainEl.classList.add("main--artifact-open");
+  pane.classList.add("artifacts-pane--open");
+}
+
+window.previewArtifact = function(btn, ext) {
+  const raw = btn.getAttribute("data-code") || btn.dataset.code || "";
+  let code = "";
+  try {
+    code = decodeURIComponent(raw);
+  } catch (_) {
+    code = raw;
+  }
+  showArtifactSidePreview(ext, code);
+};
+
+window.openArtifactSidePreviewHtml = function(html) {
+  showArtifactSidePreview("html", html || "");
+};
+
+window.closeArtifact = function() {
+  const pane = document.getElementById("artifacts-pane");
+  const mainEl = document.getElementById("main");
+  const iframe = document.getElementById("artifact-iframe");
+  if (pane) pane.classList.remove("artifacts-pane--open");
+  if (mainEl) mainEl.classList.remove("main--artifact-open");
+  if (iframe) {
+    try { iframe.srcdoc = ""; } catch (_) {}
+  }
+};
+
+function maybeAddSidePreviewButton(actionsEl, rawText) {
+  if (!actionsEl || !rawText) return;
+  if (actionsEl.querySelector(".side-preview-btn")) return;
+  const htmlFence = extractFirstHtmlFence(rawText);
+  if (!htmlFence || htmlFence.length < 12) return;
+  const prevBtn = document.createElement("button");
+  prevBtn.type = "button";
+  prevBtn.className = "msg-action-btn side-preview-btn";
+  prevBtn.textContent = "Side preview";
+  prevBtn.title = "Open the first HTML code block in the side panel";
+  prevBtn.addEventListener("click", () => showArtifactSidePreview("html", htmlFence));
+  const regen = actionsEl.querySelector(".regen-btn");
+  if (regen) actionsEl.insertBefore(prevBtn, regen);
+  else actionsEl.appendChild(prevBtn);
 }
 
 // ── Budget ────────────────────────────────────────────────────────────────────
@@ -766,8 +828,9 @@ function setupInputs() {
   msgInput.addEventListener("input", () => {
     autoResize(msgInput);
     const len = msgInput.value.length;
-    charCount.textContent = len > 6000 ? `${len} / 8000 characters` : "";
-    charCount.style.color = len > 7000 ? "#ef4444" : "";
+    const warnAt = Math.floor(MSG_MAX_CHARS * 0.75);
+    charCount.textContent = len > warnAt ? `${len} / ${MSG_MAX_CHARS} characters` : "";
+    charCount.style.color = len > Math.floor(MSG_MAX_CHARS * 0.875) ? "#ef4444" : "";
     sendBtn.disabled = !msgInput.value.trim() || isLoading;
   });
 }
@@ -1146,7 +1209,43 @@ function userAskedForWordExport(question) {
   );
 }
 
-window.sendMessage = async function(overrideText = null, truncateFromIndex = null) {
+function collectOutputContract() {
+  const fmt = document.getElementById("oc-format")?.value?.trim();
+  const len = document.getElementById("oc-length")?.value?.trim();
+  const tone = document.getElementById("oc-tone")?.value?.trim();
+  const aud = document.getElementById("oc-audience")?.value?.trim();
+  const o = {};
+  if (fmt) o.format = fmt;
+  if (len) o.length = len;
+  if (tone) o.tone = tone;
+  if (aud) o.audience = aud;
+  return o;
+}
+
+window.regenerateWithNote = function(assistantEl, note) {
+  const n = (note || "").trim();
+  if (!n) {
+    showToast("Add a short instruction first", "info");
+    return;
+  }
+  const allMsgs = [...messagesEl.querySelectorAll(".msg")];
+  const idx = allMsgs.indexOf(assistantEl);
+  if (idx < 1) {
+    showToast("Cannot regenerate this reply", "error");
+    return;
+  }
+  const prevUser = allMsgs[idx - 1];
+  if (!prevUser.classList.contains("user")) {
+    showToast("Could not find your previous message", "error");
+    return;
+  }
+  const userText = prevUser.querySelector(".msg-text")?.innerText?.split("\n📎")[0].trim() || "";
+  if (!userText) return;
+  const combined = userText + "\n\n---\nRegenerate your last reply with this instruction: " + n;
+  window.sendMessage(combined, idx, { amend_last_user: true });
+};
+
+window.sendMessage = async function(overrideText = null, truncateFromIndex = null, opts = {}) {
   const text = overrideText || msgInput.value.trim();
   if (!text || isLoading || !currentConvId) return;
 
@@ -1171,7 +1270,16 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
   const displayText = atts.length
     ? text + `\n\n📎 _${atts.length} file(s): ${atts.map(a => a.filename).join(", ")}_`
     : text;
-  appendMessage("user", displayText);
+  if (!opts.amend_last_user) {
+    appendMessage("user", displayText);
+  } else {
+    const lastUserEl = [...messagesEl.querySelectorAll(".msg.user")].pop();
+    const mt = lastUserEl?.querySelector(".msg-text");
+    if (mt) {
+      mt.innerHTML = formatText(displayText);
+      mt.setAttribute("data-raw", escHtml(displayText).replace(/"/g, "&quot;"));
+    }
+  }
 
   // Create the streaming assistant message element
   const streamEl = createStreamingMessage();
@@ -1201,6 +1309,11 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
     const bodyPayload = { message: text, attachments: atts };
     if (override !== "auto") bodyPayload.model_override = override;
     if (truncateFromIndex !== null) bodyPayload.truncate_from_index = truncateFromIndex;
+    const webEl = document.getElementById("web-search-toggle");
+    if (webEl && webEl.checked) bodyPayload.web_search = true;
+    const oc = collectOutputContract();
+    if (Object.keys(oc).length) bodyPayload.output_contract = oc;
+    if (opts.amend_last_user) bodyPayload.amend_last_user = true;
 
     const response = await fetch(`${API}/api/conversations/${currentConvId}/stream`, {
       method:  "POST",
@@ -1254,6 +1367,7 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
             model_tier: event.model_tier,
             model_used: event.model_used,
             cost_usd:   event.cost_usd,
+            kb_sources: event.kb_sources || [],
           });
           if (typeof exportDocument === "function") {
             if (userAskedForPptExport(text)) {
@@ -1409,6 +1523,14 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     body.appendChild(metaEl);
   }
 
+  if (meta.kb_sources && meta.kb_sources.length) {
+    const kbEl = document.createElement("div");
+    kbEl.className = "msg-kb-sources";
+    const names = [...new Set(meta.kb_sources.map((k) => k.filename).filter(Boolean))];
+    kbEl.innerHTML = "<strong>KB used:</strong> " + names.map(escHtml).join(", ");
+    body.appendChild(kbEl);
+  }
+
   // Action buttons
   const actions = document.createElement("div");
   actions.className = "msg-actions";
@@ -1417,7 +1539,7 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF">📄 PDF</button>
     <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>
     <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">📊 PPT</button>
-    <button class="msg-action-btn regen-btn" title="Regenerate response">↺ Retry</button>`;
+    <button class="msg-action-btn regen-btn" title="Remove this reply and re-send your last question">↺ Retry</button>`;
   body.appendChild(actions);
 
   const pdfBtn = actions.querySelector(".export-pdf-btn");
@@ -1450,6 +1572,18 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     }
   });
 
+  const regenWrap = document.createElement("div");
+  regenWrap.className = "regenerate-wrap";
+  regenWrap.innerHTML = `<input type="text" class="regenerate-input" placeholder="Regenerate with instruction (e.g. shorter, more formal)…" aria-label="Regeneration instruction" />
+    <button type="button" class="msg-action-btn regenerate-submit-btn">↻ Regenerate</button>`;
+  body.appendChild(regenWrap);
+  regenWrap.querySelector(".regenerate-submit-btn").addEventListener("click", () => {
+    const note = regenWrap.querySelector(".regenerate-input").value.trim();
+    window.regenerateWithNote(el, note);
+  });
+
+  maybeAddSidePreviewButton(actions, text);
+
   decorateAssistantReply(el, text);
 }
 
@@ -1459,13 +1593,21 @@ window.appendMessage = function(role, content, meta = {}) {
   const el = _origAppendMessage(role, content, meta);
   if (role === "assistant" && el) {
     const body    = el.querySelector(".msg-body");
+    if (meta.kb_sources && meta.kb_sources.length) {
+      const kbEl = document.createElement("div");
+      kbEl.className = "msg-kb-sources";
+      const names = [...new Set(meta.kb_sources.map((k) => k.filename).filter(Boolean))];
+      kbEl.innerHTML = "<strong>KB used:</strong> " + names.map(escHtml).join(", ");
+      body.appendChild(kbEl);
+    }
     const actions = document.createElement("div");
     actions.className = "msg-actions";
     actions.innerHTML = `
       <button class="msg-action-btn copy-btn" title="Copy">📋 Copy</button>
       <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF">📄 PDF</button>
       <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>
-      <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">📊 PPT</button>`;
+      <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">📊 PPT</button>
+      <button class="msg-action-btn regen-btn" type="button" title="Remove this reply and retry">↺ Retry</button>`;
     body.appendChild(actions);
     const pdfBtn = actions.querySelector(".export-pdf-btn");
     const docxBtn = actions.querySelector(".export-docx-btn");
@@ -1487,6 +1629,24 @@ window.appendMessage = function(role, content, meta = {}) {
         setTimeout(() => { this.textContent = "📋 Copy"; this.classList.remove("copied"); }, 2000);
       });
     });
+    actions.querySelector(".regen-btn").addEventListener("click", () => {
+      el.remove();
+      const lastUser = [...messagesEl.querySelectorAll(".msg.user")].pop();
+      if (lastUser) {
+        const c = lastUser.querySelector(".msg-text")?.textContent?.split("\n📎")[0].trim();
+        if (c) { msgInput.value = c; window.sendMessage(); }
+      }
+    });
+
+    const regenWrap = document.createElement("div");
+    regenWrap.className = "regenerate-wrap";
+    regenWrap.innerHTML = `<input type="text" class="regenerate-input" placeholder="Regenerate with instruction…" aria-label="Regeneration instruction" />
+      <button type="button" class="msg-action-btn regenerate-submit-btn">↻ Regenerate</button>`;
+    body.appendChild(regenWrap);
+    regenWrap.querySelector(".regenerate-submit-btn").addEventListener("click", () => {
+      const note = regenWrap.querySelector(".regenerate-input").value.trim();
+      window.regenerateWithNote(el, note);
+    });
 
     // ── Track last AI response for server-side export ──────────────────────
     if (window.setLastAIResponse) {
@@ -1495,6 +1655,7 @@ window.appendMessage = function(role, content, meta = {}) {
       window.setLastAIResponse(content, convTitle);
     }
 
+    maybeAddSidePreviewButton(actions, content);
     decorateAssistantReply(el, content);
   }
   return el;
@@ -1752,26 +1913,15 @@ window.filterChats = function(query) {
   });
 };
 
-window.previewArtifact = function(btn, ext) {
-  const code = decodeURIComponent(btn.getAttribute("data-code"));
-  const pane = document.getElementById("artifacts-pane");
-  const iframe = document.getElementById("artifact-iframe");
-  const chatContainer = document.getElementById("chat-container");
-  
-  if (ext === 'html' || ext === 'svg') {
-    pane.style.display = "flex";
-    chatContainer.style.width = "55%";
-    iframe.srcdoc = code;
-  }
-};
-
-window.closeArtifact = function() {
-  document.getElementById("artifacts-pane").style.display = "none";
-  document.getElementById("chat-container").style.width = "100%";
-};
-
 // Global Keyboard Shortcuts
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const pane = document.getElementById("artifacts-pane");
+    if (pane && pane.classList.contains("artifacts-pane--open")) {
+      e.preventDefault();
+      window.closeArtifact();
+    }
+  }
   // Cmd+K or Ctrl+K for New Chat
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault();

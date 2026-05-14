@@ -2,6 +2,7 @@
 KB Retriever — lightweight Claude-Projects-like retrieval for Project Knowledge Base.
 
 - Chunks docs and indexes them in SQLite FTS5
+- Hybrid retrieval: primary token OR-query + secondary AND-query for precision
 - Retrieves only the most relevant chunks per user message
 """
 
@@ -22,6 +23,7 @@ def _normalize_query(q: str) -> str:
     q = re.sub(r"[^\w\s\-:/\.]", " ", q)
     q = " ".join(q.split())
     return q[:400]
+
 
 def _fts_query(q: str) -> str:
     """
@@ -44,7 +46,16 @@ def _fts_query(q: str) -> str:
     return " OR ".join(parts)
 
 
-def chunk_text(text: str, *, max_chars: int = 900, overlap: int = 120) -> List[str]:
+def _keyword_and_query(q: str) -> str:
+    """Stricter AND query over longer tokens — boosts precision when OR is too noisy."""
+    qn = _normalize_query(q)
+    toks = [t for t in qn.split() if len(t) >= 4][:6]
+    if len(toks) < 2:
+        return ""
+    return " AND ".join(f'"{t}"' for t in toks)
+
+
+def chunk_text(text: str, *, max_chars: int = 1000, overlap: int = 180) -> List[str]:
     t = " ".join((text or "").split())
     if not t:
         return []
@@ -131,12 +142,58 @@ def search(project_id: str, user_id: str, query: str, *, limit: int = 6) -> List
         return []
 
 
+def _merge_ranked_chunks(primary: List[Dict], secondary: List[Dict], *, limit: int) -> List[Dict]:
+    """Merge two ranked lists; bm25 score — lower is better in SQLite FTS5."""
+    seen: set = set()
+    merged: List[Dict] = []
+    for m in primary + secondary:
+        key = (m.get("doc_id"), (m.get("chunk") or "")[:140])
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(m)
+    merged.sort(key=lambda x: float(x.get("score") or 0.0))
+    return merged[: int(limit)]
+
+
+def search_hybrid(project_id: str, user_id: str, query: str, *, limit: int = 8) -> List[Dict]:
+    """
+    OR-query recall + optional AND-query precision, merged and re-ranked.
+    """
+    primary = search(project_id, user_id, query, limit=max(limit, 6))
+    and_q = _keyword_and_query(query)
+    or_q = _fts_query(query)
+    secondary: List[Dict] = []
+    if and_q and and_q.strip() != (or_q or "").strip():
+        secondary = search(project_id, user_id, and_q, limit=max(4, limit // 2))
+    return _merge_ranked_chunks(primary, secondary, limit=limit)
+
+
+def unique_doc_labels(matches: List[Dict]) -> List[Dict]:
+    """Unique (doc_id, filename) for UI attribution."""
+    out: List[Dict] = []
+    seen = set()
+    for m in matches or []:
+        key = (m.get("doc_id"), m.get("filename"))
+        if not (key[0] or key[1]):
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"filename": m.get("filename") or "", "doc_id": m.get("doc_id") or ""})
+    return out
+
+
 def format_for_prompt(matches: List[Dict]) -> Optional[str]:
     if not matches:
         return None
 
-    lines = ["## Project Knowledge Base (Relevant Excerpts)"]
-    by_doc = {}
+    lines = [
+        "## Project Knowledge Base (Relevant Excerpts)",
+        "When you use a fact from this KB, cite it inline as **[KB: *filename*]** (use the exact filename below).",
+        "If you quote, keep quotes under ~25 words and only when necessary for accuracy.",
+    ]
+    by_doc: Dict = {}
     for m in matches:
         key = (m.get("doc_id"), m.get("filename"))
         by_doc.setdefault(key, []).append(m.get("chunk", ""))
@@ -148,4 +205,3 @@ def format_for_prompt(matches: List[Dict]) -> Optional[str]:
             if c:
                 lines.append(f"- {c}")
     return "\n".join(lines).strip()
-

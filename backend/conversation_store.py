@@ -131,6 +131,31 @@ def truncate_messages(conv_id: str, index: int):
             conn.execute("UPDATE conversations SET data=? WHERE id=?", (json.dumps(conv), conv_id))
     conn.close()
 
+
+def amend_last_user_content(conv_id: str, new_content: str) -> bool:
+    """Replace the text of the most recent user message (used for regenerate-with-note)."""
+    if not (new_content or "").strip():
+        return False
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT data FROM conversations WHERE id=?", (conv_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    conv = json.loads(row[0])
+    msgs = conv.get("messages") or []
+    if not msgs or msgs[-1].get("role") != "user":
+        conn.close()
+        return False
+    msgs[-1]["content"] = new_content.strip()
+    conv["updated_at"] = _now()
+    with conn:
+        conn.execute("UPDATE conversations SET data=? WHERE id=?", (json.dumps(conv), conv_id))
+    conn.close()
+    return True
+
+
 def update_task_type(conv_id: str, task_type: str):
     conn = get_connection()
     cursor = conn.cursor()
@@ -159,49 +184,10 @@ def get_context_messages(conv_id: str, limit: int = MAX_CONTEXT_MESSAGES) -> lis
         messages.append({"role": m["role"], "content": m["content"]})
         
     messages = messages[-limit:]
-    
-    # If the context is long, compress older turns into a compact, readable summary.
-    if len(messages) > 10:
-        old_messages = messages[:-10]
-        recent_messages = messages[-10:]
-        
-        # Compress old context
-        def _as_text(c):
-            if isinstance(c, list):
-                return " ".join([b.get("text", "") for b in c if b.get("type") == "text"]).strip()
-            return str(c or "").strip()
 
-        user_bits = []
-        assistant_bits = []
-        for m in old_messages:
-            t = " ".join(_as_text(m["content"]).split())
-            if not t:
-                continue
-            # Keep slightly more signal than the previous 100-char truncation
-            t = t[:280]
-            if m["role"] == "user":
-                user_bits.append(t)
-            else:
-                assistant_bits.append(t)
-
-        summary_parts = []
-        if user_bits:
-            summary_parts.append("User (earlier):\n- " + "\n- ".join(user_bits[-12:]))
-        if assistant_bits:
-            summary_parts.append("Assistant (earlier):\n- " + "\n- ".join(assistant_bits[-12:]))
-            
-        compressed = {
-            "role": "user", 
-            "content": "[SYSTEM NOTE: Older conversation context compressed for token efficiency]\n" + "\n\n".join(summary_parts)
-        }
-        messages = [compressed] + recent_messages
-    else:
-        messages = messages
-    
-    # Final pass: enforce a rough character budget by dropping oldest non-summary turns.
+    # Rough character budget: keep newest messages until budget is reached.
     total = 0
     kept = []
-    # Always keep the last message; iterate from the end.
     for m in reversed(messages):
         t = m.get("content", "")
         if isinstance(t, list):
@@ -214,5 +200,3 @@ def get_context_messages(conv_id: str, limit: int = MAX_CONTEXT_MESSAGES) -> lis
         if total >= MAX_CONTEXT_CHARS:
             break
     return list(reversed(kept))
-        
-    return messages
