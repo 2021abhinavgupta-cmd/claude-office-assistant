@@ -152,6 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentUser = saved;
     applyUser(saved);
     loadConversations();
+    loadProjects();
     
     // Check for draft message from project.html
     const urlParams = new URLSearchParams(window.location.search);
@@ -386,6 +387,24 @@ async function loadProjects() {
     projectsList.innerHTML = `<div class="conv-empty">Could not load projects</div>`;
   }
 }
+
+// ── Projects Panel Toggle (called from HTML onclick) ─────────────────────────
+window.toggleProjectsPanel = function() {
+  const list    = document.getElementById('projects-list');
+  const chevron = document.getElementById('projects-chevron');
+  if (!list) return;
+  const isHidden = list.style.display === 'none' || list.style.display === '';
+  list.style.display = isHidden ? 'block' : 'none';
+  if (chevron) chevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+};
+
+window.filterChats = function(q) {
+  document.querySelectorAll('#conv-list .conv-item').forEach(el => {
+    const title = el.querySelector('.conv-item-title');
+    if (!title) return;
+    el.style.display = title.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+};
 
 
 // ── Conversation Management ───────────────────────────────────────────────────
