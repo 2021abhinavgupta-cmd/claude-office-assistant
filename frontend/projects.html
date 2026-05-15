@@ -146,9 +146,26 @@
     .kstar.lit{color:var(--acc)}
     .kbar{height:3px;background:rgba(255,255,255,.07);border-radius:100px;margin-top:8px;overflow:hidden}
     .kbar-fill{height:3px;border-radius:100px;background:linear-gradient(90deg,var(--acc),#ff8c42)}
-    .kanban-group-toggle{display:flex;gap:6px;margin-bottom:12px;flex-shrink:0}
+    .kanban-group-toggle{display:flex;gap:6px;flex-shrink:0}
     .kgroup-btn{padding:5px 14px;border-radius:var(--rs);font-size:.76rem;font-weight:600;border:1px solid var(--bdr);background:var(--s1);color:var(--muted);cursor:pointer;transition:all .2s}
     .kgroup-btn.on{background:var(--s2);color:var(--txt);border-color:var(--acc)}
+    .kanban-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;flex-shrink:0}
+    .client-filter-btn{padding:4px 12px;border-radius:100px;font-size:.74rem;font-weight:600;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
+    .client-filter-btn.on{border-color:var(--acc);color:var(--acc);background:rgba(245,166,35,.1)}
+    .quick-task-btn{margin-left:auto;padding:6px 16px;border-radius:var(--rs);border:1px dashed var(--bdr);background:transparent;color:var(--muted);font-size:.78rem;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
+    .quick-task-btn:hover{border-color:var(--acc);color:var(--acc)}
+    /* Quick Task Modal */
+    .qt-modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center}
+    .qt-modal-ov.open{display:flex}
+    .qt-modal{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:28px;width:90%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+    .qt-modal h3{font-family:'Syne',sans-serif;font-size:1.1rem;margin-bottom:18px}
+    .qt-field{margin-bottom:14px}
+    .qt-field label{display:block;font-size:.76rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+    .qt-field input,.qt-field select,.qt-field textarea{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:9px 12px;font-size:.875rem;outline:none;font-family:'DM Sans',sans-serif}
+    .qt-field input:focus,.qt-field select:focus,.qt-field textarea:focus{border-color:var(--acc)}
+    .qt-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+    /* Quick tasks column special style */
+    .kcard.qt-card .kcard-client{color:var(--blu)}
   </style>
 </head>
 <body>
@@ -209,9 +226,16 @@
 
   <!-- Kanban -->
   <div id="tab-kanban" style="display:none;flex:1;display:none;flex-direction:column;overflow:hidden;height:100%;">
-    <div class="kanban-group-toggle">
-      <button class="kgroup-btn on" id="kbtn-stage" onclick="setKanbanGroup('stage',this)">By Stage</button>
-      <button class="kgroup-btn" id="kbtn-client" onclick="setKanbanGroup('client',this)">By Client</button>
+    <!-- Top toolbar -->
+    <div class="kanban-toolbar">
+      <div class="kanban-group-toggle">
+        <button class="kgroup-btn on" id="kbtn-stage" onclick="setKanbanGroup('stage',this)">By Stage</button>
+        <button class="kgroup-btn" id="kbtn-client" onclick="setKanbanGroup('client',this)">By Client</button>
+      </div>
+      <!-- Client filter tabs (only shown in By Stage mode) -->
+      <div id="client-filter-bar" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></div>
+      <!-- Quick Task button -->
+      <button class="quick-task-btn" onclick="openQuickTask()">+ Quick Task</button>
     </div>
     <div class="kanban-wrap" id="kanban-board"></div>
   </div>
@@ -225,6 +249,38 @@
     <div class="modal-btns">
       <button class="btn" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted)" onclick="closeModal()">Cancel</button>
       <button class="btn btn-reject btn-sm" style="padding:9px 18px;font-size:.84rem" onclick="confirmReject()">Send Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Task Modal -->
+<div class="qt-modal-ov" id="qt-modal">
+  <div class="qt-modal">
+    <h3>📌 Quick Task</h3>
+    <div class="qt-field">
+      <label>Task title *</label>
+      <input id="qt-title" type="text" placeholder="What needs to be done?" />
+    </div>
+    <div class="qt-field">
+      <label>Assign to</label>
+      <select id="qt-assign">
+        <option value="">— Unassigned —</option>
+        <option>Abhinav</option><option>Vidit</option><option>Nupur</option>
+        <option>Kshitij</option><option>Raj</option><option>Mohit</option>
+        <option>Tanaya</option><option>Happy</option>
+      </select>
+    </div>
+    <div class="qt-field">
+      <label>Due date</label>
+      <input id="qt-due" type="date" />
+    </div>
+    <div class="qt-field">
+      <label>Note (optional)</label>
+      <textarea id="qt-note" rows="2" placeholder="Any extra context..."></textarea>
+    </div>
+    <div class="qt-btns">
+      <button class="btn" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted)" onclick="closeQuickTask()">Cancel</button>
+      <button class="btn btn-acc" onclick="saveQuickTask()">Add Task</button>
     </div>
   </div>
 </div>
@@ -618,12 +674,34 @@ const STAGE_COLS = [
   {key:"done",   label:"Approved",    emoji:"✅", statuses:["approved","Done"]},
 ];
 const STATUS_MAP = {todo:"not_started",prog:"in_progress",review:"pending_review",done:"approved"};
-let kanbanGroup = "stage";
-let draggedCard = null;
+let kanbanGroup    = "stage";
+let draggedCard    = null;
+let selectedClient = "all";
+let quickTasks     = JSON.parse(localStorage.getItem("quick_tasks") || "[]");
 
 function setKanbanGroup(g, btn){
   kanbanGroup = g;
   document.querySelectorAll(".kgroup-btn").forEach(b=>b.classList.remove("on"));
+  btn.classList.add("on");
+  const bar = document.getElementById("client-filter-bar");
+  if(bar) bar.style.display = g === "stage" ? "flex" : "none";
+  selectedClient = "all";
+  renderKanban();
+}
+
+function renderClientFilterBar(){
+  const bar = document.getElementById("client-filter-bar");
+  if(!bar || !allData) return;
+  const clients = allData.clients || [];
+  const allBtn = '<button class="client-filter-btn on" onclick="filterByClient(\'all\',this)">All</button>';
+  const cBtns  = clients.map(c=>`<button class="client-filter-btn" onclick="filterByClient(${JSON.stringify(c.name)},this)">${c.name}</button>`).join("");
+  const qtBtn  = '<button class="client-filter-btn" style="border-color:#5c9eff;color:#5c9eff" onclick="filterByClient(\'__quick__\',this)">+ Quick Tasks</button>';
+  bar.innerHTML = allBtn + cBtns + qtBtn;
+}
+
+function filterByClient(name, btn){
+  selectedClient = name;
+  document.querySelectorAll(".client-filter-btn").forEach(b=>b.classList.remove("on"));
   btn.classList.add("on");
   renderKanban();
 }
@@ -643,56 +721,71 @@ function flatTasks(){
 function renderKanban(){
   const board = document.getElementById("kanban-board");
   if(!allData){board.innerHTML='<div class="empty">Loading...</div>';return;}
-  const tasks = flatTasks();
-  if(!tasks.length){board.innerHTML='<div class="empty">No tasks yet. <a href="client-onboard.html" style="color:var(--acc)">+ Onboard a client →</a></div>';return;}
+  if(!document.querySelector(".client-filter-btn")) renderClientFilterBar();
 
-  if(kanbanGroup === "stage"){
-    board.innerHTML = STAGE_COLS.map(col => buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t=>col.statuses.includes(t.status)))).join("");
-  } else {
-    // By client
-    const clients = (allData.clients||[]);
-    board.innerHTML = clients.map(c => {
-      const ctasks = (c.tasks||[]).map(t=>({...t, clientName:c.name, clientUrl:c.url, notionId:t.notion_id||null}));
-      return buildCol("client-"+c.id, "📁 "+c.name, ctasks);
-    }).join("");
+  if(selectedClient === "__quick__"){
+    const qts = quickTasks.map(t=>({...t, clientName:"Quick Task", clientUrl:null, notionId:null, isQuick:true}));
+    board.innerHTML = STAGE_COLS.map(col=>buildCol(col.key, col.label, qts.filter(t=>col.statuses.includes(t.status||"not_started")))).join("");
+    bindDragEvents(board);
+    return;
   }
 
-  // Bind drag events
-  board.querySelectorAll(".kcard").forEach(card => {
-    card.addEventListener("dragstart", e => {
-      draggedCard = {
-        taskId:     card.dataset.taskId,
-        notionId:   card.dataset.notionId,
-        taskTitle:  card.dataset.taskTitle,
-        assignee:   card.dataset.assignee,
-        clientName: card.dataset.clientName,
-      };
-      card.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-    });
-    card.addEventListener("dragend", () => card.classList.remove("dragging"));
-  });
+  const allTasks = flatTasks();
+  const tasks = selectedClient === "all" ? allTasks : allTasks.filter(t=>t.clientName===selectedClient);
+  if(!tasks.length){board.innerHTML='<div class="empty">No tasks for this client yet.</div>';return;}
 
-  board.querySelectorAll(".kanban-col").forEach(col => {
-    col.addEventListener("dragover", e => {e.preventDefault();col.classList.add("drag-over");});
-    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
-    col.addEventListener("drop", async e => {
-      e.preventDefault();
-      col.classList.remove("drag-over");
-      if(!draggedCard) return;
-      const colKey = col.dataset.col;
-      const newStatus = STATUS_MAP[colKey];
-      if(!newStatus) return;
-      await updateTaskStatus(
-        draggedCard.taskId,
-        draggedCard.notionId,
-        newStatus,
-        draggedCard.taskTitle,
-        draggedCard.assignee,
-        draggedCard.clientName
-      );
+  if(kanbanGroup === "stage"){
+    board.innerHTML = STAGE_COLS.map(col=>buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t=>col.statuses.includes(t.status)))).join("");
+  } else {
+    const clients = (allData.clients||[]);
+    board.innerHTML = clients.map(c=>{
+      const ctasks=(c.tasks||[]).map(t=>({...t,clientName:c.name,clientUrl:c.url,notionId:t.notion_id||null}));
+      return buildCol("client-"+c.id, c.name, ctasks);
+    }).join("");
+  }
+  bindDragEvents(board);
+}
+
+function bindDragEvents(board){
+  board.querySelectorAll(".kcard").forEach(card=>{
+    card.addEventListener("dragstart", e=>{
+      draggedCard={taskId:card.dataset.taskId,notionId:card.dataset.notionId,taskTitle:card.dataset.taskTitle,assignee:card.dataset.assignee,clientName:card.dataset.clientName,isQuick:card.dataset.isQuick==="true"};
+      card.classList.add("dragging");e.dataTransfer.effectAllowed="move";
+    });
+    card.addEventListener("dragend",()=>card.classList.remove("dragging"));
+  });
+  board.querySelectorAll(".kanban-col").forEach(col=>{
+    col.addEventListener("dragover",e=>{e.preventDefault();col.classList.add("drag-over");});
+    col.addEventListener("dragleave",()=>col.classList.remove("drag-over"));
+    col.addEventListener("drop",async e=>{
+      e.preventDefault();col.classList.remove("drag-over");
+      if(!draggedCard)return;
+      const newStatus=STATUS_MAP[col.dataset.col];
+      if(!newStatus)return;
+      if(draggedCard.isQuick){
+        quickTasks=quickTasks.map(t=>t.id===draggedCard.taskId?{...t,status:newStatus}:t);
+        localStorage.setItem("quick_tasks",JSON.stringify(quickTasks));
+        renderKanban();toast("Task moved!");
+      }else{
+        await updateTaskStatus(draggedCard.taskId,draggedCard.notionId,newStatus,draggedCard.taskTitle,draggedCard.assignee,draggedCard.clientName);
+      }
     });
   });
+}
+
+function openQuickTask(){document.getElementById("qt-modal").classList.add("open");document.getElementById("qt-title").focus();}
+function closeQuickTask(){document.getElementById("qt-modal").classList.remove("open");}
+function saveQuickTask(){
+  const title=document.getElementById("qt-title").value.trim();
+  if(!title){toast("Enter a task title","err");return;}
+  const task={id:"qt_"+Date.now(),title,assigned_to:document.getElementById("qt-assign").value,due_date:document.getElementById("qt-due").value,notes:document.getElementById("qt-note").value.trim(),status:"not_started",progress:0,isQuick:true};
+  quickTasks.unshift(task);
+  localStorage.setItem("quick_tasks",JSON.stringify(quickTasks));
+  closeQuickTask();
+  document.getElementById("qt-title").value="";document.getElementById("qt-note").value="";document.getElementById("qt-due").value="";
+  const btn=document.querySelector(".client-filter-btn[onclick*='__quick__']");
+  if(btn)filterByClient("__quick__",btn);else renderKanban();
+  toast("Quick Task added!");
 }
 
 function buildCol(key, label, tasks){
