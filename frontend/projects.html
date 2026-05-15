@@ -166,6 +166,17 @@
     .qt-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
     /* Quick tasks column special style */
     .kcard.qt-card .kcard-client{color:var(--blu)}
+    /* Assignee picker */
+    .kavatar{cursor:pointer;transition:transform .15s,box-shadow .15s}
+    .kavatar:hover{transform:scale(1.15);box-shadow:0 0 0 2px var(--acc)}
+    .assignee-picker{display:none;position:fixed;z-index:500;background:var(--s1);border:1px solid var(--bdr);border-radius:10px;padding:8px;min-width:210px;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+    .assignee-picker.open{display:block}
+    .ap-search{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:7px 10px;font-size:.8rem;outline:none;margin-bottom:6px;font-family:inherit}
+    .ap-search:focus{border-color:var(--acc)}
+    .ap-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:.84rem;transition:background .15s}
+    .ap-item:hover{background:var(--s2)}
+    .ap-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;color:#fff;flex-shrink:0}
+    .ap-name{font-weight:500}
   </style>
 </head>
 <body>
@@ -827,7 +838,9 @@ function buildCard(t, today){
     <div class="kcard-footer">
       <span class="kcard-due${isOverdue?' overdue':''}">${dueLabel}</span>
       <div class="kcard-avatars">
-        <div class="kavatar" style="background:${color}" title="${assigneeName}">${initial}</div>
+        <div class="kavatar" style="background:${color}" title="${assigneeName}"
+          onclick="event.stopPropagation();openAssigneePicker(event,'${taskId}','${notionId}',${t.isQuick?'true':'false'},'${(t.clientName||'').replace(/'/g,\"\\\'\")}')"
+        >${initial}</div>
       </div>
     </div>
   </div>`;
@@ -860,6 +873,89 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
     }catch(e){toast("Error: "+e.message,"err");}
   }
 }
+</script>
+
+<!-- Assignee Picker Dropdown -->
+<div class="assignee-picker" id="assignee-picker">
+  <input class="ap-search" id="ap-search" type="text" placeholder="Search team member..." oninput="filterApList(this.value)" />
+  <div id="ap-list"></div>
+</div>
+
+<script>
+// ── Assignee Picker ───────────────────────────────────────────────────────────
+const TEAM = [
+  {name:"Abhinav"}, {name:"Vidit"}, {name:"Nupur"}, {name:"Kshitij"},
+  {name:"Raj"},     {name:"Mohit"}, {name:"Tanaya"}, {name:"Happy"},
+];
+
+let _apTaskId = null, _apNotionId = null, _apIsQuick = false, _apClientName = '';
+
+function openAssigneePicker(e, taskId, notionId, isQuick, clientName){
+  e.stopPropagation();
+  _apTaskId = taskId; _apNotionId = notionId; _apIsQuick = isQuick; _apClientName = clientName;
+  const picker = document.getElementById('assignee-picker');
+  const search = document.getElementById('ap-search');
+  search.value = '';
+  renderApList(TEAM);
+  // Position near avatar
+  const rect = e.target.getBoundingClientRect();
+  picker.style.top  = (rect.bottom + 6) + 'px';
+  picker.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+  picker.classList.add('open');
+  search.focus();
+}
+
+function closeAssigneePicker(){
+  document.getElementById('assignee-picker').classList.remove('open');
+}
+
+function filterApList(q){
+  const filtered = TEAM.filter(m => m.name.toLowerCase().includes(q.toLowerCase()));
+  renderApList(filtered);
+}
+
+function renderApList(members){
+  const list = document.getElementById('ap-list');
+  list.innerHTML = members.map(m => {
+    const color = AVATAR_COLORS[m.name] || '#888';
+    const safe  = m.name.replace(/'/g, "\\'");
+    return `<div class="ap-item" onclick="reassignTask('${safe}')">
+      <div class="ap-avatar" style="background:${color}">${m.name[0]}</div>
+      <span class="ap-name">${m.name}</span>
+    </div>`;
+  }).join('');
+}
+
+async function reassignTask(newAssignee){
+  closeAssigneePicker();
+  if(_apIsQuick){
+    quickTasks = quickTasks.map(t => t.id === _apTaskId ? {...t, assigned_to: newAssignee} : t);
+    localStorage.setItem('quick_tasks', JSON.stringify(quickTasks));
+    renderKanban();
+    toast('Reassigned to ' + newAssignee + '!');
+    return;
+  }
+  if(_apNotionId){
+    try{
+      const r = await fetch(`${API}/api/notion/tasks/${_apNotionId}`,{
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ assigned_to: newAssignee, task_title:'', assignee: newAssignee, client_name: _apClientName }),
+        signal: AbortSignal.timeout(10000)
+      });
+      const d = await r.json();
+      if(d.success){ toast('Reassigned to '+newAssignee+'!'); await load(); renderKanban(); }
+      else toast(d.error||'Failed to reassign','err');
+    } catch(e){ toast('Error: '+e.message,'err'); }
+  }
+}
+
+// Close picker when clicking outside
+document.addEventListener('click', e => {
+  const picker = document.getElementById('assignee-picker');
+  if(picker && picker.classList.contains('open') && !picker.contains(e.target)){
+    closeAssigneePicker();
+  }
+});
 </script>
 </body>
 </html>

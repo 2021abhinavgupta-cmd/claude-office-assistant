@@ -311,10 +311,10 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
 
 
 def update_task(notion_id: str, status: str = None, progress: int = None,
-                submission_note: str = None, task_title: str = "",
-                assignee: str = "", client_name: str = "") -> bool:
+                submission_note: str = None, assigned_to: str = None,
+                task_title: str = "", assignee: str = "", client_name: str = "") -> bool:
     """
-    Update Status, Progress, and/or SubmissionNote on a task page.
+    Update Status, Progress, SubmissionNote, and/or AssignedTo on a task page.
     Pass only the fields you want to change.
     Automatically sends WhatsApp notification on key status changes.
     """
@@ -328,6 +328,8 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
         props["Progress"] = _number(progress)
     if submission_note is not None:
         props["Notes"] = _text(submission_note)
+    if assigned_to is not None:
+        props["Assigned To"] = _select(assigned_to)
 
     if not props:
         return True  # nothing to update

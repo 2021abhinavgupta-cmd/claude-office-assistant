@@ -3271,8 +3271,8 @@ def notion_list_tasks():
 @app.route("/api/notion/tasks/<string:notion_id>", methods=["PATCH"])
 def notion_update_task(notion_id: str):
     """
-    Update a task's status, progress, and/or submission note in Notion.
-    Body: { status?, progress?, submission_note?, task_title?, assignee?, client_name? }
+    Update a task's status, progress, assigned_to, and/or submission note in Notion.
+    Body: { status?, progress?, submission_note?, assigned_to?, task_title?, assignee?, client_name? }
     Triggers WhatsApp notification to founder on key status changes.
     """
     body   = request.get_json(silent=True) or {}
@@ -3281,6 +3281,7 @@ def notion_update_task(notion_id: str):
         status          = body.get("status"),
         progress        = body.get("progress"),
         submission_note = body.get("submission_note"),
+        assigned_to     = body.get("assigned_to"),
         task_title      = body.get("task_title", ""),
         assignee        = body.get("assignee", ""),
         client_name     = body.get("client_name", ""),
