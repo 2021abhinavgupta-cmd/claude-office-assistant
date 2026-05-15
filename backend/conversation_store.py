@@ -78,6 +78,21 @@ def list_conversations(user_id: str) -> list:
     convs.sort(key=lambda c: c["updated_at"], reverse=True)
     return convs
 
+def list_conversations_for_project(project_id: str) -> list:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT data FROM conversations WHERE json_extract(data, '$.project_id') = ?",
+        (project_id,)
+    )
+    convs = []
+    for (row,) in cursor.fetchall():
+        c = json.loads(row)
+        convs.append(_strip_messages(c))
+    conn.close()
+    convs.sort(key=lambda c: c["updated_at"], reverse=True)
+    return convs
+
 def add_message(conv_id: str, role: str, content: str,
                 metadata: Optional[dict] = None) -> Optional[dict]:
     conn = get_connection()

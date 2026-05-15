@@ -152,6 +152,21 @@ document.addEventListener("DOMContentLoaded", () => {
     currentUser = saved;
     applyUser(saved);
     loadConversations();
+    
+    // Check for draft message from project.html
+    const urlParams = new URLSearchParams(window.location.search);
+    const convIdParam = urlParams.get("conv_id");
+    const draftParam = urlParams.get("draft");
+
+    if (convIdParam) {
+      openConversation(convIdParam).then(() => {
+        if (draftParam) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          msgInput.value = draftParam;
+          sendMessage(draftParam);
+        }
+      });
+    }
   } else {
     loadEmployeeList();
   }
@@ -289,6 +304,89 @@ userPill.addEventListener("click", () => {
   employeeModal.classList.remove("hidden");
   loadEmployeeList();
 });
+
+// ── Project Management ────────────────────────────────────────────────────────
+const projectModal = document.getElementById("project-modal");
+const newProjectBtn = document.getElementById("new-project-btn");
+const projectCancelBtn = document.getElementById("project-cancel-btn");
+const projectCreateBtn = document.getElementById("project-create-btn");
+const projectNameInput = document.getElementById("project-name-input");
+const projectDescInput = document.getElementById("project-desc-input");
+const projectsList = document.getElementById("projects-list");
+
+if (newProjectBtn && projectModal) {
+  newProjectBtn.addEventListener("click", () => {
+    projectModal.style.display = "flex";
+    projectModal.classList.remove("hidden");
+    projectNameInput.value = "";
+    projectDescInput.value = "";
+    projectNameInput.focus();
+  });
+
+  projectCancelBtn.addEventListener("click", () => {
+    projectModal.style.display = "none";
+  });
+
+  projectCreateBtn.addEventListener("click", async () => {
+    const name = projectNameInput.value.trim();
+    const desc = projectDescInput.value.trim();
+    if (!name) {
+      alert("Project name is required.");
+      return;
+    }
+    projectCreateBtn.disabled = true;
+    projectCreateBtn.textContent = "Creating...";
+    try {
+      const res = await fetch(`${API}/api/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUser.user_id,
+          name: name,
+          description: desc
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        window.location.href = `project.html?id=${data.id}`;
+      } else {
+        alert(data.error || "Failed to create project");
+      }
+    } catch (e) {
+      alert("Error creating project.");
+    } finally {
+      projectCreateBtn.disabled = false;
+      projectCreateBtn.textContent = "Create project";
+    }
+  });
+}
+
+async function loadProjects() {
+  if (!currentUser || !projectsList) return;
+  try {
+    const res = await fetch(`${API}/api/projects?user_id=${encodeURIComponent(currentUser.user_id)}`);
+    const data = await res.json();
+    const projs = data.projects || [];
+    
+    if (projs.length === 0) {
+      projectsList.innerHTML = `<div class="conv-empty">No projects yet</div>`;
+      return;
+    }
+    
+    projectsList.innerHTML = projs.map(p => `
+      <a href="project.html?id=${p.id}" class="conv-item" style="text-decoration:none;">
+        <span class="conv-item-icon">📁</span>
+        <div class="conv-item-body">
+          <div class="conv-item-title">${escHtml(p.name)}</div>
+        </div>
+      </a>
+    `).join("");
+    
+  } catch (e) {
+    projectsList.innerHTML = `<div class="conv-empty">Could not load projects</div>`;
+  }
+}
+
 
 // ── Conversation Management ───────────────────────────────────────────────────
 async function loadConversations() {

@@ -79,11 +79,33 @@ def init_db():
             expires_at  TEXT NOT NULL
         )""")
 
+        # Projects migration
+        try:
+            # Check if old schema exists (has 'data' column)
+            cursor = conn.execute("PRAGMA table_info(projects)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if 'data' in columns and 'name' not in columns:
+                conn.execute("DROP TABLE projects")
+        except Exception:
+            pass
+
         # Projects
         conn.execute("""CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
-            data TEXT
+            name TEXT NOT NULL,
+            description TEXT,
+            instructions TEXT,
+            memory TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+
+        conn.execute("""CREATE TABLE IF NOT EXISTS project_files (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            filename TEXT,
+            content TEXT,
+            added_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
 
         # Project Knowledge Base search index (FTS5)

@@ -38,6 +38,27 @@
   </div>
 </div>
 
+<!-- ── Project Create Modal ── -->
+<div class="modal-overlay hidden" id="project-modal" role="dialog" aria-modal="true" style="display:none; align-items:center; justify-content:center;">
+  <div class="modal-card" style="max-width: 480px; text-align: left; padding: 32px;">
+    <h2 style="margin-bottom:16px; font-size:1.4rem; font-family:var(--font-sans); font-weight:600;">Create a personal project</h2>
+    <div style="background:var(--surface2); padding:16px; border-radius:8px; margin-bottom:24px; font-size:0.9rem; color:var(--muted); line-height:1.5;">
+      Projects help organise your work. Upload docs, code, and files to create themed collections Claude can reference again and again.
+    </div>
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500; color:var(--text);">What are you working on?</label>
+    <input type="text" id="project-name-input" placeholder="e.g. Website Redesign" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; color:var(--text); font-family:inherit; margin-bottom:20px; font-size:0.95rem; outline:none;" />
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500; color:var(--text);">What are you trying to achieve?</label>
+    <textarea id="project-desc-input" placeholder="e.g. Redesigning the main landing page to increase conversions..." rows="3" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; color:var(--text); font-family:inherit; resize:vertical; margin-bottom:32px; font-size:0.95rem; outline:none;"></textarea>
+    
+    <div style="display:flex; justify-content:flex-end; gap:12px;">
+      <button class="secondary-btn" id="project-cancel-btn" style="padding:10px 16px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-weight:500; font-size:0.95rem;">Cancel</button>
+      <button class="primary-btn" id="project-create-btn" style="padding:10px 16px; border-radius:8px; border:none; background:#d97757; color:#fff; font-weight:500; font-size:0.95rem; cursor:pointer;">Create project</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── App Shell ── -->
 <div class="app-shell" id="app-shell">
 

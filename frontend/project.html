@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Project - Claude Office</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Project Page Specific Styles */
+    .project-container {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+    }
+    
+    .project-main {
+      flex: 65;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+    
+    .project-header {
+      padding: 24px 32px 12px;
+    }
+    
+    .back-link {
+      display: inline-block;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+    .back-link:hover {
+      color: var(--text);
+    }
+    
+    .project-title {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .project-desc {
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    
+    .project-content {
+      flex: 1;
+      padding: 0 32px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-input-container {
+      padding: 24px 32px;
+      background: var(--bg);
+    }
+    
+    .project-sidebar {
+      flex: 35;
+      padding: 24px 32px;
+      background-color: var(--surface);
+      overflow-y: auto;
+    }
+    
+    .sidebar-section {
+      margin-bottom: 32px;
+    }
+    
+    .sidebar-section h3 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .edit-icon {
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .edit-icon:hover {
+      color: var(--text);
+    }
+    
+    .instructions-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: var(--text);
+      min-height: 80px;
+    }
+    
+    .instructions-edit-area {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--text);
+      font-family: inherit;
+      resize: vertical;
+      min-height: 100px;
+      display: none;
+      margin-bottom: 8px;
+    }
+    
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(255,255,255,0.02);
+    }
+    
+    .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface2);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .file-del {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .file-del:hover {
+      color: #ff4444;
+    }
+    
+    .memory-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: var(--text);
+      font-style: italic;
+    }
+    
+    .conv-list-proj {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .conv-item-proj {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .conv-item-proj:hover {
+      background: var(--surface);
+    }
+    .conv-item-proj-title {
+      font-weight: 500;
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+    .conv-item-proj-date {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="project-container">
+  <!-- Left Column -->
+  <div class="project-main">
+    <div class="project-header">
+      <a href="index.html" class="back-link">← All projects</a>
+      <h1 class="project-title" id="proj-title">Loading...</h1>
+      <div class="project-desc" id="proj-desc"></div>
+    </div>
+    
+    <div class="project-content" id="proj-content">
+      <!-- Conversation List or Empty State -->
+      <h3 style="font-size:1rem; font-weight:600; margin-bottom:16px;">Conversations</h3>
+      <div id="proj-convs" class="conv-list-proj">
+        <div style="color:var(--muted); font-size:0.9rem;">This project has no activity yet.</div>
+      </div>
+    </div>
+    
+    <div class="chat-input-container">
+      <div class="input-wrapper">
+        <textarea id="proj-chat-input" class="chat-input auto-expand" placeholder="Message Claude about this project..." rows="1" maxlength="500000"></textarea>
+        <div class="input-actions" style="display:flex; justify-content:space-between; width:100%; margin-top:8px;">
+          <div class="input-left-actions">
+            <button class="attach-btn" title="Add attachment" onclick="alert('Attachments feature coming soon to projects')">+</button>
+          </div>
+          <div class="input-right-actions" style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:0.8rem; color:var(--muted);" id="proj-model-indicator">Claude 3.5 Sonnet</span>
+            <button class="send-btn" id="proj-send-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Right Column -->
+  <div class="project-sidebar">
+    
+    <div class="sidebar-section">
+      <h3>
+        Instructions 
+        <span class="edit-icon" id="edit-inst-btn">✎</span>
+      </h3>
+      <div class="instructions-box" id="inst-display">
+        <span style="color:var(--muted)">No custom instructions yet. Click the edit icon to add some.</span>
+      </div>
+      <textarea id="inst-input" class="instructions-edit-area" placeholder="Custom instructions for Claude about this project..."></textarea>
+      <div id="inst-actions" style="display:none; justify-content:flex-end; gap:8px;">
+        <button class="secondary-btn" id="inst-cancel-btn" style="padding:4px 8px; border-radius:4px; font-size:0.8rem;">Cancel</button>
+        <button class="primary-btn" id="inst-save-btn" style="padding:4px 8px; border-radius:4px; font-size:0.8rem; background:var(--accent); color:#000; border:none;">Save</button>
+      </div>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Knowledge</h3>
+      <div class="drop-zone" id="file-drop-zone">
+        Click to upload docs or code
+        <input type="file" id="file-input" style="display:none" multiple />
+      </div>
+      <div class="file-list" id="file-list">
+        <!-- Files populated here -->
+      </div>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Memory</h3>
+      <div class="memory-box" id="proj-memory-display">
+        <span style="color:var(--muted)">Project memory will show here after a few chats.</span>
+      </div>
+    </div>
+    
+  </div>
+</div>
+
+<script src="project.js"></script>
+</body>
+</html>

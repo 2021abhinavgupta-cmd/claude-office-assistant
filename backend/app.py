@@ -1946,6 +1946,76 @@ def call_claude_with_context(task_type: str, messages: list,
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
         return {"success": False, "error": "Internal server error"}
+# ── Projects ──────────────────────────────────────────────────────────────────
+@app.route("/api/projects", methods=["GET"])
+def api_get_projects():
+    user_id = request.args.get("user_id")
+    if not user_id: return jsonify({"error": "user_id required"}), 400
+    return jsonify({"projects": project_store.get_projects(user_id)})
+
+@app.route("/api/projects", methods=["POST"])
+def api_create_project():
+    data = request.json or {}
+    user_id = data.get("user_id")
+    name = data.get("name")
+    description = data.get("description", "")
+    if not user_id or not name: return jsonify({"error": "user_id and name required"}), 400
+    p = project_store.create_project(user_id, name, description)
+    return jsonify(p)
+
+@app.route("/api/projects/<project_id>", methods=["GET"])
+def api_get_project(project_id):
+    p = project_store.get_project(project_id)
+    if not p: return jsonify({"error": "Project not found"}), 404
+    return jsonify(p)
+
+@app.route("/api/projects/<project_id>/instructions", methods=["PUT"])
+def api_update_project_instructions(project_id):
+    data = request.json or {}
+    inst = data.get("instructions", "")
+    if project_store.update_project_instructions(project_id, inst):
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to update instructions"}), 400
+
+@app.route("/api/projects/<project_id>/files", methods=["POST"])
+def api_add_project_file(project_id):
+    data = request.json or {}
+    filename = data.get("filename")
+    content = data.get("content")
+    if not filename or not content: return jsonify({"error": "filename and content required"}), 400
+    doc = project_store.add_knowledge_base_doc(project_id, filename, content)
+    return jsonify(doc)
+
+@app.route("/api/projects/<project_id>/files/<file_id>", methods=["DELETE"])
+def api_delete_project_file(project_id, file_id):
+    if project_store.delete_knowledge_base_doc(project_id, file_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to delete"}), 400
+
+@app.route("/api/projects/<project_id>/conversations", methods=["GET"])
+def api_project_conversations(project_id):
+    convs = conversation_store.list_conversations_for_project(project_id)
+    return jsonify({"conversations": convs})
+
+def _maybe_generate_project_memory(project_id):
+    if not project_id: return
+    convs = conversation_store.list_conversations_for_project(project_id)
+    if len(convs) >= 3:
+        titles = [c.get("title", "Untitled") for c in convs[:5]]
+        titles_str = "\n".join(f"- {t}" for t in titles)
+        prompt = f"Based on the following recent conversation titles in this project, write a 2-3 line summary of what Claude has learned about this project and its ongoing context. Be concise and write in the third person.\n\nTitles:\n{titles_str}"
+        try:
+            haiku = get_model_for_task("general")["name"]
+            resp = client.messages.create(
+                model=haiku,
+                max_tokens=150,
+                system="You are a project memory assistant. Write a 2-3 line summary.",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            memory = resp.content[0].text.strip()
+            project_store.update_project_memory(project_id, memory)
+        except Exception as e:
+            logger.error(f"Failed to generate project memory: {e}")
 
 
 # ── List conversations ────────────────────────────────────────────────────────
@@ -1973,6 +2043,8 @@ def create_conversation():
         return jsonify({"error": "user_id is required"}), 400
 
     conv = conversation_store.create_conversation(user_id, user_name, task_type, project_id)
+    if project_id:
+        _maybe_generate_project_memory(project_id)
     return jsonify(conv), 201
 
 
@@ -2150,6 +2222,20 @@ def conversation_stream(conv_id):
         attachment_grounding=bool(attachments),
     )
     final_system = mem_blocks[0]["text"] if mem_blocks else MASTER_SYSTEM_PROMPT
+
+    project_id = conv.get("project_id")
+    if project_id:
+        proj = project_store.get_project(project_id)
+        if proj:
+            proj_ctx = ""
+            if proj.get("instructions"):
+                proj_ctx += f"PROJECT INSTRUCTIONS:\n{proj['instructions']}\n\n"
+            if proj.get("memory"):
+                proj_ctx += f"PROJECT MEMORY:\n{proj['memory']}\n\n"
+            for f in proj.get("knowledge_base", []):
+                proj_ctx += f"<project_file filename=\"{f['filename']}\">\n{f['content']}\n</project_file>\n\n"
+            if proj_ctx:
+                final_system = f"{proj_ctx}\n\n---\n{final_system}"
 
     system_prompt = [{
         "type": "text",
