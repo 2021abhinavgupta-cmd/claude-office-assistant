@@ -3272,14 +3272,18 @@ def notion_list_tasks():
 def notion_update_task(notion_id: str):
     """
     Update a task's status, progress, and/or submission note in Notion.
-    Body: { status?, progress?, submission_note? }
+    Body: { status?, progress?, submission_note?, task_title?, assignee?, client_name? }
+    Triggers WhatsApp notification to founder on key status changes.
     """
     body   = request.get_json(silent=True) or {}
     result = notion_store.update_task(
-        notion_id=notion_id,
-        status=body.get("status"),
-        progress=body.get("progress"),
-        submission_note=body.get("submission_note"),
+        notion_id       = notion_id,
+        status          = body.get("status"),
+        progress        = body.get("progress"),
+        submission_note = body.get("submission_note"),
+        task_title      = body.get("task_title", ""),
+        assignee        = body.get("assignee", ""),
+        client_name     = body.get("client_name", ""),
     )
     if result:
         return jsonify({"success": True})

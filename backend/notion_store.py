@@ -19,6 +19,11 @@ import logging
 import requests
 from typing import Optional
 
+try:
+    from notifications import notify_task_status_changed
+except ImportError:
+    notify_task_status_changed = None
+
 logger = logging.getLogger(__name__)
 
 NOTION_TOKEN      = os.getenv("NOTION_TOKEN", "")
@@ -306,10 +311,12 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
 
 
 def update_task(notion_id: str, status: str = None, progress: int = None,
-                submission_note: str = None) -> bool:
+                submission_note: str = None, task_title: str = "",
+                assignee: str = "", client_name: str = "") -> bool:
     """
     Update Status, Progress, and/or SubmissionNote on a task page.
     Pass only the fields you want to change.
+    Automatically sends WhatsApp notification on key status changes.
     """
     if not is_configured():
         return False
@@ -333,6 +340,20 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
             timeout=10,
         )
         r.raise_for_status()
+
+        # ── WhatsApp notification ──
+        if status and notify_task_status_changed:
+            try:
+                notify_task_status_changed(
+                    task_title  = task_title  or "(unnamed task)",
+                    assignee    = assignee    or "Team member",
+                    client_name = client_name or "Unknown client",
+                    old_status  = "",
+                    new_status  = status,
+                )
+            except Exception as ne:
+                logger.warning(f"WhatsApp notification failed (non-fatal): {ne}")
+
         return True
     except Exception as e:
         logger.error(f"Notion update_task failed: {e}")
