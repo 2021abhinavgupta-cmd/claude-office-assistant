@@ -694,7 +694,10 @@ function renderClientFilterBar(){
   if(!bar || !allData) return;
   const clients = allData.clients || [];
   const allBtn = '<button class="client-filter-btn on" onclick="filterByClient(\'all\',this)">All</button>';
-  const cBtns  = clients.map(c=>`<button class="client-filter-btn" onclick="filterByClient(${JSON.stringify(c.name)},this)">${c.name}</button>`).join("");
+  const cBtns  = clients.map(c => {
+    const safe = c.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<button class="client-filter-btn" onclick="filterByClient('${safe}',this)">${c.name}</button>`;
+  }).join('');
   const qtBtn  = '<button class="client-filter-btn" style="border-color:#5c9eff;color:#5c9eff" onclick="filterByClient(\'__quick__\',this)">+ Quick Tasks</button>';
   bar.innerHTML = allBtn + cBtns + qtBtn;
 }
@@ -814,6 +817,7 @@ function buildCard(t, today){
   return `<div class="kcard" draggable="true"
     data-task-id="${taskId}"
     data-notion-id="${notionId}"
+    data-is-quick="${t.isQuick ? 'true' : 'false'}"
     data-task-title="${(t.title||'').replace(/"/g,'&quot;')}"
     data-assignee="${assigneeName.replace(/"/g,'&quot;')}"
     data-client-name="${(t.clientName||'').replace(/"/g,'&quot;')}">
