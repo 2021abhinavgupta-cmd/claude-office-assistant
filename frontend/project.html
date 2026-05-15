@@ -1,198 +1,174 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <title>Project - Claude Office</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    /* Project Page Specific Styles */
-    .project-container {
-      display: flex;
-      height: 100vh;
-      width: 100vw;
+    /* Project UI specific overrides to match Claude */
+    body {
       background-color: var(--bg);
       color: var(--text);
       font-family: var(--font-sans);
+      margin: 0;
+      overflow: hidden;
+    }
+    
+    .project-layout {
+      display: flex;
+      flex: 1;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
     }
     
     .project-main {
-      flex: 65;
-      display: flex;
-      flex-direction: column;
-      border-right: 1px solid var(--border);
-      position: relative;
-    }
-    
-    .project-header {
-      padding: 24px 32px 12px;
-    }
-    
-    .back-link {
-      display: inline-block;
-      color: var(--muted);
-      text-decoration: none;
-      font-size: 0.9rem;
-      margin-bottom: 16px;
-    }
-    .back-link:hover {
-      color: var(--text);
-    }
-    
-    .project-title {
-      font-size: 2rem;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-    
-    .project-desc {
-      color: var(--muted);
-      font-size: 1rem;
-      line-height: 1.5;
-      margin-bottom: 24px;
-    }
-    
-    .project-content {
-      flex: 1;
-      padding: 0 32px;
+      flex: 2;
+      padding: 48px;
       overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
-    
-    .chat-input-container {
-      padding: 24px 32px;
-      background: var(--bg);
     }
     
     .project-sidebar {
-      flex: 35;
-      padding: 24px 32px;
-      background-color: var(--surface);
+      flex: 1;
+      padding: 48px 48px 48px 0;
       overflow-y: auto;
-    }
-    
-    .sidebar-section {
-      margin-bottom: 32px;
-    }
-    
-    .sidebar-section h3 {
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--muted);
-      font-weight: 600;
-      margin-bottom: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .edit-icon {
-      cursor: pointer;
-      font-size: 0.9rem;
-      color: var(--muted);
-    }
-    .edit-icon:hover {
-      color: var(--text);
-    }
-    
-    .instructions-box {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      font-size: 0.9rem;
-      line-height: 1.5;
-      color: var(--text);
-      min-height: 80px;
-    }
-    
-    .instructions-edit-area {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      color: var(--text);
-      font-family: inherit;
-      resize: vertical;
-      min-height: 100px;
-      display: none;
-      margin-bottom: 8px;
-    }
-    
-    .drop-zone {
-      border: 2px dashed var(--border);
-      border-radius: 8px;
-      padding: 20px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: all 0.2s;
-      margin-bottom: 12px;
-    }
-    .drop-zone:hover, .drop-zone.dragover {
-      border-color: var(--accent);
-      background: rgba(255,255,255,0.02);
-    }
-    
-    .file-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 16px;
     }
-    .file-item {
-      display: flex;
+    
+    .back-link {
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      background: var(--surface2);
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
+      gap: 8px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+      transition: color 0.2s;
     }
-    .file-del {
-      background: none;
+    .back-link:hover { color: var(--text); }
+    
+    .project-title {
+      font-size: 2rem;
+      font-weight: 500;
+      margin-bottom: 32px;
+      letter-spacing: -0.02em;
+    }
+    
+    .chat-card {
+      background: var(--surface2);
+      border-radius: 16px;
+      padding: 16px 20px;
+      border: 1px solid var(--border);
+      margin-bottom: 32px;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-card textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 1.1rem;
+      resize: none;
+      min-height: 50px;
+      outline: none;
+      font-family: inherit;
+      margin-bottom: 16px;
+    }
+    
+    .chat-card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .chat-card-btn {
+      background: transparent;
       border: none;
       color: var(--muted);
       cursor: pointer;
-    }
-    .file-del:hover {
-      color: #ff4444;
-    }
-    
-    .memory-box {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      font-size: 0.9rem;
-      line-height: 1.5;
-      color: var(--text);
-      font-style: italic;
-    }
-    
-    .conv-list-proj {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .conv-item-proj {
       display: flex;
       align-items: center;
-      padding: 12px 16px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.2s;
+      justify-content: center;
+      transition: color 0.2s;
     }
-    .conv-item-proj:hover {
-      background: var(--surface);
+    .chat-card-btn:hover { color: var(--text); }
+    
+    .recent-header {
+      font-size: 0.9rem;
+      color: var(--text);
+      font-weight: 500;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    
+    .sidebar-card {
+      background: var(--surface2);
+      border-radius: 16px;
+      padding: 20px;
+      border: 1px solid var(--border);
+    }
+    
+    .sidebar-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    
+    .sidebar-card-title {
+      font-size: 0.95rem;
+      font-weight: 500;
+      margin: 0;
+    }
+    
+    .sidebar-card-pill {
+      font-size: 0.75rem;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .sidebar-card-content {
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    
+    .drop-zone {
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(255,255,255,0.02);
+      transition: all 0.2s;
+      margin-top: 12px;
+    }
+    .drop-zone:hover {
+      border-color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .conv-item-proj {
+      padding: 12px 0;
+      cursor: pointer;
+    }
+    .conv-item-proj:hover .conv-item-proj-title {
+      color: var(--text);
     }
     .conv-item-proj-title {
-      font-weight: 500;
       font-size: 0.95rem;
+      font-weight: 500;
+      color: #e0e0e0;
       margin-bottom: 4px;
     }
     .conv-item-proj-date {
@@ -203,80 +179,156 @@
 </head>
 <body>
 
-<div class="project-container">
-  <!-- Left Column -->
-  <div class="project-main">
-    <div class="project-header">
-      <a href="index.html" class="back-link">← All projects</a>
-      <h1 class="project-title" id="proj-title">Loading...</h1>
-      <div class="project-desc" id="proj-desc"></div>
+<!-- Hidden dummy elements for app.js compatibility -->
+<div style="display:none;">
+  <div id="employee-modal"></div><div id="emp-grid"></div><input id="custom-name"/><button id="custom-name-btn"></button>
+  <div id="welcome-screen"></div><div id="chat-view"></div><div id="messages"></div><input id="msg-input"/><button id="send-btn"></button>
+  <div id="char-count"></div><div id="conv-title-header"></div><div id="task-chip"></div><div id="model-chip"></div>
+  <div id="conn-status"></div><div id="meta-task"></div><div id="meta-model"></div><div id="toast-container"></div>
+  <button id="sidebar-toggle"></button><input id="welcome-input"/><button id="welcome-send"></button>
+  <div id="project-modal"></div><input id="project-name-input"/><textarea id="project-desc-input"></textarea>
+  <button id="project-cancel-btn"></button><button id="project-create-btn"></button>
+</div>
+
+<!-- App Shell (includes Sidebar) -->
+<div class="app-shell" id="app-shell">
+
+  <!-- Main Sidebar (duplicated visually from index.html) -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-icon">✦</div>
+        <span class="brand-name">Claude Office</span>
+      </div>
+      <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Chat
+      </button>
     </div>
-    
-    <div class="project-content" id="proj-content">
-      <!-- Conversation List or Empty State -->
-      <h3 style="font-size:1rem; font-weight:600; margin-bottom:16px;">Conversations</h3>
-      <div id="proj-convs" class="conv-list-proj">
-        <div style="color:var(--muted); font-size:0.9rem;">This project has no activity yet.</div>
+
+    <div class="projects-panel" style="margin-bottom: 16px;">
+      <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600; cursor:pointer;" onclick="toggleProjectsPanel()" id="projects-panel-header">
+        <span>📁 Projects</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;" onclick="event.stopPropagation()">+</button>
+          <span id="projects-chevron" style="font-size:0.7rem; transition:transform 0.2s; display:inline-block; transform:rotate(-90deg);">▼</span>
+        </div>
+      </div>
+      <div class="projects-list" id="projects-list" style="display:none;">
+        <div class="conv-empty">No projects yet</div>
       </div>
     </div>
+
+    <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
+      <span>💬 Recent Chats</span>
+    </div>
+    <div style="padding: 0 12px 12px;">
+      <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
+    </div>
+    <div class="conv-list" id="conv-list"></div>
+
+    <div class="sidebar-footer">
+      <div class="budget-mini">
+        <div class="budget-mini-row">
+          <span class="budget-mini-label">💰 Budget</span>
+          <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
+        </div>
+        <div class="budget-mini-track">
+          <div class="budget-mini-fill" id="budget-mini-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; padding:8px 4px;">
+        <button class="user-pill" id="user-pill" style="flex:1">
+          <span class="user-avatar" id="user-avatar">?</span>
+          <span class="user-name-text" id="user-name-text">...</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Project Content Area -->
+  <main class="project-layout">
     
-    <div class="chat-input-container">
-      <div class="input-wrapper">
-        <textarea id="proj-chat-input" class="chat-input auto-expand" placeholder="Message Claude about this project..." rows="1" maxlength="500000"></textarea>
-        <div class="input-actions" style="display:flex; justify-content:space-between; width:100%; margin-top:8px;">
-          <div class="input-left-actions">
-            <button class="attach-btn" title="Add attachment" onclick="alert('Attachments feature coming soon to projects')">+</button>
-          </div>
-          <div class="input-right-actions" style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:0.8rem; color:var(--muted);" id="proj-model-indicator">Claude 3.5 Sonnet</span>
-            <button class="send-btn" id="proj-send-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2z"/></svg>
+    <!-- Left Column -->
+    <div class="project-main">
+      <a href="index.html" class="back-link">← All projects</a>
+      <h1 class="project-title" id="proj-title">Loading...</h1>
+      <div id="proj-desc" style="display:none;"></div> <!-- Hidden to match Claude UI -->
+      
+      <!-- Chat Input Card -->
+      <div class="chat-card">
+        <textarea id="proj-chat-input" placeholder="How can I help you today?"></textarea>
+        <div class="chat-card-footer">
+          <button class="chat-card-btn" style="font-size: 1.5rem;" onclick="alert('Attachments coming soon!')">+</button>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 0.85rem; color: var(--muted);">Sonnet 4.6 Adaptive ▾</span>
+            <button class="chat-card-btn" id="proj-send-btn" style="background: white; color: black; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; font-weight: 500;">
+              Send
             </button>
           </div>
         </div>
       </div>
-    </div>
-  </div>
-  
-  <!-- Right Column -->
-  <div class="project-sidebar">
-    
-    <div class="sidebar-section">
-      <h3>
-        Instructions 
-        <span class="edit-icon" id="edit-inst-btn">✎</span>
-      </h3>
-      <div class="instructions-box" id="inst-display">
-        <span style="color:var(--muted)">No custom instructions yet. Click the edit icon to add some.</span>
-      </div>
-      <textarea id="inst-input" class="instructions-edit-area" placeholder="Custom instructions for Claude about this project..."></textarea>
-      <div id="inst-actions" style="display:none; justify-content:flex-end; gap:8px;">
-        <button class="secondary-btn" id="inst-cancel-btn" style="padding:4px 8px; border-radius:4px; font-size:0.8rem;">Cancel</button>
-        <button class="primary-btn" id="inst-save-btn" style="padding:4px 8px; border-radius:4px; font-size:0.8rem; background:var(--accent); color:#000; border:none;">Save</button>
+      
+      <!-- Recent Conversations -->
+      <div>
+        <div class="recent-header">Recent</div>
+        <div id="proj-convs">
+          <div style="color:var(--muted); font-size:0.9rem; margin-top: 12px;">This project has no activity yet.</div>
+        </div>
       </div>
     </div>
     
-    <div class="sidebar-section">
-      <h3>Knowledge</h3>
-      <div class="drop-zone" id="file-drop-zone">
-        Click to upload docs or code
-        <input type="file" id="file-input" style="display:none" multiple />
+    <!-- Right Column -->
+    <div class="project-sidebar">
+      
+      <!-- Memory Card -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-header">
+          <h3 class="sidebar-card-title">Memory</h3>
+          <span class="sidebar-card-pill">🔒 Only you</span>
+        </div>
+        <div class="sidebar-card-content" id="proj-memory-display">
+          Project memory will show here after a few chats.
+        </div>
       </div>
-      <div class="file-list" id="file-list">
-        <!-- Files populated here -->
+      
+      <!-- Instructions Card -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-header">
+          <h3 class="sidebar-card-title">Instructions</h3>
+          <button class="chat-card-btn" id="edit-inst-btn">+</button>
+        </div>
+        <div class="sidebar-card-content" id="inst-display">
+          Add instructions to tailor Claude's responses
+        </div>
+        <textarea id="inst-input" style="width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; color: var(--text); font-family: inherit; resize: vertical; display: none; margin-top: 8px; font-size: 0.85rem;"></textarea>
+        <div id="inst-actions" style="display:none; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button id="inst-cancel-btn" style="background: var(--surface); border: none; padding: 4px 8px; border-radius: 4px; color: var(--text); cursor: pointer; font-size: 0.8rem;">Cancel</button>
+          <button id="inst-save-btn" style="background: var(--text); border: none; padding: 4px 8px; border-radius: 4px; color: var(--bg); cursor: pointer; font-size: 0.8rem;">Save</button>
+        </div>
       </div>
+      
+      <!-- Files Card -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-header">
+          <h3 class="sidebar-card-title">Files</h3>
+          <button class="chat-card-btn" onclick="document.getElementById('file-input').click()">+</button>
+        </div>
+        <div class="drop-zone" id="file-drop-zone">
+          <div style="margin-bottom: 8px;">📄</div>
+          Add PDFs, documents, or other text to reference in this project.
+          <input type="file" id="file-input" style="display:none" multiple />
+        </div>
+        <div id="file-list" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;"></div>
+      </div>
+      
     </div>
-    
-    <div class="sidebar-section">
-      <h3>Memory</h3>
-      <div class="memory-box" id="proj-memory-display">
-        <span style="color:var(--muted)">Project memory will show here after a few chats.</span>
-      </div>
-    </div>
-    
-  </div>
+  </main>
 </div>
 
+<!-- Load Main App Logic for Sidebar -->
+<script src="app.js"></script>
+<!-- Load Project Specific Logic -->
 <script src="project.js"></script>
 </body>
 </html>
