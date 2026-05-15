@@ -839,7 +839,7 @@ function buildCard(t, today){
       <span class="kcard-due${isOverdue?' overdue':''}">${dueLabel}</span>
       <div class="kcard-avatars">
         <div class="kavatar" style="background:${color}" title="${assigneeName}"
-          onclick="event.stopPropagation();openAssigneePicker(event,'${taskId}','${notionId}',${t.isQuick?'true':'false'},'${(t.clientName||'').replace(/'/g,\"\\\'\")}')"
+          onclick="event.stopPropagation();openAssigneePicker(this)"
         >${initial}</div>
       </div>
     </div>
@@ -890,15 +890,18 @@ const TEAM = [
 
 let _apTaskId = null, _apNotionId = null, _apIsQuick = false, _apClientName = '';
 
-function openAssigneePicker(e, taskId, notionId, isQuick, clientName){
-  e.stopPropagation();
-  _apTaskId = taskId; _apNotionId = notionId; _apIsQuick = isQuick; _apClientName = clientName;
+function openAssigneePicker(avatarEl){
+  const card = avatarEl.closest('.kcard');
+  _apTaskId    = card.dataset.taskId;
+  _apNotionId  = card.dataset.notionId;
+  _apIsQuick   = card.dataset.isQuick === 'true';
+  _apClientName= card.dataset.clientName || '';
   const picker = document.getElementById('assignee-picker');
   const search = document.getElementById('ap-search');
   search.value = '';
   renderApList(TEAM);
   // Position near avatar
-  const rect = e.target.getBoundingClientRect();
+  const rect = avatarEl.getBoundingClientRect();
   picker.style.top  = (rect.bottom + 6) + 'px';
   picker.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
   picker.classList.add('open');
