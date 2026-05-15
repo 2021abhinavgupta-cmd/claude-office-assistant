@@ -116,6 +116,35 @@
     #toast{position:fixed;bottom:20px;right:20px;background:var(--s1);border:1px solid var(--bdr);padding:11px 18px;border-radius:var(--rs);font-size:.84rem;display:none;z-index:200}
     #toast.ok{border-color:var(--grn);color:var(--grn)}
     #toast.err{border-color:var(--red);color:var(--red)}
+
+    /* ────────── KANBAN VIEW ────────── */
+    .kanban-wrap{display:flex;gap:16px;overflow-x:auto;padding-bottom:16px;align-items:flex-start}
+    .kanban-col{flex:0 0 260px;background:var(--s1);border-radius:var(--r);border:1px solid var(--bdr);display:flex;flex-direction:column;min-height:200px;transition:background .2s}
+    .kanban-col.drag-over{background:var(--s2);border-color:var(--acc)}
+    .kcol-head{padding:12px 14px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center}
+    .kcol-title{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+    .kcol-count{background:var(--s2);border:1px solid var(--bdr);border-radius:100px;padding:2px 9px;font-size:.7rem;font-weight:700;color:var(--txt)}
+    .kcol-add{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:0 4px;transition:color .2s}
+    .kcol-add:hover{color:var(--acc)}
+    .kcol-body{padding:10px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:60px}
+    .kcard{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:12px;cursor:grab;transition:all .2s;position:relative}
+    .kcard:hover{border-color:rgba(255,255,255,.18);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.3)}
+    .kcard.dragging{opacity:.4;cursor:grabbing}
+    .kcard-client{font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--acc);margin-bottom:5px}
+    .kcard-title{font-size:.87rem;font-weight:600;line-height:1.3;margin-bottom:8px}
+    .kcard-footer{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+    .kcard-due{font-size:.68rem;color:var(--muted)}
+    .kcard-due.overdue{color:var(--red);font-weight:700}
+    .kcard-avatars{display:flex;gap:-4px}
+    .kavatar{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700;color:#fff;border:2px solid var(--s1);margin-left:-4px;flex-shrink:0}
+    .kcard-stars{display:flex;gap:2px;margin-bottom:6px}
+    .kstar{font-size:.7rem;color:var(--bdr)}
+    .kstar.lit{color:var(--acc)}
+    .kbar{height:3px;background:rgba(255,255,255,.07);border-radius:100px;margin-top:8px;overflow:hidden}
+    .kbar-fill{height:3px;border-radius:100px;background:linear-gradient(90deg,var(--acc),#ff8c42)}
+    .kanban-group-toggle{display:flex;gap:6px;margin-bottom:16px}
+    .kgroup-btn{padding:5px 14px;border-radius:var(--rs);font-size:.76rem;font-weight:600;border:1px solid var(--bdr);background:var(--s1);color:var(--muted);cursor:pointer;transition:all .2s}
+    .kgroup-btn.on{background:var(--s2);color:var(--txt);border-color:var(--acc)}
   </style>
 </head>
 <body>
@@ -134,6 +163,7 @@
 
   <div class="tabs">
     <button class="tab on" onclick="switchTab('matrix',this)">📊 Matrix View</button>
+    <button class="tab" onclick="switchTab('kanban',this)">📌 Kanban</button>
     <button class="tab" onclick="switchTab('blockers',this)">🔴 Blockers</button>
     <button class="tab" id="review-tab" onclick="switchTab('review',this)">⏳ In Review</button>
     <button class="tab" onclick="switchTab('detail',this)">📋 Detail View</button>
@@ -171,6 +201,15 @@
   <!-- Detail -->
   <div id="tab-detail" style="display:none">
     <div class="client-blocks" id="detail-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <!-- Kanban -->
+  <div id="tab-kanban" style="display:none">
+    <div class="kanban-group-toggle">
+      <button class="kgroup-btn on" id="kbtn-stage" onclick="setKanbanGroup('stage',this)">By Stage</button>
+      <button class="kgroup-btn" id="kbtn-client" onclick="setKanbanGroup('client',this)">By Client</button>
+    </div>
+    <div class="kanban-wrap" id="kanban-board"></div>
   </div>
 </div>
 
@@ -212,11 +251,12 @@ let rejectTaskId=null, rejectNotionId=null, allData=null, notionMode=false;
 function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
 
 function switchTab(name,btn){
-  ["matrix","blockers","review","detail"].forEach(n=>document.getElementById("tab-"+n).style.display=n===name?"":"none");
+  ["matrix","blockers","review","detail","kanban"].forEach(n=>document.getElementById("tab-"+n).style.display=n===name?"":"none");
   document.querySelectorAll(".tab").forEach(b=>b.classList.remove("on"));
   btn.classList.add("on");
   if(name==="blockers") loadBlockers();
   if(name==="review")   loadReview();
+  if(name==="kanban")   renderKanban();
 }
 
 function overallStatus(tasks){
@@ -556,6 +596,133 @@ async function addTask(cid){
   if(d.success){toast("Task added!");load();}else toast(d.error||"Error","err");
 }
 load();
+
+// ── KANBAN ────────────────────────────────────────────────────────────────────
+const AVATAR_COLORS = {Vidit:"#5c9eff",Nupur:"#ff79c6",Abhinav:"#22d3a0",Kshitij:"#f5a623",Raj:"#ff5c5c",Mohit:"#bd93f9",Tanaya:"#50fa7b",Happy:"#ffb86c"};
+const STAGE_COLS = [
+  {key:"todo",   label:"To Do",      emoji:"📋", statuses:["not_started","Not Started","unlocked","Unlocked"]},
+  {key:"prog",   label:"In Progress", emoji:"🔄", statuses:["in_progress","In Progress"]},
+  {key:"review", label:"In Review",   emoji:"⏳", statuses:["pending_review","submitted","In Review"]},
+  {key:"done",   label:"Approved",    emoji:"✅", statuses:["approved","Done"]},
+];
+const STATUS_MAP = {todo:"not_started",prog:"in_progress",review:"pending_review",done:"approved"};
+let kanbanGroup = "stage";
+let draggedCard = null;
+
+function setKanbanGroup(g, btn){
+  kanbanGroup = g;
+  document.querySelectorAll(".kgroup-btn").forEach(b=>b.classList.remove("on"));
+  btn.classList.add("on");
+  renderKanban();
+}
+
+function flatTasks(){
+  const data = allData || {clients:[]};
+  const clients = data.clients || [];
+  const tasks = [];
+  clients.forEach(c => {
+    (c.tasks||[]).forEach(t => {
+      tasks.push({...t, clientName: c.name, clientUrl: c.url, notionId: t.notion_id || null});
+    });
+  });
+  return tasks;
+}
+
+function renderKanban(){
+  const board = document.getElementById("kanban-board");
+  if(!allData){board.innerHTML='<div class="empty">Loading...</div>';return;}
+  const tasks = flatTasks();
+  if(!tasks.length){board.innerHTML='<div class="empty">No tasks yet. <a href="client-onboard.html" style="color:var(--acc)">+ Onboard a client →</a></div>';return;}
+
+  if(kanbanGroup === "stage"){
+    board.innerHTML = STAGE_COLS.map(col => buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t=>col.statuses.includes(t.status)))).join("");
+  } else {
+    // By client
+    const clients = (allData.clients||[]);
+    board.innerHTML = clients.map(c => {
+      const ctasks = (c.tasks||[]).map(t=>({...t, clientName:c.name, clientUrl:c.url, notionId:t.notion_id||null}));
+      return buildCol("client-"+c.id, "📁 "+c.name, ctasks);
+    }).join("");
+  }
+
+  // Bind drag events
+  board.querySelectorAll(".kcard").forEach(card => {
+    card.addEventListener("dragstart", e => {
+      draggedCard = {taskId: card.dataset.taskId, notionId: card.dataset.notionId};
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  });
+
+  board.querySelectorAll(".kanban-col").forEach(col => {
+    col.addEventListener("dragover", e => {e.preventDefault();col.classList.add("drag-over");});
+    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
+    col.addEventListener("drop", async e => {
+      e.preventDefault();
+      col.classList.remove("drag-over");
+      if(!draggedCard) return;
+      const colKey = col.dataset.col;
+      const newStatus = STATUS_MAP[colKey];
+      if(!newStatus) return; // client grouping columns don't map to status
+      await updateTaskStatus(draggedCard.taskId, draggedCard.notionId, newStatus);
+    });
+  });
+}
+
+function buildCol(key, label, tasks){
+  const today = new Date().toISOString().slice(0,10);
+  return `<div class="kanban-col" data-col="${key}" ondragover="event.preventDefault()">
+    <div class="kcol-head">
+      <span class="kcol-title">${label}</span>
+      <span class="kcol-count">${tasks.length}</span>
+    </div>
+    <div class="kcol-body">
+      ${tasks.length ? tasks.map(t => buildCard(t, today)).join("") : '<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:16px">Drop here</div>'}
+    </div>
+  </div>`;
+}
+
+function buildCard(t, today){
+  const assigneeName = EMP[t.assigned_to] || t.assigned_to || "?";
+  const initial = assigneeName.charAt(0).toUpperCase();
+  const color = AVATAR_COLORS[assigneeName] || "#888";
+  const isOverdue = t.due_date && t.due_date < today && t.status !== "approved";
+  const dueLabel = t.due_date ? (isOverdue ? "🔴 "+t.due_date : "📅 "+t.due_date) : "";
+  const pct = t.progress || 0;
+  const taskId = t.id || t.notion_id || "";
+  const notionId = t.notionId || t.notion_id || "";
+  const notionHref = (notionMode && t.clientUrl) ? `<a href="${t.clientUrl}" target="_blank" style="font-size:.65rem;color:var(--acc);text-decoration:none;float:right" title="Open in Notion">↗</a>` : "";
+  return `<div class="kcard" draggable="true" data-task-id="${taskId}" data-notion-id="${notionId}">
+    <div class="kcard-client">${t.clientName || ""} ${notionHref}</div>
+    <div class="kcard-title">${t.title}</div>
+    <div class="kbar"><div class="kbar-fill" style="width:${pct}%"></div></div>
+    <div class="kcard-footer">
+      <span class="kcard-due${isOverdue?' overdue':''}">${dueLabel}</span>
+      <div class="kcard-avatars">
+        <div class="kavatar" style="background:${color}" title="${assigneeName}">${initial}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function updateTaskStatus(taskId, notionId, newStatus){
+  if(notionMode && notionId){
+    try{
+      const r = await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:newStatus}),signal:AbortSignal.timeout(10000)});
+      const d = await r.json();
+      if(d.success){toast("✅ Status updated in Notion!");await load();renderKanban();}
+      else toast(d.error||"Update failed","err");
+    }catch(e){toast("Error: "+e.message,"err");}
+  } else if(taskId){
+    try{
+      const r = await fetch(`${API}/api/tasks/${taskId}/status`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:newStatus,user_id:UID})});
+      const d = await r.json();
+      if(d.success){toast("✅ Status updated!");await load();renderKanban();}
+      else toast(d.error||"Update failed","err");
+    }catch(e){toast("Error: "+e.message,"err");}
+  }
+}
 </script>
 </body>
 </html>
