@@ -333,7 +333,7 @@ function renderCalendarHtml(todayString) {
         popoverHtml += `
           <div class="cal-pop-item">
             <div class="cal-pop-title">${t.title||'Untitled'}</div>
-            <div class="cal-pop-meta">${t.client||'Quick Task'} • ${spLabel(t.status)}</div>
+            <div class="cal-pop-meta">${t.client_name || t.client || 'Quick Task'} • ${spLabel(t.status)}</div>
             ${t.status === "not_started" ? `<button class="cal-pop-btn" onclick="startTask('${t.notion_id}')">▶ Start Task</button>` : ''}
           </div>
         `;
