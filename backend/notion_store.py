@@ -449,7 +449,7 @@ def get_dashboard_data() -> dict:
     for client in clients:
         client["tasks"] = [
             t for t in all_tasks
-            if t["client_id"] == client["notion_id"]
+            if t.get("client_notion_id") == client["notion_id"]
         ]
 
     return {"configured": True, "clients": clients}
