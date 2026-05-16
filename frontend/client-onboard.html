@@ -62,6 +62,15 @@
     .add-task-btn:hover{border-color:var(--acc);color:var(--acc)}
     .no-preview{color:var(--muted);font-size:.82rem;font-style:italic;padding:8px 0}
 
+    /* Multi-select */
+    .ms-wrap { position: relative; width: 140px; outline: none; }
+    .ms-display { background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; transition:border-color .2s; }
+    .ms-display:hover { border-color:var(--acc);color:var(--txt); }
+    .ms-dropdown { display:none; position:absolute; top:100%; left:0; width:160px; background:var(--s1); border:1px solid var(--bdr); border-radius:6px; padding:6px; z-index:10; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.5); margin-top:4px; }
+    .ms-wrap.open .ms-dropdown { display:block; }
+    .ms-dropdown label { display:flex; align-items:center; gap:6px; padding:4px 6px; cursor:pointer; font-size:.75rem; text-transform:none; margin-bottom:2px; color:var(--txt); font-weight:400; border-radius:4px; letter-spacing: normal;}
+    .ms-dropdown label:hover { background:var(--s2); }
+
     /* Buttons */
     .btn-row{display:flex;gap:10px;margin-top:24px;justify-content:flex-end}
     .btn{padding:11px 24px;border-radius:var(--rs);border:none;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
@@ -239,7 +248,15 @@ function goStep3(){
   goStep(3);
 }
 
-const EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<option value="${id}">${name}</option>`).join("");
+const EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
+
+function updateMsDisplay(el) {
+  const wrap = el.closest('.ms-wrap');
+  const chks = [...wrap.querySelectorAll('.ms-chk:checked')];
+  const display = wrap.querySelector('.ms-display');
+  if (chks.length === 0) { display.textContent = 'Unassigned'; display.style.color = 'var(--muted)'; }
+  else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
+}
 
 function addTaskRow(container, title="", who="", idx=0, dueDate=""){
   const row=document.createElement("div");
@@ -247,10 +264,19 @@ function addTaskRow(container, title="", who="", idx=0, dueDate=""){
   row.innerHTML=`
     <span class="tp-icon">${idx===0?"🔑":"→"}</span>
     <input class="tp-title-input" value="${title.replace(/"/g,'&quot;')}" placeholder="Task name…" />
-    <select class="tp-who-select">${EMP_OPTS}</select>
+    <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
+      <div class="ms-display" onclick="this.parentElement.classList.toggle('open')">Select team...</div>
+      <div class="ms-dropdown">${EMP_OPTS}</div>
+    </div>
     <input class="tp-date-input" type="date" value="${dueDate}" title="Task due date" />
     <button class="tp-del" onclick="removeTask(this)" title="Remove task">✕</button>`;
-  row.querySelector(".tp-who-select").value=who||"emp001";
+  
+  // check boxes
+  const whoArr = (who||"emp001").split(',').map(s=>s.trim());
+  row.querySelectorAll(".ms-chk").forEach(chk => {
+    if (whoArr.includes(chk.value)) chk.checked = true;
+  });
+  updateMsDisplay(row.querySelector(".ms-chk"));
   container.appendChild(row);
 }
 
@@ -276,11 +302,14 @@ async function createClient(){
 
   // Collect tasks from the editable DOM rows
   const taskRows=[...document.querySelectorAll(".task-row")];
-  const customTasks=taskRows.map(row=>({
-    title:    row.querySelector(".tp-title-input").value.trim(),
-    who:      row.querySelector(".tp-who-select").value,
-    due_date: row.querySelector(".tp-date-input").value || "",
-  })).filter(t=>t.title);
+  const customTasks=taskRows.map(row=>{
+    const chks = [...row.querySelectorAll('.ms-chk:checked')];
+    return {
+      title:    row.querySelector(".tp-title-input").value.trim(),
+      who:      chks.map(c => c.value).join(','),
+      due_date: row.querySelector(".tp-date-input").value || "",
+    };
+  }).filter(t=>t.title);
 
   if(!customTasks.length){
     errEl.textContent="Please add at least one task.";

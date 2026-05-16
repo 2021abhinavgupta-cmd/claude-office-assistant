@@ -164,6 +164,14 @@
     .qt-field input,.qt-field select,.qt-field textarea{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:9px 12px;font-size:.875rem;outline:none;font-family:'DM Sans',sans-serif}
     .qt-field input:focus,.qt-field select:focus,.qt-field textarea:focus{border-color:var(--acc)}
     .qt-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+    /* Multi-select */
+    .ms-wrap { position: relative; width: 100%; outline: none; }
+    .ms-display { background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:9px 12px;font-size:.875rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; transition:border-color .2s; font-family:'DM Sans',sans-serif;}
+    .ms-display:hover { border-color:var(--acc); }
+    .ms-dropdown { display:none; position:absolute; top:100%; left:0; width:100%; background:var(--s1); border:1px solid var(--bdr); border-radius:6px; padding:6px; z-index:10; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.5); margin-top:4px; }
+    .ms-wrap.open .ms-dropdown { display:block; }
+    .ms-dropdown label { display:flex; align-items:center; gap:6px; padding:6px 10px; cursor:pointer; font-size:.85rem; text-transform:none; margin-bottom:2px; color:var(--txt); font-weight:400; border-radius:4px; }
+    .ms-dropdown label:hover { background:var(--s2); }
     /* Quick tasks column special style */
     .kcard.qt-card .kcard-client{color:var(--blu)}
     /* Assignee picker */
@@ -274,9 +282,10 @@
     </div>
     <div class="qt-field">
       <label>Assign to</label>
-      <select id="qt-assign">
-        <option value="">— Unassigned —</option>
-      </select>
+      <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
+        <div class="ms-display" id="qt-assign-display" onclick="this.parentElement.classList.toggle('open')">— Unassigned —</div>
+        <div class="ms-dropdown" id="qt-assign-dropdown"></div>
+      </div>
     </div>
     <div class="qt-field">
       <label>Due date</label>
@@ -306,9 +315,10 @@
     </div>
     <div class="qt-field">
       <label>Assign to</label>
-      <select id="et-assign">
-        <option value="">— Unassigned —</option>
-      </select>
+      <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
+        <div class="ms-display" id="et-assign-display" onclick="this.parentElement.classList.toggle('open')">— Unassigned —</div>
+        <div class="ms-dropdown" id="et-assign-dropdown"></div>
+      </div>
     </div>
     <div class="qt-field">
       <label>Due date</label>
@@ -345,10 +355,18 @@ const COLS = ["Content","Video","Design","Website","Accounts","Review"];
 
 let rejectTaskId=null, rejectNotionId=null, allData=null, notionMode=false;
 
+function updateMsDisplay(wrapId) {
+  const wrap = document.getElementById(wrapId).closest('.ms-wrap');
+  const chks = [...wrap.querySelectorAll('.ms-chk:checked')];
+  const display = wrap.querySelector('.ms-display');
+  if (chks.length === 0) { display.textContent = '— Unassigned —'; display.style.color = 'var(--muted)'; }
+  else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
-  const options = Object.entries(EMP).map(([id, n]) => `<option value="${n}">${n}</option>`).join("");
-  document.getElementById("qt-assign").innerHTML += options;
-  document.getElementById("et-assign").innerHTML += options;
+  const options = Object.entries(EMP).map(([id, n]) => `<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this.closest('.ms-wrap').querySelector('.ms-display').id)"> ${n}</label>`).join("");
+  document.getElementById("qt-assign-dropdown").innerHTML = options;
+  document.getElementById("et-assign-dropdown").innerHTML = options;
 });
 function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
 
@@ -529,8 +547,8 @@ function toggleDetail(id){const el=document.getElementById("dtasks-"+id);el.styl
 
 function renderTaskCard(t){
   const pct=t.progress||0;
-  // Support both emp-id (SQLite) and name (Notion) for assignee display
-  const assigneeName = EMP[t.assigned_to] || t.assigned_to || "—";
+  // Support multiple assignees (comma-separated emp-ids or names)
+  const assigneeName = (t.assigned_to || "").split(',').map(s => EMP[s.trim()] || s.trim() || "—").join(', ');
   const taskId = t.notion_id || t.id;
   const statusLabel = {not_started:"Not Started","Not Started":"Not Started",unlocked:"Unlocked",in_progress:"In Progress","In Progress":"In Progress",pending_review:"⏳ Review","In Review":"⏳ Review",approved:"✅ Approved","Done":"✅ Done",rejected:"↩ Changes"}[t.status]||t.status;
   const statusKey = t.status?.toLowerCase().replace(/ /g,"_").replace(/-/g,"_") || "not_started";
@@ -844,7 +862,8 @@ function closeQuickTask(){document.getElementById("qt-modal").classList.remove("
 async function saveQuickTask(){
   const title=document.getElementById("qt-title").value.trim();
   if(!title){toast("Enter a task title","err");return;}
-  const assigned_to = document.getElementById("qt-assign").value;
+  const chks = [...document.querySelectorAll("#qt-assign-dropdown .ms-chk:checked")];
+  const assigned_to = chks.map(c => c.value).join(',');
   const due_date    = document.getElementById("qt-due").value;
   const notes       = document.getElementById("qt-note").value.trim();
 
@@ -1078,7 +1097,15 @@ async function deleteTask(taskId) {
 function openEditTaskModal(id, title, assignee, dueDate) {
   document.getElementById('et-id').value = id;
   document.getElementById('et-title').value = title || "";
-  document.getElementById('et-assign').value = EMP[assignee] || assignee || "";
+  
+  // Set checked boxes for assignees (can be comma-separated IDs or names)
+  const whoArr = (assignee || "").split(',').map(s=>s.trim());
+  document.querySelectorAll("#et-assign-dropdown .ms-chk").forEach(chk => {
+    // Match either the ID (emp001) or the Name (Vidit)
+    chk.checked = whoArr.includes(chk.value) || whoArr.includes(EMP[chk.value]);
+  });
+  updateMsDisplay("et-assign-display");
+
   document.getElementById('et-due').value = dueDate || "";
   document.getElementById('edit-task-modal').classList.add('open');
 }
@@ -1090,7 +1117,8 @@ function closeEditTaskModal() {
 async function saveTaskEdit() {
   const id     = document.getElementById('et-id').value;
   const title  = document.getElementById('et-title').value.trim();
-  const assign = document.getElementById('et-assign').value;
+  const chks   = [...document.querySelectorAll("#et-assign-dropdown .ms-chk:checked")];
+  const assign = chks.map(c => c.value).join(',');
   const due    = document.getElementById('et-due').value;
 
   if (!title) { toast("Title is required", "err"); return; }

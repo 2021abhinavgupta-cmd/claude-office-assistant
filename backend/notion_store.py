@@ -78,6 +78,14 @@ def _select(value: str) -> dict:
     return {"select": None}
 
 
+def _multi_select(value: str) -> dict:
+    """Notion multi_select property. Accepts a comma-separated string."""
+    if not value or not str(value).strip():
+        return {"multi_select": []}
+    names = [n.strip() for n in str(value).split(",") if n.strip()]
+    return {"multi_select": [{"name": n} for n in names]}
+
+
 def _date(value: str) -> dict:
     """Notion date property value (ISO date string or empty)."""
     if value:
@@ -98,6 +106,11 @@ def _get_text(prop: dict) -> str:
 def _get_select(prop: dict) -> str:
     sel = prop.get("select") or {}
     return sel.get("name", "")
+
+
+def _get_multi_select(prop: dict) -> str:
+    items = prop.get("multi_select") or []
+    return ", ".join(item.get("name", "") for item in items)
 
 
 def _get_date(prop: dict) -> str:
@@ -252,12 +265,12 @@ def create_task(title: str, client_name: str, client_notion_id: str,
         return None
 
     payload = {
-        "parent": {"database_id": TASKS_DB_ID},
+        "parent": {"database_id": _tasks_db()},
         "properties": {
             "Task":          _title(title),
             "Customer Name": _text(client_name),
             "Client ID":     _text(client_notion_id),
-            "Assigned To":   _select(assigned_to),
+            "Assigned To":   _multi_select(assigned_to),
             "Due Date":      _date(due_date),
             "Status":        _select(status),
             "Progress":      _number(progress),
@@ -321,12 +334,12 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                 props = p.get("properties", {})
                 tasks.append({
                     "notion_id":   p["id"],
-                    "title":       _get_text(props.get("Task", {})),
-                    "client":      _get_text(props.get("Customer Name", {})),
-                    "client_id":   _get_text(props.get("Client ID", {})),
-                    "assigned_to": _get_select(props.get("Assigned To", {})),
-                    "due_date":    _get_date(props.get("Due Date", {})),
-                    "status":      _get_select(props.get("Status", {})),
+                    "title":        _get_text(props.get("Task", {})),
+                    "client_name":  _get_text(props.get("Customer Name", {})),
+                    "client_notion_id": _get_text(props.get("Client ID", {})),
+                    "assigned_to":  _get_multi_select(props.get("Assigned To", {})),
+                    "due_date":     _get_date(props.get("Due Date", {})),
+                    "status":       _get_select(props.get("Status", {})),
                     "progress":    _get_number(props.get("Progress", {})),
                     "service":     _get_select(props.get("Task Type", {})),
                     "url":         p.get("url", ""),
@@ -361,9 +374,9 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
     if submission_note is not None:
         props["Notes"] = _text(submission_note)
     if assigned_to is not None:
-        props["Assigned To"] = _select(assigned_to)
+        props["Assigned To"] = _multi_select(assigned_to)
     if new_title is not None:
-        props["Task"] = _title(new_title)  # The title property is called 'Task'
+        props["Task"] = _title(new_title)
     if due_date is not None:
         props["Due Date"] = _date(due_date)
 

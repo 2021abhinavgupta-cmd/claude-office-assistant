@@ -3205,22 +3205,25 @@ def notion_create_client():
     if custom_tasks:
         for t in custom_tasks:
             task_title = t.get("title", "").strip()
-            emp_id     = t.get("who", "emp001")
             if not task_title:
                 continue
-            emp_name = EMP_NAMES.get(emp_id, emp_id)
-            # Guess service from emp_id for categorisation
+            emp_ids    = [e.strip() for e in t.get("who", "emp001").split(",")]
+            emp_names  = ", ".join(EMP_NAMES.get(e, e) for e in emp_ids)
+            
+            # Guess service from first emp_id for categorisation
             svc_map = {"emp001":"website","emp002":"design","emp003":"website",
                        "emp004":"accounts","emp005":"video","emp006":"content",
                        "emp007":"accounts","emp008":"video"}
+            first_emp = emp_ids[0] if emp_ids else "emp001"
+
             result = notion_store.create_task(
                 title=task_title,
                 client_name=name,
                 client_notion_id=client["notion_id"],
-                assigned_to=emp_name,
+                assigned_to=emp_names,
                 due_date=t.get("due_date", "") or deadline,
                 status="not_started",
-                service=svc_map.get(emp_id, "general"),
+                service=svc_map.get(first_emp, "general"),
             )
             if result:
                 tasks_created += 1
