@@ -202,7 +202,7 @@
   </div>
 
   <!-- Matrix -->
-  <div id="tab-matrix">
+  <div id="tab-matrix" style="flex:1;overflow-y:auto;padding-bottom:24px;">
     <div class="matrix-wrap">
       <table class="matrix" id="matrix-table">
         <thead><tr id="matrix-head"><th>Client</th></tr></thead>
@@ -212,7 +212,7 @@
   </div>
 
   <!-- Blockers -->
-  <div id="tab-blockers" style="display:none">
+  <div id="tab-blockers" style="display:none;flex:1;overflow-y:auto;padding-bottom:24px;">
     <div class="blocker-header">
       <h2>🔴 Active Blockers</h2>
       <span class="blocker-count" id="blocker-count">—</span>
@@ -221,7 +221,7 @@
   </div>
 
   <!-- In Review -->
-  <div id="tab-review" style="display:none">
+  <div id="tab-review" style="display:none;flex:1;overflow-y:auto;padding-bottom:24px;">
     <div class="blocker-header">
       <h2>⏳ Awaiting Approval</h2>
       <span class="blocker-count" id="review-count" style="background:rgba(245,166,35,.2);color:var(--acc)">—</span>
@@ -231,7 +231,7 @@
   </div>
 
   <!-- Detail -->
-  <div id="tab-detail" style="display:none">
+  <div id="tab-detail" style="display:none;flex:1;overflow-y:auto;padding-bottom:24px;">
     <div class="client-blocks" id="detail-list"><div class="empty">Loading...</div></div>
   </div>
 
@@ -294,7 +294,39 @@
       <button class="btn btn-acc" onclick="saveQuickTask()">Add Task</button>
     </div>
   </div>
+    </div>
+  </div>
 </div>
+
+<!-- Edit Task Modal -->
+<div class="qt-modal-ov" id="edit-task-modal">
+  <div class="qt-modal">
+    <h3>✏️ Edit Task</h3>
+    <input type="hidden" id="et-id" />
+    <div class="qt-field">
+      <label>Task title</label>
+      <input id="et-title" type="text" />
+    </div>
+    <div class="qt-field">
+      <label>Assign to</label>
+      <select id="et-assign">
+        <option value="">— Unassigned —</option>
+        <option>Abhinav</option><option>Vidit</option><option>Nupur</option>
+        <option>Kshitij</option><option>Raj</option><option>Mohit</option>
+        <option>Tanaya</option><option>Happy</option>
+      </select>
+    </div>
+    <div class="qt-field">
+      <label>Due date</label>
+      <input id="et-due" type="date" />
+    </div>
+    <div class="qt-btns">
+      <button class="btn" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted)" onclick="closeEditTaskModal()">Cancel</button>
+      <button class="btn btn-acc" id="et-save-btn" onclick="saveTaskEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -327,10 +359,10 @@ function switchTab(name,btn){
     el.style.display = "none";
   });
   const active = document.getElementById("tab-"+name);
-  active.style.display = name === "kanban" ? "flex" : "";
+  active.style.display = name === "kanban" ? "flex" : "block";
   active.style.flexDirection = name === "kanban" ? "column" : "";
-  active.style.flex          = name === "kanban" ? "1"       : "";
-  active.style.overflow      = name === "kanban" ? "hidden"  : "";
+  active.style.flex          = "1";
+  active.style.overflow      = name === "kanban" ? "hidden"  : "auto";
   document.querySelectorAll(".tab").forEach(b=>b.classList.remove("on"));
   btn.classList.add("on");
   if(name==="blockers") loadBlockers();
@@ -473,7 +505,10 @@ function renderDetail(clients){
       <div class="cb-head" onclick="toggleDetail('${c.id}')">
         <div><div class="cb-name">🏢 ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
-        <span style="color:var(--muted);font-size:.8rem">▼</span>
+        <div style="display:flex; gap: 8px; align-items: center;">
+          <button class="btn-sm" style="background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25);" onclick="event.stopPropagation(); deleteClient('${c.id}')">🗑️ Delete Client</button>
+          <span style="color:var(--muted);font-size:.8rem">▼</span>
+        </div>
       </div>
       <div class="tasks-grid" id="dtasks-${c.id}" style="display:none">
         ${c.tasks.length?c.tasks.map(t=>renderTaskCard(t)).join(""):'<div style="color:var(--muted);font-size:.8rem">No tasks.</div>'}
@@ -515,6 +550,10 @@ function renderTaskCard(t){
       <button class="btn-sm btn-approve" onclick="approveTaskNotion('${t.notion_id}')">✅ Approve</button>
       <button class="btn-sm btn-reject" onclick="openModal(null,'${t.notion_id}')">↩ Changes</button>
     </div>`:""}
+    <div class="tc-actions" style="margin-top: 8px;">
+      <button class="btn-sm" style="background:var(--s1);color:var(--txt);border:1px solid var(--bdr);" onclick="openEditTaskModal('${taskId}', '${(t.title||'').replace(/'/g, "\\'")}', '${t.assigned_to||''}', '${t.due_date||''}')">✏️ Edit Task</button>
+      <button class="btn-sm" style="background:rgba(255,92,92,.1);color:var(--red);border:1px solid rgba(255,92,92,.2);" onclick="deleteTask('${taskId}')">🗑️ Delete</button>
+    </div>
   </div>`;
 }
 
@@ -959,6 +998,84 @@ document.addEventListener('click', e => {
     closeAssigneePicker();
   }
 });
+
+// ── Edit & Delete Features ───────────────────────────────────────────────────
+
+async function deleteClient(clientId) {
+  if (!confirm("Are you sure you want to delete this client and all their tasks?")) return;
+  if (notionMode) {
+    try {
+      const res = await fetch(`${API}/api/notion/clients/${clientId}`, { method: 'DELETE' });
+      if (res.ok) { toast('Client deleted!'); await load(); renderKanban(); }
+      else toast('Failed to delete client', 'err');
+    } catch (e) { toast('Error: ' + e.message, 'err'); }
+  } else {
+    toast('Client deletion not implemented for SQLite mode yet.', 'err');
+  }
+}
+
+async function deleteTask(taskId) {
+  if (!confirm("Are you sure you want to delete this task?")) return;
+  if (notionMode) {
+    try {
+      const res = await fetch(`${API}/api/notion/tasks/${taskId}`, { method: 'DELETE' });
+      if (res.ok) { toast('Task deleted!'); await load(); renderKanban(); }
+      else toast('Failed to delete task', 'err');
+    } catch (e) { toast('Error: ' + e.message, 'err'); }
+  } else {
+    toast('Task deletion not implemented for SQLite mode yet.', 'err');
+  }
+}
+
+function openEditTaskModal(id, title, assignee, dueDate) {
+  document.getElementById('et-id').value = id;
+  document.getElementById('et-title').value = title || "";
+  document.getElementById('et-assign').value = EMP[assignee] || assignee || "";
+  document.getElementById('et-due').value = dueDate || "";
+  document.getElementById('edit-task-modal').classList.add('open');
+}
+
+function closeEditTaskModal() {
+  document.getElementById('edit-task-modal').classList.remove('open');
+}
+
+async function saveTaskEdit() {
+  const id = document.getElementById('et-id').value;
+  const title = document.getElementById('et-title').value.trim();
+  const assign = document.getElementById('et-assign').value;
+  const due = document.getElementById('et-due').value;
+
+  if (!title) { toast("Title is required", "err"); return; }
+  
+  const btn = document.getElementById('et-save-btn');
+  btn.textContent = "Saving...";
+  btn.disabled = true;
+
+  if (notionMode) {
+    try {
+      const res = await fetch(`${API}/api/notion/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_title: title, assigned_to: assign, due_date: due })
+      });
+      if (res.ok) {
+        toast('Task updated!');
+        closeEditTaskModal();
+        await load();
+        renderKanban();
+      } else {
+        toast('Failed to update task', 'err');
+      }
+    } catch (e) { toast('Error: ' + e.message, 'err'); }
+  } else {
+    toast('Task editing not implemented for SQLite mode yet.', 'err');
+    closeEditTaskModal();
+  }
+  
+  btn.textContent = "Save Changes";
+  btn.disabled = false;
+}
+
 </script>
 </body>
 </html>

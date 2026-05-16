@@ -312,9 +312,10 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
 
 def update_task(notion_id: str, status: str = None, progress: int = None,
                 submission_note: str = None, assigned_to: str = None,
+                new_title: str = None, due_date: str = None,
                 task_title: str = "", assignee: str = "", client_name: str = "") -> bool:
     """
-    Update Status, Progress, SubmissionNote, and/or AssignedTo on a task page.
+    Update Status, Progress, SubmissionNote, AssignedTo, Title, and/or DueDate on a task page.
     Pass only the fields you want to change.
     Automatically sends WhatsApp notification on key status changes.
     """
@@ -330,6 +331,10 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
         props["Notes"] = _text(submission_note)
     if assigned_to is not None:
         props["Assigned To"] = _select(assigned_to)
+    if new_title is not None:
+        props["Task Name"] = _title(new_title)  # Assuming title property is 'Task Name'
+    if due_date is not None:
+        props["Due Date"] = _date(due_date)
 
     if not props:
         return True  # nothing to update
@@ -361,6 +366,26 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
         logger.error(f"Notion update_task failed: {e}")
         return False
 
+
+def archive_notion_page(page_id: str) -> bool:
+    """
+    Archives a Notion page (moves it to trash). Used for deleting clients/tasks.
+    """
+    if not is_configured() or not page_id:
+        return False
+    try:
+        r = requests.patch(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            headers=_headers(),
+            json={"archived": True},
+            timeout=10,
+        )
+        r.raise_for_status()
+        logger.info(f"Notion: archived page {page_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Notion archive_notion_page failed: {e}")
+        return False
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DASHBOARD AGGREGATE — all clients + their tasks

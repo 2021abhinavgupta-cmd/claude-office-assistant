@@ -3282,6 +3282,8 @@ def notion_update_task(notion_id: str):
         progress        = body.get("progress"),
         submission_note = body.get("submission_note"),
         assigned_to     = body.get("assigned_to"),
+        new_title       = body.get("new_title"),
+        due_date        = body.get("due_date"),
         task_title      = body.get("task_title", ""),
         assignee        = body.get("assignee", ""),
         client_name     = body.get("client_name", ""),
@@ -3289,6 +3291,33 @@ def notion_update_task(notion_id: str):
     if result:
         return jsonify({"success": True})
     return jsonify({"error": "Failed to update task in Notion"}), 500
+
+
+@app.route("/api/notion/tasks/<string:notion_id>", methods=["DELETE"])
+def notion_delete_task(notion_id: str):
+    """Archive a task in Notion."""
+    if notion_store.archive_notion_page(notion_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to delete task"}), 500
+
+
+@app.route("/api/notion/clients/<string:notion_id>", methods=["DELETE"])
+def notion_delete_client(notion_id: str):
+    """Archive a client page in Notion, and all their tasks."""
+    # Note: To completely delete all tasks, we would fetch them first.
+    # For now, we archive the client. Archiving the client hides it from the board.
+    # If we want to archive tasks too, we can fetch them.
+    # We will fetch dashboard data, find this client's tasks, and archive them.
+    dashboard = notion_store.get_dashboard_data()
+    for client in dashboard.get("clients", []):
+        if client["id"] == notion_id:
+            for t in client.get("tasks", []):
+                notion_store.archive_notion_page(t["id"])
+            break
+
+    if notion_store.archive_notion_page(notion_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to delete client"}), 500
 
 
 @app.route("/api/notion/dashboard", methods=["GET"])
