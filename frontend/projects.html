@@ -908,32 +908,40 @@ function buildCol(key, label, tasks){
 }
 
 function buildCard(t, today){
-  const assigneeName = EMP[t.assigned_to] || t.assigned_to || "?";
-  const initial = assigneeName.charAt(0).toUpperCase();
-  const color = AVATAR_COLORS[assigneeName] || "#888";
+  // Parse multiple assignees (comma-separated names or emp-ids)
+  const rawAssignees = (t.assigned_to || "").split(',').map(s => s.trim()).filter(Boolean);
+  const assignees = rawAssignees.length ? rawAssignees.map(a => EMP[a] || a) : ["?"];
+  const allNames = assignees.join(', ');
+
   const isOverdue = t.due_date && t.due_date < today && t.status !== "approved";
   const dueLabel = t.due_date ? (isOverdue ? "🔴 "+t.due_date : "📅 "+t.due_date) : "";
   const pct = t.progress || 0;
   const taskId = t.id || t.notion_id || "";
   const notionId = t.notionId || t.notion_id || "";
   const notionHref = (notionMode && t.clientUrl) ? `<a href="${t.clientUrl}" target="_blank" style="font-size:.65rem;color:var(--acc);text-decoration:none;float:right" title="Open in Notion">↗</a>` : "";
+
+  // Build one avatar per assignee (stack them with negative margin)
+  const avatarHtml = assignees.map((name, i) => {
+    const initial = name.charAt(0).toUpperCase();
+    const color = AVATAR_COLORS[name] || "#888";
+    return `<div class="kavatar" style="background:${color};z-index:${10-i}" title="${name}"
+      onclick="event.stopPropagation();openAssigneePicker(this)"
+    >${initial}</div>`;
+  }).join('');
+
   return `<div class="kcard" draggable="true"
     data-task-id="${taskId}"
     data-notion-id="${notionId}"
     data-is-quick="${t.isQuick ? 'true' : 'false'}"
     data-task-title="${(t.title||'').replace(/"/g,'&quot;')}"
-    data-assignee="${assigneeName.replace(/"/g,'&quot;')}"
+    data-assignee="${allNames.replace(/"/g,'&quot;')}"
     data-client-name="${(t.clientName||'').replace(/"/g,'&quot;')}">
     <div class="kcard-client">${t.clientName || ""} ${notionHref}</div>
     <div class="kcard-title">${t.title}</div>
     <div class="kbar"><div class="kbar-fill" style="width:${pct}%"></div></div>
     <div class="kcard-footer">
       <span class="kcard-due${isOverdue?' overdue':''}">${dueLabel}</span>
-      <div class="kcard-avatars">
-        <div class="kavatar" style="background:${color}" title="${assigneeName}"
-          onclick="event.stopPropagation();openAssigneePicker(this)"
-        >${initial}</div>
-      </div>
+      <div class="kcard-avatars">${avatarHtml}</div>
     </div>
   </div>`;
 }
