@@ -398,7 +398,10 @@ function overallStatus(tasks){
 }
 
 function cellForCol(col, tasks){
-  const colTasks=tasks.filter(t=>ROLE_COL[t.assigned_to]===col);
+  const colTasks=tasks.filter(t=>{
+    const assignees = (t.assigned_to || "").split(',').map(s => s.trim()).filter(Boolean);
+    return assignees.some(a => ROLE_COL[a] === col || ROLE_COL[EMP[a]] === col);
+  });
   if(!colTasks.length)return`<td><div class="cell cell-waiting"><span class="icon">—</span><span class="label" style="color:var(--bdr)">N/A</span></div></td>`;
   const today=new Date().toISOString().slice(0,10);
   const allApproved=colTasks.every(t=>t.status==="approved");
@@ -592,7 +595,8 @@ async function loadBlockers(){
     (data.clients||[]).forEach(c=>{
       c.tasks.forEach(t=>{
         if(t.status!=="approved"&&t.due_date&&t.due_date<today){
-          blockers.push({client:c.name,task:t.title,assignee:EMP[t.assigned_to]||t.assigned_to,days:Math.floor((new Date()-new Date(t.due_date))/86400000)});
+          const assignees = (t.assigned_to || "").split(',').map(s => EMP[s.trim()] || s.trim() || "—").join(', ');
+          blockers.push({client:c.name,task:t.title,assignee:assignees,days:Math.floor((new Date()-new Date(t.due_date))/86400000)});
         }
       });
     });
@@ -863,7 +867,7 @@ async function saveQuickTask(){
   const title=document.getElementById("qt-title").value.trim();
   if(!title){toast("Enter a task title","err");return;}
   const chks = [...document.querySelectorAll("#qt-assign-dropdown .ms-chk:checked")];
-  const assigned_to = chks.map(c => c.value).join(',');
+  const assigned_to = chks.map(c => EMP[c.value] || c.value).join(',');
   const due_date    = document.getElementById("qt-due").value;
   const notes       = document.getElementById("qt-note").value.trim();
 
@@ -935,6 +939,7 @@ function buildCard(t, today){
     data-is-quick="${t.isQuick ? 'true' : 'false'}"
     data-task-title="${(t.title||'').replace(/"/g,'&quot;')}"
     data-assignee="${allNames.replace(/"/g,'&quot;')}"
+    data-due-date="${t.due_date||''}"
     data-client-name="${(t.clientName||'').replace(/"/g,'&quot;')}">
     <div class="kcard-client">${t.clientName || ""} ${notionHref}</div>
     <div class="kcard-title">${t.title}</div>
@@ -979,88 +984,22 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
 }
 </script>
 
-<!-- Assignee Picker Dropdown -->
-<div class="assignee-picker" id="assignee-picker">
-  <input class="ap-search" id="ap-search" type="text" placeholder="Search team member..." oninput="filterApList(this.value)" />
-  <div id="ap-list"></div>
-</div>
-
 <script>
 // ── Assignee Picker ───────────────────────────────────────────────────────────
-// Dynamically generate TEAM from EMP array
-const TEAM = Object.entries(EMP).map(([id, name]) => ({ id, name }));
-
-let _apTaskId = null, _apNotionId = null, _apIsQuick = false, _apClientName = '';
-
+// Redirect avatar click directly to the multi-select Edit Task Modal
 function openAssigneePicker(avatarEl){
   const card = avatarEl.closest('.kcard');
-  _apTaskId    = card.dataset.taskId;
-  _apNotionId  = card.dataset.notionId;
-  _apIsQuick   = card.dataset.isQuick === 'true';
-  _apClientName= card.dataset.clientName || '';
-  const picker = document.getElementById('assignee-picker');
-  const search = document.getElementById('ap-search');
-  search.value = '';
-  renderApList(TEAM);
-  // Position near avatar
-  const rect = avatarEl.getBoundingClientRect();
-  picker.style.top  = (rect.bottom + 6) + 'px';
-  picker.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
-  picker.classList.add('open');
-  search.focus();
+  openEditTaskModal(
+    card.dataset.taskId,
+    card.dataset.taskTitle,
+    card.dataset.assignee,
+    card.dataset.dueDate
+  );
 }
 
-function closeAssigneePicker(){
-  document.getElementById('assignee-picker').classList.remove('open');
-}
+// Ensure quick tasks can be edited (they share the edit task modal now)
+// We already handle quick tasks in saveTaskEdit by using updateTaskStatus which handles Notion and SQLite natively!
 
-function filterApList(q){
-  const filtered = TEAM.filter(m => m.name.toLowerCase().includes(q.toLowerCase()));
-  renderApList(filtered);
-}
-
-function renderApList(members){
-  const list = document.getElementById('ap-list');
-  list.innerHTML = members.map(m => {
-    const color = AVATAR_COLORS[m.name] || '#888';
-    const safe  = m.name.replace(/'/g, "\\'");
-    return `<div class="ap-item" onclick="reassignTask('${safe}')">
-      <div class="ap-avatar" style="background:${color}">${m.name[0]}</div>
-      <span class="ap-name">${m.name}</span>
-    </div>`;
-  }).join('');
-}
-
-async function reassignTask(newAssignee){
-  closeAssigneePicker();
-  if(_apIsQuick){
-    quickTasks = quickTasks.map(t => t.id === _apTaskId ? {...t, assigned_to: newAssignee} : t);
-    localStorage.setItem('quick_tasks', JSON.stringify(quickTasks));
-    renderKanban();
-    toast('Reassigned to ' + newAssignee + '!');
-    return;
-  }
-  if(_apNotionId){
-    try{
-      const r = await fetch(`${API}/api/notion/tasks/${_apNotionId}`,{
-        method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ assigned_to: newAssignee, task_title:'', assignee: newAssignee, client_name: _apClientName }),
-        signal: AbortSignal.timeout(10000)
-      });
-      const d = await r.json();
-      if(d.success){ toast('Reassigned to '+newAssignee+'!'); await load(); renderKanban(); }
-      else toast(d.error||'Failed to reassign','err');
-    } catch(e){ toast('Error: '+e.message,'err'); }
-  }
-}
-
-// Close picker when clicking outside
-document.addEventListener('click', e => {
-  const picker = document.getElementById('assignee-picker');
-  if(picker && picker.classList.contains('open') && !picker.contains(e.target)){
-    closeAssigneePicker();
-  }
-});
 
 async function deleteClient(clientId) {
   if (!confirm("Are you sure you want to delete this client and all their tasks?")) return;
@@ -1126,7 +1065,7 @@ async function saveTaskEdit() {
   const id     = document.getElementById('et-id').value;
   const title  = document.getElementById('et-title').value.trim();
   const chks   = [...document.querySelectorAll("#et-assign-dropdown .ms-chk:checked")];
-  const assign = chks.map(c => c.value).join(',');
+  const assign = chks.map(c => EMP[c.value] || c.value).join(',');
   const due    = document.getElementById('et-due').value;
 
   if (!title) { toast("Title is required", "err"); return; }
