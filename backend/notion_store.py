@@ -305,7 +305,7 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
 
     filters = []
     if assigned_to:
-        filters.append({"property": "Assigned To", "select": {"equals": assigned_to}})
+        filters.append({"property": "Assigned To", "multi_select": {"contains": assigned_to}})
     if client_notion_id:
         filters.append({"property": "Client ID", "rich_text": {"equals": client_notion_id}})
     if status_filter:
@@ -322,7 +322,7 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
         has_more = True
         while has_more:
             r = requests.post(
-                f"https://api.notion.com/v1/databases/{TASKS_DB_ID}/query",
+                f"https://api.notion.com/v1/databases/{_tasks_db()}/query",
                 headers=_headers(),
                 json=payload,
                 timeout=10,
