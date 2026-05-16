@@ -34,15 +34,29 @@ NOTION_VERSION    = "2022-06-28"
 # ── Notion is configured? ────────────────────────────────────────────────────
 
 def is_configured() -> bool:
-    return bool(NOTION_TOKEN and CLIENTS_DB_ID and TASKS_DB_ID)
+    """Reads env vars dynamically so Railway hot-deploys take effect without restart."""
+    return bool(
+        os.getenv("NOTION_TOKEN") and
+        os.getenv("NOTION_CLIENTS_DB_ID") and
+        os.getenv("NOTION_TASKS_DB_ID")
+    )
 
 
 def _headers() -> dict:
+    """Read token dynamically on every call so env var updates are picked up."""
+    token = os.getenv("NOTION_TOKEN", "")
     return {
-        "Authorization":  f"Bearer {NOTION_TOKEN}",
+        "Authorization":  f"Bearer {token}",
         "Notion-Version": NOTION_VERSION,
         "Content-Type":   "application/json",
     }
+
+# Dynamic DB IDs (hot-reload safe)
+def _clients_db() -> str:
+    return os.getenv("NOTION_CLIENTS_DB_ID", CLIENTS_DB_ID)
+
+def _tasks_db() -> str:
+    return os.getenv("NOTION_TASKS_DB_ID", TASKS_DB_ID)
 
 
 # ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -58,8 +72,10 @@ def _title(value: str) -> dict:
 
 
 def _select(value: str) -> dict:
-    """Notion select property value."""
-    return {"select": {"name": str(value or "")}}
+    """Notion select property. Sends None if value is blank (clears the field)."""
+    if value and str(value).strip():
+        return {"select": {"name": str(value).strip()}}
+    return {"select": None}
 
 
 def _date(value: str) -> dict:
@@ -165,7 +181,7 @@ def list_clients(status_filter: str = "") -> list:
         has_more = True
         while has_more:
             r = requests.post(
-                f"https://api.notion.com/v1/databases/{CLIENTS_DB_ID}/query",
+                f"https://api.notion.com/v1/databases/{_clients_db()}/query",
                 headers=_headers(),
                 json=payload,
                 timeout=10,

@@ -552,7 +552,7 @@ function renderTaskCard(t){
       <button class="btn-sm btn-reject" onclick="openModal(null,'${t.notion_id}')">↩ Changes</button>
     </div>`:""}
     <div class="tc-actions" style="margin-top: 8px;">
-      <button class="btn-sm" style="background:var(--s1);color:var(--txt);border:1px solid var(--bdr);" onclick="openEditTaskModal('${taskId}', '${(t.title||'').replace(/'/g, "\\'")}', '${t.assigned_to||''}', '${t.due_date||''}')">✏️ Edit Task</button>
+      <button class="btn-sm" style="background:var(--s1);color:var(--txt);border:1px solid var(--bdr);" onclick="openEditTaskModal('${taskId}', '${(t.title||'').replace(/'/g, '&apos;')}', '${t.assigned_to||''}', '${t.due_date||''}')">✏️ Edit Task</button>
       <button class="btn-sm" style="background:rgba(255,92,92,.1);color:var(--red);border:1px solid rgba(255,92,92,.2);" onclick="deleteTask('${taskId}')">🗑️ Delete</button>
     </div>
   </div>`;
@@ -627,11 +627,7 @@ async function approveTask(id){
 }
 async function loadReview(){
   const list = document.getElementById("review-list");
-  if(!notionMode){
-    list.innerHTML='<div class="empty">ℹ️ Review panel available in Notion mode only.</div>';
-    return;
-  }
-  
+
   // Compute review queue instantly from pre-loaded dashboard data
   const data = allData || {clients:[]};
   const tasks = [];
@@ -837,13 +833,8 @@ function bindDragEvents(board){
       if(!draggedCard)return;
       const newStatus=STATUS_MAP[col.dataset.col];
       if(!newStatus)return;
-      if(draggedCard.isQuick){
-        quickTasks=quickTasks.map(t=>t.id===draggedCard.taskId?{...t,status:newStatus}:t);
-        localStorage.setItem("quick_tasks",JSON.stringify(quickTasks));
-        renderKanban();toast("Task moved!");
-      }else{
-        await updateTaskStatus(draggedCard.taskId,draggedCard.notionId,newStatus,draggedCard.taskTitle,draggedCard.assignee,draggedCard.clientName);
-      }
+      // Use the unified backend update logic for both quick and normal tasks
+      await updateTaskStatus(draggedCard.taskId, draggedCard.notionId, newStatus, draggedCard.taskTitle, draggedCard.assignee, draggedCard.clientName);
     });
   });
 }
@@ -948,7 +939,11 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
     }catch(e){toast("Error: "+e.message,"err");}
   } else if(taskId){
     try{
-      const r = await fetch(`${API}/api/tasks/${taskId}/status`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:newStatus,user_id:UID})});
+      const r = await fetch(`${API}/api/sqlite/tasks/${taskId}`,{
+        method:"PATCH",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({status:newStatus})
+      });
       const d = await r.json();
       if(d.success){toast("✅ Status updated!");await load();renderKanban();}
       else toast(d.error||"Update failed","err");
@@ -965,10 +960,8 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
 
 <script>
 // ── Assignee Picker ───────────────────────────────────────────────────────────
-const TEAM = [
-  {name:"Abhinav"}, {name:"Vidit"}, {name:"Nupur"}, {name:"Kshitij"},
-  {name:"Raj"},     {name:"Mohit"}, {name:"Tanaya"}, {name:"Happy"},
-];
+// Dynamically generate TEAM from EMP array
+const TEAM = Object.entries(EMP).map(([id, name]) => ({ id, name }));
 
 let _apTaskId = null, _apNotionId = null, _apIsQuick = false, _apClientName = '';
 
