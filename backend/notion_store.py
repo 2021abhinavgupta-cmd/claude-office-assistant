@@ -160,29 +160,37 @@ def list_clients(status_filter: str = "") -> list:
             "select": {"equals": status_filter},
         }
 
+    clients = []
     try:
-        r = requests.post(
-            f"https://api.notion.com/v1/databases/{CLIENTS_DB_ID}/query",
-            headers=_headers(),
-            json=payload,
-            timeout=10,
-        )
-        r.raise_for_status()
-        pages = r.json().get("results", [])
-        clients = []
-        for p in pages:
-            props = p.get("properties", {})
-            clients.append({
-                "notion_id":    p["id"],
-                "name":         _get_text(props.get("Client", {})),
-                "contact":      _get_text(props.get("Contact", {})),
-                "requirements": _get_text(props.get("Requirements", {})),
-                "deadline":     _get_date(props.get("Deadline", {})),
-                "budget":       _get_text(props.get("Budget", {})),
-                "notes":        _get_text(props.get("Notes", {})),
-                "status":       _get_select(props.get("Status", {})),
-                "url":          p.get("url", ""),
-            })
+        has_more = True
+        while has_more:
+            r = requests.post(
+                f"https://api.notion.com/v1/databases/{CLIENTS_DB_ID}/query",
+                headers=_headers(),
+                json=payload,
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            pages = data.get("results", [])
+            for p in pages:
+                props = p.get("properties", {})
+                clients.append({
+                    "notion_id":    p["id"],
+                    "name":         _get_text(props.get("Client", {})),
+                    "contact":      _get_text(props.get("Contact", {})),
+                    "requirements": _get_text(props.get("Requirements", {})),
+                    "deadline":     _get_date(props.get("Deadline", {})),
+                    "budget":       _get_text(props.get("Budget", {})),
+                    "notes":        _get_text(props.get("Notes", {})),
+                    "status":       _get_select(props.get("Status", {})),
+                    "url":          p.get("url", ""),
+                })
+            
+            has_more = data.get("has_more", False)
+            if has_more:
+                payload["start_cursor"] = data.get("next_cursor")
+                
         return clients
     except Exception as e:
         logger.error(f"Notion list_clients failed: {e}")
@@ -280,30 +288,37 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
     elif len(filters) > 1:
         payload["filter"] = {"and": filters}
 
+    tasks = []
     try:
-        r = requests.post(
-            f"https://api.notion.com/v1/databases/{TASKS_DB_ID}/query",
-            headers=_headers(),
-            json=payload,
-            timeout=10,
-        )
-        r.raise_for_status()
-        pages = r.json().get("results", [])
-        tasks = []
-        for p in pages:
-            props = p.get("properties", {})
-            tasks.append({
-                "notion_id":   p["id"],
-                "title":       _get_text(props.get("Task", {})),
-                "client":      _get_text(props.get("Customer Name", {})),
-                "client_id":   _get_text(props.get("Client ID", {})),
-                "assigned_to": _get_select(props.get("Assigned To", {})),
-                "due_date":    _get_date(props.get("Due Date", {})),
-                "status":      _get_select(props.get("Status", {})),
-                "progress":    _get_number(props.get("Progress", {})),
-                "service":     _get_select(props.get("Task Type", {})),
-                "url":         p.get("url", ""),
-            })
+        has_more = True
+        while has_more:
+            r = requests.post(
+                f"https://api.notion.com/v1/databases/{TASKS_DB_ID}/query",
+                headers=_headers(),
+                json=payload,
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            pages = data.get("results", [])
+            for p in pages:
+                props = p.get("properties", {})
+                tasks.append({
+                    "notion_id":   p["id"],
+                    "title":       _get_text(props.get("Task", {})),
+                    "client":      _get_text(props.get("Customer Name", {})),
+                    "client_id":   _get_text(props.get("Client ID", {})),
+                    "assigned_to": _get_select(props.get("Assigned To", {})),
+                    "due_date":    _get_date(props.get("Due Date", {})),
+                    "status":      _get_select(props.get("Status", {})),
+                    "progress":    _get_number(props.get("Progress", {})),
+                    "service":     _get_select(props.get("Task Type", {})),
+                    "url":         p.get("url", ""),
+                })
+            has_more = data.get("has_more", False)
+            if has_more:
+                payload["start_cursor"] = data.get("next_cursor")
+                
         return tasks
     except Exception as e:
         logger.error(f"Notion list_tasks failed: {e}")

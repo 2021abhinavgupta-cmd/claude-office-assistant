@@ -276,9 +276,6 @@
       <label>Assign to</label>
       <select id="qt-assign">
         <option value="">— Unassigned —</option>
-        <option>Abhinav</option><option>Vidit</option><option>Nupur</option>
-        <option>Kshitij</option><option>Raj</option><option>Mohit</option>
-        <option>Tanaya</option><option>Happy</option>
       </select>
     </div>
     <div class="qt-field">
@@ -311,9 +308,6 @@
       <label>Assign to</label>
       <select id="et-assign">
         <option value="">— Unassigned —</option>
-        <option>Abhinav</option><option>Vidit</option><option>Nupur</option>
-        <option>Kshitij</option><option>Raj</option><option>Mohit</option>
-        <option>Tanaya</option><option>Happy</option>
       </select>
     </div>
     <div class="qt-field">
@@ -351,6 +345,11 @@ const COLS = ["Content","Video","Design","Website","Accounts","Review"];
 
 let rejectTaskId=null, rejectNotionId=null, allData=null, notionMode=false;
 
+document.addEventListener("DOMContentLoaded", () => {
+  const options = Object.entries(EMP).map(([id, n]) => `<option value="${n}">${n}</option>`).join("");
+  document.getElementById("qt-assign").innerHTML += options;
+  document.getElementById("et-assign").innerHTML += options;
+});
 function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
 
 function switchTab(name,btn){
@@ -435,6 +434,8 @@ async function load(){
   } else {
     await loadSQLite();
   }
+  // Load shared quick tasks from backend (task 3)
+  await loadQuickTasks();
 }
 
 async function loadNotion(){
@@ -727,7 +728,23 @@ const STATUS_MAP = {todo:"not_started",prog:"in_progress",review:"pending_review
 let kanbanGroup    = "stage";
 let draggedCard    = null;
 let selectedClient = "all";
-let quickTasks     = JSON.parse(localStorage.getItem("quick_tasks") || "[]");
+let quickTasks     = [];  // loaded from backend on init
+
+async function loadQuickTasks(){
+  try {
+    const r = await fetch(`${API}/api/quick-tasks`);
+    const d = await r.json();
+    quickTasks = (d.tasks || []).map(t => ({
+      ...t,
+      id: t.notion_id || t.id,
+      isQuick: true,
+      clientName: "Quick Task",
+    }));
+  } catch(e) {
+    // Fallback to localStorage if backend unavailable
+    quickTasks = JSON.parse(localStorage.getItem("quick_tasks") || "[]");
+  }
+}
 
 function setKanbanGroup(g, btn){
   kanbanGroup = g;
@@ -833,17 +850,38 @@ function bindDragEvents(board){
 
 function openQuickTask(){document.getElementById("qt-modal").classList.add("open");document.getElementById("qt-title").focus();}
 function closeQuickTask(){document.getElementById("qt-modal").classList.remove("open");}
-function saveQuickTask(){
+async function saveQuickTask(){
   const title=document.getElementById("qt-title").value.trim();
   if(!title){toast("Enter a task title","err");return;}
-  const task={id:"qt_"+Date.now(),title,assigned_to:document.getElementById("qt-assign").value,due_date:document.getElementById("qt-due").value,notes:document.getElementById("qt-note").value.trim(),status:"not_started",progress:0,isQuick:true};
-  quickTasks.unshift(task);
-  localStorage.setItem("quick_tasks",JSON.stringify(quickTasks));
-  closeQuickTask();
-  document.getElementById("qt-title").value="";document.getElementById("qt-note").value="";document.getElementById("qt-due").value="";
-  const btn=document.querySelector(".client-filter-btn[onclick*='__quick__']");
-  if(btn)filterByClient("__quick__",btn);else renderKanban();
-  toast("Quick Task added!");
+  const assigned_to = document.getElementById("qt-assign").value;
+  const due_date    = document.getElementById("qt-due").value;
+  const notes       = document.getElementById("qt-note").value.trim();
+
+  const btn = document.querySelector("#qt-modal .btn-acc");
+  btn.textContent = "Saving..."; btn.disabled = true;
+
+  try {
+    const r = await fetch(`${API}/api/quick-tasks`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({title, assigned_to, due_date, notes})
+    });
+    const d = await r.json();
+    if(d.success){
+      toast("Quick Task added!");
+      closeQuickTask();
+      document.getElementById("qt-title").value="";
+      document.getElementById("qt-note").value="";
+      document.getElementById("qt-due").value="";
+      await loadQuickTasks();
+      const filterBtn = document.querySelector(".client-filter-btn[onclick*='__quick__']");
+      if(filterBtn) filterByClient("__quick__", filterBtn); else renderKanban();
+    } else {
+      toast(d.error || "Failed to save task", "err");
+    }
+  } catch(e){ toast("Error: "+e.message, "err"); }
+
+  btn.textContent = "Add Task"; btn.disabled = false;
 }
 
 function buildCol(key, label, tasks){
@@ -1004,18 +1042,23 @@ document.addEventListener('click', e => {
   }
 });
 
-// ── Edit & Delete Features ───────────────────────────────────────────────────
-
 async function deleteClient(clientId) {
   if (!confirm("Are you sure you want to delete this client and all their tasks?")) return;
   if (notionMode) {
     try {
       const res = await fetch(`${API}/api/notion/clients/${clientId}`, { method: 'DELETE' });
-      if (res.ok) { toast('Client deleted!'); await load(); renderKanban(); }
-      else toast('Failed to delete client', 'err');
+      const d   = await res.json();
+      if (d.success) { toast('Client deleted!'); await load(); renderKanban(); }
+      else toast(d.error || 'Failed to delete client', 'err');
     } catch (e) { toast('Error: ' + e.message, 'err'); }
   } else {
-    toast('Client deletion not implemented for SQLite mode yet.', 'err');
+    // SQLite fallback
+    try {
+      const res = await fetch(`${API}/api/sqlite/clients/${clientId}`, { method: 'DELETE' });
+      const d   = await res.json();
+      if (d.success) { toast('Client deleted!'); await load(); renderKanban(); }
+      else toast(d.error || 'Failed to delete client', 'err');
+    } catch (e) { toast('Error: ' + e.message, 'err'); }
   }
 }
 
@@ -1024,11 +1067,18 @@ async function deleteTask(taskId) {
   if (notionMode) {
     try {
       const res = await fetch(`${API}/api/notion/tasks/${taskId}`, { method: 'DELETE' });
-      if (res.ok) { toast('Task deleted!'); await load(); renderKanban(); }
-      else toast('Failed to delete task', 'err');
+      const d   = await res.json();
+      if (d.success) { toast('Task deleted!'); await load(); renderKanban(); }
+      else toast(d.error || 'Failed to delete task', 'err');
     } catch (e) { toast('Error: ' + e.message, 'err'); }
   } else {
-    toast('Task deletion not implemented for SQLite mode yet.', 'err');
+    // SQLite fallback
+    try {
+      const res = await fetch(`${API}/api/sqlite/tasks/${taskId}`, { method: 'DELETE' });
+      const d   = await res.json();
+      if (d.success) { toast('Task deleted!'); await load(); renderKanban(); }
+      else toast(d.error || 'Failed to delete task', 'err');
+    } catch (e) { toast('Error: ' + e.message, 'err'); }
   }
 }
 
@@ -1045,37 +1095,35 @@ function closeEditTaskModal() {
 }
 
 async function saveTaskEdit() {
-  const id = document.getElementById('et-id').value;
-  const title = document.getElementById('et-title').value.trim();
+  const id     = document.getElementById('et-id').value;
+  const title  = document.getElementById('et-title').value.trim();
   const assign = document.getElementById('et-assign').value;
-  const due = document.getElementById('et-due').value;
+  const due    = document.getElementById('et-due').value;
 
   if (!title) { toast("Title is required", "err"); return; }
   
   const btn = document.getElementById('et-save-btn');
-  btn.textContent = "Saving...";
-  btn.disabled = true;
+  btn.textContent = "Saving..."; btn.disabled = true;
 
-  if (notionMode) {
-    try {
-      const res = await fetch(`${API}/api/notion/tasks/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_title: title, assigned_to: assign, due_date: due })
-      });
-      if (res.ok) {
-        toast('Task updated!');
-        closeEditTaskModal();
-        await load();
-        renderKanban();
-      } else {
-        toast('Failed to update task', 'err');
-      }
-    } catch (e) { toast('Error: ' + e.message, 'err'); }
-  } else {
-    toast('Task editing not implemented for SQLite mode yet.', 'err');
-    closeEditTaskModal();
-  }
+  try {
+    const endpoint = notionMode
+      ? `${API}/api/notion/tasks/${id}`
+      : `${API}/api/sqlite/tasks/${id}`;
+    const res = await fetch(endpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_title: title, assigned_to: assign, due_date: due })
+    });
+    const d = await res.json();
+    if (d.success) {
+      toast('Task updated!');
+      closeEditTaskModal();
+      await load();
+      renderKanban();
+    } else {
+      toast(d.error || 'Failed to update task', 'err');
+    }
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
   
   btn.textContent = "Save Changes";
   btn.disabled = false;

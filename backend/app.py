@@ -3303,19 +3303,14 @@ def notion_delete_task(notion_id: str):
 
 @app.route("/api/notion/clients/<string:notion_id>", methods=["DELETE"])
 def notion_delete_client(notion_id: str):
-    """Archive a client page in Notion, and all their tasks."""
-    # Note: To completely delete all tasks, we would fetch them first.
-    # For now, we archive the client. Archiving the client hides it from the board.
-    # If we want to archive tasks too, we can fetch them.
-    # We will fetch dashboard data, find this client's tasks, and archive them.
-    dashboard = notion_store.get_dashboard_data()
-    for client in dashboard.get("clients", []):
-        cid = client.get("notion_id", client.get("id"))
-        if cid == notion_id:
-            for t in client.get("tasks", []):
-                tid = t.get("notion_id", t.get("id"))
-                notion_store.archive_notion_page(tid)
-            break
+    """Archive a client page in Notion, and all their tasks (fully paginated)."""
+    # Task 4 fix: use list_tasks with client_notion_id filter (paginated) to ensure
+    # we get ALL tasks, not just those in the dashboard cache.
+    all_client_tasks = notion_store.list_tasks(client_notion_id=notion_id)
+    for t in all_client_tasks:
+        tid = t.get("notion_id") or t.get("id")
+        if tid:
+            notion_store.archive_notion_page(tid)
 
     if notion_store.archive_notion_page(notion_id):
         return jsonify({"success": True})
@@ -3330,6 +3325,121 @@ def notion_dashboard():
     """
     data = notion_store.get_dashboard_data()
     return jsonify(data)
+
+
+# ── Task 3: Quick Tasks — shared, backend-persisted ─────────────────────────
+# In Notion mode: tasks are saved to Notion Tasks DB with no client.
+# In SQLite mode: tasks saved with client_id=NULL (fallback client 0).
+
+@app.route("/api/quick-tasks", methods=["GET"])
+def get_quick_tasks():
+    """Fetch persisted quick tasks. In Notion mode uses Tasks DB; else SQLite."""
+    if notion_store.is_configured():
+        tasks = notion_store.list_tasks(client_notion_id="__quick__")
+        return jsonify({"tasks": tasks})
+    # SQLite fallback — read tasks where client_id IS NULL
+    conn = _pt_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id,client_id,title,description,assigned_to,status,progress,
+               due_date,submission_note,submission_file,rejection_note,
+               submission_count,opened_at,created_at
+        FROM tasks WHERE client_id IS NULL ORDER BY created_at DESC
+    """)
+    tasks = [_task_row_to_dict(r) for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"tasks": tasks})
+
+
+@app.route("/api/quick-tasks", methods=["POST"])
+def save_quick_task():
+    """Save a quick task to Notion or SQLite. No client required."""
+    body = request.get_json(silent=True) or {}
+    title       = body.get("title", "").strip()
+    assigned_to = body.get("assigned_to", "")
+    due_date    = body.get("due_date", "")
+    notes       = body.get("notes", "")
+    if not title:
+        return jsonify({"error": "title required"}), 400
+
+    if notion_store.is_configured():
+        result = notion_store.create_task(
+            title=title,
+            client_name="Quick Task",
+            client_notion_id="__quick__",
+            assigned_to=assigned_to,
+            due_date=due_date,
+            status="not_started",
+        )
+        if result:
+            return jsonify({"success": True, "notion_id": result["notion_id"]}), 201
+        return jsonify({"error": "Failed to create quick task in Notion"}), 500
+
+    # SQLite fallback — store with NULL client_id
+    conn = _pt_conn()
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO tasks (client_id,title,description,assigned_to,due_date,status,progress) VALUES (?,?,?,?,?,'not_started',0)",
+            (None, title, notes, assigned_to, due_date)
+        )
+        task_id = cur.lastrowid
+    conn.close()
+    return jsonify({"success": True, "task_id": task_id}), 201
+
+
+# ── Task 5: SQLite fallbacks for task edit / delete ──────────────────────────
+
+@app.route("/api/sqlite/tasks/<int:task_id>", methods=["PATCH"])
+def sqlite_patch_task(task_id: int):
+    """Edit a task in SQLite (title, assigned_to, due_date)."""
+    body = request.get_json(silent=True) or {}
+    updates, vals = [], []
+    if "new_title" in body:
+        updates.append("title=?"); vals.append(body["new_title"])
+    if "assigned_to" in body:
+        updates.append("assigned_to=?"); vals.append(body["assigned_to"])
+    if "due_date" in body:
+        updates.append("due_date=?"); vals.append(body["due_date"])
+    if "status" in body:
+        updates.append("status=?"); vals.append(body["status"])
+    if "progress" in body:
+        updates.append("progress=?"); vals.append(body["progress"])
+    if not updates:
+        return jsonify({"error": "Nothing to update"}), 400
+    vals.append(task_id)
+    conn = _pt_conn()
+    with conn:
+        conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id=?", vals)
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/sqlite/tasks/<int:task_id>", methods=["DELETE"])
+def sqlite_delete_task(task_id: int):
+    """Delete a task from SQLite."""
+    conn = _pt_conn()
+    with conn:
+        conn.execute("DELETE FROM dependencies WHERE task_id=? OR depends_on_task_id=?", (task_id, task_id))
+        conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/sqlite/clients/<int:client_id>", methods=["DELETE"])
+def sqlite_delete_client(client_id: int):
+    """Delete a client and all their tasks from SQLite."""
+    conn = _pt_conn()
+    cur = conn.cursor()
+    # Fetch task IDs first for dependency cleanup
+    cur.execute("SELECT id FROM tasks WHERE client_id=?", (client_id,))
+    task_ids = [r[0] for r in cur.fetchall()]
+    with conn:
+        for tid in task_ids:
+            conn.execute("DELETE FROM dependencies WHERE task_id=? OR depends_on_task_id=?", (tid, tid))
+        conn.execute("DELETE FROM tasks WHERE client_id=?", (client_id,))
+        conn.execute("DELETE FROM clients WHERE id=?", (client_id,))
+    conn.close()
+    return jsonify({"success": True})
 
 
 # ── Document Export ───────────────────────────────────────────────────────────
