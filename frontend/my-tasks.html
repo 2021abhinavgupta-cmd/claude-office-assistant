@@ -29,6 +29,12 @@
     .sec-lbl{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
     .sec-lbl::after{content:"";flex:1;height:1px;background:var(--bdr)}
 
+    /* View Toggles */
+    .view-toggles{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+    .kgroup-btn{padding:6px 14px;border-radius:var(--rs);font-size:.76rem;font-weight:600;border:1px solid var(--bdr);background:var(--s1);color:var(--muted);cursor:pointer;transition:all .2s}
+    .kgroup-btn:hover{color:var(--txt);border-color:rgba(255,255,255,0.2)}
+    .kgroup-btn.on{background:var(--s2);color:var(--txt);border-color:var(--acc)}
+
     /* Task cards */
     .tc{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:18px;margin-bottom:12px;transition:border-color .2s}
     .tc.overdue{border-color:rgba(255,92,92,.35)}
@@ -97,6 +103,11 @@
     <div class="al-title">⚠️ Your delays are blocking teammates</div>
     <div id="alert-items"></div>
   </div>
+  <div class="view-toggles">
+    <button class="kgroup-btn on" id="btn-view-status" onclick="setViewMode('status')">By Status</button>
+    <button class="kgroup-btn" id="btn-view-client" onclick="setViewMode('client')">By Client</button>
+    <button class="kgroup-btn" id="btn-view-date" onclick="setViewMode('date')">By Date</button>
+  </div>
 
   <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
 </div>
@@ -127,9 +138,17 @@ function spLabel(s){return{not_started:"Not Started",in_progress:"In Progress �
 function progressPct(s){return{not_started:0,in_progress:40,submitted:75,approved:100}[s]??0}
 
 let useNotion = false;
+let currentViewMode = 'status';
+window.allTasks = [];
+
+function setViewMode(mode) {
+  currentViewMode = mode;
+  document.querySelectorAll('.kgroup-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('btn-view-' + mode).classList.add('on');
+  renderTasks();
+}
 
 async function load(){
-  const today = new Date().toISOString().slice(0,10);
   const wrap = document.getElementById("tasks-wrap");
 
   // Detect Notion
@@ -151,34 +170,74 @@ async function load(){
     return;
   }
 
-  let tasks = [];
   try {
     const r = await fetch(`${API}/api/notion/tasks?assigned_to=${encodeURIComponent(assignedName)}`, {signal:AbortSignal.timeout(15000)});
     const d = await r.json();
-    tasks = (d.tasks||[]).map(t=>({...t, status: normStatus(t.status)}));
+    window.allTasks = (d.tasks||[]).map(t=>({...t, status: normStatus(t.status)}));
   } catch(e){
     wrap.innerHTML=`<div class="empty">⚠️ Could not load tasks: ${e.message}</div>`;
     return;
   }
 
-  if(!tasks.length){
+  renderTasks();
+}
+
+function renderTasks() {
+  const wrap = document.getElementById("tasks-wrap");
+  const today = new Date().toISOString().slice(0,10);
+
+  if(!window.allTasks.length){
     wrap.innerHTML='<div class="empty">🎉 No tasks assigned to you yet!</div>';
     return;
   }
 
-  const active  = tasks.filter(t=>t.status==="in_progress");
-  const pending = tasks.filter(t=>t.status==="not_started");
-  const review  = tasks.filter(t=>t.status==="submitted");
-  const done    = tasks.filter(t=>t.status==="approved");
-
   let html="";
-  if(active.length)  html+=`<div class="sec-lbl">🔥 Active — ${active.length} task${active.length>1?"s":""}</div>`+active.map(t=>renderTask(t,today)).join("");
-  if(pending.length) html+=`<div class="sec-lbl">📋 Up Next — ${pending.length}</div>`+pending.map(t=>renderTask(t,today)).join("");
-  if(review.length)  html+=`<div class="sec-lbl">⏳ In Review — ${review.length}</div>`+review.map(t=>renderTask(t,today)).join("");
-  if(done.length)    html+=`<div class="sec-lbl">✅ Done — ${done.length}</div>`+done.map(t=>renderTask(t,today)).join("");
-  wrap.innerHTML=html;
+  
+  if (currentViewMode === 'status') {
+    const active  = window.allTasks.filter(t=>t.status==="in_progress");
+    const pending = window.allTasks.filter(t=>t.status==="not_started");
+    const review  = window.allTasks.filter(t=>t.status==="submitted");
+    const done    = window.allTasks.filter(t=>t.status==="approved");
 
-  // Submit form handlers
+    if(active.length)  html+=`<div class="sec-lbl">🔥 Active — ${active.length} task${active.length>1?"s":""}</div>`+active.map(t=>renderTask(t,today)).join("");
+    if(pending.length) html+=`<div class="sec-lbl">📋 Up Next — ${pending.length}</div>`+pending.map(t=>renderTask(t,today)).join("");
+    if(review.length)  html+=`<div class="sec-lbl">⏳ In Review — ${review.length}</div>`+review.map(t=>renderTask(t,today)).join("");
+    if(done.length)    html+=`<div class="sec-lbl">✅ Done — ${done.length}</div>`+done.map(t=>renderTask(t,today)).join("");
+    
+  } else if (currentViewMode === 'client') {
+    const byClient = {};
+    window.allTasks.forEach(t => {
+       const c = t.client_name || t.client || "Internal / Quick Tasks";
+       if(!byClient[c]) byClient[c] = [];
+       byClient[c].push(t);
+    });
+    Object.keys(byClient).sort().forEach(c => {
+       html += `<div class="sec-lbl">📁 ${c} — ${byClient[c].length} task${byClient[c].length>1?"s":""}</div>` + byClient[c].map(t=>renderTask(t,today)).join("");
+    });
+    
+  } else if (currentViewMode === 'date') {
+    const overdue = [], todayTasks = [], upcoming = [], nodate = [];
+    window.allTasks.forEach(t => {
+       if(!t.due_date) nodate.push(t);
+       else if(t.due_date < today) overdue.push(t);
+       else if(t.due_date === today) todayTasks.push(t);
+       else upcoming.push(t);
+    });
+    // Sort upcoming chronologically
+    upcoming.sort((a,b) => a.due_date.localeCompare(b.due_date));
+    
+    if(overdue.length)    html+=`<div class="sec-lbl" style="color:var(--red)">🔴 Overdue — ${overdue.length}</div>`+overdue.map(t=>renderTask(t,today)).join("");
+    if(todayTasks.length) html+=`<div class="sec-lbl" style="color:var(--acc)">⚡ Due Today — ${todayTasks.length}</div>`+todayTasks.map(t=>renderTask(t,today)).join("");
+    if(upcoming.length)   html+=`<div class="sec-lbl">📅 Upcoming — ${upcoming.length}</div>`+upcoming.map(t=>renderTask(t,today)).join("");
+    if(nodate.length)     html+=`<div class="sec-lbl">⚪ No Due Date — ${nodate.length}</div>`+nodate.map(t=>renderTask(t,today)).join("");
+  }
+
+  wrap.innerHTML=html;
+  attachSubmitHandlers();
+}
+
+function attachSubmitHandlers() {
+  const wrap = document.getElementById("tasks-wrap");
   wrap.querySelectorAll("form.sf").forEach(form=>{
     form.addEventListener("submit", async e=>{
       e.preventDefault();
