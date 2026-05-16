@@ -743,13 +743,13 @@ function renderClientFilterBar(){
   const bar = document.getElementById("client-filter-bar");
   if(!bar || !allData) return;
   const clients = allData.clients || [];
-  const allBtn = '<button class="client-filter-btn on" onclick="filterByClient(\'all\',this)">All</button>';
   const cBtns  = clients.map(c => {
     const safe = c.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return `<button class="client-filter-btn" onclick="filterByClient('${safe}',this)">${c.name}</button>`;
+    const isSelected = selectedClient === c.name;
+    return `<button class="client-filter-btn ${isSelected ? 'on' : ''}" onclick="filterByClient('${safe}',this)">${c.name}</button>`;
   }).join('');
-  const qtBtn  = '<button class="client-filter-btn" style="border-color:#5c9eff;color:#5c9eff" onclick="filterByClient(\'__quick__\',this)">+ Quick Tasks</button>';
-  bar.innerHTML = allBtn + cBtns + qtBtn;
+  const qtBtn  = `<button class="client-filter-btn ${selectedClient === '__quick__' ? 'on' : ''}" style="border-color:#5c9eff;color:#5c9eff" onclick="filterByClient('__quick__',this)">+ Quick Tasks</button>`;
+  bar.innerHTML = `<button class="client-filter-btn ${selectedClient === 'all' ? 'on' : ''}" onclick="filterByClient('all',this)">All</button>` + cBtns + qtBtn;
 }
 
 function filterByClient(name, btn){
@@ -774,7 +774,12 @@ function flatTasks(){
 function renderKanban(){
   const board = document.getElementById("kanban-board");
   if(!allData){board.innerHTML='<div class="empty">Loading...</div>';return;}
-  if(!document.querySelector(".client-filter-btn")) renderClientFilterBar();
+  
+  // If selected client no longer exists, reset to "all"
+  if(selectedClient !== "all" && selectedClient !== "__quick__" && !allData.clients.some(c=>c.name===selectedClient)){
+    selectedClient = "all";
+  }
+  renderClientFilterBar();
 
   if(selectedClient === "__quick__"){
     const qts = quickTasks.map(t=>({...t, clientName:"Quick Task", clientUrl:null, notionId:null, isQuick:true}));
