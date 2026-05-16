@@ -85,6 +85,37 @@
     #toast{position:fixed;bottom:20px;right:20px;background:var(--s1);border:1px solid var(--bdr);padding:11px 18px;border-radius:var(--rs);font-size:.84rem;display:none;z-index:200}
     #toast.ok{border-color:var(--grn);color:var(--grn)}
     #toast.err{border-color:var(--red);color:var(--red)}
+
+    /* Calendar View */
+    .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .cal-title { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--txt); }
+    .cal-nav-btn { background: var(--s2); border: 1px solid var(--bdr); color: var(--txt); padding: 6px 12px; border-radius: var(--rs); cursor: pointer; transition: all 0.2s; font-size: .8rem; }
+    .cal-nav-btn:hover { border-color: var(--acc); color: var(--acc); }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal-day-hdr { text-align: center; font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 8px 0; }
+    .cal-cell { background: var(--s1); border: 1px solid var(--bdr); border-radius: 6px; min-height: 80px; padding: 6px; position: relative; transition: border-color 0.2s; }
+    .cal-cell.today { border-color: var(--acc); background: rgba(245, 166, 35, 0.05); }
+    .cal-cell.empty-cell { background: transparent; border-color: transparent; }
+    .cal-cell:hover { border-color: var(--muted); }
+    .cal-date-num { font-size: .75rem; font-weight: 600; color: var(--muted); position: absolute; top: 6px; right: 8px; }
+    .cal-cell.today .cal-date-num { color: var(--acc); }
+    .cal-tasks { margin-top: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .cal-pill { background: var(--s2); border: 1px solid var(--bdr); border-radius: 4px; padding: 3px 5px; font-size: .65rem; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+    .cal-pill.st-active { border-left: 3px solid var(--blu); }
+    .cal-pill.st-pending { border-left: 3px solid var(--muted); }
+    .cal-pill.st-review { border-left: 3px solid var(--acc); }
+    .cal-pill.st-done { border-left: 3px solid var(--grn); text-decoration: line-through; opacity: .6; }
+    
+    /* Hover Popover */
+    .cal-popover { display: none; position: absolute; top: 90%; left: 50%; transform: translateX(-50%); background: var(--s2); border: 1px solid var(--bdr); border-radius: var(--rs); padding: 12px; width: 240px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 100; flex-direction: column; gap: 10px; cursor: default; }
+    .cal-cell:hover .cal-popover { display: flex; }
+    .cal-popover::before { content: ""; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border-width: 6px; border-style: solid; border-color: transparent transparent var(--bdr) transparent; }
+    .cal-pop-item { border-bottom: 1px solid var(--bdr); padding-bottom: 8px; }
+    .cal-pop-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .cal-pop-title { font-size: .8rem; font-weight: 700; color: var(--txt); margin-bottom: 4px; line-height: 1.3; }
+    .cal-pop-meta { font-size: .7rem; color: var(--muted); margin-bottom: 6px; }
+    .cal-pop-btn { display: inline-block; background: var(--s1); border: 1px solid var(--bdr); color: var(--txt); padding: 4px 10px; border-radius: 4px; font-size: .7rem; cursor: pointer; text-decoration: none; transition: all .2s; }
+    .cal-pop-btn:hover { border-color: var(--acc); color: var(--acc); }
   </style>
 </head>
 <body>
@@ -107,6 +138,7 @@
     <button class="kgroup-btn on" id="btn-view-status" onclick="setViewMode('status')">By Status</button>
     <button class="kgroup-btn" id="btn-view-client" onclick="setViewMode('client')">By Client</button>
     <button class="kgroup-btn" id="btn-view-date" onclick="setViewMode('date')">By Date</button>
+    <button class="kgroup-btn" id="btn-view-calendar" onclick="setViewMode('calendar')">By Calendar 📅</button>
   </div>
 
   <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
@@ -141,10 +173,21 @@ let useNotion = false;
 let currentViewMode = 'status';
 window.allTasks = [];
 
+// Calendar state
+let calMonth = new Date().getMonth();
+let calYear = new Date().getFullYear();
+
 function setViewMode(mode) {
   currentViewMode = mode;
   document.querySelectorAll('.kgroup-btn').forEach(b => b.classList.remove('on'));
   document.getElementById('btn-view-' + mode).classList.add('on');
+  renderTasks();
+}
+
+function changeCalMonth(dir) {
+  calMonth += dir;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  if (calMonth < 0) { calMonth = 11; calYear--; }
   renderTasks();
 }
 
@@ -230,10 +273,85 @@ function renderTasks() {
     if(todayTasks.length) html+=`<div class="sec-lbl" style="color:var(--acc)">⚡ Due Today — ${todayTasks.length}</div>`+todayTasks.map(t=>renderTask(t,today)).join("");
     if(upcoming.length)   html+=`<div class="sec-lbl">📅 Upcoming — ${upcoming.length}</div>`+upcoming.map(t=>renderTask(t,today)).join("");
     if(nodate.length)     html+=`<div class="sec-lbl">⚪ No Due Date — ${nodate.length}</div>`+nodate.map(t=>renderTask(t,today)).join("");
+    
+  } else if (currentViewMode === 'calendar') {
+    html = renderCalendarHtml(today);
   }
 
   wrap.innerHTML=html;
   attachSubmitHandlers();
+}
+
+function renderCalendarHtml(todayString) {
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  
+  let html = `
+    <div class="cal-header">
+      <button class="cal-nav-btn" onclick="changeCalMonth(-1)">◀ Prev</button>
+      <div class="cal-title">${monthNames[calMonth]} ${calYear}</div>
+      <button class="cal-nav-btn" onclick="changeCalMonth(1)">Next ▶</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-day-hdr">Mon</div><div class="cal-day-hdr">Tue</div><div class="cal-day-hdr">Wed</div>
+      <div class="cal-day-hdr">Thu</div><div class="cal-day-hdr">Fri</div><div class="cal-day-hdr">Sat</div><div class="cal-day-hdr">Sun</div>
+  `;
+
+  const tasksByDate = {};
+  window.allTasks.forEach(t => {
+    if(t.due_date) {
+      if(!tasksByDate[t.due_date]) tasksByDate[t.due_date] = [];
+      tasksByDate[t.due_date].push(t);
+    }
+  });
+
+  const firstDay = new Date(calYear, calMonth, 1);
+  let startDay = (firstDay.getDay() + 6) % 7; 
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+  for(let i=0; i<startDay; i++) {
+    html += `<div class="cal-cell empty-cell"></div>`;
+  }
+
+  for(let d=1; d<=daysInMonth; d++) {
+    const dStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = dStr === todayString;
+    const dayTasks = tasksByDate[dStr] || [];
+    
+    let taskHtml = "";
+    let popoverHtml = "";
+    
+    if(dayTasks.length) {
+      popoverHtml += `<div class="cal-popover">`;
+      dayTasks.forEach(t => {
+        let stClass = "st-pending";
+        if(t.status==="in_progress") stClass="st-active";
+        if(t.status==="submitted") stClass="st-review";
+        if(t.status==="approved") stClass="st-done";
+        
+        taskHtml += `<div class="cal-pill ${stClass}">${t.title||'Untitled'}</div>`;
+        
+        popoverHtml += `
+          <div class="cal-pop-item">
+            <div class="cal-pop-title">${t.title||'Untitled'}</div>
+            <div class="cal-pop-meta">${t.client||'Quick Task'} • ${spLabel(t.status)}</div>
+            ${t.status === "not_started" ? `<button class="cal-pop-btn" onclick="startTask('${t.notion_id}')">▶ Start Task</button>` : ''}
+          </div>
+        `;
+      });
+      popoverHtml += `</div>`;
+    }
+
+    html += `
+      <div class="cal-cell ${isToday ? 'today' : ''}">
+        <span class="cal-date-num">${d}</span>
+        <div class="cal-tasks">${taskHtml}</div>
+        ${popoverHtml}
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  return html;
 }
 
 function attachSubmitHandlers() {
