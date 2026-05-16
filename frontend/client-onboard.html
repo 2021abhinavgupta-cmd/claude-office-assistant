@@ -54,6 +54,8 @@
     .tp-title-input:focus{border-color:var(--acc)}
     .tp-who-select{background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;outline:none;cursor:pointer;transition:border-color .2s}
     .tp-who-select:focus{border-color:var(--acc);color:var(--txt)}
+    .tp-date-input{background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;outline:none;transition:border-color .2s;width:130px}
+    .tp-date-input:focus{border-color:var(--acc);color:var(--txt)}
     .tp-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:4px 6px;border-radius:4px;transition:color .2s;flex-shrink:0}
     .tp-del:hover{color:var(--red)}
     .add-task-btn{display:flex;align-items:center;gap:7px;background:transparent;border:1px dashed var(--bdr);border-radius:var(--rs);color:var(--muted);padding:8px 14px;font-size:.82rem;cursor:pointer;width:100%;margin-top:10px;transition:all .2s}
@@ -97,7 +99,7 @@
     </div>
     <div class="fg"><label>Requirements / Project Scope</label><textarea id="requirements" placeholder="Describe what the client needs — website redesign, social media package, video production..."></textarea></div>
     <div class="two">
-      <div class="fg"><label>Project Deadline</label><input type="date" id="deadline"/></div>
+      <div class="fg"><label>Final Due Date (Client Deadline)</label><input type="date" id="deadline"/></div>
       <div class="fg"><label>Budget (₹)</label><input type="text" id="budget" placeholder="e.g. 50,000"/></div>
     </div>
     <div class="fg"><label>Special Notes</label><input type="text" id="notes" placeholder="Any special requirements, restrictions, or context..."/></div>
@@ -239,13 +241,14 @@ function goStep3(){
 
 const EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<option value="${id}">${name}</option>`).join("");
 
-function addTaskRow(container, title="", who="", idx=0){
+function addTaskRow(container, title="", who="", idx=0, dueDate=""){
   const row=document.createElement("div");
   row.className="task-row";
   row.innerHTML=`
     <span class="tp-icon">${idx===0?"🔑":"→"}</span>
     <input class="tp-title-input" value="${title.replace(/"/g,'&quot;')}" placeholder="Task name…" />
     <select class="tp-who-select">${EMP_OPTS}</select>
+    <input class="tp-date-input" type="date" value="${dueDate}" title="Task due date" />
     <button class="tp-del" onclick="removeTask(this)" title="Remove task">✕</button>`;
   row.querySelector(".tp-who-select").value=who||"emp001";
   container.appendChild(row);
@@ -274,8 +277,9 @@ async function createClient(){
   // Collect tasks from the editable DOM rows
   const taskRows=[...document.querySelectorAll(".task-row")];
   const customTasks=taskRows.map(row=>({
-    title: row.querySelector(".tp-title-input").value.trim(),
-    who:   row.querySelector(".tp-who-select").value,
+    title:    row.querySelector(".tp-title-input").value.trim(),
+    who:      row.querySelector(".tp-who-select").value,
+    due_date: row.querySelector(".tp-date-input").value || "",
   })).filter(t=>t.title);
 
   if(!customTasks.length){
@@ -311,7 +315,7 @@ async function createClient(){
           budget:       document.getElementById("budget").value.trim(),
           notes:        document.getElementById("notes").value.trim(),
           services:     [...selected],
-          tasks:        customTasks,
+          tasks:        customTasks.map(t => ({ title: t.title, who: t.who, due_date: t.due_date })),
         }),
         signal: AbortSignal.timeout(20000),
       });

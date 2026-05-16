@@ -3218,7 +3218,7 @@ def notion_create_client():
                 client_name=name,
                 client_notion_id=client["notion_id"],
                 assigned_to=emp_name,
-                due_date=deadline,
+                due_date=t.get("due_date", "") or deadline,
                 status="not_started",
                 service=svc_map.get(emp_id, "general"),
             )
