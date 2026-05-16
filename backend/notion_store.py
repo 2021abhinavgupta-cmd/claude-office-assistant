@@ -332,7 +332,7 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
     if assigned_to is not None:
         props["Assigned To"] = _select(assigned_to)
     if new_title is not None:
-        props["Task Name"] = _title(new_title)  # Assuming title property is 'Task Name'
+        props["Task"] = _title(new_title)  # The title property is called 'Task'
     if due_date is not None:
         props["Due Date"] = _date(due_date)
 

@@ -3310,9 +3310,11 @@ def notion_delete_client(notion_id: str):
     # We will fetch dashboard data, find this client's tasks, and archive them.
     dashboard = notion_store.get_dashboard_data()
     for client in dashboard.get("clients", []):
-        if client["id"] == notion_id:
+        cid = client.get("notion_id", client.get("id"))
+        if cid == notion_id:
             for t in client.get("tasks", []):
-                notion_store.archive_notion_page(t["id"])
+                tid = t.get("notion_id", t.get("id"))
+                notion_store.archive_notion_page(tid)
             break
 
     if notion_store.archive_notion_page(notion_id):
