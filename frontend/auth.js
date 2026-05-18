@@ -9,6 +9,9 @@ function getAuthApiBase() {
     : location.origin;
 }
 
+// Hide immediately to prevent flash of protected content while auth check is in flight
+document.documentElement.style.visibility = 'hidden';
+
 (async function authGuard() {
   const authApi = getAuthApiBase();
 
@@ -33,9 +36,12 @@ function getAuthApiBase() {
     };
     localStorage.setItem("claude_office_user", JSON.stringify(user));
     window.__currentUser = user;
+    // Auth passed — reveal the page
+    document.documentElement.style.visibility = 'visible';
 
   } catch (e) {
-    // Network error — redirect to login, don't allow through
+    // Network error — reveal page then redirect to login
+    document.documentElement.style.visibility = 'visible';
     console.warn("[auth.js] Network error during verify — redirecting to login:", e.message);
     window.location.href = "login.html?error=network";
   }
