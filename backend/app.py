@@ -76,7 +76,7 @@ logger.addHandler(file_handler)
 # ── Flask App ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
-CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 Compress(app)
 
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
