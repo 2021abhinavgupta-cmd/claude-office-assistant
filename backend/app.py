@@ -2083,6 +2083,19 @@ def get_projects():
     conn.close()
     return jsonify({"clients": clients})
 
+# ── GET /api/clients ──────────────────────────────────────────────────────────
+@app.route("/api/clients", methods=["GET"])
+def get_clients():
+    """List all clients (alias for /api/projects GET). Used by client-onboard.html."""
+    user_id = request.args.get("user_id", "")
+    conn = _pt_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id,name,contact,requirements,deadline,status,created_at FROM clients ORDER BY created_at DESC")
+    clients = [_client_row_to_dict(r) for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"clients": clients})
+
+
 # ── POST /api/clients ─────────────────────────────────────────────────────────
 @app.route("/api/clients", methods=["POST"])
 def create_client():

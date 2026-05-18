@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Client Portal | Claude Office Assistant</title>
+  <meta name="description" content="Client delivery portal — track project tasks and delivery status for all active clients."/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="auth.js"></script>
+  <script src="shared-config.js"></script>
+  <style>
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--pur:#a78bfa;--r:14px;--rs:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden}
+
+    /* Background orbs */
+    .bg-orbs{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+    .orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.07;animation:drift 22s ease-in-out infinite}
+    .o1{width:500px;height:500px;background:var(--acc);top:-10%;left:-5%}
+    .o2{width:380px;height:380px;background:var(--pur);bottom:-8%;right:-5%;animation-delay:-8s}
+    .o3{width:280px;height:280px;background:var(--grn);top:50%;left:55%;animation-delay:-15s}
+    @keyframes drift{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-25px) scale(1.07)}66%{transform:translate(-18px,35px) scale(.94)}}
+
+    .wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:28px 24px}
+
+    /* Header */
+    .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;flex-wrap:wrap;gap:14px}
+    .hdr-left h1{font-family:'Syne',sans-serif;font-size:1.75rem;font-weight:800}
+    .hdr-left h1 span{color:var(--acc)}
+    .hdr-left p{color:var(--muted);font-size:.82rem;margin-top:3px}
+    .nav{display:flex;gap:8px;flex-wrap:wrap}
+    .nl{padding:7px 14px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--muted);text-decoration:none;font-size:.8rem;transition:all .2s}
+    .nl:hover{color:var(--txt);border-color:var(--acc)}
+    .btn{padding:9px 18px;border-radius:var(--rs);border:none;font-size:.84rem;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+    .btn-acc{background:var(--acc);color:#000}.btn-acc:hover{opacity:.9;transform:translateY(-1px)}
+    .btn-ghost{background:var(--s2);border:1px solid var(--bdr);color:var(--muted)}.btn-ghost:hover{color:var(--txt);border-color:var(--acc)}
+
+    /* Summary bar */
+    .summary-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px}
+    .kpi{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:18px 20px;position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s}
+    .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+    .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--kc,var(--acc))}
+    .kpi-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+    .kpi-val{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums}
+    .kpi-sub{font-size:.72rem;color:var(--muted);margin-top:3px}
+
+    /* Search + filter bar */
+    .filter-bar{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap;align-items:center}
+    .search-box{flex:1;min-width:200px;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:9px 14px;font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none;transition:border-color .2s}
+    .search-box:focus{border-color:var(--acc)}
+    .filter-btn{padding:7px 14px;border-radius:100px;border:1px solid var(--bdr);background:transparent;color:var(--muted);font-size:.78rem;cursor:pointer;transition:all .2s}
+    .filter-btn.active{background:rgba(245,166,35,.12);border-color:var(--acc);color:var(--acc)}
+
+    /* Client cards */
+    .clients-grid{display:flex;flex-direction:column;gap:16px}
+    .client-card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;transition:border-color .2s}
+    .client-card:hover{border-color:rgba(255,255,255,.14)}
+    .client-head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;cursor:pointer;gap:12px;flex-wrap:wrap}
+    .client-head-left{display:flex;align-items:center;gap:14px}
+    .client-avatar{width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,var(--acc),#e07b0f);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#000;flex-shrink:0}
+    .client-name{font-weight:700;font-size:1rem}
+    .client-meta{font-size:.76rem;color:var(--muted);margin-top:2px}
+    .client-head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .progress-wrap{display:flex;align-items:center;gap:10px}
+    .prog-bar{width:110px;height:6px;background:var(--s2);border-radius:100px;overflow:hidden}
+    .prog-fill{height:100%;border-radius:100px;background:linear-gradient(90deg,var(--grn),#17a076);transition:width .6s cubic-bezier(.4,0,.2,1)}
+    .prog-fill.warn{background:linear-gradient(90deg,var(--acc),#c77a00)}
+    .prog-fill.risk{background:linear-gradient(90deg,var(--red),#c04040)}
+    .prog-pct{font-size:.78rem;font-weight:600;min-width:32px;text-align:right}
+    .status-pill{padding:3px 10px;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap}
+    .pill-active{background:rgba(34,211,160,.12);color:var(--grn);border:1px solid rgba(34,211,160,.2)}
+    .pill-done{background:rgba(91,163,255,.12);color:var(--blu);border:1px solid rgba(91,163,255,.2)}
+    .pill-risk{background:rgba(255,92,92,.12);color:var(--red);border:1px solid rgba(255,92,92,.2)}
+    .pill-paused{background:rgba(107,107,138,.12);color:var(--muted);border:1px solid rgba(107,107,138,.2)}
+    .chevron{color:var(--muted);font-size:.8rem;transition:transform .25s;flex-shrink:0}
+    .client-card.open .chevron{transform:rotate(180deg)}
+
+    /* Task list */
+    .task-list{display:none;padding:0 22px 18px;border-top:1px solid var(--bdr)}
+    .client-card.open .task-list{display:block}
+    .task-section-hdr{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:14px 0 8px;border-bottom:1px solid var(--bdr);margin-bottom:8px;display:flex;justify-content:space-between}
+    .task-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+    .task-item:last-child{border-bottom:none}
+    .task-status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .dot-done{background:var(--grn)}
+    .dot-progress{background:var(--blu)}
+    .dot-review{background:var(--acc)}
+    .dot-waiting{background:var(--muted)}
+    .dot-risk{background:var(--red)}
+    .task-info{flex:1;min-width:0}
+    .task-title{font-size:.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .task-title.done-text{color:var(--muted);text-decoration:line-through}
+    .task-assignee{font-size:.72rem;color:var(--muted);margin-top:2px}
+    .task-badge{padding:2px 8px;border-radius:100px;font-size:.65rem;font-weight:700;white-space:nowrap;flex-shrink:0}
+    .badge-done{background:rgba(34,211,160,.12);color:var(--grn)}
+    .badge-in_progress{background:rgba(91,163,255,.12);color:var(--blu)}
+    .badge-review{background:rgba(245,166,35,.12);color:var(--acc)}
+    .badge-not_started{background:rgba(107,107,138,.12);color:var(--muted)}
+    .badge-blocked{background:rgba(255,92,92,.12);color:var(--red)}
+    .badge-approved{background:rgba(34,211,160,.15);color:var(--grn)}
+    .task-pct{font-size:.72rem;color:var(--muted);min-width:28px;text-align:right}
+    .empty-tasks{color:var(--muted);font-size:.83rem;padding:16px 0;text-align:center}
+    .blocker-note{font-size:.72rem;color:var(--red);margin-top:3px}
+
+    /* Loading / empty */
+    .loading{text-align:center;padding:60px 20px;color:var(--muted)}
+    .spinner{display:inline-block;width:32px;height:32px;border:3px solid var(--bdr);border-top-color:var(--acc);border-radius:50%;animation:spin 0.7s linear infinite;margin-bottom:14px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .empty-state{text-align:center;padding:60px 20px}
+    .empty-state .ei{font-size:3.5rem;margin-bottom:14px}
+    .empty-state p{color:var(--muted);margin-bottom:20px}
+
+    /* Deadline badge */
+    .deadline-badge{font-size:.68rem;padding:2px 8px;border-radius:100px;background:var(--s2);border:1px solid var(--bdr);color:var(--muted)}
+    .deadline-badge.soon{border-color:rgba(245,166,35,.3);color:var(--acc)}
+    .deadline-badge.overdue{border-color:rgba(255,92,92,.3);color:var(--red)}
+
+    @media(max-width:600px){
+      .hdr{flex-direction:column;align-items:flex-start}
+      .prog-bar{width:70px}
+      .client-head-right{gap:6px}
+    }
+  </style>
+</head>
+<body>
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
+</div>
+
+<div class="wrap">
+
+  <!-- Header -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <h1>🔒 Client <span>Portal</span></h1>
+      <p>Live delivery status for all active client projects</p>
+    </div>
+    <nav class="nav">
+      <a href="projects.html" class="nl">📋 Project Board</a>
+      <a href="standup.html" class="nl">☀️ Standup</a>
+      <a href="index.html" class="nl">⌨️ Chat</a>
+      <a href="client-onboard.html" class="nl" id="onboard-btn" style="display:none">➕ New Client</a>
+    </nav>
+  </header>
+
+  <!-- KPI summary -->
+  <div class="summary-bar" id="kpi-bar">
+    <div class="kpi" style="--kc:var(--acc)">
+      <div class="kpi-label">Total Clients</div>
+      <div class="kpi-val" id="kpi-total">—</div>
+      <div class="kpi-sub">Active projects</div>
+    </div>
+    <div class="kpi" style="--kc:var(--grn)">
+      <div class="kpi-label">Completed</div>
+      <div class="kpi-val" id="kpi-done">—</div>
+      <div class="kpi-sub">Tasks delivered</div>
+    </div>
+    <div class="kpi" style="--kc:var(--blu)">
+      <div class="kpi-label">In Progress</div>
+      <div class="kpi-val" id="kpi-prog">—</div>
+      <div class="kpi-sub">Tasks ongoing</div>
+    </div>
+    <div class="kpi" style="--kc:var(--red)">
+      <div class="kpi-label">Blocked / At Risk</div>
+      <div class="kpi-val" id="kpi-risk">—</div>
+      <div class="kpi-sub">Needs attention</div>
+    </div>
+    <div class="kpi" style="--kc:var(--pur)">
+      <div class="kpi-label">Avg Completion</div>
+      <div class="kpi-val" id="kpi-avg">—</div>
+      <div class="kpi-sub">Across all clients</div>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <input type="text" class="search-box" id="search-input" placeholder="🔍 Search clients or tasks…" oninput="applyFilters()"/>
+    <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
+    <button class="filter-btn" data-filter="active" onclick="setFilter('active',this)">🟢 Active</button>
+    <button class="filter-btn" data-filter="risk" onclick="setFilter('risk',this)">🔴 At Risk</button>
+    <button class="filter-btn" data-filter="done" onclick="setFilter('done',this)">✅ Complete</button>
+    <button class="btn btn-ghost" onclick="loadPortal()" title="Refresh">↻ Refresh</button>
+  </div>
+
+  <!-- Clients list -->
+  <div class="clients-grid" id="clients-grid">
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Loading client data…</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+  ? 'http://localhost:5000'
+  : location.origin;
+
+const user = JSON.parse(localStorage.getItem('claude_office_user') || '{}');
+const UID = user.user_id || '';
+const IS_ADMIN = user.is_admin === true;
+
+// Show onboard button for admins
+if (IS_ADMIN) {
+  const ob = document.getElementById('onboard-btn');
+  if (ob) ob.style.display = 'inline-flex';
+}
+
+let allClients = [];
+let currentFilter = 'all';
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+function statusLabel(s) {
+  const m = {
+    done:'Done', approved:'Approved', in_progress:'In Progress',
+    review:'In Review', not_started:'Not Started', blocked:'Blocked'
+  };
+  return m[s] || s || '—';
+}
+function badgeClass(s) {
+  if (s === 'done' || s === 'approved') return 'badge-done';
+  if (s === 'in_progress') return 'badge-in_progress';
+  if (s === 'review') return 'badge-review';
+  if (s === 'blocked') return 'badge-blocked';
+  return 'badge-not_started';
+}
+function dotClass(s) {
+  if (s === 'done' || s === 'approved') return 'dot-done';
+  if (s === 'in_progress') return 'dot-progress';
+  if (s === 'review') return 'dot-review';
+  if (s === 'blocked') return 'dot-risk';
+  return 'dot-waiting';
+}
+
+function clientOverallStatus(tasks) {
+  if (!tasks || tasks.length === 0) return 'active';
+  const statuses = tasks.map(t => t.status || 'not_started');
+  const blocked = statuses.filter(s => s === 'blocked').length;
+  const done = statuses.filter(s => s === 'done' || s === 'approved').length;
+  if (blocked > 0) return 'risk';
+  if (done === tasks.length) return 'done';
+  return 'active';
+}
+
+function clientProgress(tasks) {
+  if (!tasks || tasks.length === 0) return 0;
+  const total = tasks.reduce((s, t) => s + (t.progress || 0), 0);
+  return Math.round(total / tasks.length);
+}
+
+function deadlineLabel(deadline) {
+  if (!deadline) return '';
+  const d = new Date(deadline);
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const diff = Math.floor((d - now) / 86400000);
+  let cls = '';
+  let label = d.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'2-digit' });
+  if (diff < 0) { cls = 'overdue'; label = '⚠️ Overdue · ' + label; }
+  else if (diff <= 7) { cls = 'soon'; label = '⏳ ' + diff + 'd left · ' + label; }
+  return `<span class="deadline-badge ${cls}">${label}</span>`;
+}
+
+function pillForStatus(s) {
+  if (s === 'done') return '<span class="status-pill pill-done">Complete</span>';
+  if (s === 'risk') return '<span class="status-pill pill-risk">At Risk</span>';
+  if (s === 'paused') return '<span class="status-pill pill-paused">Paused</span>';
+  return '<span class="status-pill pill-active">Active</span>';
+}
+
+// ── Build KPIs ────────────────────────────────────────────────────────────────
+function renderKPIs(clients) {
+  let totalDone = 0, totalProg = 0, totalRisk = 0, totalPct = 0;
+  clients.forEach(c => {
+    (c.tasks || []).forEach(t => {
+      if (t.status === 'done' || t.status === 'approved') totalDone++;
+      else if (t.status === 'in_progress') totalProg++;
+      else if (t.status === 'blocked') totalRisk++;
+    });
+    totalPct += clientProgress(c.tasks || []);
+  });
+  document.getElementById('kpi-total').textContent = clients.length;
+  document.getElementById('kpi-done').textContent = totalDone;
+  document.getElementById('kpi-prog').textContent = totalProg;
+  document.getElementById('kpi-risk').textContent = totalRisk;
+  document.getElementById('kpi-avg').textContent = clients.length
+    ? Math.round(totalPct / clients.length) + '%'
+    : '—';
+}
+
+// ── Render client cards ───────────────────────────────────────────────────────
+function renderClients(clients) {
+  const grid = document.getElementById('clients-grid');
+  if (!clients.length) {
+    grid.innerHTML = `<div class="empty-state">
+      <div class="ei">📭</div>
+      <p>No clients match your current filter.</p>
+      <button class="btn btn-ghost" onclick="setFilter('all', document.querySelector('[data-filter=all]'))">Show All</button>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = clients.map((c, ci) => {
+    const tasks = c.tasks || [];
+    const pct = clientProgress(tasks);
+    const ovStatus = clientOverallStatus(tasks);
+    const fillClass = pct >= 100 ? '' : pct >= 60 ? 'warn' : pct >= 30 ? '' : 'risk';
+    const avatarLetter = (c.name || '?')[0].toUpperCase();
+    const sorted = [...tasks].sort((a, b) => {
+      const order = { blocked: 0, in_progress: 1, review: 2, not_started: 3, done: 4, approved: 5 };
+      return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+    });
+
+    const taskRows = sorted.map(t => {
+      const isDone = t.status === 'done' || t.status === 'approved';
+      const blocker = t.rejection_note
+        ? `<div class="blocker-note">🚫 ${t.rejection_note.slice(0, 80)}${t.rejection_note.length > 80 ? '…' : ''}</div>`
+        : '';
+      return `<div class="task-item">
+        <div class="task-status-dot ${dotClass(t.status)}"></div>
+        <div class="task-info">
+          <div class="task-title${isDone ? ' done-text' : ''}">${t.title || 'Untitled task'}</div>
+          <div class="task-assignee">${t.assigned_to ? '👤 ' + t.assigned_to : '—'}</div>
+          ${blocker}
+        </div>
+        <span class="task-badge ${badgeClass(t.status)}">${statusLabel(t.status)}</span>
+        <div class="task-pct">${t.progress || 0}%</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="client-card${ci === 0 ? ' open' : ''}" id="cc-${ci}">
+      <div class="client-head" onclick="toggleCard(${ci})">
+        <div class="client-head-left">
+          <div class="client-avatar">${avatarLetter}</div>
+          <div>
+            <div class="client-name">${c.name}</div>
+            <div class="client-meta">
+              ${tasks.length} task${tasks.length !== 1 ? 's' : ''}
+              ${c.contact ? ' · ' + c.contact : ''}
+            </div>
+          </div>
+        </div>
+        <div class="client-head-right">
+          ${deadlineLabel(c.deadline)}
+          <div class="progress-wrap">
+            <div class="prog-bar"><div class="prog-fill ${fillClass}" style="width:${pct}%"></div></div>
+            <span class="prog-pct">${pct}%</span>
+          </div>
+          ${pillForStatus(ovStatus)}
+          <span class="chevron">▼</span>
+        </div>
+      </div>
+      <div class="task-list">
+        <div class="task-section-hdr">
+          <span>Tasks (${tasks.length})</span>
+          <span style="font-size:.68rem;color:var(--muted)">Status · Assignee · Progress</span>
+        </div>
+        ${taskRows || '<div class="empty-tasks">No tasks assigned yet.</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCard(idx) {
+  const card = document.getElementById('cc-' + idx);
+  card.classList.toggle('open');
+}
+
+// ── Filter & search ──────────────────────────────────────────────────────────
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  const q = (document.getElementById('search-input').value || '').toLowerCase();
+  let filtered = allClients.filter(c => {
+    const ov = clientOverallStatus(c.tasks || []);
+    if (currentFilter !== 'all' && ov !== currentFilter) return false;
+    if (q) {
+      const match =
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.contact || '').toLowerCase().includes(q) ||
+        (c.tasks || []).some(t => (t.title || '').toLowerCase().includes(q) || (t.assigned_to || '').toLowerCase().includes(q));
+      if (!match) return false;
+    }
+    return true;
+  });
+  renderKPIs(filtered);
+  renderClients(filtered);
+}
+
+// ── Main load ─────────────────────────────────────────────────────────────────
+async function loadPortal() {
+  const grid = document.getElementById('clients-grid');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading client data…</p></div>';
+
+  try {
+    // Try Notion first, fall back to SQLite
+    const nsRes = await fetch(`${API}/api/notion/status`, { signal: AbortSignal.timeout(5000) }).catch(() => null);
+    const notionOk = nsRes && nsRes.ok && (await nsRes.json()).configured;
+
+    if (notionOk) {
+      const dashRes = await fetch(`${API}/api/notion/dashboard`, { signal: AbortSignal.timeout(15000) });
+      if (dashRes.ok) {
+        const dash = await dashRes.json();
+        // Notion dashboard returns clients with tasks nested
+        allClients = (dash.clients || []).map(c => ({
+          ...c,
+          name: c.name || c.client_name || 'Unknown',
+          tasks: c.tasks || [],
+        }));
+      } else {
+        throw new Error('Notion dashboard failed');
+      }
+    } else {
+      // SQLite fallback
+      const r = await fetch(`${API}/api/clients`, { signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error('Could not load clients');
+      const data = await r.json();
+      // Fetch tasks for each client
+      const clientsRaw = data.clients || [];
+      allClients = await Promise.all(clientsRaw.map(async c => {
+        try {
+          const tr = await fetch(`${API}/api/clients/${c.id}/tasks`, { signal: AbortSignal.timeout(8000) });
+          const td = tr.ok ? await tr.json() : {};
+          return { ...c, tasks: td.tasks || [] };
+        } catch {
+          return { ...c, tasks: [] };
+        }
+      }));
+    }
+
+    renderKPIs(allClients);
+    applyFilters();
+
+  } catch (err) {
+    grid.innerHTML = `<div class="empty-state">
+      <div class="ei">⚠️</div>
+      <p style="color:var(--red);margin-bottom:8px">Failed to load client data</p>
+      <p style="color:var(--muted);font-size:.82rem;margin-bottom:20px">${err.message}</p>
+      <button class="btn btn-ghost" onclick="loadPortal()">↻ Try Again</button>
+      <a href="projects.html" class="btn btn-ghost" style="text-decoration:none;margin-left:8px">📋 Project Board</a>
+    </div>`;
+  }
+}
+
+loadPortal();
+</script>
+</body>
+</html>
