@@ -67,9 +67,16 @@ def init_db():
             title        TEXT NOT NULL,
             status       TEXT DEFAULT 'pending',
             carried_from TEXT DEFAULT NULL,
+            blocker      TEXT DEFAULT NULL,
             created_at   TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_standup_tasks_user_date ON standup_tasks (user_id, date)")
+        
+        try:
+            conn.execute("ALTER TABLE standup_tasks ADD COLUMN blocker TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
 
 
         # Task risk escalation log (tracks alert level per task)

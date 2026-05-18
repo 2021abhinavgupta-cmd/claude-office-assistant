@@ -88,18 +88,18 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status FROM standup_tasks WHERE date=? AND user_id=? ORDER BY id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? AND user_id=? ORDER BY id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status FROM standup_tasks WHERE date=? ORDER BY id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? ORDER BY id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
     
     tasks_by_user = {}
-    for uid, title, status in task_rows:
+    for uid, title, status, blocker in task_rows:
         if uid not in tasks_by_user:
             tasks_by_user[uid] = []
-        tasks_by_user[uid].append({"title": title, "status": status})
+        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker})
 
     EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
                  "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
@@ -152,27 +152,27 @@ def get_my_tasks():
         from datetime import timedelta
         yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
         cur.execute(
-            "SELECT title FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+            "SELECT title, blocker FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
             (user_id, yesterday),
         )
         pending = cur.fetchall()
         if pending:
             with conn:
-                for (title,) in pending:
+                for title, blocker in pending:
                     conn.execute(
-                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from) VALUES (?,?,?,'pending',?)",
-                        (user_id, date_str, title, yesterday),
+                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
+                        (user_id, date_str, title, yesterday, blocker),
                     )
 
     cur.execute(
-        "SELECT id, title, status, carried_from, created_at FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
+        "SELECT id, title, status, carried_from, created_at, blocker FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
         (user_id, date_str),
     )
     rows = cur.fetchall()
     conn.close()
     tasks = [
         {"id": r[0], "title": r[1], "status": r[2],
-         "carried_from": r[3], "created_at": r[4]}
+         "carried_from": r[3], "created_at": r[4], "blocker": r[5]}
         for r in rows
     ]
     return jsonify({"tasks": tasks, "date": date_str})
@@ -205,17 +205,32 @@ def add_my_task():
 @ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["PATCH"])
 def update_my_task(task_id: int):
     """
-    Toggle a task's status between 'done' and 'pending'.
-    Body: { status: 'done' | 'pending' }
+    Update a task's status or blocker.
+    Body: { status?: 'done' | 'pending', blocker?: str }
     """
     body   = request.get_json(silent=True) or {}
-    status = body.get("status", "").strip()
-    if status not in ("done", "pending"):
-        return jsonify({"error": "status must be 'done' or 'pending'"}), 400
+    status = body.get("status")
+    blocker = body.get("blocker")
+    
+    updates = []
+    params = []
+    if status is not None:
+        if status not in ("done", "pending"):
+            return jsonify({"error": "status must be 'done' or 'pending'"}), 400
+        updates.append("status=?")
+        params.append(status)
+    if blocker is not None:
+        updates.append("blocker=?")
+        params.append(blocker)
+
+    if not updates:
+        return jsonify({"error": "no updates provided"}), 400
+        
+    params.append(task_id)
 
     conn = _su_conn()
     with conn:
-        conn.execute("UPDATE standup_tasks SET status=? WHERE id=?", (status, task_id))
+        conn.execute(f"UPDATE standup_tasks SET {', '.join(updates)} WHERE id=?", params)
     conn.close()
     return jsonify({"success": True})
 
@@ -250,7 +265,7 @@ def carry_over_tasks():
     conn = _su_conn()
     cur  = conn.cursor()
     cur.execute(
-        "SELECT title FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+        "SELECT title, blocker FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
         (user_id, today),
     )
     pending = cur.fetchall()
@@ -258,7 +273,7 @@ def carry_over_tasks():
     carried = 0
     if pending:
         with conn:
-            for (title,) in pending:
+            for title, blocker in pending:
                 # Avoid duplicating if already carried (idempotent)
                 cur2 = conn.cursor()
                 cur2.execute(
@@ -267,8 +282,8 @@ def carry_over_tasks():
                 )
                 if not cur2.fetchone():
                     conn.execute(
-                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from) VALUES (?,?,?,'pending',?)",
-                        (user_id, tomorrow, title, today),
+                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
+                        (user_id, tomorrow, title, today, blocker),
                     )
                     carried += 1
     conn.close()
