@@ -6,6 +6,7 @@
   <title>Project Board | Claude Office Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script src="auth.js"></script>
+  <script src="shared-config.js"></script>
   <style>
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:12px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
@@ -339,7 +340,7 @@ const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
 const UID = user.user_id || "emp003";
 
 // Employee lookups — works for both emp-id keys (SQLite) and name keys (Notion)
-const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
+let EMP = {};
 // Role column — supports both emp-id (SQLite) and name strings (Notion)
 const ROLE_COL = {
   emp001:"Website", Vidit:"Website",
@@ -363,7 +364,9 @@ function updateMsDisplay(wrapId) {
   else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadEmployees();
+  EMP = window.EMP_DICT;
   const options = Object.entries(EMP).map(([id, n]) => `<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this.closest('.ms-wrap').querySelector('.ms-display').id)"> ${n}</label>`).join("");
   document.getElementById("qt-assign-dropdown").innerHTML = options;
   document.getElementById("et-assign-dropdown").innerHTML = options;

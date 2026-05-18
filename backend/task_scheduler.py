@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 import json
 from pathlib import Path
+import notion_store
 
 # Risk escalation thresholds (days overdue)
 RISK_THRESHOLDS = {
@@ -48,15 +49,24 @@ def check_overdue_tasks():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT t.id, t.title, t.assigned_to, t.due_date, t.status, c.name as client_name
-        FROM tasks t
-        JOIN clients c ON t.client_id = c.id
-        WHERE t.due_date IS NOT NULL
-          AND t.due_date != ''
-          AND t.status NOT IN ('approved', 'not_started')
-    """)
-    tasks = cur.fetchall()
+    if notion_store.is_configured():
+        logger.info("Using Notion mode for overdue task check.")
+        all_tasks = notion_store.list_tasks()
+        tasks = []
+        for t in all_tasks:
+            if t.get("due_date") and t.get("status") not in ("approved", "not_started"):
+                assignee = t.get("assigned_to", "")
+                tasks.append((t["notion_id"], t["title"], assignee, t["due_date"], t["status"], t.get("client_name", "Unknown")))
+    else:
+        cur.execute("""
+            SELECT t.id, t.title, t.assigned_to, t.due_date, t.status, c.name as client_name
+            FROM tasks t
+            JOIN clients c ON t.client_id = c.id
+            WHERE t.due_date IS NOT NULL
+              AND t.due_date != ''
+              AND t.status NOT IN ('approved', 'not_started')
+        """)
+        tasks = cur.fetchall()
 
     alerts_fired = []
     emp_names = _load_emp_names()
@@ -189,18 +199,36 @@ def get_all_alerts(days_back: int = 7) -> list:
     """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT tr.task_id, tr.risk_level, tr.updated_at,
-               t.title, t.assigned_to, t.due_date, t.status,
-               c.name as client_name
-        FROM task_risk tr
-        JOIN tasks t ON tr.task_id = t.id
-        JOIN clients c ON t.client_id = c.id
-        WHERE tr.risk_level IN ('at_risk', 'critical')
-          AND t.status NOT IN ('approved')
-        ORDER BY CASE tr.risk_level WHEN 'critical' THEN 0 WHEN 'at_risk' THEN 1 ELSE 2 END
-    """)
-    rows = cur.fetchall()
+    if notion_store.is_configured():
+        rows = []
+        cur.execute("SELECT task_id, risk_level, updated_at FROM task_risk WHERE risk_level IN ('at_risk', 'critical')")
+        risk_map = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+        if not risk_map:
+            conn.close()
+            return []
+            
+        all_tasks = notion_store.list_tasks()
+        for t in all_tasks:
+            if t["notion_id"] in risk_map and t.get("status") != "approved":
+                r_lvl, u_at = risk_map[t["notion_id"]]
+                rows.append((t["notion_id"], r_lvl, u_at, t["title"], t.get("assigned_to", ""), t.get("due_date", ""), t.get("status", ""), t.get("client_name", "")))
+        
+        # Sort critical first
+        rows.sort(key=lambda x: 0 if x[1] == 'critical' else 1)
+    else:
+        cur.execute("""
+            SELECT tr.task_id, tr.risk_level, tr.updated_at,
+                   t.title, t.assigned_to, t.due_date, t.status,
+                   c.name as client_name
+            FROM task_risk tr
+            JOIN tasks t ON tr.task_id = t.id
+            JOIN clients c ON t.client_id = c.id
+            WHERE tr.risk_level IN ('at_risk', 'critical')
+              AND t.status NOT IN ('approved')
+            ORDER BY CASE tr.risk_level WHEN 'critical' THEN 0 WHEN 'at_risk' THEN 1 ELSE 2 END
+        """)
+        rows = cur.fetchall()
+    
     conn.close()
     
     emp_names = _load_emp_names()

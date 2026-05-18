@@ -76,8 +76,18 @@ logger.addHandler(file_handler)
 # ── Flask App ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 Compress(app)
+
+# ── Rate Limiting ─────────────────────────────────────────────────────────────
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
 
 # ── Start background scheduler ────────────────────────────────────────────────
 _scheduler = task_scheduler.init_scheduler(app)
@@ -802,8 +812,12 @@ def _load_employees() -> dict:
 
 
 def _save_employees(data: dict):
-    with open(EMPLOYEES_DB, "w") as f:
+    """Atomic write to avoid JSON corruption on concurrent check-ins."""
+    import tempfile
+    tmp = EMPLOYEES_DB.with_suffix(".tmp")
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp, EMPLOYEES_DB)
 
 
 def _duckduckgo_instant(query: str) -> dict:
@@ -1034,6 +1048,7 @@ def export_usage():
 
 # ── Main Chat ─────────────────────────────────────────────────────────────────
 @app.route("/api/chat", methods=["POST"])
+@limiter.limit("30 per minute; 500 per day")
 def chat():
     """
     Main chat endpoint.
@@ -1689,17 +1704,33 @@ def auth_login():
         return jsonify({"error": "Incorrect PIN"}), 401
 
     token = _create_session(user_id)
-    return jsonify({
+    resp = jsonify({
         "success": True,
         "token":   token,
         "user":    {"id": emp["id"], "name": emp["name"], "role": emp["role"],
                     "is_admin": _is_admin(user_id)},
     })
+    # Set HttpOnly cookie so JS can't read the token (XSS protection)
+    is_secure = os.getenv("FLASK_ENV", "development") != "development"
+    resp.set_cookie(
+        "session_token", token,
+        httponly=True,
+        samesite="Lax",
+        secure=is_secure,
+        max_age=30 * 24 * 60 * 60,  # 30 days
+    )
+    return resp
 
 @app.route("/api/auth/verify", methods=["GET"])
 def auth_verify():
     """Verify a session token. Used by frontend auth guard."""
-    token = request.headers.get("Authorization", "").replace("Bearer ", "") or request.headers.get("X-Session-Token", "") or request.args.get("token", "")
+    # Check HttpOnly cookie first, then fall back to Authorization header
+    token = (
+        request.cookies.get("session_token", "")
+        or request.headers.get("Authorization", "").replace("Bearer ", "")
+        or request.headers.get("X-Session-Token", "")
+        or request.args.get("token", "")
+    )
     user_id = _verify_session(token)
     if not user_id:
         return jsonify({"valid": False}), 401
@@ -1710,9 +1741,12 @@ def auth_verify():
 
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
-    """Invalidate a session token."""
-    body  = request.get_json(silent=True) or {}
-    token = body.get("token", "") or request.headers.get("Authorization", "").replace("Bearer ", "") or request.headers.get("X-Session-Token", "")
+    """Invalidate a session token and clear the HttpOnly cookie."""
+    token = (
+        request.cookies.get("session_token", "")
+        or (request.get_json(silent=True) or {}).get("token", "")
+        or request.headers.get("Authorization", "").replace("Bearer ", "")
+    )
     if token:
         user_id = _verify_session(token)
         if user_id:
@@ -1721,7 +1755,9 @@ def auth_logout():
         with conn:
             conn.execute("DELETE FROM sessions WHERE token=?", (token,))
         conn.close()
-    return jsonify({"success": True})
+    resp = jsonify({"success": True})
+    resp.delete_cookie("session_token")
+    return resp
 
 # ── Employee Tracking (WhatsApp Bot Support) ──────────────────────────────────
 @app.route("/api/employees", methods=["GET"])
@@ -2462,6 +2498,7 @@ def optimize_prompt():
 
 
 @app.route("/api/upload", methods=["POST"])
+@limiter.limit("20 per minute")
 def upload_file():
     """
     POST /api/upload   multipart: file=<file>
@@ -2469,11 +2506,22 @@ def upload_file():
     Images:    {type, filename, media_type, data (base64), size_bytes}
     Documents: {type, filename, content (str), pages?}
     """
+    ALLOWED_EXTENSIONS = {
+        ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+        ".docx", ".doc", ".txt", ".csv", ".xlsx", ".xls",
+        ".md", ".pptx",
+    }
+
     if 'file' not in request.files:
         return jsonify({"error": "No file field in request"}), 400
     f = request.files['file']
     if not f or f.filename == '':
         return jsonify({"error": "No file selected"}), 400
+
+    # Extension safelist check before any processing
+    ext = os.path.splitext(f.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": f"File type '{ext}' is not allowed."}), 415
 
     file_bytes = f.read()
     MAX_SIZE   = 20 * 1024 * 1024  # 20 MB

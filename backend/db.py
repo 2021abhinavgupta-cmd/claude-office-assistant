@@ -61,7 +61,7 @@ def init_db():
 
         # Task risk escalation log (tracks alert level per task)
         conn.execute("""CREATE TABLE IF NOT EXISTS task_risk (
-            task_id     INTEGER PRIMARY KEY,
+            task_id     TEXT PRIMARY KEY,
             risk_level  TEXT DEFAULT 'normal',
             alerted_day1 INTEGER DEFAULT 0,
             alerted_day2 INTEGER DEFAULT 0,

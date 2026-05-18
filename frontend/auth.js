@@ -12,18 +12,16 @@ function getAuthApiBase() {
 (async function authGuard() {
   const authApi = getAuthApiBase();
 
-  // sessionStorage is cleared when the tab is closed — auto-logout on tab close
-  const token = sessionStorage.getItem("_session_token");
-
-  // If no token at all → go to login
-  if (!token) {
+  // We check if they have local user data. If not, go to login.
+  const localUserStr = localStorage.getItem("claude_office_user");
+  if (!localUserStr) {
     window.location.href = "login.html";
     return;
   }
 
   try {
     const res = await fetch(`${authApi}/api/auth/verify`, {
-      headers: { "Authorization": `Bearer ${token}` }
+      credentials: "include"
     });
     const data = await res.json();
 
@@ -131,16 +129,14 @@ window.authLogout = async function () {
       keepalive: true,
     }).catch(() => {});
   }
-  if (token) {
     await fetch(`${authApi}/api/auth/logout`, {
       method: "POST",
       headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({ token }),
+      credentials: "include",
+      body: JSON.stringify({}),
     }).catch(() => {});
-  }
   sessionStorage.removeItem("_session_token");
   localStorage.removeItem("claude_office_user");
   window.location.href = "login.html";

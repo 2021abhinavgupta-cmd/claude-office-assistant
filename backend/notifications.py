@@ -18,57 +18,63 @@ If Twilio is not configured, all notifications are silently skipped (no crash).
 """
 
 import os
+import time
 import logging
+import requests
+from requests.auth import HTTPBasicAuth
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ── Config ────────────────────────────────────────────────────────────────────
-TWILIO_SID    = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_FROM   = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
-FOUNDER_WA    = os.getenv("FOUNDER_WHATSAPP", "")
+def _get_twilio_creds():
+    return {
+        "sid": os.getenv("TWILIO_ACCOUNT_SID", ""),
+        "token": os.getenv("TWILIO_AUTH_TOKEN", ""),
+        "from": os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886"),
+        "to": os.getenv("FOUNDER_WHATSAPP", ""),
+    }
 
-
-def _is_configured() -> bool:
-    return bool(TWILIO_SID and TWILIO_TOKEN and FOUNDER_WA)
+def _is_configured(creds) -> bool:
+    return bool(creds["sid"] and creds["token"] and creds["to"])
 
 
 def send_whatsapp(message: str) -> bool:
     """
     Send a WhatsApp message to the founder via Twilio.
+    Retries up to 3 times with exponential backoff.
     Returns True on success, False on failure or if not configured.
     """
-    if not _is_configured():
+    creds = _get_twilio_creds()
+    if not _is_configured(creds):
         logger.info("WhatsApp notifications not configured — skipping.")
         return False
 
-    try:
-        # Use requests directly to avoid requiring twilio SDK
-        import requests
-        from requests.auth import HTTPBasicAuth
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{creds['sid']}/Messages.json"
+    payload = {"From": creds["from"], "To": creds["to"], "Body": message}
+    auth = HTTPBasicAuth(creds["sid"], creds["token"])
 
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
-        payload = {
-            "From": TWILIO_FROM,
-            "To":   FOUNDER_WA,
-            "Body": message,
-        }
-        r = requests.post(
-            url,
-            data=payload,
-            auth=HTTPBasicAuth(TWILIO_SID, TWILIO_TOKEN),
-            timeout=10,
-        )
-        if r.status_code in (200, 201):
-            logger.info(f"WhatsApp sent: {message[:60]}...")
-            return True
-        else:
-            logger.error(f"WhatsApp failed: {r.status_code} — {r.text[:200]}")
+    for attempt in range(1, 4):  # 3 attempts: 0s, 2s, 4s
+        try:
+            r = requests.post(url, data=payload, auth=auth, timeout=10)
+            if r.status_code in (200, 201):
+                logger.info(f"WhatsApp sent (attempt {attempt}): {message[:60]}...")
+                return True
+            elif r.status_code in (429, 503):  # rate limit or service unavailable
+                wait = 2 ** (attempt - 1)
+                logger.warning(f"WhatsApp rate-limited ({r.status_code}), retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                logger.error(f"WhatsApp failed: {r.status_code} — {r.text[:200]}")
+                return False
+        except requests.exceptions.Timeout:
+            logger.warning(f"WhatsApp timeout on attempt {attempt}")
+            time.sleep(2 ** (attempt - 1))
+        except Exception:
+            logger.exception("WhatsApp notification error")
             return False
-    except Exception as e:
-        logger.error(f"WhatsApp notification error: {e}")
-        return False
+
+    logger.error("WhatsApp failed after 3 attempts.")
+    return False
 
 
 # ── Notification helpers ──────────────────────────────────────────────────────

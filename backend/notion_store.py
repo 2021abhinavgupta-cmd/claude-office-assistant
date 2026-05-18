@@ -15,6 +15,7 @@ If NOTION_TOKEN is not set, all functions return empty results gracefully (no cr
 """
 
 import os
+import time
 import logging
 import requests
 from typing import Optional
@@ -25,6 +26,35 @@ except ImportError:
     notify_task_status_changed = None
 
 logger = logging.getLogger(__name__)
+
+
+def _notion_request(method: str, url: str, **kwargs) -> requests.Response:
+    """
+    Make a Notion API request with 3-attempt exponential backoff.
+    Raises requests.HTTPError on final failure.
+    """
+    last_exc = None
+    for attempt in range(1, 4):
+        try:
+            r = requests.request(method, url, timeout=15, **kwargs)
+            if r.status_code == 429:  # Notion rate limit
+                wait = 2 ** (attempt - 1)
+                logger.warning(f"Notion rate-limited, retrying in {wait}s (attempt {attempt})")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            return r
+        except requests.exceptions.Timeout as e:
+            logger.warning(f"Notion request timed out (attempt {attempt}): {url}")
+            last_exc = e
+            time.sleep(2 ** (attempt - 1))
+        except requests.exceptions.HTTPError as e:
+            raise  # non-retryable HTTP errors bubble up immediately
+        except Exception as e:
+            logger.warning(f"Notion request error (attempt {attempt}): {e}")
+            last_exc = e
+            time.sleep(2 ** (attempt - 1))
+    raise requests.exceptions.ConnectionError(f"Notion request failed after 3 attempts: {url}") from last_exc
 
 NOTION_TOKEN      = os.getenv("NOTION_TOKEN", "")
 CLIENTS_DB_ID     = os.getenv("NOTION_CLIENTS_DB_ID", "")
@@ -159,18 +189,17 @@ def create_client(name: str, contact: str = "", requirements: str = "",
     }
 
     try:
-        r = requests.post(
+        r = _notion_request(
+            "POST",
             "https://api.notion.com/v1/pages",
             headers=_headers(),
             json=payload,
-            timeout=10,
         )
-        r.raise_for_status()
         page = r.json()
         logger.info(f"Notion: created client '{name}' — page {page['id']}")
         return {"notion_id": page["id"], "name": name}
-    except Exception as e:
-        logger.error(f"Notion create_client failed: {e}")
+    except Exception:
+        logger.exception(f"Notion create_client failed for '{name}'")
         return None
 
 
@@ -193,13 +222,12 @@ def list_clients(status_filter: str = "") -> list:
     try:
         has_more = True
         while has_more:
-            r = requests.post(
+            r = _notion_request(
+                "POST",
                 f"https://api.notion.com/v1/databases/{_clients_db()}/query",
                 headers=_headers(),
                 json=payload,
-                timeout=10,
             )
-            r.raise_for_status()
             data = r.json()
             pages = data.get("results", [])
             for p in pages:
@@ -215,14 +243,12 @@ def list_clients(status_filter: str = "") -> list:
                     "status":       _get_select(props.get("Status", {})),
                     "url":          p.get("url", ""),
                 })
-            
             has_more = data.get("has_more", False)
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
-                
         return clients
-    except Exception as e:
-        logger.error(f"Notion list_clients failed: {e}")
+    except Exception:
+        logger.exception("Notion list_clients failed")
         return []
 
 
@@ -231,16 +257,15 @@ def update_client_status(notion_id: str, status: str) -> bool:
     if not is_configured():
         return False
     try:
-        r = requests.patch(
+        _notion_request(
+            "PATCH",
             f"https://api.notion.com/v1/pages/{notion_id}",
             headers=_headers(),
             json={"properties": {"Status": _select(status)}},
-            timeout=10,
         )
-        r.raise_for_status()
         return True
-    except Exception as e:
-        logger.error(f"Notion update_client_status failed: {e}")
+    except Exception:
+        logger.exception(f"Notion update_client_status failed for {notion_id}")
         return False
 
 
@@ -279,18 +304,17 @@ def create_task(title: str, client_name: str, client_notion_id: str,
     }
 
     try:
-        r = requests.post(
+        r = _notion_request(
+            "POST",
             "https://api.notion.com/v1/pages",
             headers=_headers(),
             json=payload,
-            timeout=10,
         )
-        r.raise_for_status()
         page = r.json()
         logger.info(f"Notion: created task '{title}' for client '{client_name}'")
         return {"notion_id": page["id"], "title": title}
-    except Exception as e:
-        logger.error(f"Notion create_task failed: {e}")
+    except Exception:
+        logger.exception(f"Notion create_task failed for '{title}'")
         return None
 
 
@@ -321,13 +345,12 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
     try:
         has_more = True
         while has_more:
-            r = requests.post(
+            r = _notion_request(
+                "POST",
                 f"https://api.notion.com/v1/databases/{_tasks_db()}/query",
                 headers=_headers(),
                 json=payload,
-                timeout=10,
             )
-            r.raise_for_status()
             data = r.json()
             pages = data.get("results", [])
             for p in pages:
@@ -347,10 +370,9 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             has_more = data.get("has_more", False)
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
-                
         return tasks
-    except Exception as e:
-        logger.error(f"Notion list_tasks failed: {e}")
+    except Exception:
+        logger.exception("Notion list_tasks failed")
         return []
 
 
@@ -384,13 +406,12 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
         return True  # nothing to update
 
     try:
-        r = requests.patch(
+        _notion_request(
+            "PATCH",
             f"https://api.notion.com/v1/pages/{notion_id}",
             headers=_headers(),
             json={"properties": props},
-            timeout=10,
         )
-        r.raise_for_status()
 
         # ── WhatsApp notification ──
         if status and notify_task_status_changed:
@@ -402,12 +423,12 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
                     old_status  = "",
                     new_status  = status,
                 )
-            except Exception as ne:
-                logger.warning(f"WhatsApp notification failed (non-fatal): {ne}")
+            except Exception:
+                logger.warning("WhatsApp notification failed (non-fatal)", exc_info=True)
 
         return True
-    except Exception as e:
-        logger.error(f"Notion update_task failed: {e}")
+    except Exception:
+        logger.exception(f"Notion update_task failed for {notion_id}")
         return False
 
 
@@ -418,17 +439,16 @@ def archive_notion_page(page_id: str) -> bool:
     if not is_configured() or not page_id:
         return False
     try:
-        r = requests.patch(
+        _notion_request(
+            "PATCH",
             f"https://api.notion.com/v1/pages/{page_id}",
             headers=_headers(),
             json={"archived": True},
-            timeout=10,
         )
-        r.raise_for_status()
         logger.info(f"Notion: archived page {page_id}")
         return True
-    except Exception as e:
-        logger.error(f"Notion archive_notion_page failed: {e}")
+    except Exception:
+        logger.exception(f"Notion archive_notion_page failed for {page_id}")
         return False
 
 # ══════════════════════════════════════════════════════════════════════════════

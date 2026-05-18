@@ -6,6 +6,7 @@
   <title>New Client Onboarding | Claude Office Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script src="auth.js"></script>
+  <script src="shared-config.js"></script>
   <style>
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
@@ -199,7 +200,7 @@ if (!ONBOARD_ADMINS.includes(user.user_id)) {
     </div>`;
 }
 
-const EMP = {emp001:"Vidit",emp002:"Nupur",emp003:"Abhinav",emp004:"Kshitij",emp005:"Raj",emp006:"Mohit",emp007:"Tanaya",emp008:"Happy"};
+let EMP = {};
 const SVC_TASKS = {
   content:[{title:"Content Brief & Research",who:"emp006"},{title:"Write Copy / Content Draft",who:"emp006"},{title:"Content Review & Approval",who:"emp004"}],
   video:[{title:"Video Script Writing",who:"emp006"},{title:"Video Shoot / Production",who:"emp005"},{title:"Video Editing & Post",who:"emp005"},{title:"AI Video Enhancements",who:"emp008"}],
@@ -248,7 +249,13 @@ function goStep3(){
   goStep(3);
 }
 
-const EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
+let EMP_OPTS = "";
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadEmployees();
+  EMP = window.EMP_DICT;
+  EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
+});
 
 function updateMsDisplay(el) {
   const wrap = el.closest('.ms-wrap');

@@ -114,14 +114,11 @@ let pin = "";
 
 // If already logged in with valid session, redirect; else render grid
 (async()=>{
-  // sessionStorage clears automatically on tab close — auto-logout
-  const token = sessionStorage.getItem("_session_token");
-  if(token){
-    const r = await fetch(`${API}/api/auth/verify`, {
-      headers: { "Authorization": `Bearer ${token}` }
-    });
-    if(r.ok){ const d=await r.json(); if(d.valid){ redirect(d); return; } }
-  }
+  // We check if we already have a valid session (cookie)
+  const r = await fetch(`${API}/api/auth/verify`, {
+    credentials: "include"
+  }).catch(() => null);
+  if(r && r.ok){ const d=await r.json(); if(d.valid){ redirect(d); return; } }
   
   // Load employees from shared config
   const employees = await loadEmployees();
@@ -190,12 +187,16 @@ function updateDots(){
 
 async function submitPin(){
   document.getElementById("loading").style.display="block";
-  const r = await fetch(`${API}/api/auth/login`,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({user_id:selectedEmp.id,pin})});
+  const r = await fetch(`${API}/api/auth/login`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    credentials:"include",
+    body:JSON.stringify({user_id:selectedEmp.id,pin})
+  });
   const d = await r.json();
   document.getElementById("loading").style.display="none";
   if(d.success){
-    sessionStorage.setItem("_session_token", d.token);  // cleared on tab close
+    // Token is now set via HttpOnly cookie
     localStorage.setItem("claude_office_user", JSON.stringify({...d.user, user_id: d.user.id}));
     await fetch(`${API}/api/attendance/checkin`, {
       method: "POST",

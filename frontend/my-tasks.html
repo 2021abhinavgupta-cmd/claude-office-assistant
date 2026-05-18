@@ -116,6 +116,8 @@
     .cal-pop-meta { font-size: .7rem; color: var(--muted); margin-bottom: 6px; }
     .cal-pop-btn { display: inline-block; background: var(--s1); border: 1px solid var(--bdr); color: var(--txt); padding: 4px 10px; border-radius: 4px; font-size: .7rem; cursor: pointer; text-decoration: none; transition: all .2s; }
     .cal-pop-btn:hover { border-color: var(--acc); color: var(--acc); }
+    .cal-cell.pop-up .cal-popover { top: auto; bottom: 90%; }
+    .cal-cell.pop-up .cal-popover::before { bottom: auto; top: 100%; border-color: var(--bdr) transparent transparent transparent; }
   </style>
 </head>
 <body>
@@ -341,8 +343,11 @@ function renderCalendarHtml(todayString) {
       popoverHtml += `</div>`;
     }
 
+    const cellIndex = startDay + d - 1;
+    const popUpClass = cellIndex >= 28 ? 'pop-up' : '';
+
     html += `
-      <div class="cal-cell ${isToday ? 'today' : ''}">
+      <div class="cal-cell ${isToday ? 'today' : ''} ${popUpClass}">
         <span class="cal-date-num">${d}</span>
         <div class="cal-tasks">${taskHtml}</div>
         ${popoverHtml}
