@@ -348,21 +348,44 @@ async function loadTeamStandups(){
   const today = data.date||new Date().toISOString().slice(0,10);
   document.getElementById("today-badge").textContent=today;
   const submitted=new Map(data.standups.map(s=>[s.user_id,s]));
+  const tasksByUser = data.tasks_by_user || {};
   const wrap=document.getElementById("team-standups");
   const t=iso=>iso?new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"";
+  
   wrap.innerHTML=window.EMPLOYEES.map(e=>{
     const s=submitted.get(e.id);
+    const tasks = tasksByUser[e.id] || [];
     const name=window.EMP_DICT[e.id]||e.id;
-    if(!s)return`<div class="not-sub"><span style="font-size:1rem">⏳</span><span><strong>${name}</strong> hasn't submitted today's standup yet</span></div>`;
+    
+    if(!s && tasks.length === 0){
+        return`<div class="not-sub"><span style="font-size:1rem">⏳</span><span><strong>${name}</strong> hasn't started today's standup yet</span></div>`;
+    }
+    
+    let taskHtml = "";
+    if(tasks.length > 0){
+        taskHtml = `<div class="sc-field" style="margin-top:4px"><div class="fl">📋 Tasklist</div>`;
+        taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
+        tasks.forEach(task => {
+            const isDone = task.status === "done";
+            taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:3px'}">
+                ${isDone ? '✓' : '•'} ${esc(task.title)}
+            </li>`;
+        });
+        taskHtml += `</ul></div>`;
+    }
+
+    const timeStr = s ? `Submitted ${t(s.submitted_at)}` : `Started updating task list`;
+
     return`<div class="standup-card">
       <div class="sc-header">
         <div class="sc-avatar">${name[0].toUpperCase()}</div>
-        <div><div class="sc-name">${name}</div><div class="sc-time">Submitted ${t(s.submitted_at)}</div></div>
+        <div><div class="sc-name">${name}</div><div class="sc-time">${timeStr}</div></div>
       </div>
       <div class="sc-body">
-        ${s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${esc(s.yesterday)}</div></div>`:""}
-        ${s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${esc(s.today)}</div></div>`:""}
-        ${s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
+        ${s && s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${esc(s.yesterday)}</div></div>`:""}
+        ${s && s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${esc(s.today)}</div></div>`:""}
+        ${taskHtml}
+        ${s && s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
       </div></div>`;
   }).join("");
 }

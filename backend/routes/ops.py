@@ -78,18 +78,36 @@ def get_standups_today():
     user_id  = request.args.get("user_id", "")
     conn = _su_conn()
     cur = conn.cursor()
+    
+    # Fetch text standups
     if user_id:
         cur.execute("SELECT user_id,date,yesterday,today,blockers,submitted_at FROM standups WHERE date=? AND user_id=?", (date_str, user_id))
     else:
         cur.execute("SELECT user_id,date,yesterday,today,blockers,submitted_at FROM standups WHERE date=? ORDER BY submitted_at", (date_str,))
     rows = cur.fetchall()
+    
+    # Fetch task lists
+    if user_id:
+        cur.execute("SELECT user_id, title, status FROM standup_tasks WHERE date=? AND user_id=? ORDER BY id ASC", (date_str, user_id))
+    else:
+        cur.execute("SELECT user_id, title, status FROM standup_tasks WHERE date=? ORDER BY id ASC", (date_str,))
+    task_rows = cur.fetchall()
+    
     conn.close()
+    
+    tasks_by_user = {}
+    for uid, title, status in task_rows:
+        if uid not in tasks_by_user:
+            tasks_by_user[uid] = []
+        tasks_by_user[uid].append({"title": title, "status": status})
+
     EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
                  "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
                  "emp007":"Tanaya","emp008":"Happy"}
     standups = [{"user_id":r[0],"name":EMP_NAMES.get(r[0],r[0]),"date":r[1],
                  "yesterday":r[2],"today":r[3],"blockers":r[4],"submitted_at":r[5]} for r in rows]
-    return jsonify({"standups": standups, "date": date_str})
+                 
+    return jsonify({"standups": standups, "tasks_by_user": tasks_by_user, "date": date_str})
 
 
 @ops_bp.route("/api/standup/history", methods=["GET"])
