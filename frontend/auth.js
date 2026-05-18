@@ -12,13 +12,6 @@ function getAuthApiBase() {
 (async function authGuard() {
   const authApi = getAuthApiBase();
 
-  // We check if they have local user data. If not, go to login.
-  const localUserStr = localStorage.getItem("claude_office_user");
-  if (!localUserStr) {
-    window.location.href = "login.html";
-    return;
-  }
-
   try {
     const res = await fetch(`${authApi}/api/auth/verify`, {
       credentials: "include"
@@ -26,7 +19,6 @@ function getAuthApiBase() {
     const data = await res.json();
 
     if (!data.valid) {
-      sessionStorage.removeItem("_session_token");
       localStorage.removeItem("claude_office_user");
       window.location.href = "login.html";
       return;
