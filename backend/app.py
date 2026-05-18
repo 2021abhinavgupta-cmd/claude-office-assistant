@@ -34,15 +34,7 @@ from dotenv import load_dotenv
 import anthropic
 import requests
 
-IST = timezone(timedelta(hours=5, minutes=30))
 
-
-def now_ist():
-    return datetime.now(IST).strftime("%H:%M:%S")
-
-
-def today_ist():
-    return datetime.now(IST).strftime("%Y-%m-%d")
 
 # Local modules
 from model_router import get_model_for_task, calculate_cost, get_all_routes
@@ -55,6 +47,10 @@ import file_processor
 import project_store
 import task_scheduler
 import notion_store
+
+from utils import now_ist, today_ist, _load_employees, _save_employees, _is_admin, IST
+from extensions import limiter
+from routes.auth import auth_bp
 
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
@@ -79,15 +75,10 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 Compress(app)
 
+app.register_blueprint(auth_bp)
+
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=[],
-    storage_uri="memory://",
-)
+limiter.init_app(app)
 
 # ── Start background scheduler ────────────────────────────────────────────────
 _scheduler = task_scheduler.init_scheduler(app)
@@ -803,21 +794,7 @@ def _build_config(tier: str) -> dict:
     return c
 
 
-# ── Employee Helpers ──────────────────────────────────────────────────────────
-def _load_employees() -> dict:
-    if EMPLOYEES_DB.exists():
-        with open(EMPLOYEES_DB) as f:
-            return json.load(f)
-    return {"employees": []}
 
-
-def _save_employees(data: dict):
-    """Atomic write to avoid JSON corruption on concurrent check-ins."""
-    import tempfile
-    tmp = EMPLOYEES_DB.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, EMPLOYEES_DB)
 
 
 def _duckduckgo_instant(query: str) -> dict:
@@ -1554,34 +1531,7 @@ def attendance_today():
     ]
     return jsonify({"date": date_ist, "timezone": "IST", "records": records})
 
-@app.route("/api/auth/change_pin", methods=["POST"])
-def auth_change_pin():
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id")
-    old_pin = body.get("old_pin")
-    new_pin = body.get("new_pin")
-    
-    data = _load_employees()
-    found = False
-    for emp in data.get("employees", []):
-        if emp.get("id") == user_id:
-            if str(emp.get("pin")) != str(old_pin):
-                return jsonify({"error": "Incorrect old PIN"}), 401
-            emp["pin"] = new_pin
-            found = True
-            break
-            
-    if not found:
-        return jsonify({"error": "Employee not found"}), 404
-        
-    try:
-        emp_file = Path(__file__).parent.parent / "config" / "employees.json"
-        with open(emp_file, "w") as f:
-            json.dump(data, f, indent=2)
-        return jsonify({"success": True})
-    except Exception as e:
-        logger.error(f"Failed to save new PIN: {e}")
-        return jsonify({"error": "Could not save PIN"}), 500
+
 
 @app.route("/api/attendance/logs", methods=["GET"])
 def attendance_logs():
@@ -1650,114 +1600,7 @@ def attendance_export():
         headers={"Content-Disposition": "attachment;filename=claude_attendance_logs.csv"}
     )
 
-# ══════════════════════════════════════════════════════════════════════════════
-# AUTH — Server-side session tokens (#1)
-# ══════════════════════════════════════════════════════════════════════════════
-import secrets
 
-def _sessions_conn():
-    from db import get_connection
-    return get_connection()
-
-def _create_session(user_id: str) -> str:
-    token = secrets.token_urlsafe(32)
-    expires = (datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
-    conn = _sessions_conn()
-    with conn:
-        conn.execute("INSERT INTO sessions(token,user_id,expires_at) VALUES(?,?,?)",
-                     (token, user_id, expires))
-    conn.close()
-    return token
-
-def _verify_session(token: str) -> Optional[str]:
-    """Returns user_id if token is valid and not expired, else None."""
-    if not token:
-        return None
-    conn = _sessions_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT user_id, expires_at FROM sessions WHERE token=?", (token,))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return None
-    user_id, expires_at = row
-    if datetime.utcnow().isoformat() + "Z" > expires_at:
-        return None  # Expired
-    return user_id
-
-@app.route("/api/auth/login", methods=["POST"])
-def auth_login():
-    """PIN login — returns a server-side session token."""
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id", "").strip()
-    pin     = body.get("pin", "").strip()
-
-    if not user_id or not pin:
-        return jsonify({"error": "user_id and pin required"}), 400
-
-    data = _load_employees()
-    emp = next((e for e in data.get("employees", []) if e["id"] == user_id), None)
-    if not emp:
-        return jsonify({"error": "Employee not found"}), 404
-
-    if emp.get("pin", "0000") != pin:
-        return jsonify({"error": "Incorrect PIN"}), 401
-
-    token = _create_session(user_id)
-    resp = jsonify({
-        "success": True,
-        "token":   token,
-        "user":    {"id": emp["id"], "name": emp["name"], "role": emp["role"],
-                    "is_admin": _is_admin(user_id)},
-    })
-    # Set HttpOnly cookie so JS can't read the token (XSS protection)
-    is_secure = os.getenv("FLASK_ENV", "development") != "development"
-    resp.set_cookie(
-        "session_token", token,
-        httponly=True,
-        samesite="Lax",
-        secure=is_secure,
-        max_age=30 * 24 * 60 * 60,  # 30 days
-    )
-    return resp
-
-@app.route("/api/auth/verify", methods=["GET"])
-def auth_verify():
-    """Verify a session token. Used by frontend auth guard."""
-    # Check HttpOnly cookie first, then fall back to Authorization header
-    token = (
-        request.cookies.get("session_token", "")
-        or request.headers.get("Authorization", "").replace("Bearer ", "")
-        or request.headers.get("X-Session-Token", "")
-        or request.args.get("token", "")
-    )
-    user_id = _verify_session(token)
-    if not user_id:
-        return jsonify({"valid": False}), 401
-    data = _load_employees()
-    emp = next((e for e in data.get("employees", []) if e["id"] == user_id), {})
-    return jsonify({"valid": True, "user_id": user_id, "name": emp.get("name",""),
-                    "role": emp.get("role",""), "is_admin": _is_admin(user_id)})
-
-@app.route("/api/auth/logout", methods=["POST"])
-def auth_logout():
-    """Invalidate a session token and clear the HttpOnly cookie."""
-    token = (
-        request.cookies.get("session_token", "")
-        or (request.get_json(silent=True) or {}).get("token", "")
-        or request.headers.get("Authorization", "").replace("Bearer ", "")
-    )
-    if token:
-        user_id = _verify_session(token)
-        if user_id:
-            _attendance_checkout(user_id)
-        conn = _sessions_conn()
-        with conn:
-            conn.execute("DELETE FROM sessions WHERE token=?", (token,))
-        conn.close()
-    resp = jsonify({"success": True})
-    resp.delete_cookie("session_token")
-    return resp
 
 # ── Employee Tracking (WhatsApp Bot Support) ──────────────────────────────────
 @app.route("/api/employees", methods=["GET"])
