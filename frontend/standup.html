@@ -146,9 +146,16 @@
     <!-- RIGHT COL: Team standups -->
     <div class="col">
       <div class="card" style="flex:1">
-        <h2>👥 Team Standups Today</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+           <h2 style="margin-bottom:0">👥 Team Standups</h2>
+           <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'" onclick="window.location.href=API+'/api/export/standup-tasks'">📥 Export CSV</button>
+        </div>
         <p class="card-sub">See what everyone is working on</p>
-        <div class="date-badge" id="today-badge">—</div>
+        
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:14px">
+           <input type="date" id="history-date" style="background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:0.8rem;outline:none;cursor:pointer;" onchange="loadTeamStandups(this.value)" />
+        </div>
+        
         <div id="team-standups"><div class="empty">Loading…</div></div>
       </div>
     </div>
@@ -293,11 +300,16 @@ async function updateBlocker(id, blockerText) {
 
 // ── Team standups panel ───────────────────────────────────────────────────────
 
-async function loadTeamStandups(){
-  const r = await fetch(`${API}/api/standup/today`);
+async function loadTeamStandups(dateStr = ""){
+  const query = dateStr ? `?date=${dateStr}` : "";
+  const r = await fetch(`${API}/api/standup/today${query}`);
   const data = await r.json();
   const today = data.date||new Date().toISOString().slice(0,10);
-  document.getElementById("today-badge").textContent=today;
+  
+  if (!dateStr && document.getElementById("history-date")) {
+      document.getElementById("history-date").value = today;
+  }
+  
   const submitted=new Map(data.standups.map(s=>[s.user_id,s]));
   const tasksByUser = data.tasks_by_user || {};
   const wrap=document.getElementById("team-standups");

@@ -73,8 +73,8 @@ def submit_standup():
 
 @ops_bp.route("/api/standup/today", methods=["GET"])
 def get_standups_today():
-    """Get all standups submitted today. Founder view."""
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    """Get all standups for a specific date (defaults to today). Founder view."""
+    date_str = request.args.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
     user_id  = request.args.get("user_id", "")
     conn = _su_conn()
     cur = conn.cursor()
@@ -609,3 +609,29 @@ def export_document():
     except Exception:
         logger.exception("Export failed")
         return jsonify({"error": "Export failed"}), 500
+
+
+@ops_bp.route("/api/export/standup-tasks", methods=["GET"])
+def export_standup_tasks():
+    """Export all personal standup tasks to a CSV file."""
+    import csv
+    from io import StringIO
+    from flask import Response
+    
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, date, title, status, blocker, carried_from, created_at FROM standup_tasks ORDER BY date DESC, user_id ASC")
+    rows = cur.fetchall()
+    conn.close()
+
+    si = StringIO()
+    cw = csv.writer(si)
+    cw.writerow(["user_id", "date", "title", "status", "blocker", "carried_from", "created_at"])
+    cw.writerows(rows)
+    
+    output = si.getvalue()
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=standup_tasks_export.csv"}
+    )
