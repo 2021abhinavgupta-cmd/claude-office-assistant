@@ -108,6 +108,159 @@ def get_standup_history():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# PERSONAL DAILY TASK TRACKER (separate from project tasks)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@ops_bp.route("/api/standup/my-tasks", methods=["GET"])
+def get_my_tasks():
+    """
+    Get an employee's task list for a given date.
+    Carried-over tasks from yesterday are automatically seeded when first
+    fetching today if they don't exist yet.
+    Query: user_id, date (optional — defaults to today UTC)
+    """
+    user_id  = request.args.get("user_id", "").strip()
+    date_str = request.args.get("date", "") or datetime.utcnow().strftime("%Y-%m-%d")
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+
+    conn = _su_conn()
+    cur  = conn.cursor()
+
+    # Auto-carry-over: if no tasks exist for today, copy pending ones from yesterday
+    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=?", (user_id, date_str))
+    existing = cur.fetchall()
+    if not existing and date_str == datetime.utcnow().strftime("%Y-%m-%d"):
+        from datetime import timedelta
+        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        cur.execute(
+            "SELECT title FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+            (user_id, yesterday),
+        )
+        pending = cur.fetchall()
+        if pending:
+            with conn:
+                for (title,) in pending:
+                    conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from) VALUES (?,?,?,'pending',?)",
+                        (user_id, date_str, title, yesterday),
+                    )
+
+    cur.execute(
+        "SELECT id, title, status, carried_from, created_at FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
+        (user_id, date_str),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    tasks = [
+        {"id": r[0], "title": r[1], "status": r[2],
+         "carried_from": r[3], "created_at": r[4]}
+        for r in rows
+    ]
+    return jsonify({"tasks": tasks, "date": date_str})
+
+
+@ops_bp.route("/api/standup/my-tasks", methods=["POST"])
+def add_my_task():
+    """
+    Add a task to today's personal task list.
+    Body: { user_id, title }
+    """
+    body    = request.get_json(silent=True) or {}
+    user_id = body.get("user_id", "").strip()
+    title   = body.get("title", "").strip()
+    if not user_id or not title:
+        return jsonify({"error": "user_id and title required"}), 400
+
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    conn = _su_conn()
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO standup_tasks (user_id, date, title) VALUES (?, ?, ?)",
+            (user_id, date_str, title),
+        )
+        task_id = cur.lastrowid
+    conn.close()
+    return jsonify({"success": True, "task_id": task_id, "date": date_str}), 201
+
+
+@ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["PATCH"])
+def update_my_task(task_id: int):
+    """
+    Toggle a task's status between 'done' and 'pending'.
+    Body: { status: 'done' | 'pending' }
+    """
+    body   = request.get_json(silent=True) or {}
+    status = body.get("status", "").strip()
+    if status not in ("done", "pending"):
+        return jsonify({"error": "status must be 'done' or 'pending'"}), 400
+
+    conn = _su_conn()
+    with conn:
+        conn.execute("UPDATE standup_tasks SET status=? WHERE id=?", (status, task_id))
+    conn.close()
+    return jsonify({"success": True})
+
+
+@ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["DELETE"])
+def delete_my_task(task_id: int):
+    """Delete a task from the personal list."""
+    conn = _su_conn()
+    with conn:
+        conn.execute("DELETE FROM standup_tasks WHERE id=?", (task_id,))
+    conn.close()
+    return jsonify({"success": True})
+
+
+@ops_bp.route("/api/standup/carry-over", methods=["POST"])
+def carry_over_tasks():
+    """
+    Manually trigger carry-over of today's pending tasks to tomorrow.
+    Called when the employee wraps up their day.
+    Body: { user_id }
+    Returns: count of tasks carried over.
+    """
+    body    = request.get_json(silent=True) or {}
+    user_id = body.get("user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+
+    from datetime import timedelta
+    today    = datetime.utcnow().strftime("%Y-%m-%d")
+    tomorrow = (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    conn = _su_conn()
+    cur  = conn.cursor()
+    cur.execute(
+        "SELECT title FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+        (user_id, today),
+    )
+    pending = cur.fetchall()
+
+    carried = 0
+    if pending:
+        with conn:
+            for (title,) in pending:
+                # Avoid duplicating if already carried (idempotent)
+                cur2 = conn.cursor()
+                cur2.execute(
+                    "SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=? AND carried_from=?",
+                    (user_id, tomorrow, title, today),
+                )
+                if not cur2.fetchone():
+                    conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from) VALUES (?,?,?,'pending',?)",
+                        (user_id, tomorrow, title, today),
+                    )
+                    carried += 1
+    conn.close()
+    logger.info(f"Carry-over: {user_id} → {carried} tasks moved to {tomorrow}")
+    return jsonify({"success": True, "carried": carried, "date": tomorrow})
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ALERTS
 # ══════════════════════════════════════════════════════════════════════════════
 

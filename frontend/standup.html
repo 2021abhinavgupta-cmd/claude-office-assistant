@@ -11,66 +11,83 @@
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:14px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
-    .wrap{max-width:1100px;margin:0 auto;padding:28px 20px}
-
+    .wrap{max-width:1200px;margin:0 auto;padding:28px 20px}
     .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:12px}
     .hdr h1{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800}
     .hdr h1 span{color:var(--acc)}
-    .hdr p{color:var(--muted);font-size:.83rem;margin-top:4px}
     .nav{display:flex;gap:8px}
     .nl{padding:7px 14px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--muted);text-decoration:none;font-size:.8rem;transition:all .2s}
     .nl:hover{color:var(--txt);border-color:var(--acc)}
-
-    .layout{display:grid;grid-template-columns:1fr 1.4fr;gap:20px}
-    @media(max-width:750px){.layout{grid-template-columns:1fr}}
-
-    /* Form card */
-    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:28px}
-    .card h2{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:4px}
-    .card .card-sub{font-size:.78rem;color:var(--muted);margin-bottom:22px}
-    .fg{margin-bottom:18px}
-    .fg label{display:block;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
-    .fg textarea{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:12px;font-family:'DM Sans',sans-serif;font-size:.9rem;resize:vertical;min-height:80px;outline:none;transition:border-color .2s}
+    .layout{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    @media(max-width:850px){.layout{grid-template-columns:1fr}}
+    .col{display:flex;flex-direction:column;gap:20px}
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:24px}
+    .card h2{font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+    .card-sub{font-size:.78rem;color:var(--muted);margin-bottom:20px}
+    .fg{margin-bottom:16px}
+    .fg label{display:block;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
+    .fg textarea{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:11px;font-family:'DM Sans',sans-serif;font-size:.88rem;resize:vertical;min-height:72px;outline:none;transition:border-color .2s}
     .fg textarea:focus{border-color:var(--acc)}
     .fg textarea.blocker-field:focus{border-color:var(--red)}
-    .emoji-hint{font-size:.72rem;color:var(--muted);margin-bottom:6px}
+    .btn{display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 18px;border:none;border-radius:var(--rs);font-family:'Syne',sans-serif;font-size:.88rem;font-weight:700;cursor:pointer;transition:all .2s}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn-primary{background:var(--acc);color:#000;width:100%}
+    .btn-primary:hover:not(:disabled){opacity:.9;transform:translateY(-1px);box-shadow:0 4px 18px rgba(245,166,35,.3)}
+    .btn-wrap{background:rgba(34,211,160,.1);border:1px solid rgba(34,211,160,.3);color:var(--grn);width:100%}
+    .btn-wrap:hover:not(:disabled){background:rgba(34,211,160,.18)}
+    .submitted-banner{background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.25);border-radius:var(--rs);padding:12px;text-align:center;display:none;margin-top:14px}
+    .submitted-banner p{color:var(--grn);font-size:.83rem}
 
-    .btn-submit{width:100%;padding:13px;background:var(--acc);color:#000;border:none;border-radius:var(--rs);font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
-    .btn-submit:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 20px rgba(245,166,35,.3)}
-    .btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none}
+    /* Task tracker */
+    .task-add-row{display:flex;gap:8px;margin-bottom:16px}
+    .task-input{flex:1;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:10px 14px;font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none;transition:border-color .2s}
+    .task-input:focus{border-color:var(--acc)}
+    .task-add-btn{background:var(--acc);color:#000;border:none;border-radius:var(--rs);padding:10px 16px;font-weight:700;cursor:pointer;font-size:.9rem;white-space:nowrap;transition:all .2s}
+    .task-add-btn:hover{opacity:.9}
+    .task-list{display:flex;flex-direction:column;gap:8px;min-height:40px}
+    .task-item{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);transition:all .2s}
+    .task-item.done{opacity:.55}
+    .task-item.done .task-title{text-decoration:line-through;color:var(--muted)}
+    .task-item.carried{border-left:3px solid var(--acc)}
+    .task-check{width:20px;height:20px;border-radius:50%;border:2px solid var(--bdr);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:.75rem}
+    .task-check.checked{background:var(--grn);border-color:var(--grn);color:#000}
+    .task-check:hover{border-color:var(--grn)}
+    .task-title{flex:1;font-size:.88rem;line-height:1.4}
+    .carried-badge{font-size:.65rem;background:rgba(245,166,35,.15);color:var(--acc);padding:2px 7px;border-radius:100px;white-space:nowrap}
+    .task-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:2px 6px;border-radius:4px;transition:color .2s;flex-shrink:0}
+    .task-del:hover{color:var(--red)}
+    .task-stats{display:flex;gap:10px;font-size:.75rem;color:var(--muted);margin-bottom:12px}
+    .task-stats span{background:var(--s2);padding:3px 10px;border-radius:100px;border:1px solid var(--bdr)}
+    .task-stats .done-count{color:var(--grn)}
+    .task-stats .pend-count{color:var(--acc)}
+    .wrap-divider{height:1px;background:var(--bdr);margin:16px 0}
+    .empty-tasks{color:var(--muted);font-size:.82rem;text-align:center;padding:20px 0;font-style:italic}
 
-    .submitted-banner{background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.25);border-radius:var(--rs);padding:14px;text-align:center;margin-top:16px;display:none}
-    .submitted-banner .sb-icon{font-size:1.8rem;margin-bottom:6px}
-    .submitted-banner p{color:var(--grn);font-size:.85rem}
-
-    /* Team standups view */
-    .date-badge{display:inline-block;background:var(--s2);border:1px solid var(--bdr);border-radius:100px;padding:4px 14px;font-size:.75rem;color:var(--muted);margin-bottom:16px}
-    .standup-card{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:16px;margin-bottom:12px}
-    .sc-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-    .sc-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#ff8c42);display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;color:#000}
-    .sc-name{font-weight:600;font-size:.9rem}
-    .sc-time{font-size:.72rem;color:var(--muted);margin-top:2px}
-    .sc-body{display:flex;flex-direction:column;gap:10px}
-    .sc-field{font-size:.83rem;line-height:1.6}
-    .sc-field .fl{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+    /* Team standups */
+    .date-badge{display:inline-block;background:var(--s2);border:1px solid var(--bdr);border-radius:100px;padding:4px 14px;font-size:.75rem;color:var(--muted);margin-bottom:14px}
+    .standup-card{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:14px;margin-bottom:10px}
+    .sc-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+    .sc-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#ff8c42);display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;color:#000}
+    .sc-name{font-weight:600;font-size:.88rem}
+    .sc-time{font-size:.7rem;color:var(--muted);margin-top:1px}
+    .sc-body{display:flex;flex-direction:column;gap:8px}
+    .sc-field{font-size:.82rem;line-height:1.5}
+    .sc-field .fl{font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px}
     .sc-field .fv{color:var(--txt)}
     .sc-field.blocker .fv{color:var(--red)}
     .sc-field.blocker .fl{color:var(--red)}
-    .not-submitted{color:var(--muted);font-size:.82rem;font-style:italic;display:flex;align-items:center;gap:8px;padding:14px;background:rgba(107,107,138,.08);border-radius:var(--rs);border:1px dashed var(--bdr)}
-
-    /* Alerts panel */
-    .alerts-panel{margin-top:20px}
-    .alerts-panel h2{font-family:'Syne',sans-serif;font-size:1.05rem;margin-bottom:12px;display:flex;align-items:center;gap:8px}
-    .alert-card{border-radius:var(--rs);padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+    .not-sub{color:var(--muted);font-size:.8rem;font-style:italic;display:flex;align-items:center;gap:8px;padding:11px 14px;background:rgba(107,107,138,.06);border-radius:var(--rs);border:1px dashed var(--bdr)}
+    .alerts-panel{margin-top:18px}
+    .alerts-panel h2{font-family:'Syne',sans-serif;font-size:1rem;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+    .alert-card{border-radius:var(--rs);padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
     .alert-critical{background:rgba(255,92,92,.08);border:1px solid rgba(255,92,92,.3)}
     .alert-at_risk{background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.25)}
-    .alert-title{font-weight:600;font-size:.88rem}
-    .alert-sub{font-size:.75rem;color:var(--muted);margin-top:3px}
-    .risk-pill{padding:4px 12px;border-radius:100px;font-size:.7rem;font-weight:700;white-space:nowrap}
+    .alert-title{font-weight:600;font-size:.86rem}
+    .alert-sub{font-size:.73rem;color:var(--muted);margin-top:2px}
+    .risk-pill{padding:3px 10px;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap}
     .rp-critical{background:rgba(255,92,92,.2);color:var(--red)}
     .rp-at_risk{background:rgba(245,166,35,.2);color:var(--acc)}
-
-    .empty{color:var(--muted);font-size:.84rem;padding:20px;text-align:center}
+    .empty{color:var(--muted);font-size:.82rem;padding:16px;text-align:center}
   </style>
 </head>
 <body>
@@ -78,7 +95,7 @@
   <div class="hdr">
     <div>
       <h1>☀️ Daily <span>Standup</span></h1>
-      <p id="greeting-line">Good morning! Quick update — takes under 60 seconds.</p>
+      <p id="greeting-line" style="color:var(--muted);font-size:.83rem;margin-top:4px">Good morning! Quick update.</p>
     </div>
     <div class="nav">
       <a href="projects.html" class="nl">📋 Board</a>
@@ -88,55 +105,79 @@
   </div>
 
   <div class="layout">
-    <!-- LEFT: Submit form -->
-    <div>
+    <!-- LEFT COL -->
+    <div class="col">
+
+      <!-- Personal Task Tracker -->
       <div class="card">
-        <h2>Your Update</h2>
+        <h2>🗒️ Today's Task List</h2>
+        <p class="card-sub">Personal tasks — tick off as you go. Unfinished tasks carry over tomorrow.</p>
+
+        <div class="task-add-row">
+          <input class="task-input" id="new-task-input" placeholder="Add a task for today…" onkeydown="if(event.key==='Enter')addTask()"/>
+          <button class="task-add-btn" onclick="addTask()">+ Add</button>
+        </div>
+
+        <div class="task-stats" id="task-stats" style="display:none">
+          <span class="done-count" id="stat-done">0 done</span>
+          <span class="pend-count" id="stat-pend">0 remaining</span>
+        </div>
+
+        <div class="task-list" id="task-list">
+          <div class="empty-tasks">Loading your tasks…</div>
+        </div>
+
+        <div class="wrap-divider"></div>
+
+        <button class="btn btn-wrap" id="wrap-btn" onclick="wrapUpDay()">
+          <span>🌙 Wrap Up Day — carry unfinished to tomorrow</span>
+        </button>
+        <div id="wrap-confirm" style="display:none;margin-top:10px;background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.25);border-radius:var(--rs);padding:11px;text-align:center;font-size:.83rem;color:var(--grn)"></div>
+      </div>
+
+      <!-- Standup text form -->
+      <div class="card">
+        <h2>📝 Team Standup Note</h2>
         <p class="card-sub" id="user-label">Submitting as <strong>—</strong></p>
-
         <div class="fg">
-          <div class="emoji-hint">✅ What did you finish yesterday?</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">✅ What did you finish yesterday?</div>
           <label>Done Yesterday</label>
-          <textarea id="f-yesterday" placeholder="e.g. Completed hero section copy for ABC Corp, sent for review..."></textarea>
+          <textarea id="f-yesterday" placeholder="e.g. Completed hero section copy for ABC Corp…"></textarea>
         </div>
         <div class="fg">
-          <div class="emoji-hint">🎯 What are you working on today?</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">🎯 What are you working on today?</div>
           <label>Today's Plan</label>
-          <textarea id="f-today" placeholder="e.g. Writing services page, blog intro for XYZ Ltd..."></textarea>
+          <textarea id="f-today" placeholder="e.g. Writing services page, blog intro for XYZ…"></textarea>
         </div>
         <div class="fg">
-          <div class="emoji-hint">🚧 Anything blocking you?</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">🚧 Anything blocking you?</div>
           <label>Blockers (Optional)</label>
-          <textarea id="f-blockers" class="blocker-field" placeholder="e.g. Waiting for brand guidelines from Nupur, need client's logo files..."></textarea>
+          <textarea id="f-blockers" class="blocker-field" placeholder="e.g. Waiting for brand guidelines…"></textarea>
         </div>
-
-        <button class="btn-submit" id="submit-btn" onclick="submitStandup()">
+        <button class="btn btn-primary" id="submit-btn" onclick="submitStandup()">
           <span>☀️ Submit Standup</span>
         </button>
-
         <div class="submitted-banner" id="submitted-banner">
-          <div class="sb-icon">🎉</div>
+          <div style="font-size:1.6rem;margin-bottom:4px">🎉</div>
           <p>Standup submitted! Have a productive day.</p>
         </div>
       </div>
 
-      <!-- Alerts panel (founder only) -->
+      <!-- Alerts (admin only) -->
       <div class="alerts-panel" id="alerts-panel" style="display:none">
-        <h2>🔴 Risk Alerts <span id="alert-count" style="font-size:.8rem;color:var(--muted);font-weight:400"></span></h2>
+        <h2>🔴 Risk Alerts <span id="alert-count" style="font-size:.78rem;color:var(--muted);font-weight:400"></span></h2>
         <div id="alerts-list"></div>
-        <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:8px 16px;border-radius:var(--rs);font-size:.8rem;cursor:pointer;margin-top:4px" onclick="runCheck()">
-          🔄 Run Overdue Check Now
-        </button>
+        <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:7px 14px;border-radius:var(--rs);font-size:.78rem;cursor:pointer;margin-top:4px" onclick="runCheck()">🔄 Run Overdue Check</button>
       </div>
     </div>
 
-    <!-- RIGHT: Team standups today -->
-    <div>
-      <div class="card">
+    <!-- RIGHT COL: Team standups -->
+    <div class="col">
+      <div class="card" style="flex:1">
         <h2>👥 Team Standups Today</h2>
         <p class="card-sub">See what everyone is working on</p>
         <div class="date-badge" id="today-badge">—</div>
-        <div id="team-standups"><div class="empty">Loading...</div></div>
+        <div id="team-standups"><div class="empty">Loading…</div></div>
       </div>
     </div>
   </div>
@@ -149,45 +190,132 @@ const UID = user.user_id;
 if (!UID) window.location.href = "login.html";
 const IS_ADMIN = user.is_admin === true;
 
-// XSS protection
-function escHtml(str) {
-  if (!str) return "";
-  return str.replace(/[&<>"']/g, function(m) {
-    return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[m];
-  });
-}
+function esc(s){if(!s)return"";return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[m]);}
 
 (async()=>{
   await loadEmployees();
-  
-  // Greet
   const hour = new Date().getHours();
-  const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  document.getElementById("greeting-line").textContent = `${greet}, ${window.EMP_DICT[UID]||UID}! Quick update — takes under 60 seconds.`;
+  const greet = hour<12?"Good morning":hour<17?"Good afternoon":"Good evening";
+  document.getElementById("greeting-line").textContent = `${greet}, ${window.EMP_DICT[UID]||UID}! Your task list is ready.`;
   document.getElementById("user-label").innerHTML = `Submitting as <strong>${window.EMP_DICT[UID]||UID}</strong>`;
 
+  loadMyTasks();
   checkIfSubmittedToday();
   loadTeamStandups();
   loadAlerts();
-  
-  // Auto-refresh team standups every 2 minutes
   setInterval(loadTeamStandups, 120000);
 })();
+
+// ── Personal Task Tracker ─────────────────────────────────────────────────────
+
+let allTasks = [];
+
+async function loadMyTasks(){
+  const r = await fetch(`${API}/api/standup/my-tasks?user_id=${UID}`);
+  const d = await r.json();
+  allTasks = d.tasks || [];
+  renderTasks();
+}
+
+function renderTasks(){
+  const list = document.getElementById("task-list");
+  const stats = document.getElementById("task-stats");
+  const done  = allTasks.filter(t=>t.status==="done").length;
+  const pend  = allTasks.filter(t=>t.status==="pending").length;
+
+  if(allTasks.length === 0){
+    list.innerHTML = '<div class="empty-tasks">No tasks yet — add your first task above!</div>';
+    stats.style.display = "none";
+    return;
+  }
+  stats.style.display = "flex";
+  document.getElementById("stat-done").textContent = `${done} done`;
+  document.getElementById("stat-pend").textContent = `${pend} remaining`;
+
+  list.innerHTML = allTasks.map(t=>`
+    <div class="task-item ${t.status==="done"?"done":""} ${t.carried_from?"carried":""}" id="task-${t.id}">
+      <button class="task-check ${t.status==="done"?"checked":""}" onclick="toggleTask(${t.id},'${t.status==="done"?"pending":"done"}')">
+        ${t.status==="done"?"✓":""}
+      </button>
+      <span class="task-title">${esc(t.title)}</span>
+      ${t.carried_from?`<span class="carried-badge">↩ from ${t.carried_from}</span>`:""}
+      <button class="task-del" onclick="deleteTask(${t.id})" title="Remove">✕</button>
+    </div>`).join("");
+}
+
+async function addTask(){
+  const inp = document.getElementById("new-task-input");
+  const title = inp.value.trim();
+  if(!title) return;
+  inp.value = "";
+  const r = await fetch(`${API}/api/standup/my-tasks`,{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({user_id:UID,title})
+  });
+  const d = await r.json();
+  if(d.success){
+    allTasks.push({id:d.task_id,title,status:"pending",carried_from:null});
+    renderTasks();
+  }
+}
+
+async function toggleTask(id, newStatus){
+  const item = document.getElementById(`task-${id}`);
+  if(item) item.style.opacity="0.5";
+  await fetch(`${API}/api/standup/my-tasks/${id}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({status:newStatus})
+  });
+  const t = allTasks.find(x=>x.id===id);
+  if(t) t.status = newStatus;
+  renderTasks();
+}
+
+async function deleteTask(id){
+  await fetch(`${API}/api/standup/my-tasks/${id}`,{method:"DELETE"});
+  allTasks = allTasks.filter(x=>x.id!==id);
+  renderTasks();
+}
+
+async function wrapUpDay(){
+  const pend = allTasks.filter(t=>t.status==="pending");
+  const btn  = document.getElementById("wrap-btn");
+  const conf = document.getElementById("wrap-confirm");
+  if(pend.length===0){
+    conf.style.display="block";
+    conf.textContent = "✅ All tasks done! Great work today.";
+    return;
+  }
+  btn.disabled = true;
+  btn.querySelector("span").textContent = "Carrying over…";
+  const r = await fetch(`${API}/api/standup/carry-over`,{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({user_id:UID})
+  });
+  const d = await r.json();
+  btn.disabled = false;
+  btn.querySelector("span").textContent = "🌙 Wrap Up Day — carry unfinished to tomorrow";
+  if(d.success){
+    conf.style.display = "block";
+    conf.textContent = d.carried>0
+      ? `🌙 Done! ${d.carried} task${d.carried>1?"s":""} carried over to tomorrow (${d.date}).`
+      : "✅ All tasks were already done — nothing to carry over!";
+  }
+}
+
+// ── Team Standup Form ─────────────────────────────────────────────────────────
 
 async function submitStandup(){
   const yesterday = document.getElementById("f-yesterday").value.trim();
   const today     = document.getElementById("f-today").value.trim();
   const blockers  = document.getElementById("f-blockers").value.trim();
-  if(!yesterday && !today){alert("Please fill in at least one field.");return;}
-
+  if(!yesterday&&!today){alert("Please fill in at least one field.");return;}
   const btn = document.getElementById("submit-btn");
-  btn.disabled = true;
-  btn.querySelector("span").textContent = "Submitting...";
-
-  const res = await fetch(`${API}/api/standup`,{method:"POST",headers:{"Content-Type":"application/json"},
+  btn.disabled=true;
+  btn.querySelector("span").textContent="Submitting…";
+  const r = await fetch(`${API}/api/standup`,{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({user_id:UID,yesterday,today,blockers})});
-  const d = await res.json();
-
+  const d = await r.json();
   if(d.success){
     document.getElementById("submitted-banner").style.display="block";
     btn.style.display="none";
@@ -199,83 +327,69 @@ async function submitStandup(){
   }
 }
 
-async function loadTeamStandups(){
-  const res = await fetch(`${API}/api/standup/today`);
-  const data = await res.json();
-  const today = data.date || new Date().toISOString().slice(0,10);
-  document.getElementById("today-badge").textContent = today;
-
-  const submitted = new Map(data.standups.map(s=>[s.user_id,s]));
-  const wrap = document.getElementById("team-standups");
-
-  const avatarChar = name => name[0].toUpperCase();
-  const timeStr = iso => iso ? new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
-
-  wrap.innerHTML = window.EMPLOYEES.map(e=>{
-    const eid = e.id;
-    const s = submitted.get(eid);
-    const name = window.EMP_DICT[eid]||eid;
-    if(!s) return `
-      <div class="not-submitted">
-        <span style="font-size:1.1rem">⏳</span>
-        <span><strong>${name}</strong> hasn't submitted today's standup yet</span>
-      </div>`;
-    return`
-    <div class="standup-card">
-      <div class="sc-header">
-        <div class="sc-avatar">${avatarChar(name)}</div>
-        <div><div class="sc-name">${name}</div><div class="sc-time">Submitted ${timeStr(s.submitted_at)}</div></div>
-      </div>
-      <div class="sc-body">
-        ${s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${escHtml(s.yesterday)}</div></div>`:""}
-        ${s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${escHtml(s.today)}</div></div>`:""}
-        ${s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${escHtml(s.blockers)}</div></div>`:""}
-      </div>
-    </div>`;
-  }).join("");
-}
-
-async function loadAlerts(){
-  if(!IS_ADMIN) return;
-  document.getElementById("alerts-panel").style.display="block";
-  const res = await fetch(`${API}/api/alerts?user_id=${UID}`);
-  const data = await res.json();
-  const alerts = data.alerts || [];
-  document.getElementById("alert-count").textContent = alerts.length ? `(${alerts.length} active)` : "(none)";
-  const wrap = document.getElementById("alerts-list");
-  if(!alerts.length){wrap.innerHTML='<div class="empty" style="text-align:left;padding:10px 0">✅ No at-risk or critical tasks.</div>';return;}
-  wrap.innerHTML = alerts.map(a=>`
-    <div class="alert-card alert-${a.risk_level}">
-      <div>
-        <div class="alert-title">${a.assignee_name} — ${a.title}</div>
-        <div class="alert-sub">📁 ${a.client_name} · Due: ${a.due_date||"N/A"}</div>
-      </div>
-      <span class="risk-pill rp-${a.risk_level}">${a.risk_level==="critical"?"🚨 CRITICAL":"🔴 AT RISK"}</span>
-    </div>`).join("");
-}
-
-async function runCheck(){
-  const res = await fetch(`${API}/api/alerts/run-check`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID})});
-  const d = await res.json();
-  alert(`Check complete. ${d.alerts_fired||0} new alert(s) fired.`);
-  loadAlerts();
-}
-
-// Check if already submitted today
 async function checkIfSubmittedToday(){
-  const res = await fetch(`${API}/api/standup/today?user_id=${UID}`);
-  const data = await res.json();
-  if(data.standups && data.standups.length > 0){
+  const r = await fetch(`${API}/api/standup/today?user_id=${UID}`);
+  const d = await r.json();
+  if(d.standups&&d.standups.length>0){
     document.getElementById("submitted-banner").style.display="block";
     document.getElementById("submit-btn").style.display="none";
-    // Pre-fill from existing
-    const s = data.standups[0];
-    document.getElementById("f-yesterday").value = s.yesterday||"";
-    document.getElementById("f-today").value     = s.today||"";
-    document.getElementById("f-blockers").value  = s.blockers||"";
+    const s=d.standups[0];
+    document.getElementById("f-yesterday").value=s.yesterday||"";
+    document.getElementById("f-today").value=s.today||"";
+    document.getElementById("f-blockers").value=s.blockers||"";
   }
 }
 
+// ── Team standups panel ───────────────────────────────────────────────────────
+
+async function loadTeamStandups(){
+  const r = await fetch(`${API}/api/standup/today`);
+  const data = await r.json();
+  const today = data.date||new Date().toISOString().slice(0,10);
+  document.getElementById("today-badge").textContent=today;
+  const submitted=new Map(data.standups.map(s=>[s.user_id,s]));
+  const wrap=document.getElementById("team-standups");
+  const t=iso=>iso?new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"";
+  wrap.innerHTML=window.EMPLOYEES.map(e=>{
+    const s=submitted.get(e.id);
+    const name=window.EMP_DICT[e.id]||e.id;
+    if(!s)return`<div class="not-sub"><span style="font-size:1rem">⏳</span><span><strong>${name}</strong> hasn't submitted today's standup yet</span></div>`;
+    return`<div class="standup-card">
+      <div class="sc-header">
+        <div class="sc-avatar">${name[0].toUpperCase()}</div>
+        <div><div class="sc-name">${name}</div><div class="sc-time">Submitted ${t(s.submitted_at)}</div></div>
+      </div>
+      <div class="sc-body">
+        ${s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${esc(s.yesterday)}</div></div>`:""}
+        ${s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${esc(s.today)}</div></div>`:""}
+        ${s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
+      </div></div>`;
+  }).join("");
+}
+
+// ── Alerts (admin) ────────────────────────────────────────────────────────────
+
+async function loadAlerts(){
+  if(!IS_ADMIN)return;
+  document.getElementById("alerts-panel").style.display="block";
+  const r=await fetch(`${API}/api/alerts?user_id=${UID}`);
+  const data=await r.json();
+  const alerts=data.alerts||[];
+  document.getElementById("alert-count").textContent=alerts.length?`(${alerts.length} active)`:"(none)";
+  const wrap=document.getElementById("alerts-list");
+  if(!alerts.length){wrap.innerHTML='<div class="empty" style="text-align:left;padding:10px 0">✅ No at-risk or critical tasks.</div>';return;}
+  wrap.innerHTML=alerts.map(a=>`<div class="alert-card alert-${a.risk_level}">
+    <div><div class="alert-title">${a.assignee_name} — ${a.title}</div><div class="alert-sub">📁 ${a.client_name} · Due: ${a.due_date||"N/A"}</div></div>
+    <span class="risk-pill rp-${a.risk_level}">${a.risk_level==="critical"?"🚨 CRITICAL":"🔴 AT RISK"}</span>
+  </div>`).join("");
+}
+
+async function runCheck(){
+  const r=await fetch(`${API}/api/alerts/run-check`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID})});
+  const d=await r.json();
+  alert(`Check complete. ${d.alerts_fired||0} new alert(s) fired.`);
+  loadAlerts();
+}
 </script>
 </body>
 </html>

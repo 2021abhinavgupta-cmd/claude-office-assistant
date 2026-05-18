@@ -59,6 +59,19 @@ def init_db():
             UNIQUE(user_id, date)
         )""")
 
+        # Personal daily task tracker (separate from project tasks)
+        conn.execute("""CREATE TABLE IF NOT EXISTS standup_tasks (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      TEXT NOT NULL,
+            date         TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            status       TEXT DEFAULT 'pending',
+            carried_from TEXT DEFAULT NULL,
+            created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_standup_tasks_user_date ON standup_tasks (user_id, date)")
+
+
         # Task risk escalation log (tracks alert level per task)
         conn.execute("""CREATE TABLE IF NOT EXISTS task_risk (
             task_id     TEXT PRIMARY KEY,
