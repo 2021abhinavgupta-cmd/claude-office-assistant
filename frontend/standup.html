@@ -315,7 +315,7 @@ async function addTask(){
   }
 }
 
-async function autoFillStandup() {
+async function autoFillStandup(pull_upcoming = false) {
   const btn = document.getElementById("autofill-btn");
   btn.disabled = true;
   btn.textContent = "⏳ Fetching...";
@@ -323,15 +323,26 @@ async function autoFillStandup() {
     const r = await fetch(`${API}/api/standup/auto-fill`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ user_id: UID, assigned_name: window.EMP_DICT[UID] || UID })
+      body: JSON.stringify({ 
+        user_id: UID, 
+        assigned_name: window.EMP_DICT[UID] || UID,
+        pull_upcoming: pull_upcoming
+      })
     });
     const d = await r.json();
     if (d.success) {
       if (d.added > 0) {
-        alert(`⚡ Added ${d.added} active/due task(s) from Notion to your standup!`);
+        alert(`⚡ Added ${d.added} task(s) from Notion to your standup!`);
         loadMyTasks();
       } else {
-        alert("No new active or due-today tasks found in Notion.");
+        if (!pull_upcoming) {
+            if(confirm("No active or overdue tasks found.\n\nWould you like to pull in your upcoming (Not Started) tasks to work on today?")) {
+                autoFillStandup(true);
+                return;
+            }
+        } else {
+            alert("No upcoming tasks found in Notion.");
+        }
       }
     } else {
       alert("Error: " + (d.error || "Could not auto-fill"));

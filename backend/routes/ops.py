@@ -239,19 +239,43 @@ def auto_fill_standup():
         logger.error(f"Failed to fetch Notion tasks for auto-fill: {e}")
         return jsonify({"error": str(e)}), 500
 
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.utcnow()
+    today_str = today.strftime("%Y-%m-%d")
     
-    # Filter for tasks that are "in_progress" OR due today
-    # Notion status uses human strings like "In Progress"
     valid_tasks = []
     for t in all_tasks:
         s = t.get("status", "").lower().replace(" ", "_").replace("-", "_")
         d = t.get("due_date", "")
-        # Add if status is active, or if it's due today and not approved/submitted
-        is_active = s == "in_progress"
-        is_due_today = (d == today_str and s not in ("approved", "done", "submitted", "in_review", "pending_review"))
         
-        if is_active or is_due_today:
+        # Don't pull finished tasks
+        if s in ("approved", "done", "submitted", "in_review", "pending_review"):
+            continue
+            
+        # Add if status is active
+        is_active = (s == "in_progress")
+        
+        # Add if due date is today or in the past (overdue)
+        is_due = False
+        if d:
+            try:
+                due_dt = datetime.strptime(d.split("T")[0], "%Y-%m-%d")
+                if due_dt <= today:
+                    is_due = True
+            except: pass
+            
+        # If the user has "not started" tasks, pull them in if they are due within 7 days
+        is_upcoming = False
+        if d and s == "not_started":
+            try:
+                due_dt = datetime.strptime(d.split("T")[0], "%Y-%m-%d")
+                if (due_dt - today).days <= 7:
+                    is_upcoming = True
+            except: pass
+
+        # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
+        pull_all_upcoming = body.get("pull_upcoming", False)
+        
+        if is_active or is_due or is_upcoming or (pull_all_upcoming and s == "not_started"):
             valid_tasks.append(t)
 
     if not valid_tasks:
