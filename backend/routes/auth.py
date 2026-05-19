@@ -119,6 +119,17 @@ def auth_verify():
     user_id = _verify_session(token)
     if not user_id:
         return jsonify({"valid": False}), 401
+        
+    # Implicitly ensure the user is checked "in" for today.
+    # If they were checked out prematurely, this clears the checkout_time.
+    conn = _attendance_conn()
+    with conn:
+        conn.execute("""
+            INSERT INTO daily_attendance (user_id, date, checkin_time)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, date) DO UPDATE SET checkout_time = NULL
+        """, (user_id, today_ist(), now_ist()))
+    conn.close()
     data = _load_employees()
     emp = next((e for e in data.get("employees", []) if e["id"] == user_id), {})
     return jsonify({"valid": True, "user_id": user_id, "name": emp.get("name",""),

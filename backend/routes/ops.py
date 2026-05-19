@@ -88,9 +88,9 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? AND user_id=? ORDER BY id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? AND user_id=? AND status != 'deleted' ORDER BY id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? ORDER BY id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? AND status != 'deleted' ORDER BY id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
