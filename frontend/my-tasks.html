@@ -118,6 +118,37 @@
     .cal-pop-btn:hover { border-color: var(--acc); color: var(--acc); }
     .cal-cell.pop-up .cal-popover { top: auto; bottom: 90%; }
     .cal-cell.pop-up .cal-popover::before { bottom: auto; top: 100%; border-color: var(--bdr) transparent transparent transparent; }
+    .cal-cell.pop-up .cal-popover::before { bottom: auto; top: 100%; border-color: var(--bdr) transparent transparent transparent; }
+
+    /* Dashboard Widgets & Progress Ring */
+    .dashboard-widgets { display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+    .dash-card { flex:1; min-width:280px; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); padding:20px; display:flex; align-items:center; gap:20px; }
+    .ring-container { position:relative; width:64px; height:64px; }
+    .ring-svg { transform:rotate(-90deg); width:100%; height:100%; }
+    .ring-bg { fill:none; stroke:var(--s2); stroke-width:8; }
+    .ring-fill { fill:none; stroke:var(--acc); stroke-width:8; stroke-linecap:round; transition:stroke-dasharray 1s ease; }
+    .ring-text { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:0.9rem; font-weight:700; color:var(--txt); }
+    .dash-info h3 { font-size:1.1rem; margin:0 0 4px 0; color:var(--txt); }
+    .dash-info p { font-size:0.8rem; color:var(--muted); margin:0; line-height:1.4; }
+    
+    .smart-suggestion { background:linear-gradient(135deg, rgba(245,166,35,0.1), rgba(245,166,35,0.02)); border:1px solid rgba(245,166,35,0.3); }
+    .smart-suggestion h3 { color:var(--acc); }
+
+    /* Collapsible Sections */
+    .sec-lbl { cursor:pointer; user-select:none; display:flex; justify-content:space-between; align-items:center; }
+    .sec-lbl:hover { opacity:0.8; }
+    .sec-content { transition: max-height 0.3s ease, opacity 0.3s ease; overflow:hidden; opacity:1; max-height:10000px; }
+    .sec-content.collapsed { max-height:0; opacity:0; pointer-events:none; }
+    .collapse-icon { font-size:0.7rem; transition:transform 0.3s ease; }
+    .collapsed-icon { transform:rotate(-90deg); }
+
+    /* Sub-tasks */
+    .subtasks-container { margin-top:12px; background:var(--s2); border-radius:var(--rs); padding:10px; }
+    .subtask-item { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:0.85rem; color:var(--txt); }
+    .subtask-item.done { text-decoration:line-through; opacity:0.6; }
+    .subtask-cb { cursor:pointer; accent-color:var(--acc); width:14px; height:14px; }
+    .add-subtask-btn { background:transparent; border:1px dashed var(--bdr); color:var(--muted); width:100%; text-align:left; padding:6px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:4px; }
+    .add-subtask-btn:hover { border-color:var(--acc); color:var(--acc); }
   </style>
 </head>
 <body>
@@ -149,6 +180,8 @@
       <button class="btn btn-acc" style="padding:8px 16px; white-space:nowrap;" onclick="quickCreateTask()">Add</button>
     </div>
   </div>
+  
+  <div id="dashboard-widgets" class="dashboard-widgets"></div>
 
   <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
 </div>
@@ -250,6 +283,8 @@ function renderTasks() {
     );
   }
 
+  renderDashboardWidgets(filteredTasks);
+
   if(!filteredTasks.length){
     wrap.innerHTML='<div class="empty">🎉 No tasks found matching your search.</div>';
     return;
@@ -263,10 +298,10 @@ function renderTasks() {
     const review  = filteredTasks.filter(t=>t.status==="submitted");
     const done    = filteredTasks.filter(t=>t.status==="approved");
 
-    if(active.length)  html+=`<div class="sec-lbl">🔥 Active — ${active.length} task${active.length>1?"s":""}</div>`+active.map(t=>renderTask(t,today)).join("");
-    if(pending.length) html+=`<div class="sec-lbl">📋 Up Next — ${pending.length}</div>`+pending.map(t=>renderTask(t,today)).join("");
-    if(review.length)  html+=`<div class="sec-lbl">⏳ In Review — ${review.length}</div>`+review.map(t=>renderTask(t,today)).join("");
-    if(done.length)    html+=`<div class="sec-lbl">✅ Done — ${done.length}</div>`+done.map(t=>renderTask(t,today)).join("");
+    if(active.length)  html+=renderSection('sec-active', `🔥 Active — ${active.length} task${active.length>1?"s":""}`, active, today);
+    if(pending.length) html+=renderSection('sec-pending', `📋 Up Next — ${pending.length}`, pending, today);
+    if(review.length)  html+=renderSection('sec-review', `⏳ In Review — ${review.length}`, review, today);
+    if(done.length)    html+=renderSection('sec-done', `✅ Done — ${done.length}`, done, today);
     
   } else if (currentViewMode === 'client') {
     const byClient = {};
@@ -275,8 +310,8 @@ function renderTasks() {
        if(!byClient[c]) byClient[c] = [];
        byClient[c].push(t);
     });
-    Object.keys(byClient).sort().forEach(c => {
-       html += `<div class="sec-lbl">📁 ${c} — ${byClient[c].length} task${byClient[c].length>1?"s":""}</div>` + byClient[c].map(t=>renderTask(t,today)).join("");
+    Object.keys(byClient).sort().forEach((c, i) => {
+       html += renderSection(`sec-client-${i}`, `📁 ${c} — ${byClient[c].length} task${byClient[c].length>1?"s":""}`, byClient[c], today);
     });
     
   } else if (currentViewMode === 'date') {
@@ -290,10 +325,10 @@ function renderTasks() {
     // Sort upcoming chronologically
     upcoming.sort((a,b) => a.due_date.localeCompare(b.due_date));
     
-    if(overdue.length)    html+=`<div class="sec-lbl" style="color:var(--red)">🔴 Overdue — ${overdue.length}</div>`+overdue.map(t=>renderTask(t,today)).join("");
-    if(todayTasks.length) html+=`<div class="sec-lbl" style="color:var(--acc)">⚡ Due Today — ${todayTasks.length}</div>`+todayTasks.map(t=>renderTask(t,today)).join("");
-    if(upcoming.length)   html+=`<div class="sec-lbl">📅 Upcoming — ${upcoming.length}</div>`+upcoming.map(t=>renderTask(t,today)).join("");
-    if(nodate.length)     html+=`<div class="sec-lbl">⚪ No Due Date — ${nodate.length}</div>`+nodate.map(t=>renderTask(t,today)).join("");
+    if(overdue.length)    html+=renderSection('sec-overdue', `<span style="color:var(--red)">🔴 Overdue — ${overdue.length}</span>`, overdue, today);
+    if(todayTasks.length) html+=renderSection('sec-today', `<span style="color:var(--acc)">⚡ Due Today — ${todayTasks.length}</span>`, todayTasks, today);
+    if(upcoming.length)   html+=renderSection('sec-upcoming', `📅 Upcoming — ${upcoming.length}`, upcoming, today);
+    if(nodate.length)     html+=renderSection('sec-nodate', `⚪ No Due Date — ${nodate.length}`, nodate, today);
     
   } else if (currentViewMode === 'calendar') {
     html = renderCalendarHtml(today, filteredTasks);
@@ -430,6 +465,24 @@ function renderTask(t, today){
 
   let body="";
 
+  // Load subtasks
+  let subtasks = [];
+  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${t.notion_id}`) || "[]"); } catch(e){}
+  
+  let subtasksHtml = "";
+  if(t.status !== "approved") {
+    subtasksHtml = `<div class="subtasks-container" id="st-wrap-${t.notion_id}">`;
+    subtasks.forEach((st, idx) => {
+      subtasksHtml += `
+        <div class="subtask-item ${st.done ? 'done' : ''}">
+          <input type="checkbox" class="subtask-cb" ${st.done ? 'checked' : ''} onchange="toggleMySubtask('${t.notion_id}', ${idx}, this.checked)">
+          <span>${st.text}</span>
+        </div>
+      `;
+    });
+    subtasksHtml += `<button class="add-subtask-btn" onclick="addMySubtask('${t.notion_id}')">+ Add Sub-task</button></div>`;
+  }
+
   // Approved state
   if(t.status==="approved") body+=`<div class="done-box">Approved — great work!</div>`;
   // In review
@@ -450,6 +503,8 @@ function renderTask(t, today){
     
     body+=`</div>`;
   }
+  
+  body += subtasksHtml;
 
   // Submit form for in_progress
   if(t.status==="in_progress"){
@@ -573,6 +628,228 @@ async function pushToStandup(notion_id, title) {
     }
   } catch(err) {
     toast("Error: " + err.message, "err");
+  }
+}
+
+// --- Collapsible Sections Logic ---
+function toggleSection(id) {
+  const content = document.getElementById(id);
+  const isCollapsed = content.classList.contains('collapsed');
+  const icon = document.getElementById(`icon-${id}`);
+  
+  if (isCollapsed) {
+    content.classList.remove('collapsed');
+    icon.classList.remove('collapsed-icon');
+    localStorage.setItem(id, 'open');
+  } else {
+    content.classList.add('collapsed');
+    icon.classList.add('collapsed-icon');
+    localStorage.setItem(id, 'collapsed');
+  }
+}
+
+function renderSection(id, titleHtml, tasksArray, today) {
+  const isCollapsed = localStorage.getItem(id) === 'collapsed';
+  const iconClass = isCollapsed ? 'collapse-icon collapsed-icon' : 'collapse-icon';
+  const contentClass = isCollapsed ? 'sec-content collapsed' : 'sec-content';
+  
+  let html = `<div class="sec-lbl" onclick="toggleSection('${id}')">
+                <div>${titleHtml}</div>
+                <span id="icon-${id}" class="${iconClass}">▼</span>
+              </div>`;
+  html += `<div id="${id}" class="${contentClass}">` + tasksArray.map(t => renderTask(t, today)).join("") + `</div>`;
+  return html;
+}
+
+// --- Dashboard Widgets Logic ---
+function renderDashboardWidgets(tasks) {
+  const dashContainer = document.getElementById("dashboard-widgets");
+  if (!dashContainer || currentViewMode !== 'status') {
+    if(dashContainer) dashContainer.innerHTML = "";
+    return;
+  }
+
+  const todayStr = new Date().toISOString().slice(0,10);
+  
+  // Progress Ring Calculation
+  let activeWeight = 0;
+  let totalWeight = 0;
+  
+  let overdueCount = 0;
+  const overdueIds = [];
+
+  const clientNotStarted = {};
+
+  tasks.forEach(t => {
+    // Determine if task counts towards today's workload
+    if (t.status !== "not_started" || t.due_date === todayStr || (t.due_date && t.due_date < todayStr)) {
+      totalWeight += 100;
+      activeWeight += progressPct(t.status);
+    }
+    
+    // Check overdue
+    if (t.status !== "approved" && t.status !== "submitted" && t.due_date && t.due_date < todayStr) {
+      overdueCount++;
+      overdueIds.push(t.notion_id);
+    }
+    
+    // Check sprint suggestions
+    if (t.status === "not_started") {
+      const c = t.client_name || t.client || "Internal";
+      if(!clientNotStarted[c]) clientNotStarted[c] = [];
+      clientNotStarted[c].push(t.notion_id);
+    }
+  });
+
+  const pct = totalWeight > 0 ? Math.round((activeWeight / totalWeight) * 100) : 0;
+  const circumference = 2 * Math.PI * 28; // r=28
+  const offset = circumference - (pct / 100) * circumference;
+
+  let html = `
+    <div class="dash-card">
+      <div class="ring-container">
+        <svg class="ring-svg" viewBox="0 0 64 64">
+          <circle class="ring-bg" cx="32" cy="32" r="28"></circle>
+          <circle class="ring-fill" cx="32" cy="32" r="28" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"></circle>
+        </svg>
+        <div class="ring-text">${pct}%</div>
+      </div>
+      <div class="dash-info">
+        <h3>Daily Progress</h3>
+        <p>You are ${pct}% done with your active workload today.</p>
+      </div>
+    </div>
+  `;
+
+  // Smart Suggestions
+  if (overdueCount > 2) {
+    html += `
+      <div class="dash-card smart-suggestion">
+        <div class="dash-info" style="flex:1">
+          <h3>⚠️ Bulk Defer Overdue Tasks</h3>
+          <p>You have ${overdueCount} overdue tasks causing clutter. Start with a clean slate tomorrow?</p>
+        </div>
+        <button class="btn btn-quick" onclick="bulkDefer('${overdueIds.join(',')}')">Defer All</button>
+      </div>
+    `;
+  } else {
+    // Check for sprint grouping
+    let sprintClient = null;
+    let sprintIds = [];
+    for (let c in clientNotStarted) {
+      if (clientNotStarted[c].length >= 3) {
+        sprintClient = c;
+        sprintIds = clientNotStarted[c];
+        break;
+      }
+    }
+    if (sprintClient) {
+      html += `
+        <div class="dash-card smart-suggestion">
+          <div class="dash-info" style="flex:1">
+            <h3>💡 Smart Sprint: ${sprintClient}</h3>
+            <p>You have ${sprintIds.length} pending tasks for this client. Group them into a sprint and start now?</p>
+          </div>
+          <button class="btn btn-acc" onclick="bulkStart('${sprintIds.join(',')}')">Start Sprint</button>
+        </div>
+      `;
+    }
+  }
+
+  dashContainer.innerHTML = html;
+}
+
+async function bulkDefer(idsStr) {
+  const ids = idsStr.split(',');
+  if(!ids.length) return;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const nextDay = tomorrow.toISOString().slice(0,10);
+  
+  toast("Deferring tasks...");
+  try {
+    await Promise.all(ids.map(nid => 
+      fetch(`${API}/api/notion/tasks/${nid}`, {
+        method: "PATCH",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({due_date: nextDay})
+      })
+    ));
+    toast("All overdue tasks deferred!");
+    load();
+  } catch(e) {
+    toast("Error deferring tasks", "err");
+  }
+}
+
+async function bulkStart(idsStr) {
+  const ids = idsStr.split(',');
+  if(!ids.length) return;
+  toast("Starting sprint...");
+  try {
+    await Promise.all(ids.map(nid => 
+      fetch(`${API}/api/notion/tasks/${nid}`, {
+        method: "PATCH",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({status:"in_progress", progress:10})
+      })
+    ));
+    toast("Sprint started! Let's go!");
+    load();
+  } catch(e) {
+    toast("Error starting sprint", "err");
+  }
+}
+
+// --- Sub-Tasks Logic ---
+async function addMySubtask(nid) {
+  const text = prompt("Enter sub-task:");
+  if (!text) return;
+  
+  let subtasks = [];
+  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
+  
+  subtasks.push({text, done: false});
+  localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(subtasks));
+  
+  recalcSubtasks(nid, subtasks);
+  renderTasks();
+}
+
+async function toggleMySubtask(nid, idx, isChecked) {
+  let subtasks = [];
+  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
+  if (subtasks[idx]) {
+    subtasks[idx].done = isChecked;
+    localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(subtasks));
+    await recalcSubtasks(nid, subtasks);
+    renderTasks();
+  }
+}
+
+async function recalcSubtasks(nid, subtasks) {
+  if (!subtasks.length) return;
+  const doneCount = subtasks.filter(st => st.done).length;
+  // If task status is not_started, progress is 0. If there are subtasks, progress is mapped between 10% and 90%.
+  // For simplicity, we just set progress directly.
+  const newProgress = Math.round((doneCount / subtasks.length) * 100);
+  
+  try {
+    const payload = { progress: newProgress };
+    if (newProgress > 0) payload.status = "in_progress"; // Auto-start if progressing
+    await fetch(`${API}/api/notion/tasks/${nid}`, {
+      method: "PATCH",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    // Update local cache to reflect immediately
+    const t = window.allTasks.find(x => x.notion_id === nid);
+    if(t) {
+      t.progress = newProgress;
+      if(newProgress > 0) t.status = "in_progress";
+    }
+  } catch(e) {
+    console.error("Failed to sync subtask progress to Notion", e);
   }
 }
 
