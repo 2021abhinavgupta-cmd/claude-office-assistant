@@ -234,7 +234,7 @@ def auto_fill_standup():
         if not notion_store.is_configured():
             return jsonify({"error": "Notion is not configured"}), 400
             
-        all_tasks = notion_store.get_tasks_for_employee(assigned_name)
+        all_tasks = notion_store.list_tasks(assigned_to=assigned_name)
     except Exception as e:
         logger.error(f"Failed to fetch Notion tasks for auto-fill: {e}")
         return jsonify({"error": str(e)}), 500
