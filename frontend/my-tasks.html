@@ -426,7 +426,10 @@ function renderTask(t, today){
   return`<div class="tc ${isOverdue?"overdue":""}" id="tc-${t.notion_id}">
     <div class="tc-top">
       <div>
-        <div class="tc-title">${t.title||"Untitled"}</div>
+        <div class="tc-title" style="display:flex; align-items:center; gap:8px">
+          ${t.title||"Untitled"}
+          <button onclick="editTask('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || ""}', '${t.due_date || ""}')" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.8rem;" title="Edit Task">✏️</button>
+        </div>
         <div class="tc-meta">
           ${t.client?`<span class="tag">📁 ${t.client}</span>`:""}
           ${t.due_date?`<span class="tag ${isOverdue?"overdue-tag":""}">📅 ${isOverdue?"⚠️ ":""}${t.due_date}</span>`:""}
@@ -466,6 +469,37 @@ async function quickDone(nid){
     if(d.success){toast("Marked for review!");load();}
     else toast(d.error||"Error","err");
   }catch(err){toast("Error: "+err.message,"err");}
+}
+
+async function editTask(nid, currentTitle, currentDate) {
+  const newTitle = prompt("Edit Task Title:", currentTitle);
+  if (newTitle === null) return; // user cancelled
+  
+  const newDate = prompt("Edit Due Date (YYYY-MM-DD) or leave empty:", currentDate || "");
+  if (newDate === null) return; // user cancelled
+
+  try {
+    const payload = {};
+    if (newTitle.trim() !== currentTitle) payload.new_title = newTitle.trim();
+    if (newDate.trim() !== (currentDate || "")) payload.due_date = newDate.trim() || null;
+    
+    if (Object.keys(payload).length === 0) return; // nothing changed
+
+    const r = await fetch(`${API}/api/notion/tasks/${nid}`, {
+      method: "PATCH",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast("✅ Task updated successfully!");
+      load();
+    } else {
+      toast(d.error || "Failed to update task", "err");
+    }
+  } catch(err) {
+    toast("Error: " + err.message, "err");
+  }
 }
 
 async function pushToStandup(notion_id, title) {
