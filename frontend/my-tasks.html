@@ -507,6 +507,9 @@ function renderTask(t, today){
   let subtasks = [];
   try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${t.notion_id}`) || "[]"); } catch(e){}
   
+  const safeTitleForAttr = (t.title||'').replace(/'/g,"&apos;").replace(/`/g,'&#96;');
+  const safeClientForAttr = (t.client_name||t.client||'').replace(/'/g,"&apos;");
+
   let subtasksHtml = "";
   if(t.status !== "approved") {
     subtasksHtml = `<div class="subtasks-container" id="st-wrap-${t.notion_id}">`;
@@ -521,7 +524,7 @@ function renderTask(t, today){
     subtasksHtml += `
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="add-subtask-btn" style="flex:1" onclick="addMySubtask('${t.notion_id}')">+ Add Sub-task</button>
-        <button class="ai-breakdown-btn" style="width:auto;padding:7px 14px;" id="ai-btn-${t.notion_id}" onclick="aiBreakdownTask('${t.notion_id}','${(t.title||'').replace(/'/g,"\\'")}','${(t.client_name||t.client||'').replace(/'/g,'\\'')}')">🧠 AI Breakdown</button>
+        <button class="ai-breakdown-btn" style="width:auto;padding:7px 14px;" id="ai-btn-${t.notion_id}" onclick="aiBreakdownTask('${t.notion_id}','${safeTitleForAttr}','${safeClientForAttr}')">🧠 AI Breakdown</button>
       </div>
     </div>`;
     subtasksHtml = subtasksHtml; // close container added in loop body
@@ -552,12 +555,10 @@ function renderTask(t, today){
 
   // Submit form for in_progress
   if(t.status==="in_progress"){
-    const safeTitle = (t.title||'').replace(/'/g,"\\'").replace(/`/g,'&#96;');
-    const safeClient = (t.client_name||t.client||'').replace(/'/g,"\\'");
     body+=`<form class="submit-form sf" data-nid="${t.notion_id}" data-title="${t.title||''}" data-client="${t.client_name||t.client||''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <label style="margin-bottom:0">Progress Update</label>
-        <button type="button" class="ai-breakdown-btn" style="width:auto;padding:5px 12px;font-size:0.75rem;" onclick="aiDraftProofOfWork(this.closest('form'),'${safeTitle}','${safeClient}')">🧠 AI Draft</button>
+        <button type="button" class="ai-breakdown-btn" style="width:auto;padding:5px 12px;font-size:0.75rem;" onclick="aiDraftProofOfWork(this.closest('form'),'${safeTitleForAttr}','${safeClientForAttr}')">🧠 AI Draft</button>
       </div>
       <textarea id="ta-${t.notion_id}" placeholder="What did you do on this task?" required></textarea>
       <label>Proof of Work — link or file URL <span style="color:var(--muted)">(optional)</span></label>
