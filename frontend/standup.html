@@ -248,13 +248,26 @@ async function addTask(){
 }
 
 async function toggleTask(id, newStatus){
+  const t = allTasks.find(x=>x.id===id);
+  let payload = { status: newStatus };
+  
+  if(newStatus === "done" && t && t.notion_id) {
+    let pct = prompt(`This task is linked to Notion.\nHow much of the total task is complete now? (0-100)`, "100");
+    if (pct === null) return; // User cancelled
+    let parsed = parseInt(pct, 10);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+      payload.progress = parsed;
+    }
+  }
+
   const item = document.getElementById(`task-${id}`);
   if(item) item.style.opacity="0.5";
+  
   await fetch(`${API}/api/standup/my-tasks/${id}`,{
     method:"PATCH",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({status:newStatus})
+    body:JSON.stringify(payload)
   });
-  const t = allTasks.find(x=>x.id===id);
+  
   if(t) t.status = newStatus;
   renderTasks();
 }

@@ -404,6 +404,11 @@ function renderTask(t, today){
     body+=`<button class="btn btn-quick" style="margin-top:10px" onclick="startTask('${t.notion_id}')">▶ Start Task</button>`;
   }
 
+  // Add to Standup button (for pending/active tasks)
+  if(t.status !== "approved") {
+    body+=` <button class="btn btn-quick" style="margin-top:10px" onclick="pushToStandup('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || "Untitled"}')">➕ Add to Standup</button>`;
+  }
+
   // Submit form for in_progress
   if(t.status==="in_progress"){
     body+=`<form class="submit-form sf" data-nid="${t.notion_id}">
@@ -461,6 +466,24 @@ async function quickDone(nid){
     if(d.success){toast("Marked for review!");load();}
     else toast(d.error||"Error","err");
   }catch(err){toast("Error: "+err.message,"err");}
+}
+
+async function pushToStandup(notion_id, title) {
+  try {
+    const r = await fetch(`${API}/api/standup/my-tasks`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ user_id: UID, title: title, notion_id: notion_id })
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast("✅ Added to today's Standup list!");
+    } else {
+      toast(d.error || "Error adding to standup", "err");
+    }
+  } catch(err) {
+    toast("Error: " + err.message, "err");
+  }
 }
 
 load();

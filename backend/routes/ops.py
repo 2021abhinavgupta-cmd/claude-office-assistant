@@ -165,14 +165,14 @@ def get_my_tasks():
                     )
 
     cur.execute(
-        "SELECT id, title, status, carried_from, created_at, blocker FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
+        "SELECT id, title, status, carried_from, created_at, blocker, notion_id FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
         (user_id, date_str),
     )
     rows = cur.fetchall()
     conn.close()
     tasks = [
         {"id": r[0], "title": r[1], "status": r[2],
-         "carried_from": r[3], "created_at": r[4], "blocker": r[5]}
+         "carried_from": r[3], "created_at": r[4], "blocker": r[5], "notion_id": r[6]}
         for r in rows if r[2] != "deleted"
     ]
     return jsonify({"tasks": tasks, "date": date_str})
@@ -187,6 +187,7 @@ def add_my_task():
     body    = request.get_json(silent=True) or {}
     user_id = body.get("user_id", "").strip()
     title   = body.get("title", "").strip()
+    notion_id = body.get("notion_id", None)
     if not user_id or not title:
         return jsonify({"error": "user_id and title required"}), 400
 
@@ -194,8 +195,8 @@ def add_my_task():
     conn = _su_conn()
     with conn:
         cur = conn.execute(
-            "INSERT INTO standup_tasks (user_id, date, title) VALUES (?, ?, ?)",
-            (user_id, date_str, title),
+            "INSERT INTO standup_tasks (user_id, date, title, notion_id) VALUES (?, ?, ?, ?)",
+            (user_id, date_str, title, notion_id),
         )
         task_id = cur.lastrowid
     conn.close()
@@ -212,6 +213,7 @@ def update_my_task(task_id: int):
     status = body.get("status")
     blocker = body.get("blocker")
     title = body.get("title")
+    progress = body.get("progress")  # optional progress override (int 0-100)
     
     updates = []
     params = []
@@ -235,7 +237,23 @@ def update_my_task(task_id: int):
     conn = _su_conn()
     with conn:
         conn.execute(f"UPDATE standup_tasks SET {', '.join(updates)} WHERE id=?", params)
-    conn.close()
+
+    # If marking done, optionally sync progress back to Notion
+    if status == "done" and progress is not None:
+        cur = conn.cursor()
+        cur.execute("SELECT notion_id FROM standup_tasks WHERE id=?", (task_id,))
+        row = cur.fetchone()
+        conn.close()
+        notion_id = row[0] if row else None
+        if notion_id:
+            try:
+                import notion_store
+                notion_store.update_task(notion_id, progress=int(progress))
+            except Exception as e:
+                logger.warning(f"Notion sync failed for task {notion_id}: {e}")
+    else:
+        conn.close()
+
     return jsonify({"success": True})
 
 

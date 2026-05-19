@@ -77,6 +77,11 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
+        try:
+            conn.execute("ALTER TABLE standup_tasks ADD COLUMN notion_id TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
 
 
         # Task risk escalation log (tracks alert level per task)
