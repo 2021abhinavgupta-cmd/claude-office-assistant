@@ -93,10 +93,9 @@ _scheduler = task_scheduler.init_scheduler(app)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 @app.route("/")
-@app.route("/index.html")
 def serve_index():
     from flask import send_from_directory
-    return send_from_directory(FRONTEND_DIR, "index.html")
+    return send_from_directory(FRONTEND_DIR, "login.html")
 
 @app.route("/<path:filename>")
 def serve_frontend(filename):
