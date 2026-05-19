@@ -2,9 +2,11 @@
 Standup, Alerts, Notion, Quick-Tasks, SQLite helpers, and Export Blueprint
 Routes: /api/standup/*, /api/alerts/*, /api/notion/*, /api/quick-tasks, /api/sqlite/*, /api/export
 """
+import json
 import logging
+import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import notion_store
 import task_scheduler
@@ -13,6 +15,24 @@ from utils import _is_admin
 
 logger = logging.getLogger(__name__)
 ops_bp = Blueprint("ops", __name__)
+
+
+def _claude_call(system: str, user: str, max_tokens: int = 1024) -> str:
+    """Call Claude API using Haiku model for fast, cheap task assistant responses."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+        model = os.getenv("HAIKU_MODEL", "claude-haiku-4-5")
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        logger.error(f"Claude API call failed: {e}")
+        raise
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -811,3 +831,174 @@ def export_standup_tasks():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=standup_tasks_export.csv"}
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CLAUDE AI ROUTES — Task Intelligence
+# ══════════════════════════════════════════════════════════════════════════════
+
+@ops_bp.route("/api/ai/breakdown", methods=["POST"])
+def ai_task_breakdown():
+    """
+    Feature 1: Ask Claude to auto-generate sub-tasks for a given task title.
+    Body: { task_title, client_name (optional) }
+    Returns: { subtasks: ["step 1", "step 2", ...] }
+    """
+    body = request.get_json(silent=True) or {}
+    task_title = body.get("task_title", "").strip()
+    client_name = body.get("client_name", "").strip()
+
+    if not task_title:
+        return jsonify({"error": "task_title is required"}), 400
+
+    system = (
+        "You are a senior project manager helping an agency team member break down tasks into actionable sub-steps. "
+        "Return ONLY a JSON array of strings. Each string is one clear, concise sub-task (max 10 words). "
+        "No explanations, no markdown, no numbering — just a raw JSON array like: "
+        '[\"Design wireframe\", \"Write copy\", \"Code component\"]'
+    )
+    client_ctx = f" for client '{client_name}'" if client_name else ""
+    user = f"Break down this task into 4-7 practical sub-tasks: '{task_title}'{client_ctx}"
+
+    try:
+        raw = _claude_call(system, user, max_tokens=512)
+        # Parse raw JSON array
+        subtasks = json.loads(raw)
+        if not isinstance(subtasks, list):
+            raise ValueError("Not a list")
+        return jsonify({"subtasks": subtasks})
+    except json.JSONDecodeError:
+        # Fallback: extract lines from raw text
+        lines = [l.strip().lstrip("•-123456789. ") for l in raw.split("\n") if l.strip()]
+        return jsonify({"subtasks": lines[:8]})
+    except Exception as e:
+        logger.exception("ai_task_breakdown failed")
+        return jsonify({"error": str(e)}), 500
+
+
+@ops_bp.route("/api/ai/proof-of-work", methods=["POST"])
+def ai_proof_of_work():
+    """
+    Feature 2: Auto-draft a professional submission note.
+    Body: { task_title, client_name, subtasks: [{ text, done }] }
+    Returns: { draft: "..." }
+    """
+    body = request.get_json(silent=True) or {}
+    task_title = body.get("task_title", "").strip()
+    client_name = body.get("client_name", "").strip()
+    subtasks = body.get("subtasks", [])
+
+    if not task_title:
+        return jsonify({"error": "task_title is required"}), 400
+
+    done_list = [st["text"] for st in subtasks if st.get("done")]
+    pending_list = [st["text"] for st in subtasks if not st.get("done")]
+
+    completed_str = "\n".join(f"- {t}" for t in done_list) if done_list else "- All work completed"
+    pending_str = "\n".join(f"- {t}" for t in pending_list) if pending_list else "None"
+
+    system = (
+        "You are a professional agency employee writing a polished, concise progress update for your manager. "
+        "Write 2-4 sentences in first person. Be specific, confident and professional. "
+        "Do NOT use placeholders or generic filler. Return only the note text, no preamble."
+    )
+    user = (
+        f"Task: '{task_title}'" + (f" (Client: {client_name})" if client_name else "") + "\n"
+        f"Completed steps:\n{completed_str}\n"
+        f"Remaining:\n{pending_str}\n\n"
+        "Write a professional proof-of-work submission note."
+    )
+
+    try:
+        draft = _claude_call(system, user, max_tokens=300)
+        return jsonify({"draft": draft})
+    except Exception as e:
+        logger.exception("ai_proof_of_work failed")
+        return jsonify({"error": str(e)}), 500
+
+
+@ops_bp.route("/api/ai/parse-task", methods=["POST"])
+def ai_parse_task():
+    """
+    Feature 3: Natural language task parsing — extract title, client, due_date from free text.
+    Body: { text, assigned_name }
+    Returns: { title, client_name, due_date (YYYY-MM-DD or null) }
+    """
+    body = request.get_json(silent=True) or {}
+    text = body.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    tomorrow = (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%d")
+    next_week = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    system = (
+        "You are a task parser. Extract structured data from the user's natural language task description. "
+        f"Today's date is {today}. Tomorrow is {tomorrow}. Next week is {next_week}. "
+        "Return ONLY a JSON object with exactly these keys: title (string), client_name (string or null), due_date (YYYY-MM-DD string or null). "
+        'Example: {"title": "Fix responsive header bug", "client_name": "MetaZune", "due_date": "2026-05-20"}'
+    )
+    user = f"Parse this task: '{text}'"
+
+    try:
+        raw = _claude_call(system, user, max_tokens=200)
+        parsed = json.loads(raw)
+        return jsonify({
+            "title": parsed.get("title", text),
+            "client_name": parsed.get("client_name") or "",
+            "due_date": parsed.get("due_date") or today,
+        })
+    except Exception as e:
+        logger.exception("ai_parse_task failed")
+        return jsonify({"title": text, "client_name": "", "due_date": today})
+
+
+@ops_bp.route("/api/ai/coach", methods=["POST"])
+def ai_coach():
+    """
+    Feature 4: Daily AI Coach — answer questions about the user's Notion task list.
+    Body: { question, assigned_name, user_id }
+    Returns: { reply: "..." }
+    """
+    body = request.get_json(silent=True) or {}
+    question = body.get("question", "").strip()
+    assigned_name = body.get("assigned_name", "")
+
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+
+    # Fetch the user's tasks from Notion
+    tasks = notion_store.list_tasks(assigned_to=assigned_name) if assigned_name else []
+
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    task_summary = ""
+    if tasks:
+        lines = []
+        for t in tasks:
+            status = t.get("status", "not_started")
+            due = t.get("due_date", "no date")
+            title = t.get("title", "Untitled")
+            client = t.get("client_name", "")
+            overdue = " [OVERDUE]" if due and due < today and status not in ("approved", "submitted") else ""
+            lines.append(f"- {title} | Status: {status} | Due: {due}{overdue}" + (f" | Client: {client}" if client else ""))
+        task_summary = "\n".join(lines)
+    else:
+        task_summary = "No tasks found."
+
+    system = (
+        f"You are a friendly, concise AI productivity coach for {assigned_name or 'the user'} at a creative agency. "
+        f"Today is {today}. Here is their current Notion task list:\n\n{task_summary}\n\n"
+        "Based on this, answer their question helpfully and specifically. "
+        "Be direct and action-oriented. Max 3-4 sentences. "
+        "If they ask what to do next, suggest the most urgent/important task. "
+        "If they're overwhelmed, offer practical relief (defer, focus on one thing). "
+        "Never invent tasks not in the list."
+    )
+
+    try:
+        reply = _claude_call(system, question, max_tokens=400)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        logger.exception("ai_coach failed")
+        return jsonify({"error": str(e)}), 500

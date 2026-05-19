@@ -149,6 +149,28 @@
     .subtask-cb { cursor:pointer; accent-color:var(--acc); width:14px; height:14px; }
     .add-subtask-btn { background:transparent; border:1px dashed var(--bdr); color:var(--muted); width:100%; text-align:left; padding:6px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:4px; }
     .add-subtask-btn:hover { border-color:var(--acc); color:var(--acc); }
+    .ai-breakdown-btn { background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(59,130,246,.1)); border:1px solid rgba(139,92,246,.4); color:#a78bfa; width:100%; text-align:left; padding:7px 12px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:6px; font-weight:600; letter-spacing:.02em; transition:all .2s; }
+    .ai-breakdown-btn:hover { border-color:#a78bfa; background:rgba(139,92,246,.2); }
+    .ai-breakdown-btn:disabled { opacity:0.5; cursor:wait; }
+
+    /* AI Coach Widget */
+    #ai-coach-btn { position:fixed; bottom:28px; right:28px; width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); border:none; color:#fff; font-size:1.4rem; cursor:pointer; box-shadow:0 4px 24px rgba(124,58,237,.5); z-index:1000; transition:transform .2s; display:flex; align-items:center; justify-content:center; }
+    #ai-coach-btn:hover { transform:scale(1.1); }
+    #ai-coach-panel { position:fixed; bottom:96px; right:28px; width:340px; background:var(--s1); border:1px solid rgba(124,58,237,.4); border-radius:16px; box-shadow:0 16px 48px rgba(0,0,0,.8); z-index:1000; display:none; flex-direction:column; overflow:hidden; }
+    #ai-coach-panel.open { display:flex; }
+    .coach-header { padding:14px 16px; background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1)); border-bottom:1px solid rgba(124,58,237,.3); display:flex; justify-content:space-between; align-items:center; }
+    .coach-header h4 { margin:0; font-size:.9rem; font-weight:700; color:#c4b5fd; }
+    .coach-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.1rem; }
+    .coach-messages { flex:1; max-height:300px; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
+    .coach-msg { padding:10px 12px; border-radius:10px; font-size:.82rem; line-height:1.55; max-width:90%; }
+    .coach-msg.user { background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.3); color:var(--txt); align-self:flex-end; }
+    .coach-msg.ai { background:var(--s2); border:1px solid var(--bdr); color:var(--txt); align-self:flex-start; }
+    .coach-msg.thinking { color:var(--muted); font-style:italic; }
+    .coach-input-row { padding:10px 12px; border-top:1px solid var(--bdr); display:flex; gap:8px; }
+    .coach-input { flex:1; background:var(--s2); border:1px solid var(--bdr); border-radius:8px; color:var(--txt); padding:8px 10px; font-size:.83rem; outline:none; font-family:'DM Sans',sans-serif; }
+    .coach-input:focus { border-color:rgba(124,58,237,.6); }
+    .coach-send { background:linear-gradient(135deg,#7c3aed,#3b82f6); border:none; color:#fff; border-radius:8px; padding:8px 14px; font-size:.83rem; cursor:pointer; font-weight:600; white-space:nowrap; }
+    .coach-send:disabled { opacity:.5; cursor:wait; }
   </style>
 </head>
 <body>
@@ -182,6 +204,22 @@
   </div>
   
   <div id="dashboard-widgets" class="dashboard-widgets"></div>
+
+  <!-- AI Coach Floating Widget -->
+  <button id="ai-coach-btn" onclick="toggleCoach()" title="Ask your AI Coach">🧠</button>
+  <div id="ai-coach-panel">
+    <div class="coach-header">
+      <h4>🧠 AI Task Coach</h4>
+      <button class="coach-close" onclick="toggleCoach()">✕</button>
+    </div>
+    <div class="coach-messages" id="coach-messages">
+      <div class="coach-msg ai">Hi! I've read your Notion tasks. Ask me anything — "What should I focus on today?" or "I'm overwhelmed, help!"</div>
+    </div>
+    <div class="coach-input-row">
+      <input class="coach-input" id="coach-input" placeholder="Ask me anything..." onkeydown="if(event.key==='Enter')sendCoachMessage()" />
+      <button class="coach-send" id="coach-send" onclick="sendCoachMessage()">Ask</button>
+    </div>
+  </div>
 
   <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
 </div>
@@ -480,7 +518,13 @@ function renderTask(t, today){
         </div>
       `;
     });
-    subtasksHtml += `<button class="add-subtask-btn" onclick="addMySubtask('${t.notion_id}')">+ Add Sub-task</button></div>`;
+    subtasksHtml += `
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button class="add-subtask-btn" style="flex:1" onclick="addMySubtask('${t.notion_id}')">+ Add Sub-task</button>
+        <button class="ai-breakdown-btn" style="width:auto;padding:7px 14px;" id="ai-btn-${t.notion_id}" onclick="aiBreakdownTask('${t.notion_id}','${(t.title||'').replace(/'/g,"\\'")}','${(t.client_name||t.client||'').replace(/'/g,'\\'')}')">🧠 AI Breakdown</button>
+      </div>
+    </div>`;
+    subtasksHtml = subtasksHtml; // close container added in loop body
   }
 
   // Approved state
@@ -508,9 +552,14 @@ function renderTask(t, today){
 
   // Submit form for in_progress
   if(t.status==="in_progress"){
-    body+=`<form class="submit-form sf" data-nid="${t.notion_id}">
-      <label>Progress Update</label>
-      <textarea placeholder="What did you do on this task?" required></textarea>
+    const safeTitle = (t.title||'').replace(/'/g,"\\'").replace(/`/g,'&#96;');
+    const safeClient = (t.client_name||t.client||'').replace(/'/g,"\\'");
+    body+=`<form class="submit-form sf" data-nid="${t.notion_id}" data-title="${t.title||''}" data-client="${t.client_name||t.client||''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <label style="margin-bottom:0">Progress Update</label>
+        <button type="button" class="ai-breakdown-btn" style="width:auto;padding:5px 12px;font-size:0.75rem;" onclick="aiDraftProofOfWork(this.closest('form'),'${safeTitle}','${safeClient}')">🧠 AI Draft</button>
+      </div>
+      <textarea id="ta-${t.notion_id}" placeholder="What did you do on this task?" required></textarea>
       <label>Proof of Work — link or file URL <span style="color:var(--muted)">(optional)</span></label>
       <input type="url" class="file-input" placeholder="https://drive.google.com/... or figma.com/..." />
       <div class="form-row">
@@ -857,19 +906,39 @@ async function recalcSubtasks(nid, subtasks) {
 
 async function quickCreateTask() {
   const inp = document.getElementById("quick-task-input");
-  const title = inp.value.trim();
-  if(!title) return;
+  const rawText = inp.value.trim();
+  if(!rawText) return;
   inp.disabled = true;
+  
+  const placeholder = inp.placeholder;
+  inp.placeholder = "🧠 Claude is parsing...";
+  
   try {
-    const today = new Date().toISOString().slice(0,10);
+    // Feature 3: NL Task Parsing — send to Claude first
+    let title = rawText, client_name = "", due_date = new Date().toISOString().slice(0,10);
+    
+    try {
+      const parseR = await fetch(`${API}/api/ai/parse-task`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({text: rawText, assigned_name: USER_NAME || ""})
+      });
+      const parseD = await parseR.json();
+      if (parseD.title) {
+        title = parseD.title;
+        client_name = parseD.client_name || "";
+        due_date = parseD.due_date || due_date;
+      }
+    } catch(e) { /* fallback to raw text */ }
+    
     const r = await fetch(`${API}/api/notion/tasks`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({title: title, assigned_to: USER_NAME || "", due_date: today})
+      body: JSON.stringify({title, assigned_to: USER_NAME || "", due_date})
     });
     const d = await r.json();
     if(d.success) {
-      toast("Task created successfully!");
+      toast(`Task created: "${title}"${due_date ? ` | Due ${due_date}` : ""}`);
       inp.value = "";
       load();
     } else {
@@ -879,6 +948,9 @@ async function quickCreateTask() {
     toast("Error: " + e.message, "err");
   } finally {
     inp.disabled = false;
+    inp.placeholder = placeholder;
+  }
+}
   }
 }
 
@@ -976,6 +1048,129 @@ window.load = async function() {
 };
 
 load();
+
+// ═══════════════════════════════════════════════
+// CLAUDE AI FEATURES
+// ═══════════════════════════════════════════════
+
+// Feature 1: AI Auto-Breakdown for Sub-Tasks
+async function aiBreakdownTask(nid, taskTitle, clientName) {
+  const btn = document.getElementById(`ai-btn-${nid}`);
+  if(btn) { btn.disabled = true; btn.textContent = '🧠 Thinking...'; }
+  
+  try {
+    const r = await fetch(`${API}/api/ai/breakdown`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({task_title: taskTitle, client_name: clientName})
+    });
+    const d = await r.json();
+    if(d.subtasks && d.subtasks.length) {
+      let existing = [];
+      try { existing = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
+      
+      const newSubtasks = d.subtasks.map(text => ({text, done: false}));
+      const merged = [...existing, ...newSubtasks];
+      localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(merged));
+      renderTasks();
+      toast(`🧠 Added ${d.subtasks.length} AI-generated sub-tasks!`);
+    } else {
+      toast(d.error || 'No sub-tasks generated', 'err');
+    }
+  } catch(e) {
+    toast('AI breakdown failed: ' + e.message, 'err');
+  } finally {
+    if(btn) { btn.disabled = false; btn.textContent = '🧠 AI Breakdown'; }
+  }
+}
+
+// Feature 2: AI Auto-Draft Proof of Work
+async function aiDraftProofOfWork(form, taskTitle, clientName) {
+  const nid = form.dataset.nid;
+  const ta = form.querySelector('textarea');
+  if(!ta) return;
+  
+  const origPlaceholder = ta.placeholder;
+  ta.placeholder = '🧠 Claude is drafting your submission note...';
+  ta.disabled = true;
+
+  let subtasks = [];
+  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || '[]'); } catch(e){}
+
+  try {
+    const r = await fetch(`${API}/api/ai/proof-of-work`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({task_title: taskTitle, client_name: clientName, subtasks})
+    });
+    const d = await r.json();
+    if(d.draft) {
+      ta.value = d.draft;
+      toast('🧠 AI drafted your submission note. Review and edit as needed!');
+    } else {
+      toast(d.error || 'Could not draft note', 'err');
+    }
+  } catch(e) {
+    toast('AI draft failed: ' + e.message, 'err');
+  } finally {
+    ta.disabled = false;
+    ta.placeholder = origPlaceholder;
+  }
+}
+
+// Feature 4: AI Coach Widget
+function toggleCoach() {
+  const panel = document.getElementById('ai-coach-panel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')) {
+    document.getElementById('coach-input').focus();
+  }
+}
+
+async function sendCoachMessage() {
+  const input = document.getElementById('coach-input');
+  const sendBtn = document.getElementById('coach-send');
+  const messages = document.getElementById('coach-messages');
+  const question = input.value.trim();
+  if(!question) return;
+
+  // Add user message
+  messages.innerHTML += `<div class="coach-msg user">${question}</div>`;
+  input.value = '';
+  input.disabled = true;
+  sendBtn.disabled = true;
+
+  // Thinking indicator
+  const thinkId = 'think-' + Date.now();
+  messages.innerHTML += `<div class="coach-msg ai thinking" id="${thinkId}">Claude is thinking...</div>`;
+  messages.scrollTop = messages.scrollHeight;
+
+  try {
+    const r = await fetch(`${API}/api/ai/coach`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({question, assigned_name: USER_NAME || '', user_id: UID})
+    });
+    const d = await r.json();
+    const thinking = document.getElementById(thinkId);
+    if(thinking) thinking.remove();
+
+    if(d.reply) {
+      messages.innerHTML += `<div class="coach-msg ai">${d.reply}</div>`;
+    } else {
+      messages.innerHTML += `<div class="coach-msg ai" style="color:var(--red)">Sorry, I couldn't fetch a response. Try again.</div>`;
+    }
+  } catch(e) {
+    const thinking = document.getElementById(thinkId);
+    if(thinking) thinking.remove();
+    messages.innerHTML += `<div class="coach-msg ai" style="color:var(--red)">Connection error. Check that the backend is running.</div>`;
+  } finally {
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+    messages.scrollTop = messages.scrollHeight;
+  }
+}
 </script>
 </body>
 </html>
