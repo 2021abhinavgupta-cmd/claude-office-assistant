@@ -203,6 +203,76 @@ def add_my_task():
     return jsonify({"success": True, "task_id": task_id, "date": date_str}), 201
 
 
+@ops_bp.route("/api/standup/auto-fill", methods=["POST"])
+def auto_fill_standup():
+    """
+    Fetch tasks from Notion that are active (in_progress) or due today, 
+    and add them to today's standup list (avoiding duplicates).
+    Body: { user_id, assigned_name }
+    """
+    body = request.get_json(silent=True) or {}
+    user_id = body.get("user_id", "").strip()
+    assigned_name = body.get("assigned_name", "").strip()
+    
+    if not user_id or not assigned_name:
+        return jsonify({"error": "user_id and assigned_name required"}), 400
+
+    try:
+        import notion_store
+        # Only works if Notion is configured
+        if not notion_store.is_configured():
+            return jsonify({"error": "Notion is not configured"}), 400
+            
+        all_tasks = notion_store.get_tasks_for_employee(assigned_name)
+    except Exception as e:
+        logger.error(f"Failed to fetch Notion tasks for auto-fill: {e}")
+        return jsonify({"error": str(e)}), 500
+
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # Filter for tasks that are "in_progress" OR due today
+    # Notion status uses human strings like "In Progress"
+    valid_tasks = []
+    for t in all_tasks:
+        s = t.get("status", "").lower().replace(" ", "_").replace("-", "_")
+        d = t.get("due_date", "")
+        # Add if status is active, or if it's due today and not approved/submitted
+        is_active = s == "in_progress"
+        is_due_today = (d == today_str and s not in ("approved", "done", "submitted", "in_review", "pending_review"))
+        
+        if is_active or is_due_today:
+            valid_tasks.append(t)
+
+    if not valid_tasks:
+        return jsonify({"success": True, "added": 0})
+
+    conn = _su_conn()
+    added_count = 0
+    with conn:
+        cur = conn.cursor()
+        for vt in valid_tasks:
+            nid = vt.get("notion_id")
+            title = vt.get("title", "Untitled").strip()
+            
+            # Check if this task is already in today's standup (by notion_id or title)
+            if nid:
+                cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=?)", 
+                            (user_id, today_str, nid, title))
+            else:
+                cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
+                            (user_id, today_str, title))
+                            
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT INTO standup_tasks (user_id, date, title, notion_id) VALUES (?, ?, ?, ?)",
+                    (user_id, today_str, title, nid)
+                )
+                added_count += 1
+    conn.close()
+    
+    return jsonify({"success": True, "added": added_count})
+
+
 @ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["PATCH"])
 def update_my_task(task_id: int):
     """
@@ -248,7 +318,16 @@ def update_my_task(task_id: int):
         if notion_id:
             try:
                 import notion_store
-                notion_store.update_task(notion_id, progress=int(progress))
+                progress_int = int(progress)
+                
+                # Option 1: Bi-Directional Status Syncing
+                notion_status = None
+                if progress_int == 100:
+                    notion_status = "submitted"  # 100% means done, pending review
+                elif progress_int > 0:
+                    notion_status = "in_progress"
+                    
+                notion_store.update_task(notion_id, progress=progress_int, status=notion_status)
             except Exception as e:
                 logger.warning(f"Notion sync failed for task {notion_id}: {e}")
     else:

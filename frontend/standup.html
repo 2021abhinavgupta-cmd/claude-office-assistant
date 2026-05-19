@@ -116,6 +116,7 @@
         <div class="task-add-row">
           <input class="task-input" id="new-task-input" placeholder="Add a task for today…" onkeydown="if(event.key==='Enter')addTask()"/>
           <button class="task-add-btn" onclick="addTask()">+ Add</button>
+          <button class="task-add-btn" id="autofill-btn" onclick="autoFillStandup()" style="background:var(--s2);color:var(--acc);margin-left:8px;white-space:nowrap" title="Auto-fill tasks from Notion (In Progress / Due Today)">⚡ Auto-Fill</button>
         </div>
 
         <div class="task-stats" id="task-stats" style="display:none">
@@ -246,6 +247,36 @@ async function addTask(){
     renderTasks();
   }
 }
+
+async function autoFillStandup() {
+  const btn = document.getElementById("autofill-btn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Fetching...";
+  try {
+    const r = await fetch(`${API}/api/standup/auto-fill`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ user_id: UID, assigned_name: window.EMP_DICT[UID] || UID })
+    });
+    const d = await r.json();
+    if (d.success) {
+      if (d.added > 0) {
+        alert(`⚡ Added ${d.added} active/due task(s) from Notion to your standup!`);
+        loadMyTasks();
+      } else {
+        alert("No new active or due-today tasks found in Notion.");
+      }
+    } else {
+      alert("Error: " + (d.error || "Could not auto-fill"));
+    }
+  } catch (err) {
+    alert("Network error.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "⚡ Auto-Fill";
+  }
+}
+
 
 async function toggleTask(id, newStatus){
   const t = allTasks.find(x=>x.id===id);
