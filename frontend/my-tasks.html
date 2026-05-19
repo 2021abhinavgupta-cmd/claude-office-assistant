@@ -136,11 +136,17 @@
     <div class="al-title">⚠️ Your delays are blocking teammates</div>
     <div id="alert-items"></div>
   </div>
-  <div class="view-toggles">
-    <button class="kgroup-btn on" id="btn-view-status" onclick="setViewMode('status')">By Status</button>
-    <button class="kgroup-btn" id="btn-view-client" onclick="setViewMode('client')">By Client</button>
-    <button class="kgroup-btn" id="btn-view-date" onclick="setViewMode('date')">By Date</button>
-    <button class="kgroup-btn" id="btn-view-calendar" onclick="setViewMode('calendar')">By Calendar 📅</button>
+  <div class="view-toggles" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <div style="display:flex; gap:6px;">
+      <button class="kgroup-btn on" id="btn-view-status" onclick="setViewMode('status')">By Status</button>
+      <button class="kgroup-btn" id="btn-view-client" onclick="setViewMode('client')">By Client</button>
+      <button class="kgroup-btn" id="btn-view-date" onclick="setViewMode('date')">By Date</button>
+      <button class="kgroup-btn" id="btn-view-calendar" onclick="setViewMode('calendar')">Calendar</button>
+    </div>
+    <div style="flex:1; min-width:260px; max-width:400px; display:flex; gap:6px;">
+      <input type="text" id="quick-task-input" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter')quickCreateTask()" style="flex:1; background:var(--s2); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
+      <button class="btn btn-acc" style="padding:8px 16px; white-space:nowrap;" onclick="quickCreateTask()">Add</button>
+    </div>
   </div>
 
   <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
@@ -388,25 +394,44 @@ function attachSubmitHandlers() {
 
 function renderTask(t, today){
   const pct     = t.progress || progressPct(t.status);
-  const isOverdue = t.due_date && t.due_date<today && t.status!=="approved";
+  
+  // Professional Urgency Calculation
+  let isOverdue = false;
+  let isDueToday = false;
+  let isDueTomorrow = false;
+  
+  if (t.due_date && t.status !== "approved") {
+    const todayStr = today;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0,10);
+    
+    if (t.due_date < todayStr) isOverdue = true;
+    else if (t.due_date === todayStr) isDueToday = true;
+    else if (t.due_date === tomorrowStr) isDueTomorrow = true;
+  }
 
   let body="";
 
   // Approved state
-  if(t.status==="approved") body+=`<div class="done-box">🎉 Approved — great work!</div>`;
+  if(t.status==="approved") body+=`<div class="done-box">Approved — great work!</div>`;
   // In review
-  if(t.status==="submitted") body+=`<div class="done-box" style="color:var(--acc);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)">⏳ Submitted — waiting for founder review.</div>`;
+  if(t.status==="submitted") body+=`<div class="done-box" style="color:var(--acc);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)">Submitted — waiting for review.</div>`;
   // Submission note (if any)
-  if(t.submission_note && t.status==="submitted") body+=`<div class="rej-box" style="border-color:rgba(245,166,35,.3)"><div class="rej-title" style="color:var(--acc)">📝 Your Note</div><p>${t.submission_note}</p></div>`;
+  if(t.submission_note && t.status==="submitted") body+=`<div class="rej-box" style="border-color:rgba(245,166,35,.3)"><div class="rej-title" style="color:var(--acc)">Your Note</div><p>${t.submission_note}</p></div>`;
 
-  // Start button for not_started
-  if(t.status==="not_started"){
-    body+=`<button class="btn btn-quick" style="margin-top:10px" onclick="startTask('${t.notion_id}')">▶ Start Task</button>`;
-  }
-
-  // Add to Standup button (for pending/active tasks)
-  if(t.status !== "approved") {
-    body+=` <button class="btn btn-quick" style="margin-top:10px" onclick="pushToStandup('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || "Untitled"}')">➕ Add to Standup</button>`;
+  // Action buttons
+  if(t.status !== "approved"){
+    body+=`<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">`;
+    
+    if(t.status==="not_started"){
+      body+=`<button class="btn btn-quick" onclick="startTask('${t.notion_id}')">▶ Start Task</button>`;
+    }
+    
+    body+=`<button class="btn btn-quick" onclick="pushToStandup('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || "Untitled"}')">➕ Add to Standup</button>`;
+    body+=`<button class="btn btn-quick" onclick="deferTask('${t.notion_id}', '${t.due_date||today}')">⏰ Defer</button>`;
+    
+    body+=`</div>`;
   }
 
   // Submit form for in_progress
@@ -417,23 +442,33 @@ function renderTask(t, today){
       <label>Proof of Work — link or file URL <span style="color:var(--muted)">(optional)</span></label>
       <input type="url" class="file-input" placeholder="https://drive.google.com/... or figma.com/..." />
       <div class="form-row">
-        <button type="submit" class="btn btn-acc">Submit Work →</button>
+        <button type="submit" class="btn btn-acc">Submit Work</button>
         <button type="button" class="btn btn-quick" onclick="quickDone('${t.notion_id}')">⚡ Quick Mark Done</button>
       </div>
     </form>`;
   }
 
-  return`<div class="tc ${isOverdue?"overdue":""}" id="tc-${t.notion_id}">
+  let tagHtml = "";
+  if(t.client) tagHtml += `<span class="tag">Client: ${t.client}</span>`;
+  
+  if (t.due_date) {
+    if (isOverdue) tagHtml += `<span class="tag overdue-tag" style="border-color:var(--red);color:var(--red);font-weight:700">OVERDUE: ${t.due_date}</span>`;
+    else if (isDueToday) tagHtml += `<span class="tag" style="border-color:var(--red);color:var(--red);font-weight:700">DUE TODAY: ${t.due_date}</span>`;
+    else if (isDueTomorrow) tagHtml += `<span class="tag" style="border-color:var(--acc);color:var(--acc);font-weight:700">DUE TOMORROW: ${t.due_date}</span>`;
+    else tagHtml += `<span class="tag">Due: ${t.due_date}</span>`;
+  }
+
+  // Drag and drop attributes
+  const dragAttrs = currentViewMode === 'status' ? `draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="dropTask(event)"` : "";
+
+  return`<div class="tc ${(isOverdue||isDueToday)?"overdue":""}" id="tc-${t.notion_id}" data-nid="${t.notion_id}" ${dragAttrs}>
     <div class="tc-top">
       <div>
         <div class="tc-title" style="display:flex; align-items:center; gap:8px">
           ${t.title||"Untitled"}
           <button onclick="editTask('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || ""}', '${t.due_date || ""}')" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.8rem;" title="Edit Task">✏️</button>
         </div>
-        <div class="tc-meta">
-          ${t.client?`<span class="tag">📁 ${t.client}</span>`:""}
-          ${t.due_date?`<span class="tag ${isOverdue?"overdue-tag":""}">📅 ${isOverdue?"⚠️ ":""}${t.due_date}</span>`:""}
-        </div>
+        <div class="tc-meta">${tagHtml}</div>
       </div>
       <span class="sp sp-${t.status}">${spLabel(t.status)}</span>
     </div>
@@ -519,6 +554,128 @@ async function pushToStandup(notion_id, title) {
     toast("Error: " + err.message, "err");
   }
 }
+
+// --- Premium Features Logic ---
+
+async function quickCreateTask() {
+  const inp = document.getElementById("quick-task-input");
+  const title = inp.value.trim();
+  if(!title) return;
+  inp.disabled = true;
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const r = await fetch(`${API}/api/notion/tasks`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({title: title, assigned_to: USER_NAME || "", due_date: today})
+    });
+    const d = await r.json();
+    if(d.success) {
+      toast("Task created successfully!");
+      inp.value = "";
+      load();
+    } else {
+      toast(d.error || "Failed to create", "err");
+    }
+  } catch(e) {
+    toast("Error: " + e.message, "err");
+  } finally {
+    inp.disabled = false;
+  }
+}
+
+async function deferTask(nid, currentDateStr) {
+  let date = new Date(currentDateStr);
+  if (isNaN(date.getTime())) date = new Date(); // fallback to today
+  date.setDate(date.getDate() + 1); // bump by 1 day
+  const nextDay = date.toISOString().slice(0,10);
+  
+  try {
+    const r = await fetch(`${API}/api/notion/tasks/${nid}`, {
+      method: "PATCH",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({due_date: nextDay})
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast("Task deferred to " + nextDay);
+      load();
+    } else {
+      toast("Failed to defer", "err");
+    }
+  } catch(err) {
+    toast("Error: " + err.message, "err");
+  }
+}
+
+// --- Drag and Drop Logic ---
+let draggedElement = null;
+
+function dragStart(e) {
+  draggedElement = e.currentTarget;
+  e.dataTransfer.effectAllowed = "move";
+  // Add slight transparency to indicate dragging
+  setTimeout(() => draggedElement.style.opacity = '0.5', 0);
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+}
+
+function dropTask(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!draggedElement) return;
+  draggedElement.style.opacity = '1';
+  
+  const target = e.currentTarget;
+  if (target !== draggedElement && target.classList.contains('tc')) {
+    const parent = target.parentNode;
+    // Determine if we drop before or after the target
+    const rect = target.getBoundingClientRect();
+    const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+    parent.insertBefore(draggedElement, next ? target.nextSibling : target);
+    
+    saveTaskOrder();
+  }
+}
+
+function saveTaskOrder() {
+  // Store the visual order in localStorage
+  const orderedIds = [];
+  document.querySelectorAll('.tc').forEach(el => {
+    if(el.dataset.nid) orderedIds.push(el.dataset.nid);
+  });
+  localStorage.setItem(`task_order_${UID}`, JSON.stringify(orderedIds));
+  toast("Priority order saved.");
+}
+
+function applyTaskOrder() {
+  if (currentViewMode !== 'status') return;
+  const savedOrder = JSON.parse(localStorage.getItem(`task_order_${UID}`) || "[]");
+  if (!savedOrder.length) return;
+  
+  // Sort window.allTasks globally based on the saved visual order
+  // Elements not in the saved list get pushed to the bottom
+  window.allTasks.sort((a, b) => {
+    let idxA = savedOrder.indexOf(a.notion_id);
+    let idxB = savedOrder.indexOf(b.notion_id);
+    if(idxA === -1) idxA = 999999;
+    if(idxB === -1) idxB = 999999;
+    return idxA - idxB;
+  });
+}
+
+// Hook applyTaskOrder right after fetching tasks
+const originalLoad = load;
+window.load = async function() {
+  await originalLoad();
+  if(window.allTasks && window.allTasks.length > 0) {
+    applyTaskOrder();
+    renderTasks(); // Re-render with sorted order
+  }
+};
 
 load();
 </script>

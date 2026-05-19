@@ -572,14 +572,37 @@ def notion_create_client():
     })
 
 
-@ops_bp.route("/api/notion/tasks", methods=["GET"])
-def notion_list_tasks():
+@ops_bp.route("/api/notion/tasks", methods=["GET", "POST"])
+def notion_list_or_create_tasks():
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        title = body.get("title", "").strip()
+        assigned_to = body.get("assigned_to", "")
+        due_date = body.get("due_date", "")
+        
+        if not title:
+            return jsonify({"error": "Title is required"}), 400
+            
+        result = notion_store.create_task(
+            title=title, 
+            client_name="Internal",  # Default for personal tasks
+            client_notion_id="", 
+            assigned_to=assigned_to,
+            due_date=due_date,
+            status="not_started"
+        )
+        if result:
+            return jsonify({"success": True, "task": result})
+        return jsonify({"error": "Failed to create task in Notion"}), 500
+
+    # GET request
     tasks = notion_store.list_tasks(
         assigned_to=request.args.get("assigned_to", ""),
         client_notion_id=request.args.get("client_id", ""),
         status_filter=request.args.get("status", ""),
     )
     return jsonify({"tasks": tasks, "count": len(tasks)})
+
 
 
 @ops_bp.route("/api/notion/tasks/<string:notion_id>", methods=["PATCH"])
