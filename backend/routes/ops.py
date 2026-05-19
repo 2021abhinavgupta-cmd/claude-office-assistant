@@ -164,17 +164,28 @@ def get_my_tasks():
                         (user_id, date_str, title, yesterday, blocker),
                     )
 
+    import json
     cur.execute(
-        "SELECT id, title, status, carried_from, created_at, blocker, notion_id FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
+        "SELECT id, title, status, carried_from, created_at, blocker, notion_id, subtasks FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
         (user_id, date_str),
     )
     rows = cur.fetchall()
     conn.close()
-    tasks = [
-        {"id": r[0], "title": r[1], "status": r[2],
-         "carried_from": r[3], "created_at": r[4], "blocker": r[5], "notion_id": r[6]}
-        for r in rows if r[2] != "deleted"
-    ]
+    
+    tasks = []
+    for r in rows:
+        if r[2] == "deleted": continue
+        st = []
+        try:
+            st = json.loads(r[7]) if r[7] else []
+        except: pass
+        
+        tasks.append({
+            "id": r[0], "title": r[1], "status": r[2],
+            "carried_from": r[3], "created_at": r[4], 
+            "blocker": r[5], "notion_id": r[6], "subtasks": st
+        })
+
     return jsonify({"tasks": tasks, "date": date_str})
 
 
@@ -284,6 +295,7 @@ def update_my_task(task_id: int):
     blocker = body.get("blocker")
     title = body.get("title")
     progress = body.get("progress")  # optional progress override (int 0-100)
+    subtasks = body.get("subtasks")  # list of dicts: [{"title": "x", "done": true}]
     
     updates = []
     params = []
@@ -298,6 +310,10 @@ def update_my_task(task_id: int):
     if title is not None:
         updates.append("title=?")
         params.append(title.strip())
+    if subtasks is not None:
+        import json
+        updates.append("subtasks=?")
+        params.append(json.dumps(subtasks))
 
     if not updates:
         return jsonify({"error": "no updates provided"}), 400
@@ -308,30 +324,42 @@ def update_my_task(task_id: int):
     with conn:
         conn.execute(f"UPDATE standup_tasks SET {', '.join(updates)} WHERE id=?", params)
 
-    # If marking done, optionally sync progress back to Notion
-    if status == "done" and progress is not None:
-        cur = conn.cursor()
-        cur.execute("SELECT notion_id FROM standup_tasks WHERE id=?", (task_id,))
-        row = cur.fetchone()
-        conn.close()
-        notion_id = row[0] if row else None
-        if notion_id:
-            try:
-                import notion_store
-                progress_int = int(progress)
-                
-                # Option 1: Bi-Directional Status Syncing
-                notion_status = None
-                if progress_int == 100:
-                    notion_status = "submitted"  # 100% means done, pending review
-                elif progress_int > 0:
-                    notion_status = "in_progress"
-                    
-                notion_store.update_task(notion_id, progress=progress_int, status=notion_status)
-            except Exception as e:
-                logger.warning(f"Notion sync failed for task {notion_id}: {e}")
-    else:
-        conn.close()
+    # Sync to Notion if progress is provided explicitly, OR if subtasks are updated
+    cur = conn.cursor()
+    cur.execute("SELECT notion_id, subtasks, status FROM standup_tasks WHERE id=?", (task_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    notion_id = row[0] if row else None
+    current_subtasks_json = row[1] if row else '[]'
+    current_status = row[2] if row else 'pending'
+
+    if notion_id:
+        try:
+            import notion_store
+            notion_status = None
+            notion_progress = None
+            
+            # Explicit progress override
+            if progress is not None and current_status == "done":
+                notion_progress = int(progress)
+                if notion_progress == 100: notion_status = "submitted"
+                elif notion_progress > 0: notion_status = "in_progress"
+            
+            # Auto-calculate progress from subtasks
+            elif subtasks is not None:
+                import json
+                st = json.loads(current_subtasks_json) if current_subtasks_json else []
+                if st:
+                    done_count = sum(1 for s in st if s.get("done"))
+                    notion_progress = int((done_count / len(st)) * 100)
+                    if notion_progress == 100: notion_status = "submitted"
+                    elif notion_progress > 0: notion_status = "in_progress"
+            
+            if notion_progress is not None:
+                notion_store.update_task(notion_id, progress=notion_progress, status=notion_status)
+        except Exception as e:
+            logger.warning(f"Notion sync failed for task {notion_id}: {e}")
 
     return jsonify({"success": True})
 

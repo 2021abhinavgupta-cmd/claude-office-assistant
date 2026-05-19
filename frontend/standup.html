@@ -209,27 +209,94 @@ function renderTasks(){
   document.getElementById("stat-done").textContent = `${done} done`;
   document.getElementById("stat-pend").textContent = `${pend} remaining`;
 
-  list.innerHTML = allTasks.map(t=>`
-    <div class="task-item ${t.status==="done"?"done":""} ${t.carried_from?"carried":""}" id="task-${t.id}" style="align-items:flex-start">
-      <button class="task-check ${t.status==="done"?"checked":""}" onclick="toggleTask(${t.id},'${t.status==="done"?"pending":"done"}')" style="margin-top:2px">
-        ${t.status==="done"?"✓":""}
-      </button>
-      <div style="flex:1;display:flex;flex-direction:column;gap:6px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="text" class="task-title-input" value="${esc(t.title)}" 
-                 onchange="updateTaskTitle(${t.id}, this.value)"
-                 style="background:transparent; border:none; outline:none; color:inherit; font-size:0.88rem; font-family:inherit; flex:1; text-decoration:inherit; padding: 0;"
-                 ${t.status==="done" ? "disabled" : ""} />
-          ${t.carried_from?`<span class="carried-badge">↩ from ${t.carried_from}</span>`:""}
+  list.innerHTML = allTasks.map(t=>{
+    let subtasksHtml = "";
+    if (t.notion_id) {
+       const stList = t.subtasks || [];
+       subtasksHtml = `
+         <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; padding-left:24px; border-left:2px solid var(--bdr);">
+           ${stList.map((st, i) => `
+             <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem;">
+               <input type="checkbox" ${st.done?'checked':''} onchange="toggleSubtask(${t.id}, ${i}, this.checked)" style="accent-color:var(--acc)" />
+               <span style="${st.done?'text-decoration:line-through;color:var(--muted)':''}">${esc(st.title)}</span>
+               <button onclick="deleteSubtask(${t.id}, ${i})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.7rem;margin-left:auto">✕</button>
+             </div>
+           `).join("")}
+           <div style="display:flex; gap:6px; margin-top:4px;">
+             <input type="text" id="subtask-input-${t.id}" placeholder="Add subtask..." onkeydown="if(event.key==='Enter')addSubtask(${t.id})" style="background:transparent;border:1px dashed var(--bdr);border-radius:4px;color:var(--txt);padding:3px 6px;font-size:0.7rem;flex:1;outline:none;" />
+           </div>
+         </div>
+       `;
+    }
+
+    return `
+    <div class="task-item ${t.status==="done"?"done":""} ${t.carried_from?"carried":""}" id="task-${t.id}" style="align-items:flex-start; flex-direction:column;">
+      <div style="display:flex; width:100%; align-items:flex-start; gap:10px;">
+        <button class="task-check ${t.status==="done"?"checked":""}" onclick="toggleTask(${t.id},'${t.status==="done"?"pending":"done"}')" style="margin-top:2px">
+          ${t.status==="done"?"✓":""}
+        </button>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="text" class="task-title-input" value="${esc(t.title)}" 
+                   onchange="updateTaskTitle(${t.id}, this.value)"
+                   style="background:transparent; border:none; outline:none; color:inherit; font-size:0.88rem; font-family:inherit; flex:1; text-decoration:inherit; padding: 0;"
+                   ${t.status==="done" ? "disabled" : ""} />
+            ${t.carried_from?`<span class="carried-badge">↩ from ${t.carried_from}</span>`:""}
+          </div>
+          ${t.status==="pending" ? `
+            <input type="text" placeholder="Add a blocker (optional)..." 
+                   value="${esc(t.blocker)}" onchange="updateBlocker(${t.id}, this.value)"
+                   style="background:rgba(255,92,92,0.1); border:1px solid rgba(255,92,92,0.3); border-radius:4px; color:var(--txt); padding:4px 8px; font-size:0.75rem; width:100%; outline:none; font-family:'DM Sans',sans-serif;" />
+          ` : (t.blocker ? `<div style="font-size:0.75rem;color:var(--red);">🚧 Blocker: ${esc(t.blocker)}</div>` : "")}
         </div>
-        ${t.status==="pending" ? `
-          <input type="text" placeholder="Add a blocker (optional)..." 
-                 value="${esc(t.blocker)}" onchange="updateBlocker(${t.id}, this.value)"
-                 style="background:rgba(255,92,92,0.1); border:1px solid rgba(255,92,92,0.3); border-radius:4px; color:var(--txt); padding:4px 8px; font-size:0.75rem; width:100%; outline:none; font-family:'DM Sans',sans-serif;" />
-        ` : (t.blocker ? `<div style="font-size:0.75rem;color:var(--red);">🚧 Blocker: ${esc(t.blocker)}</div>` : "")}
+        <button class="task-del" onclick="deleteTask(${t.id})" title="Remove">✕</button>
       </div>
-      <button class="task-del" onclick="deleteTask(${t.id})" title="Remove">✕</button>
-    </div>`).join("");
+      ${subtasksHtml}
+    </div>`
+  }).join("");
+}
+
+async function addSubtask(taskId) {
+  const inp = document.getElementById(`subtask-input-${taskId}`);
+  const title = inp.value.trim();
+  if(!title) return;
+  const t = allTasks.find(x=>x.id===taskId);
+  if(!t) return;
+  
+  if(!t.subtasks) t.subtasks = [];
+  t.subtasks.push({ title: title, done: false });
+  
+  await fetch(`${API}/api/standup/my-tasks/${taskId}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({subtasks: t.subtasks})
+  });
+  renderTasks();
+}
+
+async function toggleSubtask(taskId, index, done) {
+  const t = allTasks.find(x=>x.id===taskId);
+  if(!t || !t.subtasks || !t.subtasks[index]) return;
+  
+  t.subtasks[index].done = done;
+  
+  await fetch(`${API}/api/standup/my-tasks/${taskId}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({subtasks: t.subtasks})
+  });
+  renderTasks();
+}
+
+async function deleteSubtask(taskId, index) {
+  const t = allTasks.find(x=>x.id===taskId);
+  if(!t || !t.subtasks) return;
+  
+  t.subtasks.splice(index, 1);
+  
+  await fetch(`${API}/api/standup/my-tasks/${taskId}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({subtasks: t.subtasks})
+  });
+  renderTasks();
 }
 
 async function addTask(){
