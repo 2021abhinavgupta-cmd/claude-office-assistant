@@ -173,7 +173,7 @@ def get_my_tasks():
     tasks = [
         {"id": r[0], "title": r[1], "status": r[2],
          "carried_from": r[3], "created_at": r[4], "blocker": r[5]}
-        for r in rows
+        for r in rows if r[2] != "deleted"
     ]
     return jsonify({"tasks": tasks, "date": date_str})
 
@@ -211,6 +211,7 @@ def update_my_task(task_id: int):
     body   = request.get_json(silent=True) or {}
     status = body.get("status")
     blocker = body.get("blocker")
+    title = body.get("title")
     
     updates = []
     params = []
@@ -222,6 +223,9 @@ def update_my_task(task_id: int):
     if blocker is not None:
         updates.append("blocker=?")
         params.append(blocker)
+    if title is not None:
+        updates.append("title=?")
+        params.append(title.strip())
 
     if not updates:
         return jsonify({"error": "no updates provided"}), 400
@@ -240,7 +244,7 @@ def delete_my_task(task_id: int):
     """Delete a task from the personal list."""
     conn = _su_conn()
     with conn:
-        conn.execute("DELETE FROM standup_tasks WHERE id=?", (task_id,))
+        conn.execute("UPDATE standup_tasks SET status='deleted' WHERE id=?", (task_id,))
     conn.close()
     return jsonify({"success": True})
 
