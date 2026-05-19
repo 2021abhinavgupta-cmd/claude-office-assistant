@@ -144,6 +144,7 @@
       <button class="kgroup-btn" id="btn-view-calendar" onclick="setViewMode('calendar')">Calendar</button>
     </div>
     <div style="flex:1; min-width:260px; max-width:400px; display:flex; gap:6px;">
+      <input type="text" id="task-search-input" placeholder="🔍 Search tasks..." oninput="renderTasks()" style="flex:1; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
       <input type="text" id="quick-task-input" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter')quickCreateTask()" style="flex:1; background:var(--s2); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
       <button class="btn btn-acc" style="padding:8px 16px; white-space:nowrap;" onclick="quickCreateTask()">Add</button>
     </div>
@@ -152,6 +153,9 @@
   <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
 </div>
 <div id="toast"></div>
+
+<!-- Confetti Script -->
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
 <script src="shared-config.js"></script>
 <script>
@@ -237,18 +241,27 @@ function renderTasks() {
   const wrap = document.getElementById("tasks-wrap");
   const today = new Date().toISOString().slice(0,10);
 
-  if(!window.allTasks.length){
-    wrap.innerHTML='<div class="empty">🎉 No tasks assigned to you yet!</div>';
+  const query = document.getElementById("task-search-input")?.value.toLowerCase() || "";
+  let filteredTasks = window.allTasks;
+  if(query) {
+    filteredTasks = window.allTasks.filter(t => 
+      (t.title||"").toLowerCase().includes(query) || 
+      (t.client||"").toLowerCase().includes(query)
+    );
+  }
+
+  if(!filteredTasks.length){
+    wrap.innerHTML='<div class="empty">🎉 No tasks found matching your search.</div>';
     return;
   }
 
   let html="";
   
   if (currentViewMode === 'status') {
-    const active  = window.allTasks.filter(t=>t.status==="in_progress");
-    const pending = window.allTasks.filter(t=>t.status==="not_started");
-    const review  = window.allTasks.filter(t=>t.status==="submitted");
-    const done    = window.allTasks.filter(t=>t.status==="approved");
+    const active  = filteredTasks.filter(t=>t.status==="in_progress");
+    const pending = filteredTasks.filter(t=>t.status==="not_started");
+    const review  = filteredTasks.filter(t=>t.status==="submitted");
+    const done    = filteredTasks.filter(t=>t.status==="approved");
 
     if(active.length)  html+=`<div class="sec-lbl">🔥 Active — ${active.length} task${active.length>1?"s":""}</div>`+active.map(t=>renderTask(t,today)).join("");
     if(pending.length) html+=`<div class="sec-lbl">📋 Up Next — ${pending.length}</div>`+pending.map(t=>renderTask(t,today)).join("");
@@ -257,7 +270,7 @@ function renderTasks() {
     
   } else if (currentViewMode === 'client') {
     const byClient = {};
-    window.allTasks.forEach(t => {
+    filteredTasks.forEach(t => {
        const c = t.client_name || t.client || "Internal / Quick Tasks";
        if(!byClient[c]) byClient[c] = [];
        byClient[c].push(t);
@@ -268,7 +281,7 @@ function renderTasks() {
     
   } else if (currentViewMode === 'date') {
     const overdue = [], todayTasks = [], upcoming = [], nodate = [];
-    window.allTasks.forEach(t => {
+    filteredTasks.forEach(t => {
        if(!t.due_date) nodate.push(t);
        else if(t.due_date < today) overdue.push(t);
        else if(t.due_date === today) todayTasks.push(t);
@@ -283,14 +296,14 @@ function renderTasks() {
     if(nodate.length)     html+=`<div class="sec-lbl">⚪ No Due Date — ${nodate.length}</div>`+nodate.map(t=>renderTask(t,today)).join("");
     
   } else if (currentViewMode === 'calendar') {
-    html = renderCalendarHtml(today);
+    html = renderCalendarHtml(today, filteredTasks);
   }
 
   wrap.innerHTML=html;
   attachSubmitHandlers();
 }
 
-function renderCalendarHtml(todayString) {
+function renderCalendarHtml(todayString, filteredTasks = window.allTasks) {
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   
   let html = `
@@ -305,7 +318,7 @@ function renderCalendarHtml(todayString) {
   `;
 
   const tasksByDate = {};
-  window.allTasks.forEach(t => {
+  filteredTasks.forEach(t => {
     if(t.due_date) {
       if(!tasksByDate[t.due_date]) tasksByDate[t.due_date] = [];
       tasksByDate[t.due_date].push(t);
@@ -385,7 +398,11 @@ function attachSubmitHandlers() {
           signal:AbortSignal.timeout(10000),
         });
         const d = await r.json();
-        if(d.success){toast("✅ Submitted for review — 75% progress");load();}
+        if(d.success){
+          confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+          toast("✅ Submitted for review — 75% progress");
+          load();
+        }
         else{toast(d.error||"Error","err");btn.disabled=false;btn.textContent="Submit Work →";}
       }catch(err){toast("Error: "+err.message,"err");btn.disabled=false;btn.textContent="Submit Work →";}
     });
@@ -501,7 +518,11 @@ async function quickDone(nid){
       signal:AbortSignal.timeout(10000),
     });
     const d = await r.json();
-    if(d.success){toast("Marked for review!");load();}
+    if(d.success){
+      confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+      toast("Marked for review!");
+      load();
+    }
     else toast(d.error||"Error","err");
   }catch(err){toast("Error: "+err.message,"err");}
 }
