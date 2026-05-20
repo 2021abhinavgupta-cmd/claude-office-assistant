@@ -1065,14 +1065,19 @@ async function aiBreakdownTask(nid, taskTitle, clientName) {
     });
     const d = await r.json();
     if(d.subtasks && d.subtasks.length) {
-      let existing = [];
-      try { existing = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
-      
-      const newSubtasks = d.subtasks.map(text => ({text, done: false}));
-      const merged = [...existing, ...newSubtasks];
-      localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(merged));
-      renderTasks();
-      toast(`🧠 Added ${d.subtasks.length} AI-generated sub-tasks!`);
+      const subtaskListStr = d.subtasks.map(t => "• " + t).join("\n");
+      if(confirm(`🧠 AI generated these sub-tasks:\n\n${subtaskListStr}\n\nDo you want to add them to your task?`)) {
+        let existing = [];
+        try { existing = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
+        
+        const newSubtasks = d.subtasks.map(text => ({text, done: false}));
+        const merged = [...existing, ...newSubtasks];
+        localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(merged));
+        renderTasks();
+        toast(`🧠 Added ${d.subtasks.length} AI-generated sub-tasks!`);
+      } else {
+        toast("AI breakdown discarded.");
+      }
     } else {
       toast(d.error || 'No sub-tasks generated', 'err');
     }

@@ -862,14 +862,18 @@ def ai_task_breakdown():
 
     try:
         raw = _claude_call(system, user, max_tokens=512)
+        import re
+        match = re.search(r'\[.*\]', raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
         # Parse raw JSON array
         subtasks = json.loads(raw)
         if not isinstance(subtasks, list):
             raise ValueError("Not a list")
         return jsonify({"subtasks": subtasks})
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, ValueError):
         # Fallback: extract lines from raw text
-        lines = [l.strip().lstrip("•-123456789. ") for l in raw.split("\n") if l.strip()]
+        lines = [l.strip().lstrip("•-123456789. \",") for l in raw.split("\n") if l.strip() and l.strip() not in ("```json", "```", "[", "]")]
         return jsonify({"subtasks": lines[:8]})
     except Exception as e:
         logger.exception("ai_task_breakdown failed")
