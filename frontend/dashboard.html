@@ -207,6 +207,7 @@
     /* ── Recent calls table ── */
     .calls-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     .calls-table th {
+      position: sticky; top: 0; background: var(--surface); z-index: 1;
       text-align: left; color: var(--muted); font-weight: 500; font-size: 0.7rem;
       text-transform: uppercase; letter-spacing: .05em; padding: 8px 12px;
       border-bottom: 1px solid var(--border);
@@ -369,7 +370,7 @@
       <h2 style="margin-bottom:0">🕐 All API Calls This Month</h2>
       <a href="/api/usage/export" target="_blank" style="display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Export Full CSV</a>
     </div>
-    <div id="recent-calls-wrap" style="overflow-x:auto">
+    <div id="recent-calls-wrap" style="overflow-x:auto; max-height: 450px; overflow-y: auto;">
       <div class="empty-state">No calls recorded yet</div>
     </div>
   </div>
