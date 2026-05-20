@@ -463,16 +463,38 @@ async function loadTeamStandups(dateStr = ""){
     
     let taskHtml = "";
     if(tasks.length > 0){
-        taskHtml = `<div class="sc-field" style="margin-top:4px"><div class="fl">📋 Tasklist</div>`;
-        taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
-        tasks.forEach(task => {
-            const isDone = task.status === "done";
-            taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px'}">
-                ${isDone ? '✓' : '•'} ${esc(task.title)}
-                ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;">🚧 Blocker: ${esc(task.blocker)}</div>` : ""}
-            </li>`;
-        });
-        taskHtml += `</ul></div>`;
+        const newTasks = tasks.filter(t => !t.carried_from);
+        const carriedTasks = tasks.filter(t => t.carried_from);
+
+        taskHtml = `<div class="sc-field" style="margin-top:4px">`;
+        
+        if (newTasks.length > 0) {
+            taskHtml += `<div class="fl" style="margin-top:6px">🆕 New Tasks</div>`;
+            taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
+            newTasks.forEach(task => {
+                const isDone = task.status === "done";
+                taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px'}">
+                    ${isDone ? '✓' : '•'} ${esc(task.title)}
+                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;">🚧 Blocker: ${esc(task.blocker)}</div>` : ""}
+                </li>`;
+            });
+            taskHtml += `</ul>`;
+        }
+
+        if (carriedTasks.length > 0) {
+            taskHtml += `<div class="fl" style="margin-top:10px; color:var(--acc);">🔄 Carried Over</div>`;
+            taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
+            carriedTasks.forEach(task => {
+                const isDone = task.status === "done";
+                taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}">
+                    ${isDone ? '✓' : '⚠️'} ${esc(task.title)}
+                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;">🚧 Blocker: ${esc(task.blocker)}</div>` : ""}
+                </li>`;
+            });
+            taskHtml += `</ul>`;
+        }
+
+        taskHtml += `</div>`;
     }
 
     const timeStr = s ? `Submitted ${t(s.submitted_at)}` : `Started updating task list`;
