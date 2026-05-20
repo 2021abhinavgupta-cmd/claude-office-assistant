@@ -515,9 +515,15 @@ function renderTask(t, today){
     subtasksHtml = `<div class="subtasks-container" id="st-wrap-${t.notion_id}">`;
     subtasks.forEach((st, idx) => {
       subtasksHtml += `
-        <div class="subtask-item ${st.done ? 'done' : ''}">
-          <input type="checkbox" class="subtask-cb" ${st.done ? 'checked' : ''} onchange="toggleMySubtask('${t.notion_id}', ${idx}, this.checked)">
-          <span>${st.text}</span>
+        <div class="subtask-item ${st.done ? 'done' : ''}" style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" class="subtask-cb" ${st.done ? 'checked' : ''} onchange="toggleMySubtask('${t.notion_id}', ${idx}, this.checked)">
+            <span>${st.text}</span>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button onclick="editMySubtask('${t.notion_id}', ${idx}, '${st.text.replace(/'/g, "\\'")}')" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem;" title="Edit Sub-task">✏️</button>
+            <button onclick="removeMySubtask('${t.notion_id}', ${idx})" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem; color:var(--red);" title="Remove Sub-task">🗑️</button>
+          </div>
         </div>
       `;
     });
@@ -871,6 +877,34 @@ async function toggleMySubtask(nid, idx, isChecked) {
   try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
   if (subtasks[idx]) {
     subtasks[idx].done = isChecked;
+    localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(subtasks));
+    await recalcSubtasks(nid, subtasks);
+    renderTasks();
+  }
+}
+
+async function editMySubtask(nid, idx, currentText) {
+  const newText = prompt("Edit sub-task:", currentText);
+  if (newText === null || newText.trim() === "") return;
+  
+  let subtasks = [];
+  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
+  
+  if (subtasks[idx]) {
+    subtasks[idx].text = newText.trim();
+    localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(subtasks));
+    renderTasks();
+  }
+}
+
+async function removeMySubtask(nid, idx) {
+  if (!confirm("Remove this sub-task?")) return;
+  
+  let subtasks = [];
+  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
+  
+  if (subtasks[idx]) {
+    subtasks.splice(idx, 1);
     localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(subtasks));
     await recalcSubtasks(nid, subtasks);
     renderTasks();
