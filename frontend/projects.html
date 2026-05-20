@@ -197,7 +197,7 @@
     </div>
     <div class="nav">
       <a href="dashboard.html" class="nl">📊 Dashboard</a>
-      <a href="my-tasks.html" class="nl">✅ My Tasks</a>
+      <button onclick="openMeetingNotesModal()" class="btn" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd">📝 Paste Meeting Notes</button>
       <a href="client-onboard.html" class="btn btn-acc">+ New Client</a>
     </div>
   </div>
@@ -1100,6 +1100,79 @@ async function saveTaskEdit() {
   btn.disabled = false;
 }
 
+// ── Feature 1: Meeting Notes → Notion Tasks ─────────────────────────────────
+function openMeetingNotesModal() {
+  document.getElementById('meeting-notes-modal').style.display = 'flex';
+}
+
+function closeMeetingNotesModal() {
+  document.getElementById('meeting-notes-modal').style.display = 'none';
+}
+
+async function parseMeetingNotes() {
+  const notes = document.getElementById('meeting-notes-input').value.trim();
+  const client = document.getElementById('meeting-notes-client').value.trim() || 'Internal';
+  const btn = document.getElementById('meeting-notes-btn');
+  const out = document.getElementById('meeting-notes-output');
+  
+  if (!notes) { toast('Please paste some notes first.', 'err'); return; }
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ Analyzing Notes...';
+  out.style.display = 'block';
+  out.textContent = 'Reading transcript and creating tasks...';
+  
+  try {
+    const r = await fetch(`${API}/api/ai/meeting-to-tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, assigned_to: USER_NAME || 'Unassigned', client_name: client })
+    });
+    const d = await r.json();
+    
+    if (d.success) {
+      toast(`✅ Created ${d.tasks.length} tasks!`);
+      out.innerHTML = `<span style="color:var(--grn)">Successfully extracted and created ${d.tasks.length} tasks!</span>`;
+      setTimeout(() => {
+        closeMeetingNotesModal();
+        document.getElementById('meeting-notes-input').value = '';
+        out.style.display = 'none';
+        load();
+        if (currentTab === 'kanban') renderKanban();
+      }, 2000);
+    } else {
+      out.textContent = 'Error: ' + (d.error || 'Failed to parse');
+    }
+  } catch(e) {
+    out.textContent = 'Error: ' + e.message;
+  }
+  
+  btn.disabled = false;
+  btn.textContent = '✨ Extract Tasks';
+}
 </script>
+
+<!-- Meeting Notes Modal -->
+<div id="meeting-notes-modal" class="modal-ov">
+  <div class="modal" style="max-width:550px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0;font-family:'Syne',sans-serif;color:#c4b5fd">📝 Parse Meeting Notes</h3>
+      <button onclick="closeMeetingNotesModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
+    </div>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Paste raw meeting transcripts or rough notes. The AI will automatically extract action items, assign them to team members, and add them to the board.</p>
+    
+    <label style="display:block;margin-bottom:6px;font-size:.8rem;color:var(--muted);font-weight:600">Client / Project</label>
+    <input type="text" id="meeting-notes-client" placeholder="e.g. Acme Corp" style="width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:9px 12px;font-size:.875rem;margin-bottom:14px;outline:none" />
+    
+    <label style="display:block;margin-bottom:6px;font-size:.8rem;color:var(--muted);font-weight:600">Notes / Transcript</label>
+    <textarea id="meeting-notes-input" placeholder="Paste rough notes here..." style="min-height:160px;margin-bottom:14px"></textarea>
+    
+    <div id="meeting-notes-output" style="display:none;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:12px;font-size:.85rem;margin-bottom:14px;color:var(--muted)"></div>
+    
+    <div style="display:flex;justify-content:flex-end">
+      <button id="meeting-notes-btn" onclick="parseMeetingNotes()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">✨ Extract Tasks</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

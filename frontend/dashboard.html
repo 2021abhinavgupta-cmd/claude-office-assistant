@@ -392,6 +392,18 @@
     </div>
   </div>
 
+  <!-- AI Daily Report Panel -->
+  <div class="panel" id="ai-report-panel" style="margin-bottom:24px;background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(59,130,246,.04));border:1px solid rgba(124,58,237,.25)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <h2 style="margin-bottom:4px">🧠 Manager's Daily Report</h2>
+        <p style="color:var(--muted);font-size:.8rem;margin:0">AI-generated end-of-day summary from team standups</p>
+      </div>
+      <button id="gen-report-btn" onclick="generateDailyReport()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;color:#fff;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .2s;white-space:nowrap">✨ Generate Report</button>
+    </div>
+    <div id="ai-report-output" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:.875rem;line-height:1.7;white-space:pre-wrap;color:var(--text)"></div>
+  </div>
+
   <!-- Quick links -->
   <div class="two-col">
     <div class="panel">
@@ -777,6 +789,31 @@ loadBudgetBanner();
     if (el) el.style.display = "flex";
   }
 })();
+
+// ── AI Daily Report ──
+async function generateDailyReport() {
+  const btn = document.getElementById("gen-report-btn");
+  const out = document.getElementById("ai-report-output");
+  btn.disabled = true;
+  btn.textContent = "⏳ Generating...";
+  out.style.display = "none";
+  try {
+    const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+    const r = await fetch(`${API}/api/ai/daily-summary`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({user_id: user.user_id})
+    });
+    const d = await r.json();
+    out.textContent = d.summary || d.error || "No data available.";
+    out.style.display = "block";
+  } catch(e) {
+    out.textContent = "Error: " + e.message;
+    out.style.display = "block";
+  }
+  btn.disabled = false;
+  btn.textContent = "✨ Regenerate";
+}
 </script>
 </body>
 </html>

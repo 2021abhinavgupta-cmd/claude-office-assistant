@@ -1119,3 +1119,175 @@ def ai_coach():
     except Exception as e:
         logger.exception("ai_coach failed")
         return jsonify({"error": str(e)}), 500
+
+
+# ── Feature 1: Meeting Notes → Notion Tasks ──────────────────────────────────
+@ops_bp.route("/api/ai/meeting-to-tasks", methods=["POST"])
+def meeting_to_tasks():
+    """
+    Parse raw meeting notes into structured tasks and create them in Notion.
+    Body: { notes: str, assigned_to: str, client_name: str }
+    """
+    body = request.get_json(silent=True) or {}
+    notes = body.get("notes", "").strip()
+    assigned_to = body.get("assigned_to", "")
+    client_name = body.get("client_name", "Internal")
+
+    if not notes:
+        return jsonify({"error": "notes is required"}), 400
+
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    system = f"""You are an expert project manager assistant for a creative agency.
+The user has pasted raw meeting notes. Extract every clear action item or task from the notes.
+For each task, guess the best assignee from this team list: Vidit (Design/Website), Nupur (Design), Abhinav (Website/Dev), Kshitij (Review), Raj (Video), Mohit (Content), Tanaya (Accounts), Happy (Video).
+If no one is obvious, use "{assigned_to or 'Unassigned'}".
+Also guess a due date (within 7 days of today {today} unless notes specify otherwise, format YYYY-MM-DD).
+Respond ONLY with a valid JSON array:
+[
+  {{"title": "Task title", "assigned_to": "Name", "due_date": "YYYY-MM-DD"}},
+  ...
+]
+Only include genuine action items. Ignore discussion/context sentences."""
+
+    try:
+        resp = _claude_call(system, notes, max_tokens=800)
+        match = re.search(r'\[.*\]', resp, re.DOTALL)
+        tasks_raw = json.loads(match.group(0)) if match else []
+    except Exception as e:
+        logger.error(f"meeting_to_tasks parse failed: {e}")
+        return jsonify({"error": "Failed to parse tasks from notes"}), 500
+
+    created = []
+    if notion_store.is_configured():
+        for t in tasks_raw:
+            result = notion_store.create_task(
+                title=t.get("title", "Untitled"),
+                client_name=client_name,
+                client_notion_id="",
+                assigned_to=t.get("assigned_to", assigned_to),
+                due_date=t.get("due_date", today),
+                status="not_started"
+            )
+            created.append({
+                "title": t.get("title"),
+                "assigned_to": t.get("assigned_to"),
+                "due_date": t.get("due_date"),
+                "notion_id": result.get("id") if result else None
+            })
+    else:
+        # Return tasks without creating in Notion
+        created = tasks_raw
+
+    return jsonify({"success": True, "tasks": created})
+
+
+# ── Feature 3: Manager's End-of-Day Summary ───────────────────────────────────
+@ops_bp.route("/api/ai/daily-summary", methods=["POST"])
+def daily_summary():
+    """
+    Read today's standup tasks for all employees and produce a manager summary.
+    Body: { user_id: str }
+    """
+    body = request.get_json(silent=True) or {}
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT user_id, title, status, blocker
+        FROM standup_tasks
+        WHERE date = ?
+        ORDER BY user_id
+    """, (today,))
+    rows = cur.fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({"summary": "No standup data found for today. Ask your team to log their tasks!"}), 200
+
+    # Group by user_id
+    by_user = {}
+    for user_id, title, status, blocker in rows:
+        if user_id not in by_user:
+            by_user[user_id] = []
+        by_user[user_id].append({"title": title, "status": status, "blocker": blocker})
+
+    # Load employee name map
+    try:
+        import json as _json
+        emp_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'employees.json')
+        with open(emp_path) as f:
+            employees = _json.load(f)
+        emp_map = {e.get("user_id", ""): e.get("name", e.get("user_id", "")) for e in employees}
+    except:
+        emp_map = {}
+
+    standup_text = ""
+    for uid, tasks in by_user.items():
+        name = emp_map.get(uid, uid)
+        standup_text += f"\n👤 {name}:\n"
+        for t in tasks:
+            status_icon = "✅" if t["status"] == "done" else "⏳"
+            standup_text += f"  {status_icon} {t['title']}"
+            if t.get("blocker"):
+                standup_text += f" [BLOCKER: {t['blocker']}]"
+            standup_text += "\n"
+
+    system = f"""You are a senior project manager reviewing the team's daily standup for {today}.
+Here is a summary of what everyone did today:
+{standup_text}
+
+Write a concise end-of-day manager report with exactly 3 sections:
+1. ✅ **Wins Today** – What was accomplished (2-3 bullet points max)
+2. ⚠️ **Watch List** – Who is behind or has blockers (name specific people)
+3. 🎯 **Tomorrow's Priority** – The single most critical thing the team must focus on
+
+Be direct, specific, and use names. Keep total response under 200 words."""
+
+    try:
+        summary = _claude_call(system, "Generate the daily report.", max_tokens=400)
+        return jsonify({"summary": summary})
+    except Exception as e:
+        logger.exception("daily_summary failed")
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Feature 5: AI Tone-Matched Client Update Draft ───────────────────────────
+@ops_bp.route("/api/ai/client-update", methods=["POST"])
+def client_update_draft():
+    """
+    Generate a professional client update message after a task is submitted.
+    Body: { task_title: str, client_name: str, submission_note: str, channel: 'email'|'whatsapp' }
+    """
+    body = request.get_json(silent=True) or {}
+    task_title = body.get("task_title", "").strip()
+    client_name = body.get("client_name", "Client").strip()
+    submission_note = body.get("submission_note", "").strip()
+    channel = body.get("channel", "email").lower()
+
+    if not task_title:
+        return jsonify({"error": "task_title is required"}), 400
+
+    if channel == "whatsapp":
+        style = "casual, friendly WhatsApp message (2-3 sentences, use one relevant emoji, no formal greeting)"
+    else:
+        style = "professional email (subject line + 3-4 sentence body, polite and concise)"
+
+    system = f"""You are writing on behalf of a creative agency team member.
+They just completed a task and want to send a {channel} update to their client.
+
+Task completed: {task_title}
+Client: {client_name}
+Work summary: {submission_note or "Work has been completed as discussed."}
+
+Write a {style}.
+Do NOT mention internal tools, Notion, or anything technical.
+Sound warm, professional, and confident. Make the client feel well taken care of."""
+
+    try:
+        draft = _claude_call(system, "Write the client update now.", max_tokens=300)
+        return jsonify({"draft": draft})
+    except Exception as e:
+        logger.exception("client_update_draft failed")
+        return jsonify({"error": str(e)}), 500

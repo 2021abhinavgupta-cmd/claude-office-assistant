@@ -1,263 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>My Tasks | Claude Office Assistant</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-  <script src="auth.js"></script>
-  <style>
-    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:12px;--rs:8px}
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
-    .wrap{max-width:760px;margin:0 auto;padding:28px 20px}
-    .hdr{margin-bottom:24px}
-    .hdr h1{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800}
-    .hdr h1 span{color:var(--acc)}
-    .hdr p{color:var(--muted);font-size:.84rem;margin-top:4px}
-    .nav{display:flex;gap:8px;margin-top:12px}
-    .nl{padding:7px 14px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--muted);text-decoration:none;font-size:.8rem;transition:all .2s}
-    .nl:hover{color:var(--txt);border-color:var(--acc)}
 
-    /* Alert banner */
-    .alert-banner{background:rgba(255,92,92,.08);border:1px solid rgba(255,92,92,.3);border-radius:var(--r);padding:14px 18px;margin-bottom:20px;display:none}
-    .alert-banner .al-title{font-size:.85rem;font-weight:600;color:var(--red);margin-bottom:6px}
-    .alert-banner .al-item{font-size:.8rem;color:var(--muted);line-height:1.7}
-    .alert-banner .al-item span{color:var(--red);font-weight:600}
-
-    /* Section headers */
-    .sec-lbl{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
-    .sec-lbl::after{content:"";flex:1;height:1px;background:var(--bdr)}
-
-    /* View Toggles */
-    .view-toggles{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-    .kgroup-btn{padding:6px 14px;border-radius:var(--rs);font-size:.76rem;font-weight:600;border:1px solid var(--bdr);background:var(--s1);color:var(--muted);cursor:pointer;transition:all .2s}
-    .kgroup-btn:hover{color:var(--txt);border-color:rgba(255,255,255,0.2)}
-    .kgroup-btn.on{background:var(--s2);color:var(--txt);border-color:var(--acc)}
-
-    /* Task cards */
-    .tc{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:18px;margin-bottom:12px;transition:border-color .2s}
-    .tc.overdue{border-color:rgba(255,92,92,.35)}
-    .tc.blocked{opacity:.55}
-    .tc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
-    .tc-title{font-family:'Syne',sans-serif;font-weight:700;font-size:.98rem}
-    .tc-meta{font-size:.75rem;color:var(--muted);margin-top:3px;display:flex;flex-wrap:wrap;gap:8px}
-    .tc-meta .tag{background:var(--s2);padding:2px 8px;border-radius:100px}
-    .tc-meta .overdue-tag{background:rgba(255,92,92,.15);color:var(--red)}
-    .sp{padding:3px 10px;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap;flex-shrink:0}
-    .sp-not_started{background:rgba(107,107,138,.2);color:var(--muted)}
-    .sp-unlocked{background:rgba(245,166,35,.15);color:var(--acc)}
-    .sp-in_progress{background:rgba(91,163,255,.15);color:var(--blu)}
-    .sp-pending_review{background:rgba(245,166,35,.2);color:var(--acc)}
-    .sp-approved{background:rgba(34,211,160,.15);color:var(--grn)}
-    .sp-rejected{background:rgba(255,92,92,.15);color:var(--red)}
-
-    /* Progress */
-    .prog{background:rgba(255,255,255,.07);border-radius:100px;height:7px;overflow:hidden;margin-bottom:4px}
-    .prog-fill{height:7px;border-radius:100px;transition:width .4s;background:linear-gradient(90deg,var(--acc),#ff8c42)}
-    .prog-label{font-size:.7rem;color:var(--muted);text-align:right}
-
-    /* Impact warning */
-    .impact-box{background:rgba(255,92,92,.06);border:1px solid rgba(255,92,92,.2);border-radius:var(--rs);padding:10px 14px;margin-top:10px;font-size:.78rem;color:var(--muted);line-height:1.7}
-    .impact-box .impact-title{color:var(--red);font-weight:600;margin-bottom:4px;font-size:.8rem}
-
-    /* Rejection note */
-    .rej-box{background:rgba(255,92,92,.06);border:1px solid rgba(255,92,92,.2);border-radius:var(--rs);padding:12px;margin-top:10px}
-    .rej-title{font-size:.7rem;color:var(--red);text-transform:uppercase;font-weight:700;margin-bottom:6px}
-    .rej-box p{font-size:.83rem;line-height:1.6}
-
-    /* Approved state */
-    .done-box{display:flex;align-items:center;gap:10px;background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.2);border-radius:var(--rs);padding:12px;margin-top:10px;font-size:.84rem;color:var(--grn)}
-
-    /* Submit form */
-    .submit-form{margin-top:14px;border-top:1px solid var(--bdr);padding-top:14px}
-    .submit-form label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;font-weight:600}
-    .submit-form textarea,.submit-form input[type=url]{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:10px;font-family:'DM Sans',sans-serif;font-size:.875rem;outline:none;margin-bottom:10px}
-    .submit-form textarea{min-height:80px;resize:vertical}
-    .submit-form textarea:focus,.submit-form input:focus{border-color:var(--acc)}
-    .form-row{display:flex;gap:10px;flex-wrap:wrap}
-    .btn{padding:10px 22px;border-radius:var(--rs);border:none;font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s}
-    .btn-acc{background:var(--acc);color:#000}.btn-acc:hover{opacity:.9;transform:translateY(-1px)}
-    .btn-quick{background:var(--s2);border:1px solid var(--bdr);color:var(--txt);font-size:.84rem;padding:8px 16px}
-    .btn-quick:hover{border-color:var(--acc);color:var(--acc)}
-
-    .empty{text-align:center;color:var(--muted);padding:48px;font-size:.875rem}
-    #toast{position:fixed;bottom:20px;right:20px;background:var(--s1);border:1px solid var(--bdr);padding:11px 18px;border-radius:var(--rs);font-size:.84rem;display:none;z-index:200}
-    #toast.ok{border-color:var(--grn);color:var(--grn)}
-    #toast.err{border-color:var(--red);color:var(--red)}
-
-    /* Calendar View */
-    .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-    .cal-title { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--txt); }
-    .cal-nav-btn { background: var(--s2); border: 1px solid var(--bdr); color: var(--txt); padding: 6px 12px; border-radius: var(--rs); cursor: pointer; transition: all 0.2s; font-size: .8rem; }
-    .cal-nav-btn:hover { border-color: var(--acc); color: var(--acc); }
-    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-    .cal-day-hdr { text-align: center; font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 8px 0; }
-    .cal-cell { background: var(--s1); border: 1px solid var(--bdr); border-radius: 6px; min-height: 80px; padding: 6px; position: relative; transition: border-color 0.2s; }
-    .cal-cell.today { border-color: var(--acc); background: rgba(245, 166, 35, 0.05); }
-    .cal-cell.empty-cell { background: transparent; border-color: transparent; }
-    .cal-cell:hover { border-color: var(--muted); }
-    .cal-date-num { font-size: .75rem; font-weight: 600; color: var(--muted); position: absolute; top: 6px; right: 8px; }
-    .cal-cell.today .cal-date-num { color: var(--acc); }
-    .cal-tasks { margin-top: 18px; display: flex; flex-direction: column; gap: 4px; }
-    .cal-pill { background: var(--s2); border: 1px solid var(--bdr); border-radius: 4px; padding: 3px 5px; font-size: .65rem; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-    .cal-pill.st-active { border-left: 3px solid var(--blu); }
-    .cal-pill.st-pending { border-left: 3px solid var(--muted); }
-    .cal-pill.st-review { border-left: 3px solid var(--acc); }
-    .cal-pill.st-done { border-left: 3px solid var(--grn); text-decoration: line-through; opacity: .6; }
-    
-    /* Hover Popover */
-    .cal-popover { display: none; position: absolute; top: 90%; left: 50%; transform: translateX(-50%); background: var(--s2); border: 1px solid var(--bdr); border-radius: var(--rs); padding: 12px; width: 240px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 100; flex-direction: column; gap: 10px; cursor: default; }
-    .cal-cell:hover .cal-popover { display: flex; }
-    .cal-popover::before { content: ""; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border-width: 6px; border-style: solid; border-color: transparent transparent var(--bdr) transparent; }
-    .cal-pop-item { border-bottom: 1px solid var(--bdr); padding-bottom: 8px; }
-    .cal-pop-item:last-child { border-bottom: none; padding-bottom: 0; }
-    .cal-pop-title { font-size: .8rem; font-weight: 700; color: var(--txt); margin-bottom: 4px; line-height: 1.3; }
-    .cal-pop-meta { font-size: .7rem; color: var(--muted); margin-bottom: 6px; }
-    .cal-pop-btn { display: inline-block; background: var(--s1); border: 1px solid var(--bdr); color: var(--txt); padding: 4px 10px; border-radius: 4px; font-size: .7rem; cursor: pointer; text-decoration: none; transition: all .2s; }
-    .cal-pop-btn:hover { border-color: var(--acc); color: var(--acc); }
-    .cal-cell.pop-up .cal-popover { top: auto; bottom: 90%; }
-    .cal-cell.pop-up .cal-popover::before { bottom: auto; top: 100%; border-color: var(--bdr) transparent transparent transparent; }
-    .cal-cell.pop-up .cal-popover::before { bottom: auto; top: 100%; border-color: var(--bdr) transparent transparent transparent; }
-
-    /* Dashboard Widgets & Progress Ring */
-    .dashboard-widgets { display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
-    .dash-card { flex:1; min-width:280px; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); padding:20px; display:flex; align-items:center; gap:20px; }
-    .ring-container { position:relative; width:64px; height:64px; }
-    .ring-svg { transform:rotate(-90deg); width:100%; height:100%; }
-    .ring-bg { fill:none; stroke:var(--s2); stroke-width:8; }
-    .ring-fill { fill:none; stroke:var(--acc); stroke-width:8; stroke-linecap:round; transition:stroke-dasharray 1s ease; }
-    .ring-text { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:0.9rem; font-weight:700; color:var(--txt); }
-    .dash-info h3 { font-size:1.1rem; margin:0 0 4px 0; color:var(--txt); }
-    .dash-info p { font-size:0.8rem; color:var(--muted); margin:0; line-height:1.4; }
-    
-    .smart-suggestion { background:linear-gradient(135deg, rgba(245,166,35,0.1), rgba(245,166,35,0.02)); border:1px solid rgba(245,166,35,0.3); }
-    .smart-suggestion h3 { color:var(--acc); }
-
-    /* Collapsible Sections */
-    .sec-lbl { cursor:pointer; user-select:none; display:flex; justify-content:space-between; align-items:center; }
-    .sec-lbl:hover { opacity:0.8; }
-    .sec-content { transition: max-height 0.3s ease, opacity 0.3s ease; overflow:hidden; opacity:1; max-height:10000px; }
-    .sec-content.collapsed { max-height:0; opacity:0; pointer-events:none; }
-    .collapse-icon { font-size:0.7rem; transition:transform 0.3s ease; }
-    .collapsed-icon { transform:rotate(-90deg); }
-
-    /* Sub-tasks */
-    .subtasks-container { margin-top:12px; background:var(--s2); border-radius:var(--rs); padding:10px; }
-    .subtask-item { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:0.85rem; color:var(--txt); }
-    .subtask-item.done { text-decoration:line-through; opacity:0.6; }
-    .subtask-cb { cursor:pointer; accent-color:var(--acc); width:14px; height:14px; }
-    .add-subtask-btn { background:transparent; border:1px dashed var(--bdr); color:var(--muted); width:100%; text-align:left; padding:6px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:4px; }
-    .add-subtask-btn:hover { border-color:var(--acc); color:var(--acc); }
-    .ai-breakdown-btn { background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(59,130,246,.1)); border:1px solid rgba(139,92,246,.4); color:#a78bfa; width:100%; text-align:left; padding:7px 12px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:6px; font-weight:600; letter-spacing:.02em; transition:all .2s; }
-    .ai-breakdown-btn:hover { border-color:#a78bfa; background:rgba(139,92,246,.2); }
-    .ai-breakdown-btn:disabled { opacity:0.5; cursor:wait; }
-
-    /* AI Coach Widget */
-    #ai-coach-btn { position:fixed; bottom:28px; right:28px; width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); border:none; color:#fff; font-size:1.4rem; cursor:pointer; box-shadow:0 4px 24px rgba(124,58,237,.5); z-index:1000; transition:transform .2s; display:flex; align-items:center; justify-content:center; }
-    #ai-coach-btn:hover { transform:scale(1.1); }
-    #ai-coach-panel { position:fixed; bottom:96px; right:28px; width:340px; background:var(--s1); border:1px solid rgba(124,58,237,.4); border-radius:16px; box-shadow:0 16px 48px rgba(0,0,0,.8); z-index:1000; display:none; flex-direction:column; overflow:hidden; }
-    #ai-coach-panel.open { display:flex; }
-    .coach-header { padding:14px 16px; background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1)); border-bottom:1px solid rgba(124,58,237,.3); display:flex; justify-content:space-between; align-items:center; }
-    .coach-header h4 { margin:0; font-size:.9rem; font-weight:700; color:#c4b5fd; }
-    .coach-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.1rem; }
-    .coach-messages { flex:1; max-height:300px; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
-    .coach-msg { padding:10px 12px; border-radius:10px; font-size:.82rem; line-height:1.55; max-width:90%; }
-    .coach-msg.user { background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.3); color:var(--txt); align-self:flex-end; }
-    .coach-msg.ai { background:var(--s2); border:1px solid var(--bdr); color:var(--txt); align-self:flex-start; }
-    .coach-msg.thinking { color:var(--muted); font-style:italic; }
-    .coach-input-row { padding:10px 12px; border-top:1px solid var(--bdr); display:flex; gap:8px; }
-    .coach-input { flex:1; background:var(--s2); border:1px solid var(--bdr); border-radius:8px; color:var(--txt); padding:8px 10px; font-size:.83rem; outline:none; font-family:'DM Sans',sans-serif; }
-    .coach-input:focus { border-color:rgba(124,58,237,.6); }
-    .coach-send { background:linear-gradient(135deg,#7c3aed,#3b82f6); border:none; color:#fff; border-radius:8px; padding:8px 14px; font-size:.83rem; cursor:pointer; font-weight:600; white-space:nowrap; }
-    .coach-send:disabled { opacity:.5; cursor:wait; }
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <div class="hdr">
-    <h1>✅ My <span>Tasks</span></h1>
-    <p id="greeting">Loading...</p>
-    <div class="nav">
-      <a href="index.html" class="nl">⌨️ Chat</a>
-      <a href="projects.html" class="nl">📋 Board</a>
-      <a href="dashboard.html" class="nl">📊 Dashboard</a>
-    </div>
-  </div>
-
-  <div class="alert-banner" id="alert-banner">
-    <div class="al-title">⚠️ Your delays are blocking teammates</div>
-    <div id="alert-items"></div>
-  </div>
-  <div class="view-toggles" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-    <div style="display:flex; gap:6px;">
-      <button class="kgroup-btn on" id="btn-view-status" onclick="setViewMode('status')">By Status</button>
-      <button class="kgroup-btn" id="btn-view-client" onclick="setViewMode('client')">By Client</button>
-      <button class="kgroup-btn" id="btn-view-date" onclick="setViewMode('date')">By Date</button>
-      <button class="kgroup-btn" id="btn-view-calendar" onclick="setViewMode('calendar')">Calendar</button>
-      <button class="kgroup-btn" id="btn-priority" onclick="showPriorityModal()" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border-color:rgba(124,58,237,.4);color:#c4b5fd">🎯 Priority</button>
-    </div>
-    <div style="flex:1; min-width:260px; max-width:400px; display:flex; gap:6px;">
-      <input type="text" id="task-search-input" placeholder="🔍 Search tasks..." oninput="renderTasks()" style="flex:1; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
-      <input type="text" id="quick-task-input" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter')quickCreateTask()" style="flex:1; background:var(--s2); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
-      <button class="btn btn-acc" style="padding:8px 16px; white-space:nowrap;" onclick="quickCreateTask()">Add</button>
-    </div>
-  </div>
-  
-  <div id="dashboard-widgets" class="dashboard-widgets"></div>
-
-  <!-- AI Coach Floating Widget -->
-  <button id="ai-coach-btn" onclick="toggleCoach()" title="Ask your AI Coach">🧠</button>
-  <div id="ai-coach-panel">
-    <div class="coach-header">
-      <h4>🧠 AI Task Coach</h4>
-      <button class="coach-close" onclick="toggleCoach()">✕</button>
-    </div>
-    <div class="coach-messages" id="coach-messages">
-      <div class="coach-msg ai">Hi! I've read your Notion tasks. Ask me anything — "What should I focus on today?" or "I'm overwhelmed, help!"</div>
-    </div>
-    <div class="coach-input-row">
-      <input class="coach-input" id="coach-input" placeholder="Ask me anything..." onkeydown="if(event.key==='Enter')sendCoachMessage()" />
-      <button class="coach-send" id="coach-send" onclick="sendCoachMessage()">Ask</button>
-    </div>
-  </div>
-
-  <div id="tasks-wrap"><div class="empty">Loading your tasks...</div></div>
-</div>
-<div id="toast"></div>
-
-<!-- Priority Modal -->
-<div id="priority-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;align-items:center;justify-content:center">
-  <div style="background:#131318;border:1px solid rgba(124,58,237,.4);border-radius:16px;padding:28px;width:90%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.8)">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h3 style="font-family:'Syne',sans-serif;font-size:1.1rem;color:#c4b5fd">🎯 AI Priority Advisor</h3>
-      <button onclick="document.getElementById('priority-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
-    </div>
-    <div id="priority-output" style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:16px;font-size:.875rem;line-height:1.7;min-height:80px;color:var(--txt);white-space:pre-wrap">⏳ Analyzing your tasks...</div>
-  </div>
-</div>
-
-<!-- Client Update Modal -->
-<div id="client-update-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;align-items:center;justify-content:center">
-  <div style="background:#131318;border:1px solid rgba(245,166,35,.3);border-radius:16px;padding:28px;width:90%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.8)">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h3 style="font-family:'Syne',sans-serif;font-size:1.1rem">📧 Draft Client Update</h3>
-      <button onclick="document.getElementById('client-update-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button id="cu-email-btn" onclick="setCuChannel('email')" style="flex:1;padding:7px;border-radius:6px;border:1px solid var(--acc);background:rgba(245,166,35,.15);color:var(--acc);font-size:.82rem;font-weight:600;cursor:pointer">📧 Email</button>
-      <button id="cu-wa-btn" onclick="setCuChannel('whatsapp')" style="flex:1;padding:7px;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--muted);font-size:.82rem;font-weight:600;cursor:pointer">💬 WhatsApp</button>
-    </div>
-    <div id="client-update-output" style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:14px;font-size:.875rem;line-height:1.7;min-height:80px;color:var(--txt);white-space:pre-wrap">⏳ Generating draft...</div>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('client-update-output').textContent).then(()=>toast('Copied!'))" style="margin-top:12px;width:100%;background:var(--s2);border:1px solid var(--bdr);color:var(--txt);padding:8px;border-radius:6px;font-size:.83rem;cursor:pointer">📋 Copy to Clipboard</button>
-  </div>
-</div>
-
-<!-- Confetti Script -->
-<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-
-<script src="shared-config.js"></script>
-<script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
 const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
 const UID = user.user_id || user.id;
@@ -543,15 +284,9 @@ function renderTask(t, today){
     subtasksHtml = `<div class="subtasks-container" id="st-wrap-${t.notion_id}">`;
     subtasks.forEach((st, idx) => {
       subtasksHtml += `
-        <div class="subtask-item ${st.done ? 'done' : ''}" style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" class="subtask-cb" ${st.done ? 'checked' : ''} onchange="toggleMySubtask('${t.notion_id}', ${idx}, this.checked)">
-            <span>${st.text}</span>
-          </div>
-          <div style="display:flex; gap:6px;">
-            <button onclick="editMySubtask('${t.notion_id}', ${idx}, '${st.text.replace(/'/g, "\\'")}')" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem;" title="Edit Sub-task">✏️</button>
-            <button onclick="removeMySubtask('${t.notion_id}', ${idx})" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem; color:var(--red);" title="Remove Sub-task">🗑️</button>
-          </div>
+        <div class="subtask-item ${st.done ? 'done' : ''}">
+          <input type="checkbox" class="subtask-cb" ${st.done ? 'checked' : ''} onchange="toggleMySubtask('${t.notion_id}', ${idx}, this.checked)">
+          <span>${st.text}</span>
         </div>
       `;
     });
@@ -567,13 +302,7 @@ function renderTask(t, today){
   // Approved state
   if(t.status==="approved") body+=`<div class="done-box">Approved — great work!</div>`;
   // In review
-  if(t.status==="submitted") {
-    body+=`<div class="done-box" style="color:var(--acc);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)">Submitted — waiting for review.</div>`;
-    // Draft Client Update button
-    const safeClient2 = (t.client_name||t.client||'').replace(/'/g,"&apos;");
-    const safeNote2 = (t.submission_note||'').replace(/'/g,"&apos;").replace(/`/g,'&#96;').substring(0,200);
-    body+=`<button onclick="openClientUpdateModal('${t.notion_id}','${safeTitleForAttr}','${safeClient2}','${safeNote2}')" class="ai-breakdown-btn" style="margin-top:10px;width:auto;padding:7px 16px">📧 Draft Client Update</button>`;
-  }
+  if(t.status==="submitted") body+=`<div class="done-box" style="color:var(--acc);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)">Submitted — waiting for review.</div>`;
   // Submission note (if any)
   if(t.submission_note && t.status==="submitted") body+=`<div class="rej-box" style="border-color:rgba(245,166,35,.3)"><div class="rej-title" style="color:var(--acc)">Your Note</div><p>${t.submission_note}</p></div>`;
 
@@ -917,34 +646,6 @@ async function toggleMySubtask(nid, idx, isChecked) {
   }
 }
 
-async function editMySubtask(nid, idx, currentText) {
-  const newText = prompt("Edit sub-task:", currentText);
-  if (newText === null || newText.trim() === "") return;
-  
-  let subtasks = [];
-  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
-  
-  if (subtasks[idx]) {
-    subtasks[idx].text = newText.trim();
-    localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(subtasks));
-    renderTasks();
-  }
-}
-
-async function removeMySubtask(nid, idx) {
-  if (!confirm("Remove this sub-task?")) return;
-  
-  let subtasks = [];
-  try { subtasks = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
-  
-  if (subtasks[idx]) {
-    subtasks.splice(idx, 1);
-    localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(subtasks));
-    await recalcSubtasks(nid, subtasks);
-    renderTasks();
-  }
-}
-
 async function recalcSubtasks(nid, subtasks) {
   if (!subtasks.length) return;
   const doneCount = subtasks.filter(st => st.done).length;
@@ -1133,19 +834,14 @@ async function aiBreakdownTask(nid, taskTitle, clientName) {
     });
     const d = await r.json();
     if(d.subtasks && d.subtasks.length) {
-      const subtaskListStr = d.subtasks.map(t => "• " + t).join("\n");
-      if(confirm(`🧠 AI generated these sub-tasks:\n\n${subtaskListStr}\n\nDo you want to add them to your task?`)) {
-        let existing = [];
-        try { existing = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
-        
-        const newSubtasks = d.subtasks.map(text => ({text, done: false}));
-        const merged = [...existing, ...newSubtasks];
-        localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(merged));
-        renderTasks();
-        toast(`🧠 Added ${d.subtasks.length} AI-generated sub-tasks!`);
-      } else {
-        toast("AI breakdown discarded.");
-      }
+      let existing = [];
+      try { existing = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
+      
+      const newSubtasks = d.subtasks.map(text => ({text, done: false}));
+      const merged = [...existing, ...newSubtasks];
+      localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(merged));
+      renderTasks();
+      toast(`🧠 Added ${d.subtasks.length} AI-generated sub-tasks!`);
     } else {
       toast(d.error || 'No sub-tasks generated', 'err');
     }
@@ -1243,80 +939,3 @@ async function sendCoachMessage() {
     messages.scrollTop = messages.scrollHeight;
   }
 }
-
-// ── Feature 4: AI Priority Advisor ──────────────────────────────────────────
-async function showPriorityModal() {
-  const modal = document.getElementById('priority-modal');
-  const out   = document.getElementById('priority-output');
-  modal.style.display = 'flex';
-  out.textContent = '⏳ Analyzing your tasks...';
-
-  const tasks = window.allTasks || [];
-  if (!tasks.length) { out.textContent = 'No tasks loaded yet. Please wait and try again.'; return; }
-
-  const today = new Date().toISOString().slice(0,10);
-  const lines = tasks
-    .filter(t => t.status !== 'approved')
-    .map(t => {
-      const overdue = t.due_date && t.due_date < today ? ' [OVERDUE]' : '';
-      return `- ${t.title} | Status: ${t.status} | Due: ${t.due_date||'no date'}${overdue} | Client: ${t.client_name||t.client||'Internal'}`;
-    });
-
-  try {
-    const r = await fetch(`${API}/api/standup/ai-coach`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        question: 'What single task should I focus on RIGHT NOW and why? Also list the top 3 priorities in order. Be specific and use task names.',
-        assigned_name: USER_NAME
-      })
-    });
-    const d = await r.json();
-    out.textContent = d.reply || d.error || 'No recommendation available.';
-  } catch(e) {
-    out.textContent = 'Error: ' + e.message;
-  }
-}
-
-// ── Feature 5: AI Client Update Draft ───────────────────────────────────────
-let _cuState = { nid:'', title:'', client:'', note:'', channel:'email' };
-
-async function openClientUpdateModal(nid, title, client, note) {
-  _cuState = { nid, title, client, note, channel:'email' };
-  const modal = document.getElementById('client-update-modal');
-  modal.style.display = 'flex';
-  setCuChannel('email');
-}
-
-async function setCuChannel(ch) {
-  _cuState.channel = ch;
-  // Update button styles
-  document.getElementById('cu-email-btn').style.borderColor = ch==='email' ? 'var(--acc)' : 'var(--bdr)';
-  document.getElementById('cu-email-btn').style.background  = ch==='email' ? 'rgba(245,166,35,.15)' : 'transparent';
-  document.getElementById('cu-email-btn').style.color       = ch==='email' ? 'var(--acc)' : 'var(--muted)';
-  document.getElementById('cu-wa-btn').style.borderColor    = ch==='whatsapp' ? 'var(--grn)' : 'var(--bdr)';
-  document.getElementById('cu-wa-btn').style.background     = ch==='whatsapp' ? 'rgba(34,211,160,.1)' : 'transparent';
-  document.getElementById('cu-wa-btn').style.color          = ch==='whatsapp' ? 'var(--grn)' : 'var(--muted)';
-
-  const out = document.getElementById('client-update-output');
-  out.textContent = '⏳ Generating draft...';
-  try {
-    const r = await fetch(`${API}/api/ai/client-update`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        task_title: _cuState.title,
-        client_name: _cuState.client,
-        submission_note: _cuState.note,
-        channel: ch
-      })
-    });
-    const d = await r.json();
-    out.textContent = d.draft || d.error || 'Could not generate draft.';
-  } catch(e) {
-    out.textContent = 'Error: ' + e.message;
-  }
-}
-</script>
-</body>
-</html>
