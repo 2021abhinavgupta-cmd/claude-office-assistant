@@ -114,8 +114,9 @@
         <p class="card-sub">Personal tasks — tick off as you go. Unfinished tasks carry over tomorrow.</p>
 
         <div class="task-add-row">
-          <input class="task-input" id="new-task-input" placeholder="Add a task for today…" onkeydown="if(event.key==='Enter')addTask()"/>
-          <button class="task-add-btn" onclick="addTask()">+ Add</button>
+          <input class="task-input" id="new-task-input" list="notion-tasks-list" placeholder="Add a task for today…" onkeydown="if(event.key==='Enter')addTask(this.nextElementSibling)"/>
+          <datalist id="notion-tasks-list"></datalist>
+          <button class="task-add-btn" onclick="addTask(this)">+ Add</button>
           <button class="task-add-btn" id="autofill-btn" onclick="autoFillStandup()" style="background:var(--s2);color:var(--acc);margin-left:8px;white-space:nowrap" title="Auto-fill tasks from Notion (In Progress / Due Today)">⚡ Auto-Fill</button>
         </div>
 
@@ -177,6 +178,17 @@ function esc(s){if(!s)return"";return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":
   const hour = new Date().getHours();
   const greet = hour<12?"Good morning":hour<17?"Good afternoon":"Good evening";
   document.getElementById("greeting-line").textContent = `${greet}, ${window.EMP_DICT[UID]||UID}! Your task list is ready.`;
+
+  try {
+    const nr = await fetch(`${API}/api/notion/tasks?assigned_to=${window.EMP_DICT[UID]||UID}`);
+    const nd = await nr.json();
+    if(nd.tasks) {
+      window.notionTasks = nd.tasks.filter(t => t.status === 'not_started' || t.status === 'in_progress');
+      const dl = document.getElementById("notion-tasks-list");
+      if(dl) dl.innerHTML = window.notionTasks.map(t => `<option value="${t.title}">`).join("");
+    }
+  } catch(e){}
+
   loadMyTasks();
   loadTeamStandups();
   loadAlerts();
@@ -249,7 +261,10 @@ function renderTasks(){
                    style="background:rgba(255,92,92,0.1); border:1px solid rgba(255,92,92,0.3); border-radius:4px; color:var(--txt); padding:4px 8px; font-size:0.75rem; width:100%; outline:none; font-family:'DM Sans',sans-serif;" />
           ` : (t.blocker ? `<div style="font-size:0.75rem;color:var(--red);">🚧 Blocker: ${esc(t.blocker)}</div>` : "")}
         </div>
-        <button class="task-del" onclick="deleteTask(${t.id})" title="Remove">✕</button>
+        <div style="display:flex; align-items:center; gap:4px">
+          ${!t.notion_id ? `<button onclick="pushToBoard(${t.id}, this)" title="Push to Notion Board" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:1.1rem;padding:2px;transition:opacity 0.2s;">↗️</button>` : ''}
+          <button class="task-del" onclick="deleteTask(${t.id})" title="Remove">✕</button>
+        </div>
       </div>
       ${subtasksHtml}
     </div>`
@@ -299,19 +314,56 @@ async function deleteSubtask(taskId, index) {
   renderTasks();
 }
 
-async function addTask(){
+async function addTask(btnEl){
   const inp = document.getElementById("new-task-input");
   const title = inp.value.trim();
   if(!title) return;
   inp.value = "";
-  const r = await fetch(`${API}/api/standup/my-tasks`,{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({user_id:UID,title})
-  });
-  const d = await r.json();
-  if(d.success){
-    allTasks.push({id:d.task_id,title,status:"pending",carried_from:null});
-    renderTasks();
+  
+  const origBtnText = btnEl ? btnEl.textContent : "+ Add";
+  if(btnEl) btnEl.textContent = "⏳...";
+  
+  try {
+    const r = await fetch(`${API}/api/standup/smart-add`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({user_id:UID, title:title, assigned_to:window.EMP_DICT[UID]||UID})
+    });
+    const d = await r.json();
+    if(d.success){
+      allTasks.push({id:d.task_id, title:d.title, status:"pending", carried_from:null, notion_id:d.notion_id});
+      renderTasks();
+      if(d.is_project) {
+          // Toast or subtle indicator could go here. 
+          console.log("AI Auto-Router created this as a project task in Notion.");
+      }
+    }
+  } catch(e) {}
+  
+  if(btnEl) btnEl.textContent = origBtnText;
+}
+
+async function pushToBoard(id, btn){
+  btn.style.opacity = "0.5";
+  btn.textContent = "⏳";
+  try {
+    const r = await fetch(`${API}/api/standup/push-to-notion/${id}`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({assigned_to:window.EMP_DICT[UID]||UID})
+    });
+    const d = await r.json();
+    if(d.success) {
+      const t = allTasks.find(x=>x.id===id);
+      if(t) t.notion_id = d.notion_id;
+      renderTasks();
+    } else {
+      alert("Error pushing to Notion.");
+      btn.textContent = "↗️";
+      btn.style.opacity = "1";
+    }
+  } catch(e){
+      alert("Network error.");
+      btn.textContent = "↗️";
+      btn.style.opacity = "1";
   }
 }
 

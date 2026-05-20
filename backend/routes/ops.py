@@ -328,6 +328,119 @@ def auto_fill_standup():
     return jsonify({"success": True, "added": added_count})
 
 
+@ops_bp.route("/api/standup/smart-add", methods=["POST"])
+def standup_smart_add():
+    body = request.get_json(silent=True) or {}
+    user_id = body.get("user_id", "")
+    assigned_to = body.get("assigned_to", "")
+    title = body.get("title", "").strip()
+
+    if not user_id or not title:
+        return jsonify({"error": "user_id and title required"}), 400
+
+    system_prompt = """You are an AI task router.
+The user just typed a new task into their daily standup list.
+Is this a "Project Task" that should be tracked in a main project board (e.g. creating a feature, designing a page, writing a proposal), or is it a "Quick Chore" (e.g. check email, call client, meeting, lunch)?
+If it's a Project Task, guess the Client Name from the title if possible (otherwise use "Internal").
+Respond ONLY in valid JSON format:
+{
+  "is_project_task": true/false,
+  "client_name": "Name or Internal",
+  "clean_title": "Cleaned up task title without extra chatter"
+}"""
+    
+    try:
+        resp = _claude_call(system_prompt, title, 200)
+        import re
+        match = re.search(r'\{.*\}', resp, re.DOTALL)
+        resp_json = json.loads(match.group(0)) if match else json.loads(resp)
+            
+        is_project = resp_json.get("is_project_task", False)
+        client = resp_json.get("client_name", "Internal")
+        clean_title = resp_json.get("clean_title", title)
+    except Exception as e:
+        logger.error(f"Auto-Router failed: {e}")
+        is_project = False
+        clean_title = title
+        client = "Internal"
+
+    notion_id = None
+    
+    if is_project and notion_store.is_configured():
+        due_date = datetime.utcnow().strftime("%Y-%m-%d")
+        created = notion_store.create_task(
+            title=clean_title,
+            client_name=client,
+            client_notion_id="",
+            assigned_to=assigned_to,
+            due_date=due_date,
+            status="in_progress"
+        )
+        if created and "id" in created:
+            notion_id = created["id"]
+            
+    conn = _su_conn()
+    with conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO standup_tasks (user_id, title, status, date, notion_id) VALUES (?, ?, 'pending', date('now'), ?)",
+            (user_id, clean_title, notion_id)
+        )
+        task_id = cur.lastrowid
+        
+    return jsonify({
+        "success": True, 
+        "task_id": task_id, 
+        "title": clean_title, 
+        "notion_id": notion_id,
+        "is_project": is_project
+    })
+
+
+@ops_bp.route("/api/standup/push-to-notion/<int:task_id>", methods=["POST"])
+def push_to_notion(task_id):
+    body = request.get_json(silent=True) or {}
+    assigned_to = body.get("assigned_to", "")
+    
+    conn = _su_conn()
+    with conn:
+        cur = conn.cursor()
+        cur.execute("SELECT title, notion_id FROM standup_tasks WHERE id=?", (task_id,))
+        row = cur.fetchone()
+        
+    if not row:
+        return jsonify({"error": "Task not found"}), 404
+        
+    title = row[0]
+    if row[1]:
+        return jsonify({"error": "Task already in Notion"}), 400
+        
+    system_prompt = """Extract client name from this task title. Return ONLY json: {"client_name": "Client Name or Internal"}"""
+    try:
+        resp = _claude_call(system_prompt, title, 100)
+        import re
+        match = re.search(r'\{.*\}', resp, re.DOTALL)
+        client = json.loads(match.group(0)).get("client_name", "Internal") if match else "Internal"
+    except:
+        client = "Internal"
+        
+    due_date = datetime.utcnow().strftime("%Y-%m-%d")
+    created = notion_store.create_task(
+        title=title,
+        client_name=client,
+        client_notion_id="",
+        assigned_to=assigned_to,
+        due_date=due_date,
+        status="in_progress"
+    )
+    if created and "id" in created:
+        notion_id = created["id"]
+        with conn:
+            conn.execute("UPDATE standup_tasks SET notion_id=? WHERE id=?", (notion_id, task_id))
+        return jsonify({"success": True, "notion_id": notion_id})
+    return jsonify({"error": "Failed to push to Notion"}), 500
+
+
 @ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["PATCH"])
 def update_my_task(task_id: int):
     """
