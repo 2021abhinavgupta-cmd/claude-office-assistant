@@ -131,7 +131,7 @@ def get_standups_today():
 
 
 @ops_bp.route("/api/standup/ai-coach", methods=["POST"])
-def ai_coach():
+def ai_priority_advisor():
     """Provides AI priority advice based on the user's tasks."""
     body = request.get_json(silent=True) or {}
     question = body.get("question", "")
