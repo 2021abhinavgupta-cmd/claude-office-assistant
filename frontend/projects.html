@@ -186,6 +186,14 @@
     .ap-item:hover{background:var(--s2)}
     .ap-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;color:#fff;flex-shrink:0}
     .ap-name{font-weight:500}
+    /* ── Client inner tabs ─────────────────────────────────────── */
+    .cb-body{padding:0 4px 16px 4px;border-top:1px solid var(--bdr);margin-top:0}
+    .client-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:14px 0 10px 0;border-bottom:1px solid var(--bdr);margin-bottom:14px}
+    .ctab{padding:5px 15px;border-radius:100px;font-size:.77rem;font-weight:600;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
+    .ctab:hover{border-color:var(--acc);color:var(--acc);background:rgba(245,166,35,.07)}
+    .ctab.on{background:rgba(245,166,35,.15);border-color:var(--acc);color:var(--acc)}
+    .ctab-content{min-height:60px}
+    .kanban-wrap{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;height:100%}
   </style>
 </head>
 <body>
@@ -202,62 +210,8 @@
     </div>
   </div>
 
-  <div class="tabs">
-    <button class="tab on" onclick="switchTab('matrix',this)">📊 Matrix View</button>
-    <button class="tab" onclick="switchTab('kanban',this)">📌 Kanban</button>
-    <button class="tab" onclick="switchTab('blockers',this)">🔴 Blockers</button>
-    <button class="tab" id="review-tab" onclick="switchTab('review',this)">⏳ In Review</button>
-    <button class="tab" onclick="switchTab('detail',this)">📋 Detail View</button>
-  </div>
-
-  <!-- Matrix -->
-  <div id="tab-matrix" style="flex:1;overflow-y:auto;padding-bottom:24px;">
-    <div class="matrix-wrap">
-      <table class="matrix" id="matrix-table">
-        <thead><tr id="matrix-head"><th>Client</th></tr></thead>
-        <tbody id="matrix-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Blockers -->
-  <div id="tab-blockers" style="display:none;flex:1;overflow-y:auto;padding-bottom:24px;">
-    <div class="blocker-header">
-      <h2>🔴 Active Blockers</h2>
-      <span class="blocker-count" id="blocker-count">—</span>
-    </div>
-    <div id="blockers-list"><div class="empty">Loading...</div></div>
-  </div>
-
-  <!-- In Review -->
-  <div id="tab-review" style="display:none;flex:1;overflow-y:auto;padding-bottom:24px;">
-    <div class="blocker-header">
-      <h2>⏳ Awaiting Approval</h2>
-      <span class="blocker-count" id="review-count" style="background:rgba(245,166,35,.2);color:var(--acc)">—</span>
-    </div>
-    <p style="color:var(--muted);font-size:.82rem;margin-bottom:18px">Tasks submitted by the team — review and approve or request changes.</p>
-    <div id="review-list"><div class="empty">Loading...</div></div>
-  </div>
-
-  <!-- Detail -->
-  <div id="tab-detail" style="display:none;flex:1;overflow-y:auto;padding-bottom:24px;">
+  <div id="clients-container" style="flex:1;overflow-y:auto;padding-bottom:24px;margin-top:10px">
     <div class="client-blocks" id="detail-list"><div class="empty">Loading...</div></div>
-  </div>
-
-  <!-- Kanban -->
-  <div id="tab-kanban" style="display:none;flex:1;display:none;flex-direction:column;overflow:hidden;height:100%;">
-    <!-- Top toolbar -->
-    <div class="kanban-toolbar">
-      <div class="kanban-group-toggle">
-        <button class="kgroup-btn on" id="kbtn-stage" onclick="setKanbanGroup('stage',this)">By Stage</button>
-        <button class="kgroup-btn" id="kbtn-client" onclick="setKanbanGroup('client',this)">By Client</button>
-      </div>
-      <!-- Client filter tabs (only shown in By Stage mode) -->
-      <div id="client-filter-bar" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></div>
-      <!-- Quick Task button -->
-      <button class="quick-task-btn" onclick="openQuickTask()">+ Quick Task</button>
-    </div>
-    <div class="kanban-wrap" id="kanban-board"></div>
   </div>
 </div>
 
@@ -468,30 +422,12 @@ async function loadNotion(){
   allData = data;
 
   if(!data.clients || !data.clients.length){
-    document.getElementById("matrix-body").innerHTML=`<tr><td colspan="${COLS.length+2}" class="empty">No clients in Notion yet. <a href="client-onboard.html" style="color:var(--acc)">+ Onboard your first client →</a></td></tr>`;
-    document.getElementById("detail-list").innerHTML='<div class="empty">No clients in Notion yet.</div>';
+    document.getElementById("detail-list").innerHTML='<div class="empty">No clients in Notion yet. <a href="client-onboard.html" style="color:var(--acc)">+ Onboard your first client →</a></div>';
     return;
   }
 
   // Normalise Notion client shape → add .id alias for rendering
   data.clients.forEach(c => { c.id = c.notion_id; c.tasks.forEach(t => { t.id = t.notion_id; }); });
-
-  // Matrix head
-  const head=document.getElementById("matrix-head");
-  head.innerHTML=`<th>Client</th>`+COLS.map(c=>`<th>${c}</th>`).join("")+`<th>Status</th>`;
-
-  // Matrix body
-  const tbody=document.getElementById("matrix-body");
-  tbody.innerHTML=data.clients.map(c=>{
-    const ov=overallStatus(c.tasks);
-    const ovLabel={at_risk:"🔴 AT RISK",on_track:"✅ ON TRACK",upcoming:"🕐 UPCOMING",complete:"🏁 COMPLETE"}[ov]||ov;
-    const notionLink = c.url ? `<a href="${c.url}" target="_blank" style="font-size:.65rem;color:var(--acc);text-decoration:none;margin-left:6px">↗</a>` : "";
-    return`<tr>
-      <td><div class="client-td">${c.name}${notionLink}</div><div class="client-sub">${c.deadline?"Due: "+c.deadline:""} · ${c.tasks.length} tasks</div></td>
-      ${COLS.map(col=>cellForCol(col,c.tasks)).join("")}
-      <td><span class="ov-pill ov-${ov}">${ovLabel}</span></td>
-    </tr>`;
-  }).join("");
 
   renderDetail(data.clients);
 }
@@ -499,23 +435,9 @@ async function loadNotion(){
 async function loadSQLite(){
   const res=await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
   allData=await res.json();
-  if(allData.error){document.getElementById("matrix-body").innerHTML=`<tr><td colspan="99" class="empty">${allData.error}</td></tr>`;return;}
+  if(allData.error){document.getElementById("detail-list").innerHTML=`<div class="empty">${allData.error}</div>`;return;}
 
-  const head=document.getElementById("matrix-head");
-  head.innerHTML=`<th>Client</th>`+COLS.map(c=>`<th>${c}</th>`).join("")+`<th>Status</th>`;
-
-  const tbody=document.getElementById("matrix-body");
-  if(!allData.clients.length){tbody.innerHTML=`<tr><td colspan="${COLS.length+2}" class="empty">No clients yet.</td></tr>`;return;}
-
-  tbody.innerHTML=allData.clients.map(c=>{
-    const ov=overallStatus(c.tasks);
-    const ovLabel={at_risk:"🔴 AT RISK",on_track:"✅ ON TRACK",upcoming:"🕐 UPCOMING",complete:"🏁 COMPLETE"}[ov]||ov;
-    return`<tr>
-      <td><div class="client-td">${c.name}</div><div class="client-sub">${c.deadline?"Due: "+c.deadline:""} · ${c.tasks.length} tasks</div></td>
-      ${COLS.map(col=>cellForCol(col,c.tasks)).join("")}
-      <td><span class="ov-pill ov-${ov}">${ovLabel}</span></td>
-    </tr>`;
-  }).join("");
+  if(!allData.clients.length){document.getElementById("detail-list").innerHTML=`<div class="empty">No clients yet.</div>`;return;}
 
   renderDetail(allData.clients);
 }
@@ -535,21 +457,63 @@ function renderDetail(clients){
           <span style="color:var(--muted);font-size:.8rem">▼</span>
         </div>
       </div>
-      <div class="tasks-grid" id="dtasks-${c.id}" style="display:none">
-        ${c.tasks.length?c.tasks.map(t=>renderTaskCard(t)).join(""):'<div style="color:var(--muted);font-size:.8rem">No tasks.</div>'}
-        ${!notionMode ? `
-        <div class="add-task-row">
-          <input type="text" id="nt-${c.id}" placeholder="New task..." />
-          <select id="na-${c.id}"><option value="">Assign...</option>${Object.entries(EMP).map(([id,n])=>`<option value="${id}">${n}</option>`).join("")}</select>
-          <input type="date" id="nd-${c.id}" />
-          <button class="btn btn-sm btn-acc" style="padding:7px 14px" onclick="addTask(${c.id})">Add</button>
-        </div>` : `<p style="color:var(--muted);font-size:.75rem;padding:8px 0">✦ Manage tasks directly in <a href="${c.url||'https://notion.so'}" target="_blank" style="color:var(--acc)">Notion ↗</a></p>`}
+      <div class="cb-body" id="dbody-${c.id}" style="display:none">
+        <div class="client-tabs">
+          <button class="ctab on" onclick="switchClientTab('${c.id}', 'list', this)">📋 Task List</button>
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'kanban', this)">📌 Kanban</button>
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'blockers', this)">🔴 Blockers</button>
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'review', this)">⏳ In Review</button>
+        </div>
+        
+        <div id="ctab-${c.id}-list" class="ctab-content" style="display:block">
+          <div class="tasks-grid">
+            ${c.tasks.length?c.tasks.map(t=>renderTaskCard(t)).join(""):'<div style="color:var(--muted);font-size:.8rem">No tasks.</div>'}
+            ${!notionMode ? `
+            <div class="add-task-row">
+              <input type="text" id="nt-${c.id}" placeholder="New task..." />
+              <select id="na-${c.id}"><option value="">Assign...</option>${Object.entries(EMP).map(([id,n])=>`<option value="${id}">${n}</option>`).join("")}</select>
+              <input type="date" id="nd-${c.id}" />
+              <button class="btn btn-sm btn-acc" style="padding:7px 14px" onclick="addTask(${c.id})">Add</button>
+            </div>` : `<p style="color:var(--muted);font-size:.75rem;padding:8px 0">✦ Manage tasks directly in <a href="${c.url||'https://notion.so'}" target="_blank" style="color:var(--acc)">Notion ↗</a></p>`}
+          </div>
+        </div>
+
+        <div id="ctab-${c.id}-kanban" class="ctab-content" style="display:none; height: 500px;">
+          <div class="kanban-wrap" id="ckanban-${c.id}"></div>
+        </div>
+
+        <div id="ctab-${c.id}-blockers" class="ctab-content" style="display:none; padding-top: 12px;">
+          <div id="cblockers-${c.id}">Loading...</div>
+        </div>
+
+        <div id="ctab-${c.id}-review" class="ctab-content" style="display:none; padding-top: 12px;">
+          <div id="creview-${c.id}">Loading...</div>
+        </div>
+
       </div>
     </div>`;
   }).join("");
 }
 
-function toggleDetail(id){const el=document.getElementById("dtasks-"+id);el.style.display=el.style.display==="none"?"":"none";}
+function toggleDetail(id){
+  const el=document.getElementById("dbody-"+id);
+  const isHidden = el.style.display==="none";
+  el.style.display=isHidden?"":"none";
+  if (isHidden) {
+    // When opened, render the client-specific data for the tabs
+    renderClientKanban(id);
+    renderClientBlockers(id);
+    renderClientReview(id);
+  }
+}
+
+function switchClientTab(clientId, tabName, btn) {
+  const body = document.getElementById("dbody-" + clientId);
+  body.querySelectorAll('.ctab-content').forEach(el => el.style.display = 'none');
+  body.querySelectorAll('.ctab').forEach(b => b.classList.remove('on'));
+  document.getElementById(`ctab-${clientId}-${tabName}`).style.display = tabName === 'kanban' ? 'flex' : 'block';
+  btn.classList.add('on');
+}
 
 function renderTaskCard(t){
   const pct=t.progress||0;
@@ -588,27 +552,26 @@ function isInReview(t){
   return ["submitted","pending_review","in_review"].includes(s) || t.status==="In Review";
 }
 
-
-async function loadBlockers(){
+async function renderClientBlockers(clientId){
+  const wrap = document.getElementById("cblockers-"+clientId);
+  if(!wrap) return;
+  const client = (allData.clients || []).find(c => String(c.id) === String(clientId));
+  if(!client){ wrap.innerHTML = '<div class="empty">Client not found.</div>'; return; }
+  
   if(notionMode){
-    // In Notion mode — compute blockers client-side from dashboard data
-    const data = allData || {clients:[]};
     const today = new Date().toISOString().slice(0,10);
     const blockers = [];
-    (data.clients||[]).forEach(c=>{
-      c.tasks.forEach(t=>{
-        if(t.status!=="approved"&&t.due_date&&t.due_date<today){
-          const assignees = (t.assigned_to || "").split(',').map(s => EMP[s.trim()] || s.trim() || "—").join(', ');
-          blockers.push({client:c.name,task:t.title,assignee:assignees,days:Math.floor((new Date()-new Date(t.due_date))/86400000)});
-        }
-      });
+    (client.tasks||[]).forEach(t=>{
+      if(t.status!=="approved"&&t.due_date&&t.due_date<today){
+        const assignees = (t.assigned_to || "").split(',').map(s => EMP[s.trim()] || s.trim() || "—").join(', ');
+        blockers.push({client:client.name,task:t.title,assignee:assignees,days:Math.floor((new Date()-new Date(t.due_date))/86400000)});
+      }
     });
-    document.getElementById("blocker-count").textContent=blockers.length;
-    if(!blockers.length){document.getElementById("blockers-list").innerHTML=`<div class="empty">🎉 No blockers right now.</div>`;return;}
-    document.getElementById("blockers-list").innerHTML=blockers.map(b=>`
+    if(!blockers.length){wrap.innerHTML=`<div class="empty" style="padding:24px 0;">🎉 No blockers right now.</div>`;return;}
+    wrap.innerHTML=blockers.map(b=>`
       <div class="blocker-card">
         <div class="blocker-top">
-          <div><div class="blocker-who">👤 ${b.assignee} <span style="color:var(--muted);font-weight:400">on</span> ${b.client}</div>
+          <div><div class="blocker-who">👤 ${b.assignee}</div>
             <div class="blocker-task">${b.task}</div></div>
           <span class="overdue-badge overdue-yes">${b.days}d overdue</span>
         </div>
@@ -616,23 +579,27 @@ async function loadBlockers(){
       </div>`).join("");
     return;
   }
+  
   // SQLite blockers
   const res=await fetch(`${API}/api/blockers?user_id=${UID}`);
   const data=await res.json();
-  if(data.error){document.getElementById("blockers-list").innerHTML=`<div class="empty">${data.error}</div>`;return;}
-  document.getElementById("blocker-count").textContent=data.blockers.length;
-  if(!data.blockers.length){document.getElementById("blockers-list").innerHTML=`<div class="empty">🎉 No blockers right now. Everything is flowing smoothly.</div>`;return;}
+  if(data.error){wrap.innerHTML=`<div class="empty">${data.error}</div>`;return;}
+  
+  // Filter for this client's tasks being blockers
+  const clientBlockers = (data.blockers||[]).filter(b => String(b.blocker_task.client_id) === String(clientId));
+  
+  if(!clientBlockers.length){wrap.innerHTML=`<div class="empty" style="padding:24px 0;">🎉 No blockers right now. Everything is flowing smoothly.</div>`;return;}
   const grouped={};
-  for(const b of data.blockers){
+  for(const b of clientBlockers){
     const key=b.blocker_task.id;
     if(!grouped[key])grouped[key]={blocker:b.blocker_task,blocked:[],days:b.days_overdue};
     grouped[key].blocked.push(b.blocked_task);
   }
-  document.getElementById("blockers-list").innerHTML=Object.values(grouped).map(g=>{
+  wrap.innerHTML=Object.values(grouped).map(g=>{
     const badge=g.days>0?`<span class="overdue-badge overdue-yes">${g.days}d overdue</span>`:`<span class="overdue-badge overdue-no">Not yet due</span>`;
     return`<div class="blocker-card">
       <div class="blocker-top">
-        <div><div class="blocker-who">👤 ${g.blocker.name} <span style="color:var(--muted);font-weight:400">on</span> ${g.blocker.client_name}</div>
+        <div><div class="blocker-who">👤 ${g.blocker.name}</div>
           <div class="blocker-task">${g.blocker.title}</div></div>
         ${badge}
       </div>
@@ -650,44 +617,22 @@ async function approveTask(id){
   const d=await r.json();
   if(d.success){toast("✅ Task approved!");load();}else toast(d.error||"Error","err");
 }
-async function loadReview(){
-  const list = document.getElementById("review-list");
 
-  // Compute review queue instantly from pre-loaded dashboard data
-  const data = allData || {clients:[]};
-  const tasks = [];
-  (data.clients||[]).forEach(c=>{
-    c.tasks.forEach(t=>{
-      if(isInReview(t)){
-        tasks.push({...t, clientName: c.name});
-      }
-    });
-  });
+async function renderClientReview(clientId){
+  const wrap = document.getElementById("creview-"+clientId);
+  if(!wrap) return;
+  const client = (allData.clients || []).find(c => String(c.id) === String(clientId));
+  if(!client){ wrap.innerHTML = '<div class="empty">Client not found.</div>'; return; }
 
-  document.getElementById("review-count").textContent = tasks.length;
+  const tasks = (client.tasks||[]).filter(t => isInReview(t));
   if(!tasks.length){
-    list.innerHTML='<div class="empty">🎉 No tasks awaiting review right now!</div>';
+    wrap.innerHTML=`<div class="empty" style="padding:24px 0;">🎉 No tasks awaiting review.</div>`;
     return;
   }
-  list.innerHTML = tasks.map(t=>{
-    const assignee = EMP[t.assigned_to]||t.assigned_to||"—";
-    const tid = t.notion_id || t.id;
-    return`<div class="blocker-card" id="rv-${tid}">
-      <div class="blocker-top">
-        <div>
-          <div class="blocker-who">📋 ${t.title||"Untitled"}</div>
-          <div class="blocker-task">👤 ${assignee} · 📁 ${t.clientName||t.client||"—"}${t.due_date?" · 📅 "+t.due_date:""}</div>
-        </div>
-        <span class="overdue-badge overdue-no" style="background:rgba(245,166,35,.15);color:var(--acc);border:none">⏳ In Review</span>
-      </div>
-      ${t.submission_note?`<div class="sub-box" style="margin-top:10px"><div class="sub-label">📝 Employee Note</div>${t.submission_note}</div>`:""}
-      <div class="tc-actions" style="margin-top:12px">
-        <button class="btn-sm btn-approve" onclick="approveTaskNotion('${tid}')">✅ Approve</button>
-        <button class="btn-sm btn-reject" onclick="openModal(null,'${tid}')">↩ Request Changes</button>
-      </div>
-    </div>`;
-  }).join("");
+
+  wrap.innerHTML = `<div class="tasks-grid">` + tasks.map(t=>renderTaskCard(t)).join("") + `</div>`;
 }
+
 
 function openModal(id, notionId){
   rejectTaskId=id; rejectNotionId=notionId;
@@ -713,7 +658,7 @@ async function approveTaskNotion(notionId){
   try {
     const r=await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved",progress:100}),signal:AbortSignal.timeout(10000)});
     const d=await r.json();
-    if(d.success){toast("✅ Task approved in Notion!");load();loadReview();}else toast(d.error||"Error","err");
+    if(d.success){toast("✅ Task approved in Notion!");load();}else toast(d.error||"Error","err");
   } catch(e){toast("Error: "+e.message,"err");}
 }
 
@@ -721,7 +666,7 @@ async function rejectTaskNotion(notionId, note){
   try {
     const r=await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"not_started",progress:0,submission_note:"Changes requested: "+note}),signal:AbortSignal.timeout(10000)});
     const d=await r.json();
-    if(d.success){toast("↩ Changes requested");load();loadReview();}else toast(d.error||"Error","err");
+    if(d.success){toast("↩ Changes requested");load();}else toast(d.error||"Error","err");
   } catch(e){toast("Error: "+e.message,"err");}
 }
 
@@ -767,78 +712,16 @@ async function loadQuickTasks(){
   }
 }
 
-function setKanbanGroup(g, btn){
-  kanbanGroup = g;
-  document.querySelectorAll(".kgroup-btn").forEach(b=>b.classList.remove("on"));
-  btn.classList.add("on");
-  const bar = document.getElementById("client-filter-bar");
-  if(bar) bar.style.display = g === "stage" ? "flex" : "none";
-  selectedClient = "all";
-  renderKanban();
-}
+function renderClientKanban(clientId){
+  const board = document.getElementById("ckanban-"+clientId);
+  if(!board) return;
+  const client = (allData.clients || []).find(c => String(c.id) === String(clientId));
+  if(!client) return;
 
-function renderClientFilterBar(){
-  const bar = document.getElementById("client-filter-bar");
-  if(!bar || !allData) return;
-  const clients = allData.clients || [];
-  const cBtns  = clients.map(c => {
-    const safe = c.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    const isSelected = selectedClient === c.name;
-    return `<button class="client-filter-btn ${isSelected ? 'on' : ''}" onclick="filterByClient('${safe}',this)">${c.name}</button>`;
-  }).join('');
-  const qtBtn  = `<button class="client-filter-btn ${selectedClient === '__quick__' ? 'on' : ''}" style="border-color:#5c9eff;color:#5c9eff" onclick="filterByClient('__quick__',this)">+ Quick Tasks</button>`;
-  bar.innerHTML = `<button class="client-filter-btn ${selectedClient === 'all' ? 'on' : ''}" onclick="filterByClient('all',this)">All</button>` + cBtns + qtBtn;
-}
+  const tasks = (client.tasks || []).map(t => ({...t, clientName: client.name, clientUrl: client.url, notionId: t.notion_id || null}));
+  if(!tasks.length){board.innerHTML='<div class="empty" style="padding:24px 0;">No tasks for this client yet.</div>';return;}
 
-function filterByClient(name, btn){
-  selectedClient = name;
-  document.querySelectorAll(".client-filter-btn").forEach(b=>b.classList.remove("on"));
-  btn.classList.add("on");
-  renderKanban();
-}
-
-function flatTasks(){
-  const data = allData || {clients:[]};
-  const clients = data.clients || [];
-  const tasks = [];
-  clients.forEach(c => {
-    (c.tasks||[]).forEach(t => {
-      tasks.push({...t, clientName: c.name, clientUrl: c.url, notionId: t.notion_id || null});
-    });
-  });
-  return tasks;
-}
-
-function renderKanban(){
-  const board = document.getElementById("kanban-board");
-  if(!allData){board.innerHTML='<div class="empty">Loading...</div>';return;}
-  
-  // If selected client no longer exists, reset to "all"
-  if(selectedClient !== "all" && selectedClient !== "__quick__" && !allData.clients.some(c=>c.name===selectedClient)){
-    selectedClient = "all";
-  }
-  renderClientFilterBar();
-
-  if(selectedClient === "__quick__"){
-    const qts = quickTasks.map(t=>({...t, clientName:"Quick Task", clientUrl:null, notionId:null, isQuick:true}));
-    board.innerHTML = STAGE_COLS.map(col=>buildCol(col.key, col.label, qts.filter(t=>col.statuses.includes(t.status||"not_started")))).join("");
-    bindDragEvents(board);
-    return;
-  }
-
-  const allTasks = flatTasks();
-  const tasks = selectedClient === "all" ? allTasks : allTasks.filter(t=>t.clientName===selectedClient);
-  if(!tasks.length){board.innerHTML='<div class="empty">No tasks for this client yet.</div>';return;}
-
-  if(kanbanGroup === "stage"){
-    board.innerHTML = STAGE_COLS.map(col=>buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t=>col.statuses.includes(t.status)))).join("");
-  } else {
-    const clients = (allData.clients||[]);
-    board.innerHTML = clients.map(c=>{
-      const ctasks=(c.tasks||[]).map(t=>({...t,clientName:c.name,clientUrl:c.url,notionId:t.notion_id||null}));
-      return buildCol("client-"+c.id, c.name, ctasks);
-    }).join("");
-  }
+  board.innerHTML = STAGE_COLS.map(col=>buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t=>col.statuses.includes(t.status)))).join("");
   bindDragEvents(board);
 }
 
