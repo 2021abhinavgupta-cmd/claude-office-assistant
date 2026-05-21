@@ -1220,9 +1220,11 @@ def daily_summary():
         import json as _json
         emp_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'employees.json')
         with open(emp_path) as f:
-            employees = _json.load(f)
-        emp_map = {e.get("user_id", ""): e.get("name", e.get("user_id", "")) for e in employees}
-    except:
+            data = _json.load(f)
+            employees_list = data.get("employees", [])
+        emp_map = {e.get("id", ""): e.get("name", e.get("id", "")) for e in employees_list}
+    except Exception as e:
+        logger.error(f"Failed to load employee names for daily report: {e}")
         emp_map = {}
 
     standup_text = ""
