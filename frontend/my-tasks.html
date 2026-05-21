@@ -1268,7 +1268,8 @@ async function showPriorityModal() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         question: 'What single task should I focus on RIGHT NOW and why? Also list the top 3 priorities in order. Be specific and use task names.',
-        assigned_name: USER_NAME
+        assigned_name: USER_NAME,
+        tasks: lines
       })
     });
     const d = await r.json();

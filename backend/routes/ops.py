@@ -130,6 +130,24 @@ def get_standups_today():
     return jsonify({"standups": standups, "tasks_by_user": tasks_by_user, "date": date_str})
 
 
+@ops_bp.route("/api/standup/ai-coach", methods=["POST"])
+def ai_coach():
+    """Provides AI priority advice based on the user's tasks."""
+    body = request.get_json(silent=True) or {}
+    question = body.get("question", "")
+    assigned_name = body.get("assigned_name", "")
+    tasks = body.get("tasks", [])
+    
+    if not tasks:
+        return jsonify({"reply": "I don't see any active tasks for you right now. You're all caught up!"})
+        
+    system_prompt = f"You are an AI priority advisor for {assigned_name}. The user will provide a list of their tasks and ask a question. Provide a direct, actionable, and encouraging answer."
+    user_prompt = f"Here are my current tasks:\n" + "\n".join(tasks) + f"\n\nQuestion: {question}"
+    
+    reply = _claude_call(system_prompt, user_prompt)
+    return jsonify({"reply": reply})
+
+
 @ops_bp.route("/api/standup/history", methods=["GET"])
 def get_standup_history():
     """Get standup history for a user (last 7 days)."""
