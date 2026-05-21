@@ -194,6 +194,26 @@
     .ctab.on{background:rgba(245,166,35,.15);border-color:var(--acc);color:var(--acc)}
     .ctab-content{min-height:60px}
     .kanban-wrap{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;height:100%}
+    /* ── Calendar ─────────────────────────────────────────────── */
+    .cal-section{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:20px;margin-bottom:20px;animation:fadeIn .3s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+    .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .cal-title{font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:700;color:var(--txt)}
+    .cal-nav-btn{padding:5px 14px;border-radius:var(--rs);border:1px solid var(--bdr);background:var(--s2);color:var(--muted);cursor:pointer;font-size:.8rem;font-weight:600;transition:all .2s}
+    .cal-nav-btn:hover{border-color:var(--acc);color:var(--acc)}
+    .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+    .cal-day-name{text-align:center;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0}
+    .cal-cell{min-height:80px;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:6px;cursor:default;transition:border-color .2s;position:relative}
+    .cal-cell:hover{border-color:rgba(245,166,35,.4)}
+    .cal-cell.today{border-color:var(--acc);box-shadow:0 0 0 1px rgba(245,166,35,.3)}
+    .cal-cell.other-month{opacity:.35}
+    .cal-date{font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:4px}
+    .cal-date.today-num{color:var(--acc)}
+    .cal-pill{display:block;font-size:.65rem;padding:2px 6px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;cursor:pointer;transition:opacity .15s}
+    .cal-pill:hover{opacity:.8}
+    .cal-more{font-size:.63rem;color:var(--muted);padding:1px 4px}
+    .cal-toggle-btn{padding:6px 16px;border-radius:var(--rs);border:1px solid rgba(99,179,237,.4);background:rgba(99,179,237,.1);color:#63b3ed;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap}
+    .cal-toggle-btn:hover,.cal-toggle-btn.on{border-color:#63b3ed;background:rgba(99,179,237,.2);color:#fff}
   </style>
 </head>
 <body>
@@ -205,8 +225,24 @@
     </div>
     <div class="nav">
       <a href="dashboard.html" class="nl">📊 Dashboard</a>
+      <button onclick="toggleCalendar()" class="cal-toggle-btn" id="cal-toggle-btn">📅 Calendar</button>
       <button onclick="openMeetingNotesModal()" class="btn" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd">📝 Paste Meeting Notes</button>
       <a href="client-onboard.html" class="btn btn-acc">+ New Client</a>
+    </div>
+  </div>
+
+  <!-- Calendar Section -->
+  <div id="cal-section" class="cal-section" style="display:none">
+    <div class="cal-header">
+      <button class="cal-nav-btn" onclick="calPrev()">← Prev</button>
+      <div class="cal-title" id="cal-month-label">May 2026</div>
+      <button class="cal-nav-btn" onclick="calNext()">Next →</button>
+    </div>
+    <div class="cal-grid" id="cal-grid">
+      <div class="cal-day-name">Sun</div><div class="cal-day-name">Mon</div>
+      <div class="cal-day-name">Tue</div><div class="cal-day-name">Wed</div>
+      <div class="cal-day-name">Thu</div><div class="cal-day-name">Fri</div>
+      <div class="cal-day-name">Sat</div>
     </div>
   </div>
 
@@ -1033,6 +1069,113 @@ async function parseMeetingNotes() {
   btn.disabled = false;
   btn.textContent = '✨ Extract Tasks';
 }
+// ── CALENDAR ──────────────────────────────────────────────────────────────────
+let calDate = new Date();
+calDate.setDate(1);
+
+function toggleCalendar(){
+  const sec = document.getElementById("cal-section");
+  const btn = document.getElementById("cal-toggle-btn");
+  if(sec.style.display === "none"){
+    sec.style.display = "block";
+    btn.classList.add("on");
+    renderCalendar();
+  }else{
+    sec.style.display = "none";
+    btn.classList.remove("on");
+  }
+}
+
+function calPrev(){
+  calDate.setMonth(calDate.getMonth()-1);
+  renderCalendar();
+}
+
+function calNext(){
+  calDate.setMonth(calDate.getMonth()+1);
+  renderCalendar();
+}
+
+// Generate consistent colors from strings
+function getColor(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  const h = hash % 360;
+  return `hsl(${h}, 70%, 40%)`;
+}
+
+function renderCalendar(){
+  if(!allData) return;
+  
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  document.getElementById("cal-month-label").textContent = `${monthNames[month]} ${year}`;
+  
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  
+  // Collect tasks with due dates
+  const taskMap = {};
+  (allData.clients || []).forEach(c => {
+    (c.tasks || []).forEach(t => {
+      if(t.due_date && t.status !== "approved") {
+        if(!taskMap[t.due_date]) taskMap[t.due_date] = [];
+        taskMap[t.due_date].push({...t, clientName: c.name});
+      }
+    });
+  });
+
+  const grid = document.getElementById("cal-grid");
+  // Keep the headers
+  let html = `
+    <div class="cal-day-name">Sun</div><div class="cal-day-name">Mon</div>
+    <div class="cal-day-name">Tue</div><div class="cal-day-name">Wed</div>
+    <div class="cal-day-name">Thu</div><div class="cal-day-name">Fri</div>
+    <div class="cal-day-name">Sat</div>
+  `;
+  
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  
+  // Empty cells for offset
+  for(let i=0; i<firstDay; i++) {
+    html += `<div class="cal-cell other-month"></div>`;
+  }
+  
+  for(let d=1; d<=daysInMonth; d++) {
+    const dStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = (dStr === todayStr);
+    
+    let cellHtml = `<div class="cal-cell ${isToday?'today':''}">
+      <div class="cal-date ${isToday?'today-num':''}">${d}</div>`;
+      
+    if(taskMap[dStr]) {
+      const visible = taskMap[dStr].slice(0, 3);
+      visible.forEach(t => {
+        const bg = getColor(t.clientName);
+        cellHtml += `<span class="cal-pill" style="background:${bg};color:#fff" title="${t.title} (${t.clientName})">${t.clientName}: ${t.title}</span>`;
+      });
+      if(taskMap[dStr].length > 3) {
+        cellHtml += `<span class="cal-more">+${taskMap[dStr].length - 3} more</span>`;
+      }
+    }
+    cellHtml += `</div>`;
+    html += cellHtml;
+  }
+  
+  grid.innerHTML = html;
+}
+
+// Hook into load() to update calendar if it's open
+const originalLoad = window.load;
+window.load = async function() {
+  await originalLoad();
+  if(document.getElementById("cal-section").style.display !== "none"){
+    renderCalendar();
+  }
+};
 </script>
 
 <!-- Meeting Notes Modal -->
