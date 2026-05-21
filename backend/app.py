@@ -448,17 +448,17 @@ def _analyze_conversation_state(history: list, haiku_model: str) -> Optional[str
 
 # ── Task Timeouts ─────────────────────────────────────────────────────────────────
 TASK_TIMEOUTS = {
-    "html_design":    120,  # 2 minutes
-    "presentations":  180,  # 3 minutes
-    "coding":          90,  # 90 seconds
-    "analysis":        90,  # 90 seconds
-    "general":         30,  # 30 seconds
-    "email":           30,
-    "content":         60,
-    "captions":        30,
-    "scripts":         60,
-    "meetings":        45,
-    "announcements":   30,
+    "html_design":    3600,  # 60 minutes
+    "presentations":  3600,  # 60 minutes
+    "coding":         3600,  # 60 minutes
+    "analysis":       3600,  # 60 minutes
+    "general":        3600,  # 60 minutes
+    "email":          3600,
+    "content":        3600,
+    "captions":       3600,
+    "scripts":        3600,
+    "meetings":       3600,
+    "announcements":  3600,
 }
 
 
