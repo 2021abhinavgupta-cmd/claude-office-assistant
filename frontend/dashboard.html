@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <!-- Auth guard: redirects to login.html if session is invalid (#1) -->
   <script src="auth.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
       --bg:        #0a0a0f;
@@ -805,7 +806,7 @@ async function generateDailyReport() {
       body: JSON.stringify({user_id: user.user_id})
     });
     const d = await r.json();
-    out.textContent = d.summary || d.error || "No data available.";
+    out.innerHTML = marked.parse(d.summary || d.error || "No data available.");
     out.style.display = "block";
   } catch(e) {
     out.textContent = "Error: " + e.message;
