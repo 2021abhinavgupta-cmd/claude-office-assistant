@@ -212,7 +212,16 @@
     .cal-pill{display:block;font-size:.65rem;padding:2px 6px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;cursor:pointer;transition:opacity .15s}
     .cal-pill:hover{opacity:.8}
     .cal-more{font-size:.63rem;color:var(--muted);padding:1px 4px}
-    .cal-more{font-size:.63rem;color:var(--muted);padding:1px 4px}
+    /* ── Calendar Task Popup ──────────────────────────────────── */
+    #cal-popup{position:fixed;z-index:9999;background:#1a1a2e;border:1px solid rgba(245,166,35,.35);border-radius:12px;padding:14px;min-width:240px;max-width:300px;box-shadow:0 8px 32px rgba(0,0,0,.6);display:none;pointer-events:auto}
+    #cal-popup .cp-title{font-family:'Syne',sans-serif;font-size:.95rem;font-weight:700;color:var(--txt);margin-bottom:8px;line-height:1.3}
+    #cal-popup .cp-row{display:flex;gap:6px;align-items:center;font-size:.78rem;color:var(--muted);margin-bottom:4px}
+    #cal-popup .cp-row span{color:var(--txt);font-weight:600}
+    #cal-popup .cp-actions{display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--bdr)}
+    #cal-popup .cp-edit{flex:1;padding:6px 0;border-radius:6px;border:1px solid rgba(99,179,237,.4);background:rgba(99,179,237,.1);color:#63b3ed;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s}
+    #cal-popup .cp-edit:hover{background:rgba(99,179,237,.2)}
+    #cal-popup .cp-del{flex:1;padding:6px 0;border-radius:6px;border:1px solid rgba(255,92,92,.3);background:rgba(255,92,92,.1);color:var(--red);font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s}
+    #cal-popup .cp-del:hover{background:rgba(255,92,92,.2)}
     /* ── Global Tabs ──────────────────────────────────────────── */
     .global-tabs{display:flex;gap:8px;padding:0 24px;margin-top:16px;border-bottom:1px solid var(--bdr)}
     .gtab{padding:8px 20px;font-size:.9rem;font-weight:600;color:var(--muted);background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .2s;font-family:'Syne',sans-serif}
@@ -586,16 +595,14 @@ function renderClientCalendar(clientId){
   document.getElementById('ccal-label-'+clientId).textContent =
     d.toLocaleString('default',{month:'long'})+' '+year;
   const grid = document.getElementById('ccal-grid-'+clientId);
-  // Keep day-name headers (first 7 children), remove rest
   while(grid.children.length > 7) grid.removeChild(grid.lastChild);
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const daysInPrev  = new Date(year, month, 0).getDate();
   const today = new Date(); today.setHours(0,0,0,0);
-  // Map due_date -> tasks
   const byDate={};
   tasks.forEach(t=>{ if(t.due_date){ (byDate[t.due_date]=byDate[t.due_date]||[]).push(t); } });
-  // Blanks for prev month
+  // Blanks
   for(let i=0;i<firstDay;i++){
     const cell=document.createElement('div');
     cell.className='cal-cell other-month';
@@ -609,12 +616,16 @@ function renderClientCalendar(clientId){
     cell.className='cal-cell'+(cellDate.getTime()===today.getTime()?' today':'');
     let html=`<div class="cal-date${cellDate.getTime()===today.getTime()?' today-num':''}}">${day}</div>`;
     const dayTasks=byDate[dateStr]||[];
-    const show=dayTasks.slice(0,3);
-    show.forEach(t=>{
-      html+=`<span class="cal-pill" style="background:rgba(245,166,35,.2);color:#f5a623;border:1px solid rgba(245,166,35,.3)" title="${t.title}">${t.title}</span>`;
+    dayTasks.slice(0,3).forEach(t=>{
+      html+=`<span class="cal-pill" style="background:rgba(245,166,35,.2);color:#f5a623;border:1px solid rgba(245,166,35,.3)">${t.title}</span>`;
     });
     if(dayTasks.length>3) html+=`<div class="cal-more">+${dayTasks.length-3} more</div>`;
     cell.innerHTML=html;
+    if(dayTasks.length>0){
+      cell.style.cursor='pointer';
+      cell.addEventListener('mouseenter', e=>showCalPopup(e, dayTasks, clientId));
+      cell.addEventListener('mouseleave', ()=>scheduleHidePopup());
+    }
     grid.appendChild(cell);
   }
   // Fill trailing cells
