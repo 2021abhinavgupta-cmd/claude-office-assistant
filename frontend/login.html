@@ -54,6 +54,20 @@
     .chip.on{border-color:var(--acc);background:rgba(245,166,35,.1);color:var(--acc)}
     .btn-go{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--acc);color:#000;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s}
     .btn-go:hover{opacity:.88}
+
+    /* Mode Toggle */
+    .mode-toggle{display:flex;background:var(--s2);border-radius:var(--rs);padding:4px;margin-bottom:28px}
+    .mode-btn{flex:1;padding:10px;border-radius:var(--rs);border:none;background:transparent;color:var(--muted);font-weight:600;font-size:.88rem;cursor:pointer;transition:all .2s}
+    .mode-btn.active{background:var(--acc);color:#000}
+
+    /* Client Form */
+    .client-section{display:none}
+    .form-group{margin-bottom:16px;text-align:left}
+    .form-group label{display:block;font-size:.75rem;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+    .form-group input{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:12px 14px;font-family:'DM Sans',sans-serif;font-size:.95rem;outline:none;transition:border-color .2s}
+    .form-group input:focus{border-color:var(--acc)}
+    .client-btn{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--acc);color:#000;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s;margin-top:8px}
+    .client-btn:hover{opacity:.88}
   </style>
 <script src="shared-config.js"></script>
 </head>
@@ -64,46 +78,69 @@
     <div class="logo-text">Claude Office</div>
   </div>
   <h1>Welcome <span>back</span></h1>
-  <p class="sub">Select your name, then enter your PIN.</p>
 
-  <!-- Step 1: Pick employee -->
-  <div id="step-emp">
-    <div class="emp-grid" id="emp-grid"></div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btn-employee" onclick="setMode('employee')">Team Member</button>
+    <button class="mode-btn" id="btn-client" onclick="setMode('client')">Client Portal</button>
   </div>
 
-  <!-- Step 2: Enter PIN -->
-  <div class="pin-section" id="step-pin">
-    <div class="pin-label" id="pin-label">Enter PIN for <strong></strong></div>
-    <p class="pin-hint" style="color:var(--muted);font-size:.72rem;text-align:center;margin:-8px 0 12px">Use keyboard or numpad — no need to click the pad first</p>
-    <div class="pin-dots" id="pin-dots">
-      <div class="dot" id="d0"></div><div class="dot" id="d1"></div>
-      <div class="dot" id="d2"></div><div class="dot" id="d3"></div>
+  <div id="employee-view">
+    <p class="sub">Select your name, then enter your PIN.</p>
+
+    <!-- Step 1: Pick employee -->
+    <div id="step-emp">
+      <div class="emp-grid" id="emp-grid"></div>
     </div>
-    <div class="numpad" id="numpad-container"></div>
-    <div class="err-msg" id="err-msg"></div>
-    <div class="loading" id="loading">🔐 Verifying...</div>
-    <button class="btn-back" onclick="goBack()">← Choose different person</button>
+
+    <!-- Step 2: Enter PIN -->
+    <div class="pin-section" id="step-pin">
+      <div class="pin-label" id="pin-label">Enter PIN for <strong></strong></div>
+      <p class="pin-hint" style="color:var(--muted);font-size:.72rem;text-align:center;margin:-8px 0 12px">Use keyboard or numpad — no need to click the pad first</p>
+      <div class="pin-dots" id="pin-dots">
+        <div class="dot" id="d0"></div><div class="dot" id="d1"></div>
+        <div class="dot" id="d2"></div><div class="dot" id="d3"></div>
+      </div>
+      <div class="numpad" id="numpad-container"></div>
+      <div class="err-msg" id="err-msg"></div>
+      <div class="loading" id="loading">🔐 Verifying...</div>
+      <button class="btn-back" onclick="goBack()">← Choose different person</button>
+    </div>
+
+    <!-- Step 3: Preferences -->
+    <div class="prefs-section" id="step-prefs">
+      <div class="prefs-q">Have you used Claude before? 🤔</div>
+      <div class="prefs-sub">This helps us personalise your experience.</div>
+      <div class="toggle-row">
+        <div class="tog" id="tog-yes" onclick="setClaudeUse(true)">Yes, I use it ✅</div>
+        <div class="tog" id="tog-no"  onclick="setClaudeUse(false)">Not yet 👋</div>
+      </div>
+      <div class="prefs-q" style="margin-top:4px">Which tasks do you care about? 🎯</div>
+      <div class="prefs-sub">Select all that apply — filters your task board.</div>
+      <div class="task-chips">
+        <div class="chip on" data-cat="content"   onclick="toggleChip(this)">✍️ Content</div>
+        <div class="chip on" data-cat="video"     onclick="toggleChip(this)">🎥 Video</div>
+        <div class="chip on" data-cat="design"    onclick="toggleChip(this)">🎨 Design</div>
+        <div class="chip on" data-cat="website"   onclick="toggleChip(this)">💻 Website</div>
+        <div class="chip on" data-cat="accounts"  onclick="toggleChip(this)">📊 Accounts</div>
+        <div class="chip on" data-cat="review"    onclick="toggleChip(this)">🔍 Review</div>
+      </div>
+      <button class="btn-go" onclick="savePrefsAndGo()">Continue →</button>
+    </div>
   </div>
 
-  <!-- Step 3: Preferences -->
-  <div class="prefs-section" id="step-prefs">
-    <div class="prefs-q">Have you used Claude before? 🤔</div>
-    <div class="prefs-sub">This helps us personalise your experience.</div>
-    <div class="toggle-row">
-      <div class="tog" id="tog-yes" onclick="setClaudeUse(true)">Yes, I use it ✅</div>
-      <div class="tog" id="tog-no"  onclick="setClaudeUse(false)">Not yet 👋</div>
+  <div id="client-view" class="client-section">
+    <p class="sub">Log in to view your project updates and timelines.</p>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="client-username" placeholder="Enter username" />
     </div>
-    <div class="prefs-q" style="margin-top:4px">Which tasks do you care about? 🎯</div>
-    <div class="prefs-sub">Select all that apply — filters your task board.</div>
-    <div class="task-chips">
-      <div class="chip on" data-cat="content"   onclick="toggleChip(this)">✍️ Content</div>
-      <div class="chip on" data-cat="video"     onclick="toggleChip(this)">🎥 Video</div>
-      <div class="chip on" data-cat="design"    onclick="toggleChip(this)">🎨 Design</div>
-      <div class="chip on" data-cat="website"   onclick="toggleChip(this)">💻 Website</div>
-      <div class="chip on" data-cat="accounts"  onclick="toggleChip(this)">📊 Accounts</div>
-      <div class="chip on" data-cat="review"    onclick="toggleChip(this)">🔍 Review</div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="client-password" placeholder="Enter password" />
     </div>
-    <button class="btn-go" onclick="savePrefsAndGo()">Continue →</button>
+    <div class="err-msg" id="client-err-msg"></div>
+    <div class="loading" id="client-loading">🔐 Logging in...</div>
+    <button class="client-btn" onclick="submitClientLogin()">Log In to Portal</button>
   </div>
 </div>
 
@@ -258,6 +295,49 @@ document.addEventListener("DOMContentLoaded", () => {
     `<div class="key ${k==="⌫"?"del":""}" onclick="pressKey('${k}')">${k===""?"&nbsp;":k}</div>`
   ).join("");
 });
+
+// Mode Toggle
+function setMode(mode) {
+  document.getElementById('btn-employee').classList.toggle('active', mode === 'employee');
+  document.getElementById('btn-client').classList.toggle('active', mode === 'client');
+  document.getElementById('employee-view').style.display = mode === 'employee' ? 'block' : 'none';
+  document.getElementById('client-view').style.display = mode === 'client' ? 'block' : 'none';
+}
+
+// Client Login
+async function submitClientLogin() {
+  const u = document.getElementById("client-username").value.trim();
+  const p = document.getElementById("client-password").value.trim();
+  const err = document.getElementById("client-err-msg");
+  
+  if(!u || !p) {
+    err.textContent = "Please enter both username and password.";
+    return;
+  }
+  
+  err.textContent = "";
+  document.getElementById("client-loading").style.display = "block";
+  
+  try {
+    const res = await fetch(`${API}/api/auth/client_login`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ username: u, password: p })
+    });
+    const d = await res.json();
+    document.getElementById("client-loading").style.display = "none";
+    
+    if(d.success) {
+      localStorage.setItem("claude_office_client", JSON.stringify(d.client));
+      window.location.href = "client-dashboard.html";
+    } else {
+      err.textContent = d.error || "Login failed";
+    }
+  } catch(e) {
+    document.getElementById("client-loading").style.display = "none";
+    err.textContent = "Network error";
+  }
+}
 </script>
 </body>
 </html>

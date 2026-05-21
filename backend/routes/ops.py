@@ -1291,3 +1291,117 @@ Sound warm, professional, and confident. Make the client feel well taken care of
     except Exception as e:
         logger.exception("client_update_draft failed")
         return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CLIENT PORTAL — task feed (called from client-dashboard.html)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@ops_bp.route("/api/client-portal/tasks", methods=["GET"])
+def client_portal_tasks():
+    """
+    Return tasks for the logged-in client. Reads identity from the
+    verified client_session_token cookie (via auth.client_verify logic).
+    Query params:
+      client_name      — name of the client (set by the session verify)
+      client_notion_id — optional Notion DB id to filter by
+    """
+    # Re-verify the client session here so this endpoint is self-contained
+    from routes.auth import _verify_client_session
+    token = (
+        request.cookies.get("client_session_token", "")
+        or request.headers.get("X-Client-Token", "")
+        or request.args.get("token", "")
+    )
+    client = _verify_client_session(token)
+    if not client:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    client_name = client.get("client_name", "")
+    client_notion_id = client.get("client_notion_id", "")
+
+    tasks = []
+    source = "sqlite"
+
+    # ── Try Notion first ──────────────────────────────────────────────────────
+    try:
+        if notion_store.is_configured():
+            notion_tasks = notion_store.list_tasks(
+                client_notion_id=client_notion_id if client_notion_id else None,
+            )
+            # If no notion_id, filter by client name
+            if not client_notion_id:
+                notion_tasks = [
+                    t for t in notion_tasks
+                    if (t.get("client_name") or "").lower() == client_name.lower()
+                ]
+            tasks = [_shape_client_task(t, "notion") for t in notion_tasks]
+            source = "notion"
+    except Exception as e:
+        logger.warning(f"Notion client portal fetch failed: {e}")
+
+    # ── SQLite fallback ───────────────────────────────────────────────────────
+    if source == "sqlite" or not tasks:
+        conn = _su_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.id, t.title, t.status, t.progress, t.due_date,
+                   t.assigned_to, t.description, t.created_at, c.name AS client_name
+            FROM tasks t
+            JOIN clients c ON c.id = t.client_id
+            WHERE LOWER(c.name) = LOWER(?)
+            ORDER BY t.due_date ASC, t.created_at DESC
+        """, (client_name,))
+        rows = cur.fetchall()
+        conn.close()
+        tasks = [_shape_client_task({
+            "id": r[0], "title": r[1], "status": r[2], "progress": r[3] or 0,
+            "due_date": r[4], "assigned_to": r[5], "description": r[6],
+            "created_at": r[7], "client_name": r[8],
+        }, "sqlite") for r in rows]
+        source = "sqlite"
+
+    return jsonify({
+        "tasks": tasks,
+        "client_name": client_name,
+        "source": source,
+        "count": len(tasks),
+    })
+
+
+def _shape_client_task(t: dict, source: str) -> dict:
+    """Normalise a task dict for the client dashboard frontend."""
+    status = (t.get("status") or "not_started").lower().replace(" ", "_").replace("-", "_")
+    progress = int(t.get("progress") or 0)
+
+    # Compute progress from status when not explicitly set
+    if progress == 0:
+        progress = {
+            "done": 100, "approved": 100,
+            "submitted": 80, "in_review": 80,
+            "in_progress": 50,
+            "not_started": 0, "blocked": 0,
+        }.get(status, 0)
+
+    # Parse dates
+    start_raw = t.get("start_date") or t.get("created_at") or ""
+    due_raw   = t.get("due_date") or ""
+
+    def _parse_date(s):
+        if not s:
+            return None
+        return s.split("T")[0] if "T" in s else s
+
+    return {
+        "id":          t.get("notion_id") or t.get("id") or "",
+        "title":       t.get("title") or "Untitled Task",
+        "status":      status,
+        "progress":    progress,
+        "assigned_to": t.get("assigned_to") or "",
+        "description": t.get("description") or "",
+        "start_date":  _parse_date(start_raw),
+        "due_date":    _parse_date(due_raw),
+        "client_name": t.get("client_name") or "",
+        "source":      source,
+    }
+

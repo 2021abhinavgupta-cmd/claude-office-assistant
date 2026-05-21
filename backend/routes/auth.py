@@ -181,3 +181,185 @@ def auth_change_pin():
     except Exception as e:
         logger.error(f"Failed to save new PIN: {e}")
         return jsonify({"error": "Could not save PIN"}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CLIENT PORTAL AUTH  (separate from employee auth)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _create_client_session(client_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
+    conn = _sessions_conn()
+    with conn:
+        conn.execute(
+            "INSERT INTO client_sessions(token, client_id, expires_at) VALUES(?,?,?)",
+            (token, client_id, expires)
+        )
+    conn.close()
+    return token
+
+
+def _verify_client_session(token: str):
+    """Returns client row dict if valid, else None."""
+    if not token:
+        return None
+    conn = _sessions_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT cs.client_id, cs.expires_at, cu.username, cu.client_name, cu.client_notion_id
+           FROM client_sessions cs
+           JOIN client_users cu ON cu.id = cs.client_id
+           WHERE cs.token = ?""",
+        (token,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    client_id, expires_at, username, client_name, client_notion_id = row
+    if datetime.utcnow().isoformat() + "Z" > expires_at:
+        return None
+    return {
+        "client_id": client_id,
+        "username": username,
+        "client_name": client_name,
+        "client_notion_id": client_notion_id or "",
+    }
+
+
+@auth_bp.route("/api/auth/client_login", methods=["POST"])
+def client_login():
+    """Username + password login for client portal."""
+    body = request.get_json(silent=True) or {}
+    username = body.get("username", "").strip()
+    password = body.get("password", "").strip()
+
+    if not username or not password:
+        return jsonify({"error": "username and password required"}), 400
+
+    conn = _sessions_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, password, client_name, client_notion_id FROM client_users WHERE username = ?",
+        (username,)
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    client_id, stored_password, client_name, client_notion_id = row
+
+    # Plain-text comparison for now (same pattern as employee PINs in this codebase)
+    if stored_password != password:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    token = _create_client_session(client_id)
+    is_secure = os.getenv("FLASK_ENV", "development") != "development"
+
+    resp = jsonify({
+        "success": True,
+        "client": {
+            "id": client_id,
+            "username": username,
+            "client_name": client_name,
+            "client_notion_id": client_notion_id or "",
+            "is_client": True,
+        }
+    })
+    resp.set_cookie(
+        "client_session_token", token,
+        httponly=True,
+        samesite="Lax",
+        secure=is_secure,
+        max_age=30 * 24 * 60 * 60,
+    )
+    return resp
+
+
+@auth_bp.route("/api/auth/client_verify", methods=["GET"])
+def client_verify():
+    """Verify a client session token. Used by client-auth.js guard."""
+    token = (
+        request.cookies.get("client_session_token", "")
+        or request.headers.get("X-Client-Token", "")
+        or request.args.get("token", "")
+    )
+    client = _verify_client_session(token)
+    if not client:
+        return jsonify({"valid": False}), 401
+    return jsonify({"valid": True, **client})
+
+
+@auth_bp.route("/api/auth/client_logout", methods=["POST"])
+def client_logout():
+    """Invalidate a client session token."""
+    token = request.cookies.get("client_session_token", "")
+    if token:
+        conn = _sessions_conn()
+        with conn:
+            conn.execute("DELETE FROM client_sessions WHERE token=?", (token,))
+        conn.close()
+    resp = jsonify({"success": True})
+    resp.delete_cookie("client_session_token")
+    return resp
+
+
+@auth_bp.route("/api/auth/clients", methods=["GET"])
+def list_client_users():
+    """List all client portal accounts. Admin use."""
+    conn = _sessions_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id, username, client_name, client_notion_id, created_at FROM client_users ORDER BY id")
+    rows = cur.fetchall()
+    conn.close()
+    clients = [
+        {"id": r[0], "username": r[1], "client_name": r[2],
+         "client_notion_id": r[3] or "", "created_at": r[4]}
+        for r in rows
+    ]
+    return jsonify({"clients": clients})
+
+
+@auth_bp.route("/api/auth/clients", methods=["POST"])
+def create_client_user():
+    """Create a new client portal account. Admin only."""
+    body = request.get_json(silent=True) or {}
+    username = body.get("username", "").strip()
+    password = body.get("password", "").strip()
+    client_name = body.get("client_name", "").strip()
+    client_notion_id = body.get("client_notion_id", "").strip()
+
+    if not username or not password or not client_name:
+        return jsonify({"error": "username, password, and client_name are required"}), 400
+
+    conn = _sessions_conn()
+    try:
+        with conn:
+            cur = conn.execute(
+                "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
+                (username, password, client_name, client_notion_id)
+            )
+            new_id = cur.lastrowid
+        conn.close()
+        return jsonify({"success": True, "id": new_id, "username": username, "client_name": client_name}), 201
+    except Exception as e:
+        conn.close()
+        if "UNIQUE" in str(e):
+            return jsonify({"error": "Username already exists"}), 409
+        logger.error(f"Failed to create client user: {e}")
+        return jsonify({"error": "Could not create client account"}), 500
+
+
+@auth_bp.route("/api/auth/clients/<int:client_id>", methods=["DELETE"])
+def delete_client_user(client_id):
+    """Delete a client portal account."""
+    conn = _sessions_conn()
+    with conn:
+        conn.execute("DELETE FROM client_sessions WHERE client_id=?", (client_id,))
+        conn.execute("DELETE FROM client_users WHERE id=?", (client_id,))
+    conn.close()
+    return jsonify({"success": True})
+

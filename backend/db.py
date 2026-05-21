@@ -109,6 +109,24 @@ def init_db():
             expires_at  TEXT NOT NULL
         )""")
 
+        # Client portal users (separate from employees)
+        conn.execute("""CREATE TABLE IF NOT EXISTS client_users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT UNIQUE NOT NULL,
+            password      TEXT NOT NULL,
+            client_name   TEXT NOT NULL,
+            client_notion_id TEXT DEFAULT '',
+            created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+
+        # Client portal sessions (separate from employee sessions)
+        conn.execute("""CREATE TABLE IF NOT EXISTS client_sessions (
+            token       TEXT PRIMARY KEY,
+            client_id   INTEGER NOT NULL,
+            created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+            expires_at  TEXT NOT NULL
+        )""")
+
         # Projects migration
         try:
             # Check if old schema exists (has 'data' column)
