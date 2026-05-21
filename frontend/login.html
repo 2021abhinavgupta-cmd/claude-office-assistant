@@ -55,19 +55,8 @@
     .btn-go{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--acc);color:#000;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s}
     .btn-go:hover{opacity:.88}
 
-    /* Mode Toggle */
-    .mode-toggle{display:flex;background:var(--s2);border-radius:var(--rs);padding:4px;margin-bottom:28px}
-    .mode-btn{flex:1;padding:10px;border-radius:var(--rs);border:none;background:transparent;color:var(--muted);font-weight:600;font-size:.88rem;cursor:pointer;transition:all .2s}
-    .mode-btn.active{background:var(--acc);color:#000}
-
-    /* Client Form */
-    .client-section{display:none}
-    .form-group{margin-bottom:16px;text-align:left}
-    .form-group label{display:block;font-size:.75rem;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
-    .form-group input{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:12px 14px;font-family:'DM Sans',sans-serif;font-size:.95rem;outline:none;transition:border-color .2s}
-    .form-group input:focus{border-color:var(--acc)}
-    .client-btn{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--acc);color:#000;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s;margin-top:8px}
-    .client-btn:hover{opacity:.88}
+    /* Mode Toggle (Removed) */
+    /* Client Form (Removed) */
   </style>
 <script src="shared-config.js"></script>
 </head>
@@ -79,11 +68,7 @@
   </div>
   <h1>Welcome <span>back</span></h1>
 
-  <div class="mode-toggle">
-    <button class="mode-btn active" id="btn-employee" onclick="setMode('employee')">Team Member</button>
-    <button class="mode-btn" id="btn-client" onclick="setMode('client')">Client</button>
-    <button class="mode-btn" id="btn-admin" onclick="setMode('admin')">Admin</button>
-  </div>
+
 
   <div id="employee-view">
     <p class="sub">Select your name, then enter your PIN.</p>
@@ -129,31 +114,7 @@
     </div>
   </div>
 
-  <div id="client-view" class="client-section">
-    <p class="sub">Log in to view your project updates and timelines.</p>
-    <div class="form-group">
-      <label>Username</label>
-      <input type="text" id="client-username" placeholder="Enter username" />
-    </div>
-    <div class="form-group">
-      <label>Password</label>
-      <input type="password" id="client-password" placeholder="Enter password" />
-    </div>
-    <div class="err-msg" id="client-err-msg"></div>
-    <div class="loading" id="client-loading">🔐 Logging in...</div>
-    <button class="client-btn" onclick="submitClientLogin()">Log In to Portal</button>
-  </div>
 
-  <div id="admin-view" class="client-section">
-    <p class="sub">Agency Admin access for Client Portal management.</p>
-    <div class="form-group">
-      <label>Admin Password</label>
-      <input type="password" id="admin-password" placeholder="Enter admin password" />
-    </div>
-    <div class="err-msg" id="admin-err-msg"></div>
-    <div class="loading" id="admin-loading">🔐 Logging in...</div>
-    <button class="client-btn" style="background:var(--sonnet,#7c6fff);color:#fff" onclick="submitAdminLogin()">Access Client Manager</button>
-  </div>
 </div>
 
 <script>
@@ -308,83 +269,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ).join("");
 });
 
-// Mode Toggle
-function setMode(mode) {
-  document.getElementById('btn-employee').classList.toggle('active', mode === 'employee');
-  document.getElementById('btn-client').classList.toggle('active', mode === 'client');
-  document.getElementById('btn-admin').classList.toggle('active', mode === 'admin');
-  document.getElementById('employee-view').style.display = mode === 'employee' ? 'block' : 'none';
-  document.getElementById('client-view').style.display = mode === 'client' ? 'block' : 'none';
-  document.getElementById('admin-view').style.display = mode === 'admin' ? 'block' : 'none';
-}
 
-// Client Login
-async function submitClientLogin() {
-  const u = document.getElementById("client-username").value.trim();
-  const p = document.getElementById("client-password").value.trim();
-  const err = document.getElementById("client-err-msg");
-  
-  if(!u || !p) {
-    err.textContent = "Please enter both username and password.";
-    return;
-  }
-  
-  err.textContent = "";
-  document.getElementById("client-loading").style.display = "block";
-  
-  try {
-    const res = await fetch(`${API}/api/auth/client_login`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ username: u, password: p })
-    });
-    const d = await res.json();
-    document.getElementById("client-loading").style.display = "none";
-    
-    if(d.success) {
-      localStorage.setItem("claude_office_client", JSON.stringify(d.client));
-      window.location.href = "client-dashboard.html";
-    } else {
-      err.textContent = d.error || "Login failed";
-    }
-  } catch(e) {
-    document.getElementById("client-loading").style.display = "none";
-    err.textContent = "Network error";
-  }
-}
-
-// Admin Login
-async function submitAdminLogin() {
-  const p = document.getElementById("admin-password").value.trim();
-  const err = document.getElementById("admin-err-msg");
-  
-  if(!p) {
-    err.textContent = "Please enter admin password.";
-    return;
-  }
-  
-  err.textContent = "";
-  document.getElementById("admin-loading").style.display = "block";
-  
-  try {
-    const res = await fetch(`${API}/api/auth/admin_portal_login`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ password: p })
-    });
-    const d = await res.json();
-    document.getElementById("admin-loading").style.display = "none";
-    
-    if(d.success) {
-      window.location.href = "client-admin.html";
-    } else {
-      err.textContent = d.error || "Login failed";
-    }
-  } catch(e) {
-    document.getElementById("admin-loading").style.display = "none";
-    err.textContent = "Network error";
-  }
-}
 </script>
 </body>
 </html>

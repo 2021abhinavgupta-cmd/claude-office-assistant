@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Client Portal Login | Claude Office</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:44px 40px;width:100%;max-width:420px}
+    .logo{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+    .logo-icon{width:40px;height:40px;background:var(--acc);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+    .logo-text{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800}
+    h1{font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;margin-bottom:4px}
+    h1 span{color:var(--acc)}
+    .sub{color:var(--muted);font-size:.84rem;margin-bottom:28px}
+
+    /* Client Form */
+    .form-group{margin-bottom:16px;text-align:left}
+    .form-group label{display:block;font-size:.75rem;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+    .form-group input{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:12px 14px;font-family:'DM Sans',sans-serif;font-size:.95rem;outline:none;transition:border-color .2s}
+    .form-group input:focus{border-color:var(--acc)}
+    .client-btn{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--acc);color:#000;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s;margin-top:8px}
+    .client-btn:hover{opacity:.88}
+    .err-msg{color:var(--red);font-size:.82rem;text-align:center;margin-top:10px;min-height:20px}
+    .loading{display:none;text-align:center;color:var(--muted);font-size:.85rem;padding:10px}
+  </style>
+<script src="shared-config.js"></script>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">🤖</div>
+    <div class="logo-text">Claude Office</div>
+  </div>
+  <h1>Client <span>Portal</span></h1>
+  <p class="sub">Log in to view your project updates and timelines.</p>
+
+  <div class="form-group">
+    <label>Username</label>
+    <input type="text" id="client-username" placeholder="Enter username" onkeydown="if(event.key==='Enter') submitClientLogin()" />
+  </div>
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" id="client-password" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitClientLogin()" />
+  </div>
+  <div class="err-msg" id="client-err-msg"></div>
+  <div class="loading" id="client-loading">🔐 Logging in...</div>
+  <button class="client-btn" onclick="submitClientLogin()">Log In to Portal</button>
+</div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+
+// If already logged in with valid session, redirect
+(async()=>{
+  const stored = localStorage.getItem("claude_office_client");
+  if(stored) {
+    try {
+      const c = JSON.parse(stored);
+      if(c && c.username) {
+        window.location.href = "client-dashboard.html";
+      }
+    } catch(e) {}
+  }
+})();
+
+async function submitClientLogin() {
+  const u = document.getElementById("client-username").value.trim();
+  const p = document.getElementById("client-password").value.trim();
+  const err = document.getElementById("client-err-msg");
+  
+  if(!u || !p) {
+    err.textContent = "Please enter both username and password.";
+    return;
+  }
+  
+  err.textContent = "";
+  document.getElementById("client-loading").style.display = "block";
+  
+  try {
+    const res = await fetch(`${API}/api/auth/client_login`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ username: u, password: p })
+    });
+    const d = await res.json();
+    document.getElementById("client-loading").style.display = "none";
+    
+    if(d.success) {
+      localStorage.setItem("claude_office_client", JSON.stringify(d.client));
+      window.location.href = "client-dashboard.html";
+    } else {
+      err.textContent = d.error || "Login failed";
+    }
+  } catch(e) {
+    document.getElementById("client-loading").style.display = "none";
+    err.textContent = "Network error";
+  }
+}
+</script>
+</body>
+</html>
