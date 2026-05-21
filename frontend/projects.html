@@ -639,6 +639,88 @@ function renderClientCalendar(clientId){
   }
 }
 
+// ── Calendar Popup ────────────────────────────────────────────────────────────
+let _popupHideTimer=null;
+
+function _getOrCreatePopup(){
+  let p=document.getElementById('cal-popup');
+  if(!p){
+    p=document.createElement('div'); p.id='cal-popup';
+    document.body.appendChild(p);
+    p.addEventListener('mouseenter',()=>{ clearTimeout(_popupHideTimer); });
+    p.addEventListener('mouseleave',()=>scheduleHidePopup());
+  }
+  return p;
+}
+
+function showCalPopup(e, dayTasks, clientId){
+  clearTimeout(_popupHideTimer);
+  const popup=_getOrCreatePopup();
+  _renderPopupContent(popup, dayTasks, 0, clientId);
+  positionPopup(popup, e.currentTarget);
+  popup.style.display='block';
+}
+
+function _renderPopupContent(popup, dayTasks, idx, clientId){
+  const t = dayTasks[idx];
+  const assigneeName = (t.assigned_to||'').split(',').map(s=>EMP[s.trim()]||s.trim()||'—').join(', ') || '—';
+  const statusLabel = {not_started:'Not Started',in_progress:'In Progress',pending_review:'⏳ Review',
+    approved:'✅ Approved',rejected:'↩ Changes',unlocked:'Unlocked'}[t.status]||t.status||'—';
+  const taskId = t.notion_id || t.id;
+  let nav = dayTasks.length>1 ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <span style="font-size:.72rem;color:var(--muted)">${idx+1} / ${dayTasks.length}</span>
+    <div style="display:flex;gap:6px">
+      ${idx>0?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx-1},'${clientId}')" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">‹</button>`:'<span style="width:28px"></span>'}
+      ${idx<dayTasks.length-1?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx+1},'${clientId}')" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">›</button>`:'<span style="width:28px"></span>'}
+    </div></div>` : '';
+  window._popupTasks = dayTasks;
+  popup.innerHTML = nav + `
+    <div class="cp-title">${t.title}</div>
+    <div class="cp-row">👤 Assignee: <span>${assigneeName}</span></div>
+    <div class="cp-row">📊 Status: <span>${statusLabel}</span></div>
+    <div class="cp-row">📅 Due: <span>${t.due_date||'—'}</span></div>
+    ${t.description?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.5">${t.description.slice(0,100)}${t.description.length>100?'…':''}</div>`:''}
+    <div class="cp-actions">
+      <button class="cp-edit" onclick="hideCalPopup();openEditTask('${clientId}','${taskId}')">✏️ Edit</button>
+      <button class="cp-del" onclick="hideCalPopup();deleteTask('${taskId}')">🗑️ Delete</button>
+    </div>`;
+}
+
+function positionPopup(popup, anchor){
+  popup.style.display='block';
+  const rect=anchor.getBoundingClientRect();
+  const pw=popup.offsetWidth||260, ph=popup.offsetHeight||200;
+  let left=rect.right+8;
+  let top=rect.top;
+  if(left+pw>window.innerWidth-10) left=rect.left-pw-8;
+  if(top+ph>window.innerHeight-10) top=window.innerHeight-ph-10;
+  if(top<8) top=8;
+  popup.style.left=left+'px';
+  popup.style.top=top+'px';
+}
+
+function scheduleHidePopup(){
+  _popupHideTimer=setTimeout(hideCalPopup,200);
+}
+
+function hideCalPopup(){
+  const p=document.getElementById('cal-popup');
+  if(p) p.style.display='none';
+}
+
+function openEditTask(clientId, taskId){
+  // Find the task and open the task edit modal if available, else scroll to task
+  const client=(allData.clients||[]).find(c=>String(c.id)===String(clientId));
+  if(!client) return;
+  const task=(client.tasks||[]).find(t=>(t.notion_id||String(t.id))===String(taskId)||(String(t.id)===String(taskId)));
+  if(!task) return;
+  // Switch to task list tab and highlight
+  const listTabBtn=document.querySelector(`#dbody-${clientId} .ctab`);
+  if(listTabBtn) switchClientTab(clientId,'list',listTabBtn);
+  const el=document.getElementById('tc-'+taskId);
+  if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.outline='2px solid var(--acc)'; setTimeout(()=>el.style.outline='',2000); }
+}
+
 function switchClientTab(clientId, tabName, btn) {
   const body = document.getElementById("dbody-" + clientId);
   body.querySelectorAll('.ctab-content').forEach(el => el.style.display = 'none');
