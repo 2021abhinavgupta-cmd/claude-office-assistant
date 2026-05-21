@@ -507,6 +507,7 @@ function renderDetail(clients){
           <button class="ctab" onclick="switchClientTab('${c.id}', 'kanban', this)">📌 Kanban</button>
           <button class="ctab" onclick="switchClientTab('${c.id}', 'blockers', this)">🔴 Blockers</button>
           <button class="ctab" onclick="switchClientTab('${c.id}', 'review', this)">⏳ In Review</button>
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'calendar', this)">📅 Calendar</button>
         </div>
         
         <div id="ctab-${c.id}-list" class="ctab-content" style="display:block">
@@ -534,6 +535,22 @@ function renderDetail(clients){
           <div id="creview-${c.id}">Loading...</div>
         </div>
 
+        <div id="ctab-${c.id}-calendar" class="ctab-content" style="display:none; padding-top: 12px;">
+          <div id="ccal-${c.id}">
+            <div class="cal-header" style="margin-bottom:14px">
+              <button class="cal-nav-btn" onclick="clientCalPrev('${c.id}')">← Prev</button>
+              <div class="cal-title" id="ccal-label-${c.id}"></div>
+              <button class="cal-nav-btn" onclick="clientCalNext('${c.id}')">Next →</button>
+            </div>
+            <div class="cal-grid" id="ccal-grid-${c.id}">
+              <div class="cal-day-name">Sun</div><div class="cal-day-name">Mon</div>
+              <div class="cal-day-name">Tue</div><div class="cal-day-name">Wed</div>
+              <div class="cal-day-name">Thu</div><div class="cal-day-name">Fri</div>
+              <div class="cal-day-name">Sat</div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>`;
   }).join("");
@@ -551,12 +568,73 @@ function toggleDetail(id){
   }
 }
 
+// per-client calendar state
+const _clientCalDates = {};
+function _clientCalDate(id){
+  if(!_clientCalDates[id]){ const d=new Date(); d.setDate(1); _clientCalDates[id]=d; }
+  return _clientCalDates[id];
+}
+function clientCalPrev(id){ const d=_clientCalDate(id); d.setMonth(d.getMonth()-1); renderClientCalendar(id); }
+function clientCalNext(id){ const d=_clientCalDate(id); d.setMonth(d.getMonth()+1); renderClientCalendar(id); }
+
+function renderClientCalendar(clientId){
+  const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
+  if(!client) return;
+  const tasks = client.tasks||[];
+  const d = _clientCalDate(clientId);
+  const year = d.getFullYear(), month = d.getMonth();
+  document.getElementById('ccal-label-'+clientId).textContent =
+    d.toLocaleString('default',{month:'long'})+' '+year;
+  const grid = document.getElementById('ccal-grid-'+clientId);
+  // Keep day-name headers (first 7 children), remove rest
+  while(grid.children.length > 7) grid.removeChild(grid.lastChild);
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const daysInPrev  = new Date(year, month, 0).getDate();
+  const today = new Date(); today.setHours(0,0,0,0);
+  // Map due_date -> tasks
+  const byDate={};
+  tasks.forEach(t=>{ if(t.due_date){ (byDate[t.due_date]=byDate[t.due_date]||[]).push(t); } });
+  // Blanks for prev month
+  for(let i=0;i<firstDay;i++){
+    const cell=document.createElement('div');
+    cell.className='cal-cell other-month';
+    cell.innerHTML=`<div class="cal-date">${daysInPrev-firstDay+1+i}</div>`;
+    grid.appendChild(cell);
+  }
+  for(let day=1;day<=daysInMonth;day++){
+    const cell=document.createElement('div');
+    const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const cellDate=new Date(year,month,day);
+    cell.className='cal-cell'+(cellDate.getTime()===today.getTime()?' today':'');
+    let html=`<div class="cal-date${cellDate.getTime()===today.getTime()?' today-num':''}}">${day}</div>`;
+    const dayTasks=byDate[dateStr]||[];
+    const show=dayTasks.slice(0,3);
+    show.forEach(t=>{
+      html+=`<span class="cal-pill" style="background:rgba(245,166,35,.2);color:#f5a623;border:1px solid rgba(245,166,35,.3)" title="${t.title}">${t.title}</span>`;
+    });
+    if(dayTasks.length>3) html+=`<div class="cal-more">+${dayTasks.length-3} more</div>`;
+    cell.innerHTML=html;
+    grid.appendChild(cell);
+  }
+  // Fill trailing cells
+  const total = firstDay+daysInMonth;
+  const trailing=(7-total%7)%7;
+  for(let i=1;i<=trailing;i++){
+    const cell=document.createElement('div');
+    cell.className='cal-cell other-month';
+    cell.innerHTML=`<div class="cal-date">${i}</div>`;
+    grid.appendChild(cell);
+  }
+}
+
 function switchClientTab(clientId, tabName, btn) {
   const body = document.getElementById("dbody-" + clientId);
   body.querySelectorAll('.ctab-content').forEach(el => el.style.display = 'none');
   body.querySelectorAll('.ctab').forEach(b => b.classList.remove('on'));
   document.getElementById(`ctab-${clientId}-${tabName}`).style.display = tabName === 'kanban' ? 'flex' : 'block';
   btn.classList.add('on');
+  if(tabName === 'calendar') renderClientCalendar(clientId);
 }
 
 function renderTaskCard(t){
