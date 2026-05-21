@@ -1944,27 +1944,13 @@ def upload_file():
     Images:    {type, filename, media_type, data (base64), size_bytes}
     Documents: {type, filename, content (str), pages?}
     """
-    ALLOWED_EXTENSIONS = {
-        ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp",
-        ".docx", ".doc", ".txt", ".csv", ".xlsx", ".xls",
-        ".md", ".pptx",
-    }
-
     if 'file' not in request.files:
         return jsonify({"error": "No file field in request"}), 400
     f = request.files['file']
     if not f or f.filename == '':
         return jsonify({"error": "No file selected"}), 400
 
-    # Extension safelist check before any processing
-    ext = os.path.splitext(f.filename or "")[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return jsonify({"error": f"File type '{ext}' is not allowed."}), 415
-
     file_bytes = f.read()
-    MAX_SIZE   = 20 * 1024 * 1024  # 20 MB
-    if len(file_bytes) > MAX_SIZE:
-        return jsonify({"error": "File too large (max 20 MB)"}), 413
 
     result = file_processor.process_file(file_bytes, f.filename, f.content_type or '')
     if result['type'] == 'error':
