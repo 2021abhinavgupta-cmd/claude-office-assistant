@@ -212,8 +212,12 @@
     .cal-pill{display:block;font-size:.65rem;padding:2px 6px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;cursor:pointer;transition:opacity .15s}
     .cal-pill:hover{opacity:.8}
     .cal-more{font-size:.63rem;color:var(--muted);padding:1px 4px}
-    .cal-toggle-btn{padding:6px 16px;border-radius:var(--rs);border:1px solid rgba(99,179,237,.4);background:rgba(99,179,237,.1);color:#63b3ed;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap}
-    .cal-toggle-btn:hover,.cal-toggle-btn.on{border-color:#63b3ed;background:rgba(99,179,237,.2);color:#fff}
+    .cal-more{font-size:.63rem;color:var(--muted);padding:1px 4px}
+    /* ── Global Tabs ──────────────────────────────────────────── */
+    .global-tabs{display:flex;gap:8px;padding:0 24px;margin-top:16px;border-bottom:1px solid var(--bdr)}
+    .gtab{padding:8px 20px;font-size:.9rem;font-weight:600;color:var(--muted);background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .2s;font-family:'Syne',sans-serif}
+    .gtab:hover{color:var(--acc)}
+    .gtab.on{color:var(--acc);border-bottom-color:var(--acc)}
   </style>
 </head>
 <body>
@@ -225,10 +229,14 @@
     </div>
     <div class="nav">
       <a href="dashboard.html" class="nl">📊 Dashboard</a>
-      <button onclick="toggleCalendar()" class="cal-toggle-btn" id="cal-toggle-btn">📅 Calendar</button>
       <button onclick="openMeetingNotesModal()" class="btn" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd">📝 Paste Meeting Notes</button>
       <a href="client-onboard.html" class="btn btn-acc">+ New Client</a>
     </div>
+  </div>
+  
+  <div class="global-tabs">
+    <button class="gtab on" id="gtab-clients" onclick="switchGlobalTab('clients')">🏢 Clients</button>
+    <button class="gtab" id="gtab-calendar" onclick="switchGlobalTab('calendar')">📅 Calendar</button>
   </div>
 
   <!-- Calendar Section -->
@@ -1073,16 +1081,20 @@ async function parseMeetingNotes() {
 let calDate = new Date();
 calDate.setDate(1);
 
-function toggleCalendar(){
-  const sec = document.getElementById("cal-section");
-  const btn = document.getElementById("cal-toggle-btn");
-  if(sec.style.display === "none"){
-    sec.style.display = "block";
-    btn.classList.add("on");
+function switchGlobalTab(tab){
+  const calSec = document.getElementById("cal-section");
+  const cliSec = document.getElementById("clients-container");
+  document.querySelectorAll(".gtab").forEach(b => b.classList.remove("on"));
+  
+  if(tab === "calendar"){
+    document.getElementById("gtab-calendar").classList.add("on");
+    cliSec.style.display = "none";
+    calSec.style.display = "block";
     renderCalendar();
-  }else{
-    sec.style.display = "none";
-    btn.classList.remove("on");
+  } else {
+    document.getElementById("gtab-clients").classList.add("on");
+    calSec.style.display = "none";
+    cliSec.style.display = "block";
   }
 }
 
