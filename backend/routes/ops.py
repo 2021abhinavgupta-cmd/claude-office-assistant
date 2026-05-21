@@ -712,14 +712,16 @@ def notion_list_or_create_tasks():
         title = body.get("title", "").strip()
         assigned_to = body.get("assigned_to", "")
         due_date = body.get("due_date", "")
+        client_name = body.get("client_name", "Internal")
+        client_notion_id = body.get("client_id", "")
         
         if not title:
             return jsonify({"error": "Title is required"}), 400
             
         result = notion_store.create_task(
             title=title, 
-            client_name="Internal",  # Default for personal tasks
-            client_notion_id="", 
+            client_name=client_name,
+            client_notion_id=client_notion_id, 
             assigned_to=assigned_to,
             due_date=due_date,
             status="not_started"

@@ -81,7 +81,8 @@
 
   <div class="mode-toggle">
     <button class="mode-btn active" id="btn-employee" onclick="setMode('employee')">Team Member</button>
-    <button class="mode-btn" id="btn-client" onclick="setMode('client')">Client Portal</button>
+    <button class="mode-btn" id="btn-client" onclick="setMode('client')">Client</button>
+    <button class="mode-btn" id="btn-admin" onclick="setMode('admin')">Admin</button>
   </div>
 
   <div id="employee-view">
@@ -141,6 +142,17 @@
     <div class="err-msg" id="client-err-msg"></div>
     <div class="loading" id="client-loading">🔐 Logging in...</div>
     <button class="client-btn" onclick="submitClientLogin()">Log In to Portal</button>
+  </div>
+
+  <div id="admin-view" class="client-section">
+    <p class="sub">Agency Admin access for Client Portal management.</p>
+    <div class="form-group">
+      <label>Admin Password</label>
+      <input type="password" id="admin-password" placeholder="Enter admin password" />
+    </div>
+    <div class="err-msg" id="admin-err-msg"></div>
+    <div class="loading" id="admin-loading">🔐 Logging in...</div>
+    <button class="client-btn" style="background:var(--sonnet,#7c6fff);color:#fff" onclick="submitAdminLogin()">Access Client Manager</button>
   </div>
 </div>
 
@@ -300,8 +312,10 @@ document.addEventListener("DOMContentLoaded", () => {
 function setMode(mode) {
   document.getElementById('btn-employee').classList.toggle('active', mode === 'employee');
   document.getElementById('btn-client').classList.toggle('active', mode === 'client');
+  document.getElementById('btn-admin').classList.toggle('active', mode === 'admin');
   document.getElementById('employee-view').style.display = mode === 'employee' ? 'block' : 'none';
   document.getElementById('client-view').style.display = mode === 'client' ? 'block' : 'none';
+  document.getElementById('admin-view').style.display = mode === 'admin' ? 'block' : 'none';
 }
 
 // Client Login
@@ -335,6 +349,39 @@ async function submitClientLogin() {
     }
   } catch(e) {
     document.getElementById("client-loading").style.display = "none";
+    err.textContent = "Network error";
+  }
+}
+
+// Admin Login
+async function submitAdminLogin() {
+  const p = document.getElementById("admin-password").value.trim();
+  const err = document.getElementById("admin-err-msg");
+  
+  if(!p) {
+    err.textContent = "Please enter admin password.";
+    return;
+  }
+  
+  err.textContent = "";
+  document.getElementById("admin-loading").style.display = "block";
+  
+  try {
+    const res = await fetch(`${API}/api/auth/admin_portal_login`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ password: p })
+    });
+    const d = await res.json();
+    document.getElementById("admin-loading").style.display = "none";
+    
+    if(d.success) {
+      window.location.href = "client-admin.html";
+    } else {
+      err.textContent = d.error || "Login failed";
+    }
+  } catch(e) {
+    document.getElementById("admin-loading").style.display = "none";
     err.textContent = "Network error";
   }
 }

@@ -363,3 +363,138 @@ def delete_client_user(client_id):
     conn.close()
     return jsonify({"success": True})
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN PORTAL AUTH (agency admin login — separate from employees & clients)
+# Password stored as CLIENT_ADMIN_PASSWORD env var (fallback: "admin2024")
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _create_admin_session() -> str:
+    """Create a client_sessions row tagged as admin (client_id = -1)."""
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.utcnow() + timedelta(days=7)).isoformat() + "Z"
+    conn = _sessions_conn()
+    with conn:
+        # We abuse client_id = -1 as a sentinel for the agency admin
+        conn.execute(
+            "INSERT OR REPLACE INTO client_sessions(token, client_id, expires_at) VALUES(?,?,?)",
+            (token, -1, expires)
+        )
+    conn.close()
+    return token
+
+
+def _verify_admin_session(token: str) -> bool:
+    """Returns True if the token belongs to a valid, non-expired admin session."""
+    if not token:
+        return False
+    conn = _sessions_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT expires_at FROM client_sessions WHERE token=? AND client_id=?",
+        (token, -1)
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return False
+    expires_at = row[0]
+    return datetime.utcnow().isoformat() + "Z" <= expires_at
+
+
+@auth_bp.route("/api/auth/admin_portal_login", methods=["POST"])
+def admin_portal_login():
+    """Agency admin login for the client portal admin page."""
+    body = request.get_json(silent=True) or {}
+    password = body.get("password", "").strip()
+
+    correct = os.getenv("CLIENT_ADMIN_PASSWORD", "admin2024")
+    if not password or password != correct:
+        return jsonify({"error": "Incorrect admin password"}), 401
+
+    token = _create_admin_session()
+    is_secure = os.getenv("FLASK_ENV", "development") != "development"
+
+    resp = jsonify({
+        "success": True,
+        "is_admin": True,
+    })
+    resp.set_cookie(
+        "client_admin_token", token,
+        httponly=True,
+        samesite="Lax",
+        secure=is_secure,
+        max_age=7 * 24 * 60 * 60,
+    )
+    return resp
+
+
+@auth_bp.route("/api/auth/admin_portal_verify", methods=["GET"])
+def admin_portal_verify():
+    """Verify admin portal session."""
+    token = request.cookies.get("client_admin_token", "")
+    if not _verify_admin_session(token):
+        return jsonify({"valid": False}), 401
+    return jsonify({"valid": True, "is_admin": True})
+
+
+@auth_bp.route("/api/auth/admin_portal_logout", methods=["POST"])
+def admin_portal_logout():
+    """Invalidate admin portal session."""
+    token = request.cookies.get("client_admin_token", "")
+    if token:
+        conn = _sessions_conn()
+        with conn:
+            conn.execute("DELETE FROM client_sessions WHERE token=?", (token,))
+        conn.close()
+    resp = jsonify({"success": True})
+    resp.delete_cookie("client_admin_token")
+    return resp
+
+
+@auth_bp.route("/api/auth/clients/<int:client_id>", methods=["PUT"])
+def update_client_user(client_id):
+    """Update an existing client portal account (username, password, client_name, notion_id)."""
+    # Verify admin session
+    token = request.cookies.get("client_admin_token", "")
+    if not _verify_admin_session(token):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    body = request.get_json(silent=True) or {}
+    updates = []
+    values = []
+
+    if "username" in body:
+        updates.append("username=?")
+        values.append(body["username"].strip())
+    if "password" in body and body["password"].strip():
+        updates.append("password=?")
+        values.append(body["password"].strip())
+    if "client_name" in body:
+        updates.append("client_name=?")
+        values.append(body["client_name"].strip())
+    if "client_notion_id" in body:
+        updates.append("client_notion_id=?")
+        values.append(body["client_notion_id"].strip())
+
+    if not updates:
+        return jsonify({"error": "Nothing to update"}), 400
+
+    values.append(client_id)
+    conn = _sessions_conn()
+    try:
+        with conn:
+            conn.execute(
+                f"UPDATE client_users SET {', '.join(updates)} WHERE id=?",
+                values
+            )
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.close()
+        if "UNIQUE" in str(e):
+            return jsonify({"error": "Username already exists"}), 409
+        logger.error(f"Failed to update client user {client_id}: {e}")
+        return jsonify({"error": "Could not update client"}), 500
+
+
