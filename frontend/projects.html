@@ -667,11 +667,12 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
   const statusLabel = {not_started:'Not Started',in_progress:'In Progress',pending_review:'⏳ Review',
     approved:'✅ Approved',rejected:'↩ Changes',unlocked:'Unlocked'}[t.status]||t.status||'—';
   const taskId = t.notion_id || t.id;
+  const cid = clientId || t.clientId;
   let nav = dayTasks.length>1 ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <span style="font-size:.72rem;color:var(--muted)">${idx+1} / ${dayTasks.length}</span>
     <div style="display:flex;gap:6px">
-      ${idx>0?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx-1},'${clientId}')" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">‹</button>`:'<span style="width:28px"></span>'}
-      ${idx<dayTasks.length-1?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx+1},'${clientId}')" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">›</button>`:'<span style="width:28px"></span>'}
+      ${idx>0?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx-1},${clientId?`'${clientId}'`:'null'})" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">‹</button>`:'<span style="width:28px"></span>'}
+      ${idx<dayTasks.length-1?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx+1},${clientId?`'${clientId}'`:'null'})" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">›</button>`:'<span style="width:28px"></span>'}
     </div></div>` : '';
   window._popupTasks = dayTasks;
   popup.innerHTML = nav + `
@@ -681,7 +682,7 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
     <div class="cp-row">📅 Due: <span>${t.due_date||'—'}</span></div>
     ${t.description?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.5">${t.description.slice(0,100)}${t.description.length>100?'…':''}</div>`:''}
     <div class="cp-actions">
-      <button class="cp-edit" onclick="hideCalPopup();openEditTask('${clientId}','${taskId}')">✏️ Edit</button>
+      <button class="cp-edit" onclick="hideCalPopup();openEditTask('${cid}','${taskId}')">✏️ Edit</button>
       <button class="cp-del" onclick="hideCalPopup();deleteTask('${taskId}')">🗑️ Delete</button>
     </div>`;
 }
@@ -1305,50 +1306,66 @@ function renderCalendar(){
     (c.tasks || []).forEach(t => {
       if(t.due_date && t.status !== "approved") {
         if(!taskMap[t.due_date]) taskMap[t.due_date] = [];
-        taskMap[t.due_date].push({...t, clientName: c.name});
+        taskMap[t.due_date].push({...t, clientName: c.name, clientId: c.id});
       }
     });
   });
 
   const grid = document.getElementById("cal-grid");
-  // Keep the headers
-  let html = `
-    <div class="cal-day-name">Sun</div><div class="cal-day-name">Mon</div>
-    <div class="cal-day-name">Tue</div><div class="cal-day-name">Wed</div>
-    <div class="cal-day-name">Thu</div><div class="cal-day-name">Fri</div>
-    <div class="cal-day-name">Sat</div>
-  `;
+  while(grid.firstChild) grid.removeChild(grid.firstChild);
+  
+  // Headers
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  days.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'cal-day-name';
+    el.textContent = d;
+    grid.appendChild(el);
+  });
   
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   
   // Empty cells for offset
   for(let i=0; i<firstDay; i++) {
-    html += `<div class="cal-cell other-month"></div>`;
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell other-month';
+    grid.appendChild(cell);
   }
   
   for(let d=1; d<=daysInMonth; d++) {
     const dStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday = (dStr === todayStr);
     
-    let cellHtml = `<div class="cal-cell ${isToday?'today':''}">
-      <div class="cal-date ${isToday?'today-num':''}">${d}</div>`;
-      
-    if(taskMap[dStr]) {
-      const visible = taskMap[dStr].slice(0, 3);
-      visible.forEach(t => {
-        const bg = getColor(t.clientName);
-        cellHtml += `<span class="cal-pill" style="background:${bg};color:#fff" title="${t.title} (${t.clientName})">${t.clientName}: ${t.title}</span>`;
-      });
-      if(taskMap[dStr].length > 3) {
-        cellHtml += `<span class="cal-more">+${taskMap[dStr].length - 3} more</span>`;
-      }
+    const cell = document.createElement('div');
+    cell.className = `cal-cell ${isToday?'today':''}`;
+    
+    let html = `<div class="cal-date ${isToday?'today-num':''}">${d}</div>`;
+    
+    const dayTasks = taskMap[dStr] || [];
+    const visible = dayTasks.slice(0, 3);
+    
+    visible.forEach(t => {
+      const bg = getColor(t.clientName);
+      html += `<span class="cal-pill" style="background:${bg};color:#fff" title="${t.title} (${t.clientName})">${t.clientName}: ${t.title}</span>`;
+    });
+    
+    if(dayTasks.length > 3) {
+      html += `<span class="cal-more">+${dayTasks.length - 3} more</span>`;
     }
-    cellHtml += `</div>`;
-    html += cellHtml;
+    
+    cell.innerHTML = html;
+    
+    if(dayTasks.length > 0) {
+      cell.style.cursor = 'pointer';
+      // In the global calendar, we pass null for clientId because tasks might belong to different clients.
+      // But openEditTask needs clientId. We stored clientName in `t`, so we need to inject clientId as well.
+      cell.addEventListener('mouseenter', e => showCalPopup(e, dayTasks, null));
+      cell.addEventListener('mouseleave', () => scheduleHidePopup());
+    }
+    
+    grid.appendChild(cell);
   }
-  
-  grid.innerHTML = html;
 }
 
 // Hook into load() to update calendar if it's open
