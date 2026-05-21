@@ -3,6 +3,7 @@
  * Protects client portal pages by verifying the client session with the backend.
  * Must be loaded AFTER shared-config.js
  */
+var API = window.API || (location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:5000" : location.origin);
 
 async function verifyClientSession() {
   const clientInfoStr = localStorage.getItem("claude_office_client");
