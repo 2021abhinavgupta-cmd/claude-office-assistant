@@ -1181,13 +1181,17 @@ async function loadMemories() {
 
 function formatMemoryContent(content) {
   // Detect "key: {json}" or "key: [json]" patterns from Claude's auto-profile
-  const match = content.match(/^([^:]+):\s*(\{[\s\S]*\}|\[[\s\S]*\])$/);
+  const match = content.match(/^([^:]+):\s*([\s\S]*)$/);
   if (match) {
     const label = match[1].trim()
       .replace(/_/g, ' ')
       .replace(/\b\w/g, c => c.toUpperCase()); // Title Case
+    
+    let rawValue = match[2].trim();
+    
     try {
-      const obj = JSON.parse(match[2].replace(/'/g, '"'));
+      // Try parsing as JSON first
+      const obj = JSON.parse(rawValue);
       if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
         const lines = Object.entries(obj)
           .filter(([, v]) => v !== null && v !== undefined && v !== '')
@@ -1200,8 +1204,14 @@ function formatMemoryContent(content) {
         return `<strong style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);opacity:0.7">${escHtml(label)}</strong><br>${lines}`;
       }
     } catch(_) {}
-    // Fallback: show label + raw value trimmed
-    return `<strong style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);opacity:0.7">${escHtml(label)}</strong><br>${escHtml(match[2])}`;
+    
+    // Fallback if JSON.parse fails (e.g. because it's a Python dict string with single quotes)
+    // Strip leading/trailing braces or brackets if present
+    if ((rawValue.startsWith('{') && rawValue.endsWith('}')) || (rawValue.startsWith('[') && rawValue.endsWith(']'))) {
+      rawValue = rawValue.slice(1, -1).trim();
+    }
+    
+    return `<strong style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);opacity:0.7">${escHtml(label)}</strong><br><span style="font-size:12px;opacity:0.9">${escHtml(rawValue)}</span>`;
   }
   // Plain manual note - show as-is
   return escHtml(content);
