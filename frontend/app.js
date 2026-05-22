@@ -152,6 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentUser = saved;
     applyUser(saved);
     loadConversations();
+    setInterval(loadConversations, 5000); // Live poll for new huddle invites
     loadProjects();
     
     // Check for draft message from project.html

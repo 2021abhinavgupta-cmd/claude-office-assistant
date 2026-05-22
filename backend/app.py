@@ -1819,6 +1819,13 @@ def conversation_stream(conv_id):
         return jsonify({"error": "message is required"}), 400
 
     task_type = (data.get("task_type") or conv.get("task_type") or _detect_task(message))
+    
+    sender_id = data.get("sender_id") or conv.get("user_id", "")
+    sender_name = (conv.get("participant_names") or {}).get(sender_id, "")
+    participants = conv.get("participant_ids", [conv.get("user_id")])
+    is_huddle = len(participants) > 1
+    prefixed_message = f"[{sender_name}]: {message}" if is_huddle and sender_name else message
+
     user_id   = conv.get("user_id", "api")
 
     truncate_idx = data.get("truncate_from_index")
@@ -1827,10 +1834,14 @@ def conversation_stream(conv_id):
 
     amend_last = bool(data.get("amend_last_user"))
     if amend_last:
-        if not conversation_store.amend_last_user_content(conv_id, message):
+        if not conversation_store.amend_last_user_content(conv_id, prefixed_message):
             return jsonify({"error": "Could not update last user message"}), 400
     else:
-        conversation_store.add_message(conv_id, "user", message)
+        conversation_store.add_message(conv_id, "user", prefixed_message)
+
+    if is_huddle:
+        _huddle_broadcast(conv_id, {"type": "message", "role": "user", "sender": sender_name, "content": message})
+
     if not conv.get("task_type"):
         conversation_store.update_task_type(conv_id, task_type)
 
@@ -2030,6 +2041,9 @@ def conversation_stream(conv_id):
             "model_tier": model_tier, "model_used": model_used_for_call,
             "cost_usd": cost, "task_type": task_type,
         })
+
+        if is_huddle:
+            _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "Claude", "content": clean_response})
 
         updated_conv   = conversation_store.get_conversation(conv_id)
         updated_budget = check_budget_available()
