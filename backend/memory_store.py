@@ -2,6 +2,9 @@
 User Memory Store — Cross-conversation persistent memory per employee.
 Memories are injected into every Claude system prompt automatically.
 Stored in SQLite via db.py
+
+Data format (always a JSON list of objects):
+  [{"id": "abc123", "content": "...", "source": "manual", "created_at": "..."}, ...]
 """
 import json, uuid, logging
 from datetime import datetime
@@ -14,120 +17,198 @@ logger = logging.getLogger(__name__)
 
 def _now(): return datetime.utcnow().isoformat() + "Z"
 
-def get_memories(user_id: str) -> list:
-    """Return all memories for a user, newest first."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        return list(reversed(json.loads(row[0])))
+
+def _normalize(raw_data) -> list:
+    """
+    Normalize whatever is stored in DB into a consistent list of dicts.
+    Handles:
+      - list of {"id", "content", ...} objects  → returned as-is
+      - list of strings                          → wrapped into objects
+      - dict with "legacy_notes" key             → extracted and wrapped
+      - any other dict                           → each key-value pair becomes a note
+    """
+    if isinstance(raw_data, list):
+        result = []
+        for item in raw_data:
+            if isinstance(item, dict) and "content" in item:
+                # Already well-formed
+                result.append(item)
+            elif isinstance(item, str):
+                result.append({
+                    "id": uuid.uuid4().hex[:10],
+                    "content": item,
+                    "source": "legacy",
+                    "created_at": _now()
+                })
+        return result
+
+    if isinstance(raw_data, dict):
+        result = []
+        # Handle legacy_notes list
+        notes = raw_data.get("legacy_notes", [])
+        for note in notes:
+            if isinstance(note, str):
+                result.append({
+                    "id": uuid.uuid4().hex[:10],
+                    "content": note,
+                    "source": "legacy",
+                    "created_at": _now()
+                })
+            elif isinstance(note, dict) and "content" in note:
+                result.append(note)
+
+        # Handle any other keys as structured profile data
+        for key, value in raw_data.items():
+            if key == "legacy_notes":
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                result.append({
+                    "id": uuid.uuid4().hex[:10],
+                    "content": f"{key}: {value}",
+                    "source": "profile",
+                    "created_at": _now()
+                })
+            elif isinstance(value, list):
+                for v in value:
+                    result.append({
+                        "id": uuid.uuid4().hex[:10],
+                        "content": f"{key}: {v}",
+                        "source": "profile",
+                        "created_at": _now()
+                    })
+            elif isinstance(value, dict):
+                result.append({
+                    "id": uuid.uuid4().hex[:10],
+                    "content": f"{key}: {json.dumps(value)}",
+                    "source": "profile",
+                    "created_at": _now()
+                })
+        return result
+
     return []
 
-def update_profile(user_id: str, profile_json: str):
-    """Updates the user's structured JSON profile."""
-    try:
-        new_data = json.loads(profile_json)
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
-        row = cursor.fetchone()
-        
-        mems = json.loads(row[0]) if row else {}
-        
-        # If the existing memory is a list (legacy), convert it to dict
-        if isinstance(mems, list):
-            mems = {"legacy_notes": [m.get("content") for m in mems]}
-            
-        # Deep merge new data into mems
-        for k, v in new_data.items():
-            if isinstance(v, dict) and isinstance(mems.get(k), dict):
-                mems[k].update(v)
-            elif isinstance(v, list) and isinstance(mems.get(k), list):
-                # Ensure unique items without breaking order, or just extend
-                mems[k] = list({str(item): item for item in (mems[k] + v)}.values())
-            else:
-                mems[k] = v
-                
-        with conn:
-            conn.execute("INSERT OR REPLACE INTO memory (user_id, data) VALUES (?, ?)", (user_id, json.dumps(mems)))
-        conn.close()
-    except Exception as e:
-        logger.error(f"Failed to update profile for {user_id}: {e}")
 
-def add_memory(user_id: str, content: str, source: str = "manual") -> dict:
-    """Add a memory manually."""
-    content = content.strip()[:500]
-    if not content: return {}
-    
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
-    row = cursor.fetchone()
-    
-    mems = json.loads(row[0]) if row else {}
-    if isinstance(mems, list):
-        mems = {"legacy_notes": [m.get("content") for m in mems]}
-        
-    if "legacy_notes" not in mems:
-        mems["legacy_notes"] = []
-    
-    mem = {"id": uuid.uuid4().hex[:10], "content": content,
-           "source": source, "created_at": _now()}
-    mems["legacy_notes"].append(content)
-    
-    with conn:
-        conn.execute("INSERT OR REPLACE INTO memory (user_id, data) VALUES (?, ?)", (user_id, json.dumps(mems)))
-    conn.close()
-    return mem
-
-def delete_memory(user_id: str, memory_id: str) -> bool:
-    """Delete a memory by ID."""
+def _load(user_id: str):
+    """Load and normalize memories from DB. Returns (conn, list_of_mems)."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
     if not row:
-        conn.close()
-        return False
-        
-    mems = json.loads(row[0])
-    # Handle dict structure
-    if isinstance(mems, dict):
-        # legacy_notes stores strings, not dicts — can't delete by ID
-        conn.close()
-        return False
+        return conn, []
+    try:
+        raw = json.loads(row[0])
+        return conn, _normalize(raw)
+    except Exception:
+        return conn, []
 
-    # Handle legacy list structure
-    new = [m for m in mems if m.get("id") != memory_id]
-    if len(new) == len(mems):
+
+def _save(conn, user_id: str, mems: list):
+    """Save normalized list back to DB."""
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO memory (user_id, data) VALUES (?, ?)",
+            (user_id, json.dumps(mems))
+        )
+
+
+def get_memories(user_id: str) -> list:
+    """Return all memories for a user, newest first."""
+    conn, mems = _load(user_id)
+    conn.close()
+    return list(reversed(mems))
+
+
+def add_memory(user_id: str, content: str, source: str = "manual") -> dict:
+    """Add a memory. Returns the new memory object."""
+    content = content.strip()[:500]
+    if not content:
+        return {}
+
+    conn, mems = _load(user_id)
+
+    mem = {
+        "id": uuid.uuid4().hex[:10],
+        "content": content,
+        "source": source,
+        "created_at": _now()
+    }
+    mems.append(mem)
+
+    # Trim to max
+    if len(mems) > MAX_PER_USER:
+        mems = mems[-MAX_PER_USER:]
+
+    # Migrate: overwrite whatever was in DB with clean list format
+    _save(conn, user_id, mems)
+    conn.close()
+    return mem
+
+
+def delete_memory(user_id: str, memory_id: str) -> bool:
+    """Delete a memory by ID."""
+    conn, mems = _load(user_id)
+    new_mems = [m for m in mems if m.get("id") != memory_id]
+    if len(new_mems) == len(mems):
         conn.close()
         return False
-        
-    with conn:
-        conn.execute("INSERT OR REPLACE INTO memory (user_id, data) VALUES (?, ?)", (user_id, json.dumps(new)))
+    _save(conn, user_id, new_mems)
     conn.close()
     return True
 
+
+def update_profile(user_id: str, profile_json: str):
+    """
+    Updates the user's structured JSON profile by merging new data.
+    New profile keys are converted to individual memory items.
+    """
+    try:
+        new_data = json.loads(profile_json)
+        conn, mems = _load(user_id)
+
+        # Remove old profile entries so we don't duplicate
+        mems = [m for m in mems if m.get("source") != "profile"]
+
+        # Add new profile entries
+        for key, value in new_data.items():
+            if isinstance(value, (str, int, float, bool)):
+                mems.append({
+                    "id": uuid.uuid4().hex[:10],
+                    "content": f"{key}: {value}",
+                    "source": "profile",
+                    "created_at": _now()
+                })
+            elif isinstance(value, list):
+                for v in value:
+                    mems.append({
+                        "id": uuid.uuid4().hex[:10],
+                        "content": f"{key}: {v}",
+                        "source": "profile",
+                        "created_at": _now()
+                    })
+            elif isinstance(value, dict):
+                mems.append({
+                    "id": uuid.uuid4().hex[:10],
+                    "content": f"{key}: {json.dumps(value)}",
+                    "source": "profile",
+                    "created_at": _now()
+                })
+
+        _save(conn, user_id, mems)
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to update profile for {user_id}: {e}")
+
+
 def format_for_prompt(user_id: str) -> str:
     """Format memories for injection into Claude's system prompt."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT data FROM memory WHERE user_id=?", (user_id,))
-    row = cursor.fetchone()
+    conn, mems = _load(user_id)
     conn.close()
-    
-    if not row: return ""
-    try:
-        data = json.loads(row[0])
-        if isinstance(data, list):
-            lines = "\n".join(f"• {m['content']}" for m in data[-20:])
-            return f"\n\n## What you remember about this user:\n{lines}"
-        else:
-            return f"\n\n## What you remember about this user:\n```json\n{json.dumps(data, indent=2)}\n```"
-    except:
+    if not mems:
         return ""
+    lines = "\n".join(f"• {m['content']}" for m in mems[-20:])
+    return f"\n\n## What you remember about this user:\n{lines}"
+
 
 def format_team_memories() -> str:
     """Format all team memories to allow cross-pollination of writing styles."""
@@ -136,7 +217,7 @@ def format_team_memories() -> str:
     cursor.execute("SELECT user_id, data FROM memory")
     rows = cursor.fetchall()
     conn.close()
-    
+
     import os
     from pathlib import Path
     emp_map = {}
@@ -151,18 +232,14 @@ def format_team_memories() -> str:
     for uid, data in rows:
         name = emp_map.get(uid, uid)
         try:
-            data_obj = json.loads(data)
-            if isinstance(data_obj, dict):
-                notes = data_obj.get("legacy_notes", [])
-                if notes:
-                    lines = "\n".join(f"  • {n}" for n in notes[-10:])
-                    res.append(f"[{name}'s Preferences]:\n{lines}")
-            elif isinstance(data_obj, list):
-                if data_obj:
-                    lines = "\n".join(f"  • {m['content']}" for m in data_obj[-10:])
-                    res.append(f"[{name}'s Preferences]:\n{lines}")
-        except:
+            raw = json.loads(data)
+            mems = _normalize(raw)
+            if mems:
+                lines = "\n".join(f"  • {m['content']}" for m in mems[-10:])
+                res.append(f"[{name}'s Preferences]:\n{lines}")
+        except Exception:
             pass
-            
-    if not res: return ""
+
+    if not res:
+        return ""
     return "\n\n## SHARED TEAM MEMORY (Use these if asked to write in another employee's style):\n" + "\n\n".join(res)
