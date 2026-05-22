@@ -190,16 +190,17 @@ def get_my_tasks():
         from datetime import timedelta
         yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
         cur.execute(
-            "SELECT title, blocker FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+            "SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
             (user_id, yesterday),
         )
         pending = cur.fetchall()
         if pending:
             with conn:
-                for title, blocker in pending:
+                for title, blocker, carried_from in pending:
+                    orig_carry_from = carried_from if carried_from else yesterday
                     conn.execute(
                         "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
-                        (user_id, date_str, title, yesterday, blocker),
+                        (user_id, date_str, title, orig_carry_from, blocker),
                     )
 
     import json
@@ -569,7 +570,7 @@ def carry_over_tasks():
     conn = _su_conn()
     cur  = conn.cursor()
     cur.execute(
-        "SELECT title, blocker FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+        "SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
         (user_id, today),
     )
     pending = cur.fetchall()
@@ -577,17 +578,18 @@ def carry_over_tasks():
     carried = 0
     if pending:
         with conn:
-            for title, blocker in pending:
+            for title, blocker, carried_from in pending:
+                orig_carry_from = carried_from if carried_from else today
                 # Avoid duplicating if already carried (idempotent)
                 cur2 = conn.cursor()
                 cur2.execute(
                     "SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=? AND carried_from=?",
-                    (user_id, tomorrow, title, today),
+                    (user_id, tomorrow, title, orig_carry_from),
                 )
                 if not cur2.fetchone():
                     conn.execute(
                         "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
-                        (user_id, tomorrow, title, today, blocker),
+                        (user_id, tomorrow, title, orig_carry_from, blocker),
                     )
                     carried += 1
     conn.close()
