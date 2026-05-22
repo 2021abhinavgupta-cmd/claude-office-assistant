@@ -98,7 +98,16 @@ def _load(user_id: str):
         return conn, []
     try:
         raw = json.loads(row[0])
-        return conn, _normalize(raw)
+        mems = _normalize(raw)
+        # If the raw data was not already a proper list of dicts, save the normalized
+        # version back immediately so the dynamically generated IDs are persisted.
+        if isinstance(raw, dict) or (isinstance(raw, list) and any(isinstance(x, str) for x in raw)):
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO memory (user_id, data) VALUES (?, ?)",
+                    (user_id, json.dumps(mems))
+                )
+        return conn, mems
     except Exception:
         return conn, []
 
