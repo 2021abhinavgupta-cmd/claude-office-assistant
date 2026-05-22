@@ -163,9 +163,53 @@ def get_standup_history():
     return jsonify({"history": [{"date":r[1],"yesterday":r[2],"today":r[3],"blockers":r[4],"submitted_at":r[5]} for r in rows]})
 
 
+@ops_bp.route("/api/standup/velocity", methods=["GET"])
+def get_velocity():
+    """
+    GET /api/standup/velocity?user_id=&days=14
+    Returns per-day counts of completed vs pending/carried tasks.
+    If user_id is omitted, returns team-wide aggregates.
+    """
+    user_id = request.args.get("user_id", "").strip()
+    days    = int(request.args.get("days", 14))
+
+    conn = _su_conn()
+    cur  = conn.cursor()
+
+    since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    if user_id:
+        cur.execute("""
+            SELECT date,
+                   SUM(CASE WHEN status='done' THEN 1 ELSE 0 END)     AS completed,
+                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END)   AS pending,
+                   SUM(CASE WHEN carried_from IS NOT NULL AND status='pending' THEN 1 ELSE 0 END) AS carried
+            FROM standup_tasks
+            WHERE user_id=? AND date >= ? AND status != 'deleted'
+            GROUP BY date ORDER BY date ASC
+        """, (user_id, since))
+    else:
+        cur.execute("""
+            SELECT date,
+                   SUM(CASE WHEN status='done' THEN 1 ELSE 0 END)     AS completed,
+                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END)   AS pending,
+                   SUM(CASE WHEN carried_from IS NOT NULL AND status='pending' THEN 1 ELSE 0 END) AS carried
+            FROM standup_tasks
+            WHERE date >= ? AND status != 'deleted'
+            GROUP BY date ORDER BY date ASC
+        """, (since,))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    data = [{"date": r[0], "completed": r[1] or 0, "pending": r[2] or 0, "carried": r[3] or 0} for r in rows]
+    return jsonify({"velocity": data})
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PERSONAL DAILY TASK TRACKER (separate from project tasks)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @ops_bp.route("/api/standup/my-tasks", methods=["GET"])
 def get_my_tasks():
@@ -205,7 +249,7 @@ def get_my_tasks():
 
     import json
     cur.execute(
-        "SELECT id, title, status, carried_from, created_at, blocker, notion_id, subtasks FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
+        "SELECT id, title, status, carried_from, created_at, blocker, notion_id, subtasks, delegated_to, delegated_from FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
         (user_id, date_str),
     )
     rows = cur.fetchall()
@@ -222,10 +266,42 @@ def get_my_tasks():
         tasks.append({
             "id": r[0], "title": r[1], "status": r[2],
             "carried_from": r[3], "created_at": r[4], 
-            "blocker": r[5], "notion_id": r[6], "subtasks": st
+            "blocker": r[5], "notion_id": r[6], "subtasks": st,
+            "delegated_to": r[8], "delegated_from": r[9]
         })
 
     return jsonify({"tasks": tasks, "date": date_str})
+
+
+@ops_bp.route("/api/standup/tasks/<int:task_id>/delegate", methods=["POST"])
+def delegate_task(task_id):
+    body = request.get_json(silent=True) or {}
+    target_user_id = body.get("target_user_id")
+    target_user_name = body.get("target_user_name")
+    
+    if not target_user_id or not target_user_name:
+        return jsonify({"error": "target_user_id and target_user_name required"}), 400
+        
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, date, title, blocker FROM standup_tasks WHERE id=?", (task_id,))
+    row = cur.fetchone()
+    if not row:
+        return jsonify({"error": "Task not found"}), 404
+        
+    orig_user_id, date_str, title, blocker = row
+    
+    with conn:
+        # 1. Mark original task as delegated
+        conn.execute("UPDATE standup_tasks SET status='delegated', delegated_to=? WHERE id=?", (target_user_name, task_id))
+        
+        # 2. Create new task for target user
+        conn.execute(
+            "INSERT INTO standup_tasks (user_id, date, title, status, blocker, delegated_from) VALUES (?, ?, ?, 'pending', ?, ?)",
+            (target_user_id, date_str, title, blocker, orig_user_id)
+        )
+    conn.close()
+    return jsonify({"success": True})
 
 
 @ops_bp.route("/api/standup/my-tasks", methods=["POST"])

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Daily Standup | Claude Office Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="shared-config.js"></script>
   <script src="auth.js"></script>
   <style>
@@ -160,6 +161,29 @@
         
         <div id="team-standups"><div class="empty">Loading…</div></div>
       </div>
+
+      <!-- Velocity Tracking Card -->
+      <div class="card" style="margin-top:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <h2>📈 Velocity Tracking</h2>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="velocity-scope" onchange="loadVelocity()" style="background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:5px 10px;font-size:0.75rem;outline:none;cursor:pointer;">
+              <option value="me">My Tasks</option>
+              <option value="team">Team</option>
+            </select>
+            <select id="velocity-days" onchange="loadVelocity()" style="background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:5px 10px;font-size:0.75rem;outline:none;cursor:pointer;">
+              <option value="7">7 days</option>
+              <option value="14" selected>14 days</option>
+              <option value="30">30 days</option>
+            </select>
+          </div>
+        </div>
+        <p class="card-sub">Tasks completed vs carried over — spot bottlenecks at a glance.</p>
+        <div style="position:relative;height:220px">
+          <canvas id="velocity-chart"></canvas>
+        </div>
+        <div id="velocity-empty" style="display:none;text-align:center;color:var(--muted);font-size:.82rem;padding:40px 0">No task data yet for this period.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -192,14 +216,22 @@ function esc(s){if(!s)return"";return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":
   loadMyTasks();
   loadTeamStandups();
   loadAlerts();
+  loadVelocity();
   setInterval(loadTeamStandups, 120000);
 })();
 
 // ── Personal Task Tracker ─────────────────────────────────────────────────────
 
-let allTasks = [];
+let allEmployees = [];
 
 async function loadMyTasks(){
+  if(!allEmployees.length) {
+    try {
+      const re = await fetch(`${API}/api/employees`);
+      const de = await re.json();
+      allEmployees = de.employees || [];
+    } catch(e){}
+  }
   const r = await fetch(`${API}/api/standup/my-tasks?user_id=${UID}`);
   const d = await r.json();
   allTasks = d.tasks || [];
@@ -252,8 +284,16 @@ function renderTasks(){
             <input type="text" class="task-title-input" value="${esc(t.title)}" 
                    onchange="updateTaskTitle(${t.id}, this.value)"
                    style="background:transparent; border:none; outline:none; color:inherit; font-size:0.88rem; font-family:inherit; flex:1; text-decoration:inherit; padding: 0;"
-                   ${t.status==="done" ? "disabled" : ""} />
+                   ${t.status==="done" || t.status==="delegated" ? "disabled" : ""} />
             ${t.carried_from?`<span class="carried-badge">↩ from ${t.carried_from}</span>`:""}
+            ${t.delegated_from?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated from ${t.delegated_from}</span>`:""}
+            ${t.status==="delegated"?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated to ${t.delegated_to}</span>`:""}
+            ${t.status==="pending" ? `
+              <select class="delegate-select" onchange="delegateTask(${t.id}, this.value, this.options[this.selectedIndex].text)" style="background:transparent; border:1px dashed var(--bdr); border-radius:4px; color:var(--muted); font-size:0.7rem; outline:none; max-width: 100px;">
+                <option value="">Assign...</option>
+                ${allEmployees.filter(e=>e.user_id!==UID).map(e=>`<option value="${e.user_id}">${e.name}</option>`).join("")}
+              </select>
+            ` : ""}
           </div>
           ${t.status==="pending" ? `
             <input type="text" placeholder="Add a blocker (optional)..." 
@@ -312,6 +352,20 @@ async function deleteSubtask(taskId, index) {
     body:JSON.stringify({subtasks: t.subtasks})
   });
   renderTasks();
+}
+
+async function delegateTask(taskId, targetUserId, targetUserName) {
+  if(!targetUserId) return;
+  try {
+    await fetch(`${API}/api/standup/tasks/${taskId}/delegate`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({target_user_id: targetUserId, target_user_name: targetUserName})
+    });
+    loadMyTasks();
+  } catch(e) {
+    console.error("Delegate failed", e);
+  }
 }
 
 async function addTask(btnEl){
@@ -597,6 +651,84 @@ async function runCheck(){
   const d=await r.json();
   alert(`Check complete. ${d.alerts_fired||0} new alert(s) fired.`);
   loadAlerts();
+}
+
+// ── Velocity Tracking ─────────────────────────────────────────────────────────
+let _velocityChart = null;
+
+async function loadVelocity() {
+  const scope = document.getElementById("velocity-scope")?.value || "me";
+  const days  = document.getElementById("velocity-days")?.value  || 14;
+  const uid   = scope === "me" ? `&user_id=${UID}` : "";
+
+  try {
+    const r = await fetch(`${API}/api/standup/velocity?days=${days}${uid}`);
+    const d = await r.json();
+    const data = d.velocity || [];
+
+    const canvas  = document.getElementById("velocity-chart");
+    const emptyEl = document.getElementById("velocity-empty");
+
+    if (!data.length) {
+      canvas.style.display = "none";
+      emptyEl.style.display = "block";
+      return;
+    }
+    canvas.style.display = "block";
+    emptyEl.style.display = "none";
+
+    const labels    = data.map(d => d.date.slice(5));   // MM-DD
+    const completed = data.map(d => d.completed);
+    const carried   = data.map(d => d.carried);
+
+    if (_velocityChart) _velocityChart.destroy();
+
+    _velocityChart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Completed ✅",
+            data: completed,
+            backgroundColor: "rgba(34,211,160,0.75)",
+            borderRadius: 4,
+            borderSkipped: false,
+          },
+          {
+            label: "Carried Over ↩",
+            data: carried,
+            backgroundColor: "rgba(245,166,35,0.65)",
+            borderRadius: 4,
+            borderSkipped: false,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: "#e8e8f0", font: { size: 11 } } },
+          tooltip: { mode: "index", intersect: false }
+        },
+        scales: {
+          x: {
+            stacked: false,
+            ticks: { color: "#6b6b8a", font: { size: 10 } },
+            grid:  { color: "rgba(255,255,255,0.04)" }
+          },
+          y: {
+            stacked: false,
+            beginAtZero: true,
+            ticks: { color: "#6b6b8a", stepSize: 1 },
+            grid:  { color: "rgba(255,255,255,0.06)" }
+          }
+        }
+      }
+    });
+  } catch(e) {
+    console.error("Velocity load failed", e);
+  }
 }
 </script>
 </body>

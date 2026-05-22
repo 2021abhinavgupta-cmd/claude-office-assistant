@@ -1555,6 +1555,149 @@ def rename_conversation(conv_id):
     return jsonify({"success": True, "title": title})
 
 
+import threading
+import queue
+
+# ── Huddle: live SSE state ────────────────────────────────────────────────────
+_huddle_subscribers: dict = {}   # conv_id -> list[queue.Queue]
+_huddle_lock = threading.Lock()
+
+def _huddle_broadcast(conv_id: str, event: dict):
+    """Push an event dict to all SSE subscribers of a conversation."""
+    with _huddle_lock:
+        listeners = _huddle_subscribers.get(conv_id, [])
+        dead = []
+        for q in listeners:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                dead.append(q)
+        for dq in dead:
+            listeners.remove(dq)
+
+# ── Huddle: invite a participant ──────────────────────────────────────────────
+@app.route("/api/conversations/<conv_id>/invite", methods=["POST"])
+def invite_to_huddle(conv_id):
+    """POST /api/conversations/<id>/invite  body: {user_id, user_name}"""
+    data      = request.get_json(silent=True) or {}
+    user_id   = data.get("user_id", "").strip()
+    user_name = data.get("user_name", "").strip()
+    if not user_id or not user_name:
+        return jsonify({"error": "user_id and user_name required"}), 400
+    ok = conversation_store.add_participant(conv_id, user_id, user_name)
+    if not ok:
+        return jsonify({"error": "Conversation not found"}), 404
+    _huddle_broadcast(conv_id, {"type": "joined", "user_id": user_id, "user_name": user_name})
+    return jsonify({"success": True})
+
+
+@app.route("/api/conversations/<conv_id>/huddle-events", methods=["GET"])
+def huddle_events(conv_id):
+    """
+    GET /api/conversations/<id>/huddle-events
+    Server-Sent Events stream — delivers real-time message events to all huddle participants.
+    """
+    conv = conversation_store.get_conversation(conv_id)
+    if not conv:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    q = queue.Queue(maxsize=100)
+    with _huddle_lock:
+        _huddle_subscribers.setdefault(conv_id, []).append(q)
+
+    def stream():
+        try:
+            yield "data: {\"type\":\"connected\"}\n\n"
+            while True:
+                try:
+                    event = q.get(timeout=25)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
+                    yield ": ping\n\n"   # keep-alive
+        finally:
+            with _huddle_lock:
+                listeners = _huddle_subscribers.get(conv_id, [])
+                if q in listeners:
+                    listeners.remove(q)
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+
+def _auto_tag_bg(conv_id, message):
+    try:
+        from db import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id, name FROM projects")
+        projects = cur.fetchall()
+        cur.execute("SELECT id, client_name FROM client_users")
+        clients = cur.fetchall()
+        
+        cur.execute("SELECT data FROM conversations WHERE id=?", (conv_id,))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return
+        conv = json.loads(row[0])
+        if conv.get("project_id") or conv.get("client_id"):
+            return
+
+        proj_str = ", ".join([f"'{p[1]}' (ID: {p[0]})" for p in projects])
+        client_str = ", ".join([f"'{c[1]}' (ID: {c[0]})" for c in clients])
+
+        prompt = f"""
+        The user sent this first message in a new chat: "{message}"
+        Match it to ONE of our projects or clients based on the text. 
+        Only return a match if you are reasonably confident.
+        
+        Projects: {proj_str}
+        Clients: {client_str}
+
+        Return JSON strictly in this format: {{"project_id": "ID_HERE", "client_id": "ID_HERE"}}
+        Use null if there is no match.
+        """
+        
+        res = call_claude_with_context(
+            task_type="general",
+            context=[{"role": "user", "content": prompt}],
+            user_id="api",
+            model_override="claude-3-haiku-20240307",
+            output_contract={"type": "json_object"}
+        )
+        
+        if res.get("success"):
+            import re
+            m = re.search(r'\{.*\}', res["response"], re.DOTALL)
+            if m:
+                d = json.loads(m.group(0))
+                p_id = d.get("project_id")
+                c_id = d.get("client_id")
+                
+                if p_id or c_id:
+                    conn = get_connection()
+                    cur = conn.cursor()
+                    cur.execute("SELECT data FROM conversations WHERE id=?", (conv_id,))
+                    row = cur.fetchone()
+                    if row:
+                        conv = json.loads(row[0])
+                        if p_id: 
+                            conv["project_id"] = p_id
+                            p_name = next((p[1] for p in projects if str(p[0]) == str(p_id)), p_id)
+                            conv["project_name"] = p_name
+                        if c_id: 
+                            conv["client_id"] = c_id
+                            c_name = next((c[1] for c in clients if str(c[0]) == str(c_id)), c_id)
+                            conv["client_name"] = c_name
+                        with conn:
+                            conn.execute("UPDATE conversations SET data=? WHERE id=?", (json.dumps(conv), conv_id))
+                    conn.close()
+    except Exception as e:
+        logger.error(f"Auto-tagging failed: {e}")
+
 # ── Multi-turn chat in a conversation ─────────────────────────────────────────
 @app.route("/api/conversations/<conv_id>/chat", methods=["POST"])
 def conversation_chat(conv_id):
@@ -1581,12 +1724,24 @@ def conversation_chat(conv_id):
         or _detect_task(message)
     )
 
+    # Determine sender name for multi-participant huddles
+    sender_id   = data.get("sender_id") or conv.get("user_id", "")
+    sender_name = (conv.get("participant_names") or {}).get(sender_id, "")
+    participants = conv.get("participant_ids", [conv.get("user_id")])
+    is_huddle = len(participants) > 1
+    # Prefix sender name when multiple people are in the chat
+    prefixed_message = f"[{sender_name}]: {message}" if is_huddle and sender_name else message
+
     # Save user message (or amend last user when regenerating)
     if data.get("amend_last_user"):
-        if not conversation_store.amend_last_user_content(conv_id, message):
+        if not conversation_store.amend_last_user_content(conv_id, prefixed_message):
             return jsonify({"error": "Could not update last user message"}), 400
     else:
-        conversation_store.add_message(conv_id, "user", message)
+        conversation_store.add_message(conv_id, "user", prefixed_message)
+
+    # Broadcast user message to all huddle listeners
+    if is_huddle:
+        _huddle_broadcast(conv_id, {"type": "message", "role": "user", "sender": sender_name, "content": message})
 
     # Lock in task_type if not already set
     if not conv.get("task_type"):
@@ -1594,6 +1749,8 @@ def conversation_chat(conv_id):
 
     # Build context for Claude (full history including message just saved)
     context = conversation_store.get_context_messages(conv_id)
+    if len(context) == 1:
+        threading.Thread(target=_auto_tag_bg, args=(conv_id, message)).start()
     if data.get("web_search"):
         snip = _web_search_snippets(message)
         if snip:
@@ -1625,6 +1782,10 @@ def conversation_chat(conv_id):
         "cost_usd":   result["cost_usd"],
         "task_type":  task_type,
     })
+
+    # Broadcast assistant reply to huddle listeners
+    if is_huddle:
+        _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "Claude", "content": result["response"]})
 
     updated_conv = conversation_store.get_conversation(conv_id)
     return jsonify({
@@ -1671,6 +1832,8 @@ def conversation_stream(conv_id):
 
     # Build context + attachments (Haiku summary of older turns when very long)
     context = conversation_store.get_context_messages(conv_id)
+    if len(context) == 1:
+        threading.Thread(target=_auto_tag_bg, args=(conv_id, message)).start()
     haiku_m = get_model_for_task("general")["name"]
     compressed_ctx, hist_summary = _maybe_summarize_history(list(context), haiku_m)
     output_contract = data.get("output_contract") or {}

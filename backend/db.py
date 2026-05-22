@@ -89,6 +89,16 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
+        try:
+            conn.execute("ALTER TABLE standup_tasks ADD COLUMN delegated_to TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
+        try:
+            conn.execute("ALTER TABLE standup_tasks ADD COLUMN delegated_from TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
         # Task risk escalation log (tracks alert level per task)
         conn.execute("""CREATE TABLE IF NOT EXISTS task_risk (
             task_id     TEXT PRIMARY KEY,

@@ -408,12 +408,17 @@ function renderConvList(convs) {
       const icon    = TASK_ICONS[c.task_type] || "💬";
       const isActive = c.id === currentConvId ? " active" : "";
       const msgCount = c.message_count || "";
+      
+      let badges = "";
+      if (c.project_name) badges += ` <span style="background:var(--accent);color:#000;border-radius:4px;padding:0 4px;font-size:10px;margin-left:4px;">${escHtml(c.project_name)}</span>`;
+      if (c.client_name) badges += ` <span style="background:#10b981;color:#000;border-radius:4px;padding:0 4px;font-size:10px;margin-left:4px;">${escHtml(c.client_name)}</span>`;
+      
       html += `
         <div class="conv-item${isActive}" data-id="${c.id}">
           <span class="conv-item-icon">${icon}</span>
           <div class="conv-item-body">
             <div class="conv-item-title">${escHtml(c.title)}</div>
-            <div class="conv-item-sub">${c.task_type || "general"}${msgCount ? ` · ${msgCount} msgs` : ""}</div>
+            <div class="conv-item-sub">${c.task_type || "general"}${msgCount ? ` · ${msgCount} msgs` : ""}${badges}</div>
           </div>
           <button class="conv-del" data-id="${c.id}" title="Delete">✕</button>
         </div>`;
@@ -468,6 +473,9 @@ async function openConversation(convId) {
   currentConvId = convId;
   showChatView();
 
+  // Close any existing huddle SSE connection
+  if (window._huddleSSE) { window._huddleSSE.close(); window._huddleSSE = null; }
+
   try {
     const res  = await fetch(`${API}/api/conversations/${convId}`);
     const conv = await res.json();
@@ -477,6 +485,24 @@ async function openConversation(convId) {
     const model = TASK_MODELS[task] || "haiku";
     updateHeaderChips(task, model);
     updateInputMeta(task, model);
+
+    // ── Huddle participant bar ────────────────────────────────────────────
+    let participantBar = document.getElementById("huddle-bar");
+    if (!participantBar) {
+      participantBar = document.createElement("div");
+      participantBar.id = "huddle-bar";
+      participantBar.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 16px;background:rgba(255,255,255,0.04);border-bottom:1px solid var(--bdr);font-size:0.78rem;flex-wrap:wrap;";
+      messagesEl.parentElement.insertBefore(participantBar, messagesEl);
+    }
+    const participants = conv.participant_ids || [conv.user_id];
+    const names = conv.participant_names || {};
+    const isHuddle = participants.length > 1;
+    participantBar.style.display = participants.length > 0 ? "flex" : "none";
+    participantBar.innerHTML = `
+      <span style="color:var(--muted);margin-right:4px;">${isHuddle ? "🎙️ Huddle:" : "💬"}</span>
+      ${participants.map(uid => `<span style="background:var(--surface2);border-radius:12px;padding:2px 10px;color:var(--txt);">${names[uid] || uid}</span>`).join("")}
+      <button onclick="openHuddleInvite('${convId}')" title="Invite to Huddle" style="margin-left:auto;background:var(--accent);color:#000;border:none;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem;font-weight:600;">+ Invite</button>
+    `;
 
     // Render existing messages
     messagesEl.innerHTML = "";
@@ -493,10 +519,88 @@ async function openConversation(convId) {
     document.querySelectorAll(".conv-item").forEach(el => {
       el.classList.toggle("active", el.dataset.id === convId);
     });
+
+    // ── Connect live SSE if this is a huddle ─────────────────────────────
+    if (isHuddle) {
+      _connectHuddleSSE(convId);
+    }
   } catch (e) {
     showToast("Could not load conversation", "error");
   }
 }
+
+function _connectHuddleSSE(convId) {
+  const sse = new EventSource(`${API}/api/conversations/${convId}/huddle-events`);
+  window._huddleSSE = sse;
+
+  sse.onmessage = (e) => {
+    try {
+      const evt = JSON.parse(e.data);
+      if (evt.type === "message" && evt.role && evt.content) {
+        // Only append if not our own message (avoid duplicates)
+        if (evt.role === "assistant" || (evt.sender && evt.sender !== (currentUser?.user_name || ""))) {
+          appendMessage(evt.role, evt.content, {});
+          scrollToBottom();
+        }
+      } else if (evt.type === "joined") {
+        showToast(`${evt.user_name} joined the huddle 🎙️`, "success");
+        openConversation(convId); // Refresh participant bar
+      }
+    } catch (_) {}
+  };
+
+  sse.onerror = () => {
+    // Silently reconnect after 3s
+    sse.close();
+    setTimeout(() => { if (currentConvId === convId) _connectHuddleSSE(convId); }, 3000);
+  };
+}
+
+async function openHuddleInvite(convId) {
+  try {
+    const res = await fetch(`${API}/api/employees`);
+    const { employees } = await res.json();
+
+    const opts = employees
+      .filter(e => e.user_id !== currentUser?.user_id)
+      .map(e => `<option value="${e.user_id}" data-name="${e.name}">${e.name}</option>`)
+      .join("");
+
+    const modal = document.createElement("div");
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;";
+    modal.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--bdr);border-radius:14px;padding:28px;min-width:320px;max-width:400px;">
+        <h3 style="margin:0 0 16px;font-size:1rem;">🎙️ Invite to Huddle</h3>
+        <select id="huddle-invite-sel" style="width:100%;padding:10px;border-radius:8px;background:var(--surface2);border:1px solid var(--bdr);color:var(--txt);outline:none;">
+          <option value="">-- Select teammate --</option>
+          ${opts}
+        </select>
+        <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
+          <button onclick="this.closest('div').parentElement.remove()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--bdr);background:transparent;color:var(--txt);cursor:pointer;">Cancel</button>
+          <button id="huddle-invite-btn" style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:#000;cursor:pointer;font-weight:600;">Invite</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    document.getElementById("huddle-invite-btn").onclick = async () => {
+      const sel = document.getElementById("huddle-invite-sel");
+      const uid = sel.value;
+      const uname = sel.options[sel.selectedIndex]?.dataset?.name;
+      if (!uid) return;
+      await fetch(`${API}/api/conversations/${convId}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: uid, user_name: uname })
+      });
+      modal.remove();
+      showToast(`${uname} invited to huddle! 🎙️`, "success");
+      openConversation(convId);
+    };
+  } catch (e) {
+    showToast("Could not load employees", "error");
+  }
+}
+
 
 async function startNewChat(initialMessage = null, projectId = null) {
   if (!currentUser) { showToast("Please select a user first", "error"); return; }

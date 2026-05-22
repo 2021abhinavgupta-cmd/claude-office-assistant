@@ -38,15 +38,17 @@ def create_conversation(user_id: str, user_name: str,
                         project_id: Optional[str] = None) -> dict:
     conv_id = "conv_" + uuid.uuid4().hex[:12]
     conv = {
-        "id":         conv_id,
-        "user_id":    user_id,
-        "user_name":  user_name,
-        "title":      "New conversation",
-        "task_type":  task_type,
-        "project_id": project_id,
-        "created_at": _now(),
-        "updated_at": _now(),
-        "messages":   [],
+        "id":              conv_id,
+        "user_id":         user_id,
+        "user_name":       user_name,
+        "title":           "New conversation",
+        "task_type":       task_type,
+        "project_id":      project_id,
+        "created_at":      _now(),
+        "updated_at":      _now(),
+        "messages":        [],
+        "participant_ids": [user_id],       # for huddles
+        "participant_names": {user_id: user_name},
     }
     conn = get_connection()
     with conn:
@@ -66,13 +68,23 @@ def get_conversation(conv_id: str) -> Optional[dict]:
 def list_conversations(user_id: str) -> list:
     conn = get_connection()
     cursor = conn.cursor()
+    # Fetch chats where user is the owner OR a participant (for huddles)
     cursor.execute(
-        "SELECT data FROM conversations WHERE json_extract(data, '$.user_id') = ?",
-        (user_id,)
+        "SELECT data FROM conversations WHERE json_extract(data, '$.user_id') = ? "
+        "OR data LIKE ?",
+        (user_id, f'%"{user_id}"%')
     )
+    seen = set()
     convs = []
     for (row,) in cursor.fetchall():
         c = json.loads(row)
+        # Filter: must be owner or in participant_ids
+        participants = c.get("participant_ids", [c.get("user_id")])
+        if user_id not in participants:
+            continue
+        if c["id"] in seen:
+            continue
+        seen.add(c["id"])
         convs.append(_strip_messages(c))
     conn.close()
     convs.sort(key=lambda c: c["updated_at"], reverse=True)
@@ -92,6 +104,27 @@ def list_conversations_for_project(project_id: str) -> list:
     conn.close()
     convs.sort(key=lambda c: c["updated_at"], reverse=True)
     return convs
+
+def add_participant(conv_id: str, user_id: str, user_name: str) -> bool:
+    """Add a user to a huddle conversation. Returns True on success."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT data FROM conversations WHERE id=?", (conv_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    conv = json.loads(row[0])
+    participants = conv.setdefault("participant_ids", [conv.get("user_id")])
+    names = conv.setdefault("participant_names", {})
+    if user_id not in participants:
+        participants.append(user_id)
+        names[user_id] = user_name
+        conv["updated_at"] = _now()
+        with conn:
+            conn.execute("UPDATE conversations SET data=? WHERE id=?", (json.dumps(conv), conv_id))
+    conn.close()
+    return True
 
 def add_message(conv_id: str, role: str, content: str,
                 metadata: Optional[dict] = None) -> Optional[dict]:
