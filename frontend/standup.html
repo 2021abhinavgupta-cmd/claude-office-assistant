@@ -538,8 +538,18 @@ async function loadTeamStandups(dateStr = ""){
             taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
             carriedTasks.forEach(task => {
                 const isDone = task.status === "done";
+                let daysOverdue = 0;
+                if (task.carried_from) {
+                    const d1 = new Date(task.carried_from);
+                    const d2 = new Date(today);
+                    daysOverdue = Math.max(1, Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)));
+                }
+                const overdueBadge = !isDone && daysOverdue > 0 
+                    ? `<span style="background:rgba(255,92,92,0.15); color:#ff5c5c; padding:2px 6px; border-radius:4px; font-size:11px; margin-left:6px">${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue</span>` 
+                    : '';
+
                 taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}">
-                    ${isDone ? '✓' : '⚠️'} ${esc(task.title)}
+                    ${isDone ? '✓' : '⚠️'} ${esc(task.title)} ${overdueBadge}
                     ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;">🚧 Blocker: ${esc(task.blocker)}</div>` : ""}
                 </li>`;
             });
