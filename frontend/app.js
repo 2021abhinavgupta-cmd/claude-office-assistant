@@ -1179,15 +1179,43 @@ async function loadMemories() {
   } catch (_) {}
 }
 
+function formatMemoryContent(content) {
+  // Detect "key: {json}" or "key: [json]" patterns from Claude's auto-profile
+  const match = content.match(/^([^:]+):\s*(\{[\s\S]*\}|\[[\s\S]*\])$/);
+  if (match) {
+    const label = match[1].trim()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase()); // Title Case
+    try {
+      const obj = JSON.parse(match[2].replace(/'/g, '"'));
+      if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+        const lines = Object.entries(obj)
+          .filter(([, v]) => v !== null && v !== undefined && v !== '')
+          .map(([k, v]) => `<span style="color:var(--muted);font-size:10px">${k.replace(/_/g,' ')}:</span> ${escHtml(String(v))}`)
+          .join('<br>');
+        return `<strong style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);opacity:0.7">${escHtml(label)}</strong><br>${lines}`;
+      }
+      if (Array.isArray(obj)) {
+        const lines = obj.map(v => `• ${escHtml(String(v))}`).join('<br>');
+        return `<strong style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);opacity:0.7">${escHtml(label)}</strong><br>${lines}`;
+      }
+    } catch(_) {}
+    // Fallback: show label + raw value trimmed
+    return `<strong style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);opacity:0.7">${escHtml(label)}</strong><br>${escHtml(match[2])}`;
+  }
+  // Plain manual note - show as-is
+  return escHtml(content);
+}
+
 function renderMemories(mems) {
   if (!mems.length) {
     memoryList.innerHTML = "<div class='memory-empty'>No memories yet. Add facts Claude should always know about you.</div>";
     return;
   }
   memoryList.innerHTML = mems.map(m => `
-    <div class="memory-item" data-id="${m.id}">
-      <span class="memory-item-text">${escHtml(m.content)}</span>
-      <button class="memory-del" data-id="${m.id}" title="Delete">✕</button>
+    <div class="memory-item" data-id="${m.id}" style="align-items:flex-start">
+      <span class="memory-item-text" style="line-height:1.5">${formatMemoryContent(m.content)}</span>
+      <button class="memory-del" data-id="${m.id}" title="Delete" style="flex-shrink:0;margin-top:2px">✕</button>
     </div>`).join("");
 
   memoryList.querySelectorAll(".memory-del").forEach(btn => {
