@@ -1661,17 +1661,21 @@ def _auto_tag_bg(conv_id, message):
         Use null if there is no match.
         """
         
-        res = call_claude_with_context(
-            task_type="general",
-            context=[{"role": "user", "content": prompt}],
-            user_id="api",
-            model_override="claude-3-haiku-20240307",
-            output_contract={"type": "json_object"}
+        res = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=256,
+            system="Return ONLY strict JSON with keys 'project_id' and 'client_id'. Use null if no match.",
+            messages=[{"role": "user", "content": prompt}]
         )
         
-        if res.get("success"):
+        response_text = ""
+        for block in res.content:
+            if hasattr(block, "text") and getattr(block, "text", None):
+                response_text += block.text
+                
+        if response_text:
             import re
-            m = re.search(r'\{.*\}', res["response"], re.DOTALL)
+            m = re.search(r'\{.*\}', response_text, re.DOTALL)
             if m:
                 d = json.loads(m.group(0))
                 p_id = d.get("project_id")
