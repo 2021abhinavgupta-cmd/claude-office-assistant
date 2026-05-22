@@ -108,18 +108,18 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? AND user_id=? AND status != 'deleted' ORDER BY id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND user_id=? AND status != 'deleted' ORDER BY id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status, blocker FROM standup_tasks WHERE date=? AND status != 'deleted' ORDER BY id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND status != 'deleted' ORDER BY id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
     
     tasks_by_user = {}
-    for uid, title, status, blocker in task_rows:
+    for uid, title, status, blocker, carried_from in task_rows:
         if uid not in tasks_by_user:
             tasks_by_user[uid] = []
-        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker})
+        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker, "carried_from": carried_from})
 
     EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
                  "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
