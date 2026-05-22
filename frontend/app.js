@@ -229,43 +229,7 @@ function applyUser(user) {
   userAvatar.textContent   = displayName.charAt(0).toUpperCase();
   userNameText.textContent = displayName;
   
-  // Show punch out button if logged in
-  const existingBtn = document.getElementById("punch-out-btn");
-  if (!existingBtn) {
-    const punchOut = document.createElement("button");
-    punchOut.id = "punch-out-btn";
-    punchOut.innerHTML = `Log Out`;
-    punchOut.style.cssText = "background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 10px;";
-    punchOut.onclick = async () => {
-      await fetch(`${API}/api/auth/logout`, {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({user_id: user.user_id})
-      });
-      localStorage.removeItem("claude_office_user");
-      location.reload();
-    };
-    userPill.parentNode.insertBefore(punchOut, userPill);
-    
-    const changePin = document.createElement("button");
-    changePin.id = "change-pin-btn";
-    changePin.innerHTML = `Change PIN`;
-    changePin.style.cssText = "background: transparent; border: 1px solid var(--border); color: var(--text); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 10px;";
-    changePin.onclick = async () => {
-      const oldPin = prompt("Enter your CURRENT 4-digit PIN:");
-      if (!oldPin) return;
-      const newPin = prompt("Enter your NEW 4-digit PIN:");
-      if (!newPin) return;
-      
-      const res = await fetch(`${API}/api/auth/change_pin`, {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({user_id: user.user_id, old_pin: oldPin, new_pin: newPin})
-      });
-      const data = await res.json();
-      if (res.ok) alert("PIN successfully changed!");
-      else alert(data.error || "Failed to change PIN");
-    };
-    userPill.parentNode.insertBefore(changePin, punchOut);
-  }
+
 }
 
 // ── PIN Login Logic ─────────────────────────────────────────────────────────
