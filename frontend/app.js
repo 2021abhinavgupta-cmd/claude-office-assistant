@@ -563,8 +563,8 @@ async function openHuddleInvite(convId) {
     const { employees } = await res.json();
 
     const opts = employees
-      .filter(e => e.user_id !== currentUser?.user_id)
-      .map(e => `<option value="${e.user_id}" data-name="${e.name}">${e.name}</option>`)
+      .filter(e => e.id !== currentUser?.user_id)
+      .map(e => `<option value="${e.id}" data-name="${e.name}">${e.name}</option>`)
       .join("");
 
     const modal = document.createElement("div");
