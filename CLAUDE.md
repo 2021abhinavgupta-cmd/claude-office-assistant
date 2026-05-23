@@ -1,0 +1,215 @@
+# CLAUDE.md — AI Coding Assistant Guide
+
+This file provides essential context for AI coding assistants (Claude, Copilot, etc.) working on this codebase.
+
+---
+
+## Project Overview
+
+**Claude Office Assistant** is a full-stack, production-deployed internal tool for a small team (8 employees). It is a Claude AI-powered workspace that combines:
+
+- Multi-turn AI chat (Claude Haiku + Sonnet, auto-routed by task complexity)
+- Project & client management with per-project knowledge bases
+- Daily standups, task tracking, and attendance
+- Live "Huddle" chat (multi-user real-time via Server-Sent Events)
+- Smart auto-tagging of conversations by project/client
+- A client portal for external clients to log in and view their tasks
+- Notion integration, document export, HTML generator, and presentation builder
+
+**Deployment:** Railway (persistent volume at `/logs/` for the SQLite DB).  
+**Live URL:** The app is accessed via the Railway-assigned URL.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.11, Flask, Gunicorn |
+| AI | Anthropic Python SDK (claude-haiku-4-5, claude-sonnet-4-6) |
+| Frontend | Vanilla HTML/CSS/JS (zero build step) |
+| Database | SQLite via `logs/app.db` (WAL mode) |
+| Deployment | Railway with Nixpacks |
+| Auth | Server-side session tokens (stored in SQLite `sessions` table) |
+
+---
+
+## Directory Structure
+
+```
+claude-office-assistant/
+├── backend/
+│   ├── app.py                  # Main Flask app — ALL conversation + AI routes
+│   ├── db.py                   # SQLite init, schema, migrations. Run on startup.
+│   ├── conversation_store.py   # CRUD for conversations (SQLite-backed)
+│   ├── memory_store.py         # Per-user AI memory (persistent profiles)
+│   ├── project_store.py        # Project & knowledge base CRUD
+│   ├── model_router.py         # Task-to-model routing logic (haiku vs sonnet)
+│   ├── system_prompt.py        # Master system prompt + per-task prompt builder
+│   ├── budget_tracker.py       # Monthly API cost tracking + budget enforcement
+│   ├── file_processor.py       # PDF/CSV/Word file parsing for attachments
+│   ├── kb_retriever.py         # FTS5 knowledge base retrieval (Claude Projects-style)
+│   ├── document_exporter.py    # Export chats to DOCX/PDF
+│   ├── notifications.py        # WhatsApp notifications via Twilio
+│   ├── notion_store.py         # Full Notion API integration
+│   ├── task_scheduler.py       # Background task risk escalation
+│   ├── extensions.py           # Shared Flask app instance (avoids circular imports)
+│   └── routes/
+│       ├── auth.py             # Login, logout, session verify, employee list
+│       ├── attendance.py       # Check-in/checkout, daily attendance records
+│       ├── ops.py              # Standups, tasks, alerts, SQLite admin, exports
+│       └── system.py           # Health check, budget admin, usage stats
+├── frontend/
+│   ├── index.html              # MAIN CHAT UI (app entry point)
+│   ├── app.js                  # All frontend logic for index.html (2200+ lines)
+│   ├── style.css               # All styles (dark mode, glassmorphism)
+│   ├── auth.js                 # Shared auth guard (include on every protected page)
+│   ├── shared-config.js        # Shared employee loader (window.EMPLOYEES)
+│   ├── login.html              # Employee PIN login
+│   ├── dashboard.html          # Founder analytics dashboard
+│   ├── projects.html           # Projects & knowledge base manager
+│   ├── standup.html            # Daily standup submission + team view
+│   ├── my-tasks.html           # Personal task tracker with subtasks/delegation
+│   ├── project.html            # Individual project page
+│   ├── project.js              # JS for project.html
+│   ├── presentation.html       # AI presentation builder
+│   ├── html-generator.html     # AI HTML page generator
+│   ├── client-login.html       # Client portal login (separate from employee login)
+│   ├── client-dashboard.html   # Client portal dashboard
+│   ├── client-portal.html      # Client task view
+│   ├── client-admin.html       # Admin: manage client accounts
+│   ├── client-auth.js          # Auth guard for client portal pages
+│   └── client-onboard.html     # New client onboarding form
+├── config/
+│   └── employees.json          # Static employee data (id, name, pin, role, etc.)
+├── logs/                       # Persistent volume — DO NOT delete
+│   └── app.db                  # SQLite database (all production data lives here)
+├── scripts/                    # Utility/migration scripts
+├── requirements.txt            # Python dependencies
+├── Procfile                    # Railway: web: gunicorn backend.app:app
+├── nixpacks.toml               # Railway build config
+└── railway.toml                # Railway deploy config
+```
+
+---
+
+## Key Patterns & Conventions
+
+### 1. Authentication (Employee)
+- Login is PIN-based (4-digit PIN in `config/employees.json`)
+- `auth.py` issues a session token stored in the `sessions` table
+- Every protected page includes `<script src="auth.js"></script>` which calls `/api/auth/verify` and redirects to `login.html` if invalid
+- The `currentUser` object (`{user_id, user_name, role, is_admin}`) is stored in `localStorage` under `"claude_office_user"`
+
+### 2. Authentication (Client Portal)
+- Clients log in at `client-login.html` using username + password
+- Stored in `client_users` table. Separate `client_sessions` table.
+- Client pages include `client-auth.js` (NOT `auth.js`)
+
+### 3. AI Routing
+- Task types: `general`, `coding`, `html_design`, `presentations`, `email`, `scripts`, `captions`, `meetings`, `announcements`, `analysis`, `data_analysis`, `content`
+- `model_router.py` maps task type → model tier (haiku/sonnet)
+- The streaming endpoint `POST /api/conversations/<id>/stream` is the primary chat endpoint
+- If `should_think()` returns True (complex query), the model is pinned to `claude-sonnet-4-6` with extended thinking enabled (`budget_tokens=14000`)
+
+### 4. Conversation & Huddle System
+- Conversations are stored as JSON blobs in the `conversations` SQLite table
+- Each conversation has: `id`, `user_id`, `title`, `messages[]`, `task_type`, `project_id`, `participant_ids[]`, `participant_names{}`
+- **Huddle** = a conversation with `len(participant_ids) > 1`
+- Live SSE stream for huddles: `GET /api/conversations/<id>/huddle-events`
+- Invite endpoint: `POST /api/conversations/<id>/invite` — body: `{user_id, user_name}`
+- The frontend polls `loadConversations()` every 5 seconds so invited users see the new chat without refreshing
+
+### 5. Smart Auto-Tagging
+- When the **first message** of a new conversation is sent, `_auto_tag_bg()` runs in a background thread
+- It calls Claude Haiku with a list of all projects/clients, asks which one matches the message
+- If a match is found, it updates the conversation's `project_id` or `client_id` in the DB
+- The frontend re-renders the tag badge automatically via the SSE `done` event
+
+### 6. Database
+- Single SQLite file at `logs/app.db`
+- `db.py` calls `init_db()` and `migrate_from_json()` on every startup (safe/idempotent)
+- All `ALTER TABLE ... ADD COLUMN` are wrapped in `try/except` to be non-breaking
+- Always use `get_connection()` from `db.py` — never create `sqlite3.connect()` directly
+
+### 7. Frontend API Base URL
+- Defined once at the top of `app.js`:
+  ```js
+  const API = location.hostname === 'localhost' ? 'http://localhost:5000' : location.origin;
+  ```
+- All other frontend files use the same pattern inline or via `shared-config.js`
+
+---
+
+## Environment Variables (Required)
+
+| Variable | Description |
+|---|---|
+| `ANTHROPIC_API_KEY` | Anthropic API key (required) |
+| `MONTHLY_BUDGET_LIMIT` | Max USD spend per month (e.g., `50`) |
+| `SECRET_KEY` | Flask secret key for sessions |
+| `TWILIO_ACCOUNT_SID` | (Optional) WhatsApp notifications |
+| `TWILIO_AUTH_TOKEN` | (Optional) WhatsApp notifications |
+| `TWILIO_WHATSAPP_FROM` | (Optional) WhatsApp sender number |
+| `NOTION_TOKEN` | (Optional) Notion API integration |
+
+---
+
+## Running Locally
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Set environment variables in config/.env or shell
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# 3. Start the backend
+python -m backend.app
+# OR
+bash start.sh
+
+# 4. Open the frontend
+# Navigate to: http://localhost:5000/
+```
+
+The Flask app serves the `frontend/` folder as static files.
+
+---
+
+## Common Development Tasks
+
+### Add a new API endpoint
+Add it to `backend/app.py` (core conversation routes) or the appropriate Blueprint in `backend/routes/`:
+- Auth-related → `routes/auth.py`
+- Standup/tasks/alerts → `routes/ops.py`
+- Attendance → `routes/attendance.py`
+- Health/admin/system → `routes/system.py`
+
+### Add a new database table
+Add the `CREATE TABLE IF NOT EXISTS` statement inside `init_db()` in `backend/db.py`.
+
+### Add a new employee
+Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `department`, `status`, `whatsapp`.
+
+### Add a new frontend page
+1. Create `frontend/yourpage.html`
+2. Include `<script src="auth.js"></script>` near the top of `<body>`
+3. Include `<script src="shared-config.js"></script>` if you need employee data
+4. Use the same `API` base URL pattern
+
+---
+
+## Gotchas & Known Issues
+
+1. **Huddle invites** — The invited user's sidebar updates via a 5-second poll (`setInterval(loadConversations, 5000)` in `app.js`). If it seems broken, check that `list_conversations()` in `conversation_store.py` is matching the invited user's ID in `participant_ids`.
+
+2. **Auto-tagging** — Only fires on the **first** message of a conversation (`len(context) == 1`). If `project_id`/`client_id` is already set, it skips. The badge appears after the `done` SSE event triggers a `loadConversations()` refresh.
+
+3. **SQLite on Railway** — The DB lives at `logs/app.db` on a persistent volume. Do NOT store anything important in `/tmp`. Always use the `logs/` directory.
+
+4. **Streaming vs non-streaming** — The primary chat endpoint is `/stream` (SSE). The `/chat` endpoint is non-streaming (legacy). Both must broadcast huddle messages via `_huddle_broadcast()`.
+
+5. **`is_huddle` in stream** — The `conversation_stream()` function extracts `participants` and `is_huddle` from the conversation object. Make sure `conv` is fetched **before** adding the new message, or the participant count will be stale.
+
+6. **Model pinning for thinking** — `should_think()` can override the model to `claude-sonnet-4-6`. Be careful: if a user selects "haiku" via `model_override`, thinking is bypassed (correct behavior).
