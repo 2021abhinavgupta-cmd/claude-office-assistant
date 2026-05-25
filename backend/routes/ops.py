@@ -440,8 +440,7 @@ If it's a Project Task, guess the Client Name from the title if possible (otherw
 Respond ONLY in valid JSON format:
 {
   "is_project_task": true/false,
-  "client_name": "Name or Internal",
-  "clean_title": "Cleaned up task title without extra chatter"
+  "client_name": "Name or Internal"
 }"""
     
     try:
@@ -452,11 +451,9 @@ Respond ONLY in valid JSON format:
             
         is_project = resp_json.get("is_project_task", False)
         client = resp_json.get("client_name", "Internal")
-        clean_title = resp_json.get("clean_title", title)
     except Exception as e:
         logger.error(f"Auto-Router failed: {e}")
         is_project = False
-        clean_title = title
         client = "Internal"
 
     notion_id = None
@@ -464,7 +461,7 @@ Respond ONLY in valid JSON format:
     if is_project and notion_store.is_configured():
         due_date = datetime.utcnow().strftime("%Y-%m-%d")
         created = notion_store.create_task(
-            title=clean_title,
+            title=title,
             client_name=client,
             client_notion_id="",
             assigned_to=assigned_to,
@@ -479,14 +476,14 @@ Respond ONLY in valid JSON format:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO standup_tasks (user_id, title, status, date, notion_id) VALUES (?, ?, 'pending', date('now'), ?)",
-            (user_id, clean_title, notion_id)
+            (user_id, title, notion_id)
         )
         task_id = cur.lastrowid
         
     return jsonify({
         "success": True, 
         "task_id": task_id, 
-        "title": clean_title, 
+        "title": title, 
         "notion_id": notion_id,
         "is_project": is_project
     })
