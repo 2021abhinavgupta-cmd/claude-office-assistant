@@ -231,21 +231,23 @@ def get_my_tasks():
     cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=?", (user_id, date_str))
     existing = cur.fetchall()
     if not existing and date_str == datetime.utcnow().strftime("%Y-%m-%d"):
-        from datetime import timedelta
-        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-        cur.execute(
-            "SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
-            (user_id, yesterday),
-        )
-        pending = cur.fetchall()
-        if pending:
-            with conn:
-                for title, blocker, carried_from in pending:
-                    orig_carry_from = carried_from if carried_from else yesterday
-                    conn.execute(
-                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
-                        (user_id, date_str, title, orig_carry_from, blocker),
-                    )
+        cur.execute("SELECT MAX(date) FROM standup_tasks WHERE user_id=? AND date<?", (user_id, date_str))
+        last_date_row = cur.fetchone()
+        if last_date_row and last_date_row[0]:
+            last_date = last_date_row[0]
+            cur.execute(
+                "SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+                (user_id, last_date),
+            )
+            pending = cur.fetchall()
+            if pending:
+                with conn:
+                    for title, blocker, carried_from in pending:
+                        orig_carry_from = carried_from if carried_from else last_date
+                        conn.execute(
+                            "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
+                            (user_id, date_str, title, orig_carry_from, blocker),
+                        )
 
     import json
     cur.execute(

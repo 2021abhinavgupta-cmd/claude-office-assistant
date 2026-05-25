@@ -215,3 +215,5 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 6. **Model pinning for thinking** — `should_think()` can override the model to `claude-sonnet-4-6`. Be careful: if a user selects "haiku" via `model_override`, thinking is bypassed (correct behavior).
 
 7. **Standup Smart Add** — When users add tasks to their daily standup, they go through `/api/standup/smart-add`. We disabled the AI from generating a `clean_title` because it was altering users' exact phrasing in frustrating ways. The system now retains the exact `title` the user typed while only using the AI to infer the `client_name`.
+
+8. **Standup Auto-Carry-Over** — When an employee loads their tasks for today (`/api/standup/my-tasks`), if they have no tasks yet, the system automatically carries over pending tasks from their *most recent* active day (using `MAX(date)` before today). This safely handles weekends and skipped days without relying on a hardcoded "yesterday" (`timedelta(days=1)`).
