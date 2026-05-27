@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>New Client Onboarding | Claude Office Assistant</title>
+  <title>Add Tasks | Claude Office Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script src="auth.js"></script>
   <script src="shared-config.js"></script>
@@ -92,32 +92,31 @@
 <body>
 <div class="card" id="main-card">
   <a href="projects.html" class="back">← Back to Project Board</a>
-  <h1>🏢 Client <span>Onboarding</span></h1>
-  <p class="sub">New client in 2 minutes — fills in services, auto-assigns the team.</p>
+  <h1>🏢 Add <span>Tasks</span></h1>
+  <p class="sub">Select a client and apply new workflows.</p>
 
   <div class="steps">
-    <div class="step active" id="step1-dot">1 · Client Info</div>
-    <div class="step" id="step2-dot">2 · Services</div>
-    <div class="step" id="step3-dot">3 · Review & Create</div>
+    <div class="step active" id="step1-dot">1 · Select Client</div>
+    <div class="step" id="step2-dot">2 · Select Workflows</div>
+    <div class="step" id="step3-dot">3 · Add Tasks</div>
   </div>
 
   <!-- Step 1 -->
   <div id="step1">
-    <div class="two">
-      <div class="fg"><label>Client Name *</label><input type="text" id="name" placeholder="Acme Corp"/></div>
-      <div class="fg"><label>Contact (Email / Phone)</label><input type="text" id="contact" placeholder="raj@acme.com"/></div>
+    <div class="fg">
+      <label>Select Existing Client *</label>
+      <select id="client_id" style="width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px 14px;color:var(--txt);font-size:.9rem;outline:none">
+        <option value="">Loading clients...</option>
+      </select>
     </div>
-    <div class="fg"><label>Brief Description</label><textarea id="requirements" placeholder="High-level project overview..."></textarea></div>
-    <div class="fg"><label>Docs & File Available (Drive Link)</label><input type="text" id="drive_link" placeholder="https://drive.google.com/..."/></div>
-    <div class="fg"><label>Special Notes</label><input type="text" id="notes" placeholder="Any special requirements, restrictions, or context..."/></div>
-    <p class="err" id="err1">Please enter the client name.</p>
-    <div class="btn-row"><button class="btn btn-acc" onclick="goStep2()">Next: Select Services →</button></div>
+    <p class="err" id="err1">Please select a client.</p>
+    <div class="btn-row"><button class="btn btn-acc" onclick="goStep2()">Next: Select Workflows →</button></div>
   </div>
 
   <!-- Step 2 -->
   <div id="step2" style="display:none">
     <div class="fg">
-      <label>What services does this client need?</label>
+      <label>Which workflows do you want to apply?</label>
       <div class="services-grid">
         <div class="svc-box" id="svc-social" onclick="toggleSvc('social',this)">
           <input type="checkbox" value="social"/><span class="svc-icon">📱</span>
@@ -172,7 +171,7 @@
   <div id="step3" style="display:none">
     <div class="two">
       <div class="fg"><label>Client Name</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
-      <div class="fg"><label>Project Deadline (If any)</label><input type="date" id="deadline"/></div>
+      <div class="fg"><label>Target Deadline</label><input type="date" id="deadline"/></div>
     </div>
     <div class="preview-section">
       <h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
@@ -181,19 +180,18 @@
       <button class="add-task-btn" onclick="addTask()">＋ Add custom task</button>
     </div>
     <p class="err" id="err3"></p>
-    <div class="btn-row">
+    <div class="btn-row" style="margin-top:24px">
       <button class="btn btn-back-btn" onclick="goStep(2)">← Back</button>
-      <button class="btn btn-acc" id="create-btn" onclick="createClient()">🚀 Create Project</button>
+      <button class="btn btn-acc" id="create-btn" onclick="addTasksToClient()">✨ Add Tasks</button>
     </div>
   </div>
 </div>
 
 <div class="success" id="success">
   <div class="icon">🎉</div>
-  <h2>Project Created!</h2>
-  <p id="success-msg">Client and tasks have been set up. Team members will see their tasks on login.</p>
+  <h2>Tasks Added!</h2>
+  <p id="success-msg">Tasks have been successfully applied to the client project.</p>
   <a href="projects.html">📋 View Project Board</a>
-  <a href="client-onboard.html">+ Onboard Another Client</a>
 </div>
 
 <script>
@@ -201,49 +199,53 @@ const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "
 const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
 const UID = user.user_id || "emp003";
 
-// ── Admin-only access: only Vidit (emp001), Abhinav (emp003), Kshitij (emp004)
 const ONBOARD_ADMINS = ["emp001", "emp003", "emp004"];
 if (!ONBOARD_ADMINS.includes(user.user_id)) {
   document.getElementById("main-card").innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <div style="font-size:2rem">📝</div>
+      <div>
+        <h1 style="font-size:1.6rem;font-weight:700">Add <span style="color:var(--acc)">Tasks</span></h1>
+        <p style="color:var(--muted);font-size:.9rem;margin-top:4px">Apply task workflows to an existing client project.</p>
+      </div>
+    </div>
     <div style="text-align:center;padding:40px 20px">
       <div style="font-size:3rem;margin-bottom:16px">🔒</div>
       <h2 style="font-family:'Syne',sans-serif;margin-bottom:8px">Access Restricted</h2>
-      <p style="color:var(--muted);font-size:.875rem;margin-bottom:24px">Only Kshitij, Abhinav, and Vidit can onboard new clients.</p>
+      <p style="color:var(--muted);font-size:.875rem;margin-bottom:24px">Only authorized admins can add tasks.</p>
       <a href="my-tasks.html" style="display:inline-block;padding:10px 22px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--txt);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--bdr)'">← Back to My Tasks</a>
     </div>`;
 }
 
 let EMP = {};
 const SVC_TASKS = {
-  social:[
-    {title:"Content Ideation",who:"emp006"},
-    {title:"Content Approval (Cal Sheet)",who:"emp006"},
-    {title:"Discussion with Creative",who:"emp002"},
-    {title:"Creative Assigning",who:"emp006"},
-    {title:"Content Creation (Kanban)",who:"emp002"},
-    {title:"Final Drive Link",who:"emp006"}
-  ],
-  branding:[
-    {title:"Brand Essence",who:"emp002"},
-    {title:"Stylescape",who:"emp002"},
-    {title:"Logo Design Presentation",who:"emp002"},
-    {title:"Logo Iterations",who:"emp002"},
-    {title:"Visual Style",who:"emp002"},
-    {title:"Collateral",who:"emp002"},
-    {title:"Brand guidelines Content",who:"emp006"},
-    {title:"Brand guidelines",who:"emp002"}
-  ],
-  website:[
-    {title:"Concept & Flow",who:"emp001"},
-    {title:"UI 1st Draft Review",who:"emp002"},
-    {title:"Content",who:"emp006"},
-    {title:"Final Build",who:"emp003"}
-  ],
-  shoot:[{title:"Video Script & Concept",who:"emp006"},{title:"Video Shoot / Production",who:"emp005"},{title:"Video Editing & Post",who:"emp005"}],
+  social:[{title:"Content Ideation",who:"emp006"},{title:"Content Approval",who:"emp006"},{title:"Creative Assigning",who:"emp006"},{title:"Content Creation",who:"emp002"},{title:"Final Drive Link",who:"emp006"}],
+  branding:[{title:"Brand Essence",who:"emp002"},{title:"Stylescape",who:"emp002"},{title:"Logo Design Presentation",who:"emp002"},{title:"Brand guidelines",who:"emp002"}],
+  website:[{title:"Concept & Flow",who:"emp001"},{title:"UI Draft Review",who:"emp002"},{title:"Content",who:"emp006"},{title:"Final Build",who:"emp003"}],
+  shoot:[{title:"Video Script & Concept",who:"emp006"},{title:"Video Production",who:"emp005"},{title:"Video Editing",who:"emp005"}],
   miscellaneous:[{title:"Custom Deliverable Setup",who:"emp001"}],
 };
 
 let selected = new Set();
+
+async function loadEmployees() {
+  const r = await fetch(`${API}/api/employees`);
+  window.EMP_DICT = await r.json();
+}
+
+async function loadClients() {
+  const res = await fetch(`${API}/api/clients`);
+  const data = await res.json();
+  const sel = document.getElementById("client_id");
+  sel.innerHTML = '<option value="">Select a client...</option>' + data.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadEmployees();
+  await loadClients();
+  EMP = window.EMP_DICT;
+  EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
+});
 
 function toggleSvc(svc, el){
   el.classList.toggle("selected");
@@ -264,8 +266,8 @@ function goStep(n){
 }
 
 function goStep2(){
-  const name=document.getElementById("name").value.trim();
-  if(!name){document.getElementById("err1").style.display="block";return;}
+  const clientId = document.getElementById("client_id").value;
+  if(!clientId){document.getElementById("err1").style.display="block";return;}
   document.getElementById("err1").style.display="none";
   goStep(2);
 }
@@ -273,9 +275,10 @@ function goStep2(){
 function goStep3(){
   if(!selected.size){document.getElementById("err2").style.display="block";return;}
   document.getElementById("err2").style.display="none";
-  document.getElementById("r-name").textContent=document.getElementById("name").value.trim();
+  const selectEl = document.getElementById("client_id");
+  const clientName = selectEl.options[selectEl.selectedIndex].text;
+  document.getElementById("r-name").textContent = clientName;
 
-  // Build editable task rows
   const wrap=document.getElementById("task-preview-list");
   const allTasks=[];
   for(const svc of selected) allTasks.push(...SVC_TASKS[svc]);
@@ -284,14 +287,6 @@ function goStep3(){
   allTasks.forEach((t,i)=>addTaskRow(wrap,t.title,t.who,i));
   goStep(3);
 }
-
-let EMP_OPTS = "";
-
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadEmployees();
-  EMP = window.EMP_DICT;
-  EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
-});
 
 function updateMsDisplay(el) {
   const wrap = el.closest('.ms-wrap');
@@ -314,8 +309,7 @@ function addTaskRow(container, title="", who="", idx=0, dueDate=""){
     <input class="tp-date-input" type="date" value="${dueDate}" title="Task due date" />
     <button class="tp-del" onclick="removeTask(this)" title="Remove task">✕</button>`;
   
-  // check boxes
-  const whoArr = (who||"emp001").split(',').map(s=>s.trim());
+  const whoArr = (who||"").split(',').map(s=>s.trim());
   row.querySelectorAll(".ms-chk").forEach(chk => {
     if (whoArr.includes(chk.value)) chk.checked = true;
   });
@@ -332,126 +326,62 @@ function addTask(){
 
 function removeTask(btn){
   btn.closest(".task-row").remove();
-  // re-number icons
   document.querySelectorAll(".task-row").forEach((r,i)=>{
     r.querySelector(".tp-icon").textContent=i===0?"🔑":"→";
   });
 }
 
-async function createClient(){
-  const name=document.getElementById("name").value.trim();
-  const btn=document.getElementById("create-btn");
-  const errEl=document.getElementById("err3");
+function showErr(msg) {
+  const errEl = document.getElementById("err3");
+  errEl.textContent = msg;
+  errEl.style.display = "block";
+}
 
-  // Collect tasks from the editable DOM rows
-  const taskRows=[...document.querySelectorAll(".task-row")];
-  const customTasks=taskRows.map(row=>{
-    const chks = [...row.querySelectorAll('.ms-chk:checked')];
-    return {
-      title:    row.querySelector(".tp-title-input").value.trim(),
-      who:      chks.map(c => c.value).join(','),
-      due_date: row.querySelector(".tp-date-input").value || "",
-    };
-  }).filter(t=>t.title);
+async function addTasksToClient(){
+  const btn = document.getElementById("create-btn");
+  if(btn.disabled) return;
 
-  if(!customTasks.length){
-    errEl.textContent="Please add at least one task.";
-    errEl.style.display="block"; return;
-  }
-  errEl.style.display="none";
+  const clientId = document.getElementById("client_id").value;
+  if(!clientId) return;
 
-  const resetBtn = () => { btn.disabled=false; btn.textContent="🚀 Create Project"; };
-  const showErr  = (msg) => { errEl.textContent=msg; errEl.style.display="block"; resetBtn(); };
+  btn.disabled=true; btn.textContent="⏳ Adding Tasks...";
 
-  btn.disabled=true; btn.textContent="⏳ Creating...";
-
-  let extraNotes = "\n\n--- Workflow Details ---";
-  const drive = document.getElementById("drive_link")?.value.trim();
-  if (drive) extraNotes += `\nDrive Link: ${drive}`;
-  
+  let extraNotes = "\n\n--- Added Workflow Details ---";
   if (selected.has('social')) {
-    extraNotes += `\n[Social Media] Creds: ${document.getElementById("social_creds")?.value} | KPI: ${document.getElementById("social_kpi")?.value}`;
+    extraNotes += `\n[Social Media] Creds: ${document.getElementById("social_creds")?.value || ''} | KPI: ${document.getElementById("social_kpi")?.value || ''}`;
   }
   if (selected.has('website')) {
-    extraNotes += `\n[Website] Creds: ${document.getElementById("web_creds")?.value} | KPI: ${document.getElementById("web_kpi")?.value}`;
+    extraNotes += `\n[Website] Creds: ${document.getElementById("web_creds")?.value || ''} | KPI: ${document.getElementById("web_kpi")?.value || ''}`;
   }
   if (selected.has('shoot')) {
-    extraNotes += `\n[Shoot] Reqs: ${document.getElementById("shoot_reqs")?.value}`;
+    extraNotes += `\n[Shoot] Reqs: ${document.getElementById("shoot_reqs")?.value || ''}`;
   }
-  
-  const finalRequirements = document.getElementById("requirements").value.trim() + extraNotes;
 
   try {
-    // Check if Notion is configured
-    let useNotion = false;
-    try {
-      const ns = await fetch(`${API}/api/notion/status`, {signal: AbortSignal.timeout(5000)});
-      const nd = await ns.json();
-      useNotion = nd.configured;
-    } catch(e) { /* Notion status check failed — use SQLite */ }
-
-    if (useNotion) {
-      btn.textContent="⏳ Saving to Notion...";
-      const res = await fetch(`${API}/api/notion/clients`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          name,
-          contact:      document.getElementById("contact").value.trim(),
-          requirements: finalRequirements,
-          deadline:     document.getElementById("deadline")?.value || "",
-          budget:       document.getElementById("budget") ? document.getElementById("budget").value.trim() : "",
-          notes:        document.getElementById("notes").value.trim(),
-          services:     [...selected],
-          tasks:        customTasks.map(t => ({ title: t.title, who: t.who, due_date: t.due_date })),
-        }),
-        signal: AbortSignal.timeout(20000),
-      });
-      const data = await res.json();
-      if (!data.success) { showErr(data.error || "Failed to create client in Notion."); return; }
-
-      // Success
-      document.getElementById("main-card").style.display = "none";
-      document.getElementById("success-msg").innerHTML =
-        `"${name}" created in Notion with ${data.tasks_created||0} tasks auto-assigned. ` +
-        (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
-      document.getElementById("success").style.display = "block";
-
-    } else {
-      btn.textContent="⏳ Saving...";
-      const cr = await fetch(`${API}/api/clients`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          user_id: UID, name,
-          contact:      document.getElementById("contact").value.trim(),
-          requirements: document.getElementById("requirements").value.trim(),
-          deadline:     document.getElementById("deadline")?.value || "",
-          status: "active",
-        }),
-        signal: AbortSignal.timeout(10000),
-      });
-      const cd = await cr.json();
-      if (!cd.success) { showErr(cd.error || "Failed to create client."); return; }
-
-      const ar = await fetch(`${API}/api/clients/${cd.client_id}/auto-tasks`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({user_id:UID, services:[...selected], deadline:document.getElementById("deadline")?.value || ""}),
-        signal: AbortSignal.timeout(10000),
-      });
-      const ad = await ar.json();
-      document.getElementById("main-card").style.display = "none";
-      document.getElementById("success-msg").textContent = `"${name}" created with ${ad.tasks_created||0} tasks auto-assigned to the team.`;
-      document.getElementById("success").style.display = "block";
+    const ar = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({user_id:UID, services:[...selected], deadline:document.getElementById("deadline")?.value || "", extra_notes: extraNotes}),
+      signal: AbortSignal.timeout(10000),
+    });
+    const ad = await ar.json();
+    if (!ad.success && ad.error) {
+       showErr(ad.error);
+       btn.disabled=false; btn.textContent="✨ Add Tasks";
+       return;
     }
+    
+    document.getElementById("main-card").style.display = "none";
+    document.getElementById("success-msg").textContent = `Successfully added ${ad.tasks_created||0} tasks to the client project.`;
+    document.getElementById("success").style.display = "block";
 
   } catch(err) {
     if (err.name === "TimeoutError") {
-      showErr("Request timed out — check your server is running and Notion env vars are set on Railway.");
+      showErr("Request timed out — check your server is running.");
     } else {
       showErr(`Error: ${err.message || "Something went wrong. Please try again."}`);
     }
+    btn.disabled=false; btn.textContent="✨ Add Tasks";
   }
 }
 </script>

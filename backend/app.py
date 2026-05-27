@@ -2551,27 +2551,36 @@ def founder_dashboard():
 # Maps service type checkboxes → auto-generated tasks with assignees + dependencies
 SERVICE_TASK_TEMPLATES = {
     "social": [
-        {"title": "Social Media Strategy",         "assigned_to": "emp006", "order": 1},
-        {"title": "Content Calendar",              "assigned_to": "emp006", "order": 2},
-        {"title": "Graphics & Templates",          "assigned_to": "emp002", "order": 3},
+        {"title": "Content Ideation",              "assigned_to": "emp006", "order": 1},
+        {"title": "Content Approval (Cal Sheet)",  "assigned_to": "emp006", "order": 2},
+        {"title": "Discussion with Creative",      "assigned_to": "emp002", "order": 3},
+        {"title": "Creative Assigning",            "assigned_to": "emp006", "order": 4},
+        {"title": "Content Creation (Kanban)",     "assigned_to": "emp002", "order": 5},
+        {"title": "Final Drive Link",              "assigned_to": "emp006", "order": 6},
     ],
     "branding": [
-        {"title": "Design Brief & Moodboard",      "assigned_to": "emp002", "order": 4},
-        {"title": "Brand Identity & Guidelines",   "assigned_to": "emp002", "order": 5},
+        {"title": "Brand Essence",                 "assigned_to": "emp002", "order": 7},
+        {"title": "Stylescape",                    "assigned_to": "emp002", "order": 8},
+        {"title": "Logo Design Presentation",      "assigned_to": "emp002", "order": 9},
+        {"title": "Logo Iterations",               "assigned_to": "emp002", "order": 10},
+        {"title": "Visual Style",                  "assigned_to": "emp002", "order": 11},
+        {"title": "Collateral",                    "assigned_to": "emp002", "order": 12},
+        {"title": "Brand guidelines Content",      "assigned_to": "emp006", "order": 13},
+        {"title": "Brand guidelines",              "assigned_to": "emp002", "order": 14},
     ],
     "website": [
-        {"title": "Website Architecture Plan",     "assigned_to": "emp001", "order": 6},
-        {"title": "Frontend Development",          "assigned_to": "emp003", "order": 7},
-        {"title": "Backend / Integrations",        "assigned_to": "emp001", "order": 8},
-        {"title": "QA & Launch",                   "assigned_to": "emp003", "order": 9},
+        {"title": "Concept & Flow",                "assigned_to": "emp001", "order": 15},
+        {"title": "UI 1st Draft Review",           "assigned_to": "emp002", "order": 16},
+        {"title": "Content",                       "assigned_to": "emp006", "order": 17},
+        {"title": "Final Build",                   "assigned_to": "emp003", "order": 18},
     ],
     "shoot": [
-        {"title": "Video Script & Concept",        "assigned_to": "emp006", "order": 10},
-        {"title": "Video Shoot / Production",      "assigned_to": "emp005", "order": 11},
-        {"title": "Video Editing & Post",          "assigned_to": "emp005", "order": 12},
+        {"title": "Video Script & Concept",        "assigned_to": "emp006", "order": 19},
+        {"title": "Video Shoot / Production",      "assigned_to": "emp005", "order": 20},
+        {"title": "Video Editing & Post",          "assigned_to": "emp005", "order": 21},
     ],
     "miscellaneous": [
-        {"title": "Custom Deliverable Setup",      "assigned_to": "emp001", "order": 13},
+        {"title": "Custom Deliverable Setup",      "assigned_to": "emp001", "order": 22},
     ],
 }
 
@@ -2584,8 +2593,9 @@ def auto_generate_tasks(client_id):
     if not _is_admin(user_id):
         return jsonify({"error": "Unauthorized"}), 403
 
-    services = body.get("services", [])  # e.g. ["content","video","website"]
-    due_date = body.get("due_date", "")
+    services = body.get("services", [])
+    due_date = body.get("due_date", body.get("deadline", ""))
+    extra_notes = body.get("extra_notes", "")
     if not services:
         return jsonify({"error": "No services selected"}), 400
 
@@ -2619,6 +2629,9 @@ def auto_generate_tasks(client_id):
             for i in range(1, len(svc_ids)):
                 conn.execute("INSERT OR IGNORE INTO dependencies VALUES (?,?)",
                              (svc_ids[i], svc_ids[i-1]))
+                             
+        if extra_notes:
+            conn.execute("UPDATE clients SET requirements = requirements || ? WHERE id = ?", ("\n" + extra_notes, client_id))
 
     conn.close()
     return jsonify({"success": True, "tasks_created": len(created_ids), "task_ids": created_ids})
