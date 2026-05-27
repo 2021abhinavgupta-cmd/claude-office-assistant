@@ -249,7 +249,7 @@ async function loadClients() {
     // map notion_id to id for consistency
     clientsList.forEach(c => { c.id = c.notion_id; });
   } else {
-    const res = await fetch(`${API}/api/clients`);
+    const res = await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
     const data = await res.json();
     clientsList = data.clients || data || [];
   }
