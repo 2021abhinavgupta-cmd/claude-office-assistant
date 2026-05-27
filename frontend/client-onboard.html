@@ -119,29 +119,25 @@
     <div class="fg">
       <label>What services does this client need?</label>
       <div class="services-grid">
-        <div class="svc-box" id="svc-content" onclick="toggleSvc('content',this)">
-          <input type="checkbox" value="content"/><span class="svc-icon">✍️</span>
-          <div class="svc-info"><div class="svc-name">Content Writing</div><div class="svc-team">→ Mohit</div></div>
-        </div>
-        <div class="svc-box" id="svc-video" onclick="toggleSvc('video',this)">
-          <input type="checkbox" value="video"/><span class="svc-icon">🎬</span>
-          <div class="svc-info"><div class="svc-name">Video Production</div><div class="svc-team">→ Raj + Happy</div></div>
-        </div>
-        <div class="svc-box" id="svc-design" onclick="toggleSvc('design',this)">
-          <input type="checkbox" value="design"/><span class="svc-icon">🎨</span>
-          <div class="svc-info"><div class="svc-name">UI/UX Design</div><div class="svc-team">→ Nupur</div></div>
-        </div>
-        <div class="svc-box" id="svc-website" onclick="toggleSvc('website',this)">
-          <input type="checkbox" value="website"/><span class="svc-icon">💻</span>
-          <div class="svc-info"><div class="svc-name">Website Development</div><div class="svc-team">→ Vidit + Abhinav</div></div>
-        </div>
         <div class="svc-box" id="svc-social" onclick="toggleSvc('social',this)">
           <input type="checkbox" value="social"/><span class="svc-icon">📱</span>
           <div class="svc-info"><div class="svc-name">Social Media</div><div class="svc-team">→ Mohit + Nupur</div></div>
         </div>
-        <div class="svc-box" id="svc-accounts" onclick="toggleSvc('accounts',this)">
-          <input type="checkbox" value="accounts"/><span class="svc-icon">📊</span>
-          <div class="svc-info"><div class="svc-name">Accounts & Reports</div><div class="svc-team">→ Tanaya</div></div>
+        <div class="svc-box" id="svc-branding" onclick="toggleSvc('branding',this)">
+          <input type="checkbox" value="branding"/><span class="svc-icon">🎨</span>
+          <div class="svc-info"><div class="svc-name">Branding</div><div class="svc-team">→ Nupur</div></div>
+        </div>
+        <div class="svc-box" id="svc-website" onclick="toggleSvc('website',this)">
+          <input type="checkbox" value="website"/><span class="svc-icon">💻</span>
+          <div class="svc-info"><div class="svc-name">Website</div><div class="svc-team">→ Vidit + Abhinav</div></div>
+        </div>
+        <div class="svc-box" id="svc-shoot" onclick="toggleSvc('shoot',this)">
+          <input type="checkbox" value="shoot"/><span class="svc-icon">🎬</span>
+          <div class="svc-info"><div class="svc-name">Shoot</div><div class="svc-team">→ Raj + Happy</div></div>
+        </div>
+        <div class="svc-box" id="svc-miscellaneous" onclick="toggleSvc('miscellaneous',this)">
+          <input type="checkbox" value="miscellaneous"/><span class="svc-icon">📁</span>
+          <div class="svc-info"><div class="svc-name">Miscellaneous</div><div class="svc-team">→ Team</div></div>
         </div>
       </div>
     </div>
@@ -160,8 +156,8 @@
            <div><input type="text" id="web_kpi" placeholder="KPI (e.g. >90 PageSpeed)"/></div>
         </div>
       </div>
-      <div id="sf-video" style="display:none;" class="fg">
-        <label style="color:var(--acc)">🎬 Shoot / Video Requirements</label>
+      <div id="sf-shoot" style="display:none;" class="fg">
+        <label style="color:var(--acc)">🎬 Shoot Requirements</label>
         <textarea id="shoot_reqs" placeholder="Location, dates, actors, equipment needed..."></textarea>
       </div>
     </div>
@@ -219,12 +215,11 @@ if (!ONBOARD_ADMINS.includes(user.user_id)) {
 
 let EMP = {};
 const SVC_TASKS = {
-  content:[{title:"Content Brief & Research",who:"emp006"},{title:"Write Copy / Content Draft",who:"emp006"},{title:"Content Review & Approval",who:"emp004"}],
-  video:[{title:"Video Script Writing",who:"emp006"},{title:"Video Shoot / Production",who:"emp005"},{title:"Video Editing & Post",who:"emp005"},{title:"AI Video Enhancements",who:"emp008"}],
-  design:[{title:"Design Brief & Moodboard",who:"emp002"},{title:"UI/UX Design — Wireframes",who:"emp002"},{title:"Final Design Handoff",who:"emp002"}],
-  website:[{title:"Website Architecture Plan",who:"emp001"},{title:"Frontend Development",who:"emp003"},{title:"Backend / Integrations",who:"emp001"},{title:"QA & Launch",who:"emp003"}],
   social:[{title:"Social Media Strategy",who:"emp006"},{title:"Content Calendar",who:"emp006"},{title:"Graphics & Templates",who:"emp002"}],
-  accounts:[{title:"Invoice & Payment Setup",who:"emp007"},{title:"Monthly Reporting",who:"emp007"}],
+  branding:[{title:"Design Brief & Moodboard",who:"emp002"},{title:"Brand Identity & Guidelines",who:"emp002"}],
+  website:[{title:"Website Architecture Plan",who:"emp001"},{title:"Frontend Development",who:"emp003"},{title:"Backend / Integrations",who:"emp001"},{title:"QA & Launch",who:"emp003"}],
+  shoot:[{title:"Video Script & Concept",who:"emp006"},{title:"Video Shoot / Production",who:"emp005"},{title:"Video Editing & Post",who:"emp005"}],
+  miscellaneous:[{title:"Custom Deliverable Setup",who:"emp001"}],
 };
 
 let selected = new Set();
@@ -233,7 +228,7 @@ function toggleSvc(svc, el){
   el.classList.toggle("selected");
   if(selected.has(svc)) selected.delete(svc); else selected.add(svc);
   
-  if(svc === 'social' || svc === 'website' || svc === 'video') {
+  if(svc === 'social' || svc === 'website' || svc === 'shoot') {
     const sf = document.getElementById("sf-" + svc);
     if(sf) sf.style.display = selected.has(svc) ? "block" : "none";
   }
@@ -359,7 +354,7 @@ async function createClient(){
   if (selected.has('website')) {
     extraNotes += `\n[Website] Creds: ${document.getElementById("web_creds")?.value} | KPI: ${document.getElementById("web_kpi")?.value}`;
   }
-  if (selected.has('video')) {
+  if (selected.has('shoot')) {
     extraNotes += `\n[Shoot] Reqs: ${document.getElementById("shoot_reqs")?.value}`;
   }
   

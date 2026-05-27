@@ -2550,36 +2550,28 @@ def founder_dashboard():
 # ── Service → Default Task Templates ─────────────────────────────────────────
 # Maps service type checkboxes → auto-generated tasks with assignees + dependencies
 SERVICE_TASK_TEMPLATES = {
-    "content": [
-        {"title": "Content Brief & Research",     "assigned_to": "emp006", "order": 1},
-        {"title": "Write Copy / Content Draft",    "assigned_to": "emp006", "order": 2},
-        {"title": "Content Review & Approval",     "assigned_to": "emp004", "order": 3},
+    "social": [
+        {"title": "Social Media Strategy",         "assigned_to": "emp006", "order": 1},
+        {"title": "Content Calendar",              "assigned_to": "emp006", "order": 2},
+        {"title": "Graphics & Templates",          "assigned_to": "emp002", "order": 3},
     ],
-    "video": [
-        {"title": "Video Script Writing",          "assigned_to": "emp006", "order": 4},
-        {"title": "Video Shoot / Production",      "assigned_to": "emp005", "order": 5},
-        {"title": "Video Editing & Post",          "assigned_to": "emp005", "order": 6},
-        {"title": "AI Video Enhancements",         "assigned_to": "emp008", "order": 7},
-    ],
-    "design": [
-        {"title": "Design Brief & Moodboard",      "assigned_to": "emp002", "order": 8},
-        {"title": "UI/UX Design — Wireframes",     "assigned_to": "emp002", "order": 9},
-        {"title": "Final Design Handoff",          "assigned_to": "emp002", "order": 10},
+    "branding": [
+        {"title": "Design Brief & Moodboard",      "assigned_to": "emp002", "order": 4},
+        {"title": "Brand Identity & Guidelines",   "assigned_to": "emp002", "order": 5},
     ],
     "website": [
-        {"title": "Website Architecture Plan",     "assigned_to": "emp001", "order": 11},
-        {"title": "Frontend Development",          "assigned_to": "emp003", "order": 12},
-        {"title": "Backend / Integrations",        "assigned_to": "emp001", "order": 13},
-        {"title": "QA & Launch",                   "assigned_to": "emp003", "order": 14},
+        {"title": "Website Architecture Plan",     "assigned_to": "emp001", "order": 6},
+        {"title": "Frontend Development",          "assigned_to": "emp003", "order": 7},
+        {"title": "Backend / Integrations",        "assigned_to": "emp001", "order": 8},
+        {"title": "QA & Launch",                   "assigned_to": "emp003", "order": 9},
     ],
-    "social": [
-        {"title": "Social Media Strategy",         "assigned_to": "emp006", "order": 15},
-        {"title": "Content Calendar",              "assigned_to": "emp006", "order": 16},
-        {"title": "Graphics & Templates",          "assigned_to": "emp002", "order": 17},
+    "shoot": [
+        {"title": "Video Script & Concept",        "assigned_to": "emp006", "order": 10},
+        {"title": "Video Shoot / Production",      "assigned_to": "emp005", "order": 11},
+        {"title": "Video Editing & Post",          "assigned_to": "emp005", "order": 12},
     ],
-    "accounts": [
-        {"title": "Invoice & Payment Setup",       "assigned_to": "emp007", "order": 18},
-        {"title": "Monthly Reporting",             "assigned_to": "emp007", "order": 19},
+    "miscellaneous": [
+        {"title": "Custom Deliverable Setup",      "assigned_to": "emp001", "order": 13},
     ],
 }
 
