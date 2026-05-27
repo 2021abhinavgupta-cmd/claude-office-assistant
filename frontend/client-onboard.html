@@ -174,12 +174,6 @@
       <div class="fg"><label>Client Name</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
       <div class="fg"><label>Project Deadline (If any)</label><input type="date" id="deadline"/></div>
     </div>
-    <div class="preview-section">
-      <h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
-      <p class="ps-sub">Edit task names or assignees, delete unwanted tasks, or add custom ones.</p>
-      <div id="task-preview-list"></div>
-      <button class="add-task-btn" onclick="addTask()">＋ Add custom task</button>
-    </div>
     <p class="err" id="err3"></p>
     <div class="btn-row">
       <button class="btn btn-back-btn" onclick="goStep(2)">← Back</button>
@@ -191,9 +185,11 @@
 <div class="success" id="success">
   <div class="icon">🎉</div>
   <h2>Project Created!</h2>
-  <p id="success-msg">Client and tasks have been set up. Team members will see their tasks on login.</p>
-  <a href="projects.html">📋 View Project Board</a>
-  <a href="client-onboard.html">+ Onboard Another Client</a>
+  <p id="success-msg">Client has been set up successfully.</p>
+  <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;">
+    <a href="projects.html" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;padding:10px 20px;border-radius:var(--rs);font-weight:500;">Done</a>
+    <a href="add-tasks.html" style="background:var(--acc);color:var(--bg);text-decoration:none;padding:10px 20px;border-radius:var(--rs);font-weight:600;">✨ Add Tasks</a>
+  </div>
 </div>
 
 <script>
@@ -275,90 +271,13 @@ function goStep3(){
   document.getElementById("err2").style.display="none";
   document.getElementById("r-name").textContent=document.getElementById("name").value.trim();
 
-  // Build editable task rows
-  const wrap=document.getElementById("task-preview-list");
-  const allTasks=[];
-  for(const svc of selected) allTasks.push(...SVC_TASKS[svc]);
-  if(!allTasks.length){wrap.innerHTML='<p class="no-preview">No tasks — add them below.</p>';goStep(3);return;}
-  wrap.innerHTML="";
-  allTasks.forEach((t,i)=>addTaskRow(wrap,t.title,t.who,i));
   goStep(3);
-}
-
-let EMP_OPTS = "";
-
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadEmployees();
-  EMP = window.EMP_DICT;
-  EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
-});
-
-function updateMsDisplay(el) {
-  const wrap = el.closest('.ms-wrap');
-  const chks = [...wrap.querySelectorAll('.ms-chk:checked')];
-  const display = wrap.querySelector('.ms-display');
-  if (chks.length === 0) { display.textContent = 'Unassigned'; display.style.color = 'var(--muted)'; }
-  else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
-}
-
-function addTaskRow(container, title="", who="", idx=0, dueDate=""){
-  const row=document.createElement("div");
-  row.className="task-row";
-  row.innerHTML=`
-    <span class="tp-icon">${idx===0?"🔑":"→"}</span>
-    <input class="tp-title-input" value="${title.replace(/"/g,'&quot;')}" placeholder="Task name…" />
-    <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
-      <div class="ms-display" onclick="this.parentElement.classList.toggle('open')">Select team...</div>
-      <div class="ms-dropdown">${EMP_OPTS}</div>
-    </div>
-    <input class="tp-date-input" type="date" value="${dueDate}" title="Task due date" />
-    <button class="tp-del" onclick="removeTask(this)" title="Remove task">✕</button>`;
-  
-  // check boxes
-  const whoArr = (who||"emp001").split(',').map(s=>s.trim());
-  row.querySelectorAll(".ms-chk").forEach(chk => {
-    if (whoArr.includes(chk.value)) chk.checked = true;
-  });
-  updateMsDisplay(row.querySelector(".ms-chk"));
-  container.appendChild(row);
-}
-
-function addTask(){
-  const wrap=document.getElementById("task-preview-list");
-  const existing=wrap.querySelectorAll(".task-row").length;
-  addTaskRow(wrap,"","emp001",existing);
-  wrap.querySelector(".task-row:last-child .tp-title-input").focus();
-}
-
-function removeTask(btn){
-  btn.closest(".task-row").remove();
-  // re-number icons
-  document.querySelectorAll(".task-row").forEach((r,i)=>{
-    r.querySelector(".tp-icon").textContent=i===0?"🔑":"→";
-  });
 }
 
 async function createClient(){
   const name=document.getElementById("name").value.trim();
   const btn=document.getElementById("create-btn");
   const errEl=document.getElementById("err3");
-
-  // Collect tasks from the editable DOM rows
-  const taskRows=[...document.querySelectorAll(".task-row")];
-  const customTasks=taskRows.map(row=>{
-    const chks = [...row.querySelectorAll('.ms-chk:checked')];
-    return {
-      title:    row.querySelector(".tp-title-input").value.trim(),
-      who:      chks.map(c => c.value).join(','),
-      due_date: row.querySelector(".tp-date-input").value || "",
-    };
-  }).filter(t=>t.title);
-
-  if(!customTasks.length){
-    errEl.textContent="Please add at least one task.";
-    errEl.style.display="block"; return;
-  }
-  errEl.style.display="none";
 
   const resetBtn = () => { btn.disabled=false; btn.textContent="🚀 Create Project"; };
   const showErr  = (msg) => { errEl.textContent=msg; errEl.style.display="block"; resetBtn(); };
@@ -403,7 +322,7 @@ async function createClient(){
           budget:       document.getElementById("budget") ? document.getElementById("budget").value.trim() : "",
           notes:        document.getElementById("notes").value.trim(),
           services:     [...selected],
-          tasks:        customTasks.map(t => ({ title: t.title, who: t.who, due_date: t.due_date })),
+          tasks:        [],
         }),
         signal: AbortSignal.timeout(20000),
       });
@@ -413,7 +332,7 @@ async function createClient(){
       // Success
       document.getElementById("main-card").style.display = "none";
       document.getElementById("success-msg").innerHTML =
-        `"${name}" created in Notion with ${data.tasks_created||0} tasks auto-assigned. ` +
+        `"${name}" created in Notion. ` +
         (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
       document.getElementById("success").style.display = "block";
 
@@ -434,15 +353,8 @@ async function createClient(){
       const cd = await cr.json();
       if (!cd.success) { showErr(cd.error || "Failed to create client."); return; }
 
-      const ar = await fetch(`${API}/api/clients/${cd.client_id}/auto-tasks`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({user_id:UID, services:[...selected], deadline:document.getElementById("deadline")?.value || ""}),
-        signal: AbortSignal.timeout(10000),
-      });
-      const ad = await ar.json();
       document.getElementById("main-card").style.display = "none";
-      document.getElementById("success-msg").textContent = `"${name}" created with ${ad.tasks_created||0} tasks auto-assigned to the team.`;
+      document.getElementById("success-msg").textContent = `"${name}" created successfully.`;
       document.getElementById("success").style.display = "block";
     }
 
