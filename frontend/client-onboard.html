@@ -107,7 +107,8 @@
       <div class="fg"><label>Client Name *</label><input type="text" id="name" placeholder="Acme Corp"/></div>
       <div class="fg"><label>Contact (Email / Phone)</label><input type="text" id="contact" placeholder="raj@acme.com"/></div>
     </div>
-    <div class="fg"><label>Requirements / Project Scope</label><textarea id="requirements" placeholder="Describe what the client needs — website redesign, social media package, video production..."></textarea></div>
+    <div class="fg"><label>Brief Description</label><textarea id="requirements" placeholder="High-level project overview..."></textarea></div>
+    <div class="fg"><label>Docs & File Available (Drive Link)</label><input type="text" id="drive_link" placeholder="https://drive.google.com/..."/></div>
     <div class="fg"><label>Special Notes</label><input type="text" id="notes" placeholder="Any special requirements, restrictions, or context..."/></div>
     <p class="err" id="err1">Please enter the client name.</p>
     <div class="btn-row"><button class="btn btn-acc" onclick="goStep2()">Next: Select Services →</button></div>
@@ -144,6 +145,26 @@
         </div>
       </div>
     </div>
+    <div id="sub-forms" style="margin-top:20px;">
+      <div id="sf-social" style="display:none;" class="fg">
+        <label style="color:var(--acc)">📱 Social Media Details</label>
+        <div class="two">
+           <div><input type="text" id="social_creds" placeholder="Social Credentials"/></div>
+           <div><input type="text" id="social_kpi" placeholder="KPI (e.g. 10k followers)"/></div>
+        </div>
+      </div>
+      <div id="sf-website" style="display:none;" class="fg">
+        <label style="color:var(--acc)">💻 Website Details</label>
+        <div class="two">
+           <div><input type="text" id="web_creds" placeholder="Hosting / CMS Credentials"/></div>
+           <div><input type="text" id="web_kpi" placeholder="KPI (e.g. >90 PageSpeed)"/></div>
+        </div>
+      </div>
+      <div id="sf-video" style="display:none;" class="fg">
+        <label style="color:var(--acc)">🎬 Shoot / Video Requirements</label>
+        <textarea id="shoot_reqs" placeholder="Location, dates, actors, equipment needed..."></textarea>
+      </div>
+    </div>
     <p class="err" id="err2">Please select at least one service.</p>
     <div class="btn-row">
       <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
@@ -154,8 +175,8 @@
   <!-- Step 3 -->
   <div id="step3" style="display:none">
     <div class="two">
-      <div class="fg"><label>Client</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
-      <div class="fg"><label>Deadline</label><div id="r-deadline" style="font-size:.9rem;padding:6px 0;color:var(--muted)"></div></div>
+      <div class="fg"><label>Client Name</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
+      <div class="fg"><label>Project Deadline (If any)</label><input type="date" id="deadline"/></div>
     </div>
     <div class="preview-section">
       <h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
@@ -211,6 +232,11 @@ let selected = new Set();
 function toggleSvc(svc, el){
   el.classList.toggle("selected");
   if(selected.has(svc)) selected.delete(svc); else selected.add(svc);
+  
+  if(svc === 'social' || svc === 'website' || svc === 'video') {
+    const sf = document.getElementById("sf-" + svc);
+    if(sf) sf.style.display = selected.has(svc) ? "block" : "none";
+  }
 }
 
 function goStep(n){
@@ -232,8 +258,6 @@ function goStep3(){
   if(!selected.size){document.getElementById("err2").style.display="block";return;}
   document.getElementById("err2").style.display="none";
   document.getElementById("r-name").textContent=document.getElementById("name").value.trim();
-  const dl=document.getElementById("deadline")?.value;
-  document.getElementById("r-deadline").textContent=dl||"No deadline set";
 
   // Build editable task rows
   const wrap=document.getElementById("task-preview-list");
@@ -325,6 +349,22 @@ async function createClient(){
 
   btn.disabled=true; btn.textContent="⏳ Creating...";
 
+  let extraNotes = "\n\n--- Workflow Details ---";
+  const drive = document.getElementById("drive_link")?.value.trim();
+  if (drive) extraNotes += `\nDrive Link: ${drive}`;
+  
+  if (selected.has('social')) {
+    extraNotes += `\n[Social Media] Creds: ${document.getElementById("social_creds")?.value} | KPI: ${document.getElementById("social_kpi")?.value}`;
+  }
+  if (selected.has('website')) {
+    extraNotes += `\n[Website] Creds: ${document.getElementById("web_creds")?.value} | KPI: ${document.getElementById("web_kpi")?.value}`;
+  }
+  if (selected.has('video')) {
+    extraNotes += `\n[Shoot] Reqs: ${document.getElementById("shoot_reqs")?.value}`;
+  }
+  
+  const finalRequirements = document.getElementById("requirements").value.trim() + extraNotes;
+
   try {
     // Check if Notion is configured
     let useNotion = false;
@@ -342,7 +382,7 @@ async function createClient(){
         body: JSON.stringify({
           name,
           contact:      document.getElementById("contact").value.trim(),
-          requirements: document.getElementById("requirements").value.trim(),
+          requirements: finalRequirements,
           deadline:     document.getElementById("deadline")?.value || "",
           budget:       document.getElementById("budget") ? document.getElementById("budget").value.trim() : "",
           notes:        document.getElementById("notes").value.trim(),
