@@ -234,10 +234,27 @@ async function loadEmployees() {
 }
 
 async function loadClients() {
-  const res = await fetch(`${API}/api/clients`);
-  const data = await res.json();
+  let useNotion = false;
+  try {
+    const ns = await fetch(`${API}/api/notion/status`);
+    const nd = await ns.json();
+    useNotion = nd.configured;
+  } catch(e) {}
+
+  let clientsList = [];
+  if (useNotion) {
+    const res = await fetch(`${API}/api/notion/dashboard`);
+    const data = await res.json();
+    clientsList = data.clients || [];
+    // map notion_id to id for consistency
+    clientsList.forEach(c => { c.id = c.notion_id; });
+  } else {
+    const res = await fetch(`${API}/api/clients`);
+    const data = await res.json();
+    clientsList = data.clients || data || [];
+  }
+
   const sel = document.getElementById("client_id");
-  const clientsList = data.clients || data || [];
   sel.innerHTML = '<option value="">Select a client...</option>' + clientsList.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
 }
 
