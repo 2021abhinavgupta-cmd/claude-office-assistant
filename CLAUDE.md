@@ -79,7 +79,8 @@ claude-office-assistant/
 │   ├── client-portal.html      # Client task view
 │   ├── client-admin.html       # Admin: manage client accounts
 │   ├── client-auth.js          # Auth guard for client portal pages
-│   └── client-onboard.html     # New client onboarding form
+│   ├── client-onboard.html     # New client onboarding form (3 steps: Info → Services → Review & Create). Success screen offers Done or ✨ Add Tasks
+│   └── add-tasks.html          # Apply workflow task templates to an existing client (select client → pick workflow(s) → POST to /api/clients/<id>/auto-tasks)
 ├── config/
 │   └── employees.json          # Static employee data (id, name, pin, role, etc.)
 ├── logs/                       # Persistent volume — DO NOT delete
@@ -217,3 +218,15 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 7. **Standup Smart Add** — When users add tasks to their daily standup, they go through `/api/standup/smart-add`. We disabled the AI from generating a `clean_title` because it was altering users' exact phrasing in frustrating ways. The system now retains the exact `title` the user typed while only using the AI to infer the `client_name`.
 
 8. **Standup Auto-Carry-Over** — When an employee loads their tasks for today (`/api/standup/my-tasks`), if they have no tasks yet, the system automatically carries over pending tasks from their *most recent* active day (using `MAX(date)` before today). This safely handles weekends and skipped days without relying on a hardcoded "yesterday" (`timedelta(days=1)`).
+
+9. **Client Onboarding Flow (Two-Step)** — `client-onboard.html` creates the client record only (no tasks). After creation, the success screen offers two options: **Done** (→ Project Board) or **✨ Add Tasks** (→ `add-tasks.html`). This separation keeps the onboarding form simple and allows task templates to be applied separately — or added later.
+
+10. **Add Tasks Workflow Templates** — `add-tasks.html` fetches all existing clients via `GET /api/clients`, lets the admin pick one, select workflow(s), and POSTs to `/api/clients/<id>/auto-tasks`. The `SERVICE_TASK_TEMPLATES` in `backend/app.py` define the sequential tasks per service. The 5 service types are:
+    - **social** (6 tasks): Content Ideation → Content Approval (Cal Sheet) → Discussion with Creative → Creative Assigning → Content Creation (Kanban) → Final Drive Link
+    - **branding** (8 tasks): Brand Essence → Stylescape → Logo Design Presentation → Logo Iterations → Visual Style → Collateral → Brand guidelines Content → Brand guidelines
+    - **website** (4 tasks): Concept & Flow → UI 1st Draft Review → Content → Final Build
+    - **shoot** (3 tasks): Video Script & Concept → Video Shoot / Production → Video Editing & Post
+    - **miscellaneous** (1 task): Custom Deliverable Setup
+    Tasks within each service are chained with sequential dependencies in the `dependencies` table. The `/api/clients/<id>/auto-tasks` endpoint also accepts `deadline` and `extra_notes` in the POST body.
+
+11. **Add Tasks Quick Action** — The `📝 Add Tasks` button in `dashboard.html`'s Quick Actions is visible to all users. The page itself restricts creation to admins (`ONBOARD_ADMINS = ["emp001", "emp003", "emp004"]`) and shows an "Access Restricted" message for everyone else.
