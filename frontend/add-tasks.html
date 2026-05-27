@@ -237,7 +237,8 @@ async function loadClients() {
   const res = await fetch(`${API}/api/clients`);
   const data = await res.json();
   const sel = document.getElementById("client_id");
-  sel.innerHTML = '<option value="">Select a client...</option>' + data.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  const clientsList = data.clients || data || [];
+  sel.innerHTML = '<option value="">Select a client...</option>' + clientsList.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
