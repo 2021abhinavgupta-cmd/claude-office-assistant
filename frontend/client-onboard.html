@@ -188,7 +188,7 @@
   <p id="success-msg">Client has been set up successfully.</p>
   <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;">
     <a href="projects.html" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;padding:10px 20px;border-radius:var(--rs);font-weight:500;">Done</a>
-    <a href="add-tasks.html" style="background:var(--acc);color:var(--bg);text-decoration:none;padding:10px 20px;border-radius:var(--rs);font-weight:600;">✨ Add Tasks</a>
+    <a href="add-tasks.html" id="add-tasks-link" style="background:var(--acc);color:var(--bg);text-decoration:none;padding:10px 20px;border-radius:var(--rs);font-weight:600;">✨ Add Tasks</a>
   </div>
 </div>
 
@@ -334,6 +334,10 @@ async function createClient(){
       document.getElementById("success-msg").innerHTML =
         `"${name}" created in Notion. ` +
         (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
+      
+      const addLink = document.getElementById("add-tasks-link");
+      if (addLink && data.client_id) { addLink.href = `add-tasks.html?client_id=${data.client_id}&services=${[...selected].join(',')}`; }
+
       document.getElementById("success").style.display = "block";
 
     } else {
@@ -355,6 +359,10 @@ async function createClient(){
 
       document.getElementById("main-card").style.display = "none";
       document.getElementById("success-msg").textContent = `"${name}" created successfully.`;
+      
+      const addLink = document.getElementById("add-tasks-link");
+      if (addLink && cd.client_id) { addLink.href = `add-tasks.html?client_id=${cd.client_id}&services=${[...selected].join(',')}`; }
+
       document.getElementById("success").style.display = "block";
     }
 

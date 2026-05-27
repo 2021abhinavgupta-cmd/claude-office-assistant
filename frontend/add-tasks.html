@@ -263,6 +263,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadClients();
   EMP = window.EMP_DICT;
   EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const passedClientId = urlParams.get('client_id');
+  const passedServices = urlParams.get('services');
+
+  if (passedClientId && passedServices) {
+    document.getElementById("client_id").value = passedClientId;
+    
+    const svcs = passedServices.split(',').filter(Boolean);
+    svcs.forEach(svc => {
+       const box = document.getElementById("svc-" + svc);
+       if (box) toggleSvc(svc, box);
+    });
+
+    const selectEl = document.getElementById("client_id");
+    if(selectEl.selectedIndex >= 0) {
+      document.getElementById("r-name").textContent = selectEl.options[selectEl.selectedIndex].text;
+    }
+
+    goStep3();
+  }
 });
 
 function toggleSvc(svc, el){
@@ -364,15 +385,20 @@ async function addTasksToClient(){
 
   btn.disabled=true; btn.textContent="⏳ Adding Tasks...";
 
-  let extraNotes = "\n\n--- Added Workflow Details ---";
-  if (selected.has('social')) {
-    extraNotes += `\n[Social Media] Creds: ${document.getElementById("social_creds")?.value || ''} | KPI: ${document.getElementById("social_kpi")?.value || ''}`;
+  let extraNotes = "";
+  let wfDetails = [];
+  if (selected.has('social') && (document.getElementById("social_creds")?.value || document.getElementById("social_kpi")?.value)) {
+    wfDetails.push(`[Social Media] Creds: ${document.getElementById("social_creds")?.value || ''} | KPI: ${document.getElementById("social_kpi")?.value || ''}`);
   }
-  if (selected.has('website')) {
-    extraNotes += `\n[Website] Creds: ${document.getElementById("web_creds")?.value || ''} | KPI: ${document.getElementById("web_kpi")?.value || ''}`;
+  if (selected.has('website') && (document.getElementById("web_creds")?.value || document.getElementById("web_kpi")?.value)) {
+    wfDetails.push(`[Website] Creds: ${document.getElementById("web_creds")?.value || ''} | KPI: ${document.getElementById("web_kpi")?.value || ''}`);
   }
-  if (selected.has('shoot')) {
-    extraNotes += `\n[Shoot] Reqs: ${document.getElementById("shoot_reqs")?.value || ''}`;
+  if (selected.has('shoot') && document.getElementById("shoot_reqs")?.value) {
+    wfDetails.push(`[Shoot] Reqs: ${document.getElementById("shoot_reqs")?.value || ''}`);
+  }
+  
+  if (wfDetails.length > 0) {
+    extraNotes = "\n\n--- Added Workflow Details ---\n" + wfDetails.join("\n");
   }
 
   try {
