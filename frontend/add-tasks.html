@@ -308,6 +308,22 @@ function goStep2(){
   const clientId = document.getElementById("client_id").value;
   if(!clientId){document.getElementById("err1").style.display="block";return;}
   document.getElementById("err1").style.display="none";
+
+  // Load saved services from onboarding if they exist
+  const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+  if (clientServices[clientId]) {
+    // Clear currently selected
+    [...selected].forEach(svc => {
+       const box = document.getElementById("svc-" + svc);
+       if (box) toggleSvc(svc, box);
+    });
+    // Apply saved services
+    clientServices[clientId].forEach(svc => {
+       const box = document.getElementById("svc-" + svc);
+       if (box && !selected.has(svc)) toggleSvc(svc, box);
+    });
+  }
+
   goStep(2);
 }
 

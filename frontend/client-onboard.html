@@ -330,6 +330,10 @@ async function createClient(){
       if (!data.success) { showErr(data.error || "Failed to create client in Notion."); return; }
 
       // Success
+      const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+      clientServices[data.client_id] = [...selected];
+      localStorage.setItem('claude_client_services', JSON.stringify(clientServices));
+
       document.getElementById("main-card").style.display = "none";
       document.getElementById("success-msg").innerHTML =
         `"${name}" created in Notion. ` +
@@ -356,6 +360,10 @@ async function createClient(){
       });
       const cd = await cr.json();
       if (!cd.success) { showErr(cd.error || "Failed to create client."); return; }
+
+      const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+      clientServices[cd.client_id] = [...selected];
+      localStorage.setItem('claude_client_services', JSON.stringify(clientServices));
 
       document.getElementById("main-card").style.display = "none";
       document.getElementById("success-msg").textContent = `"${name}" created successfully.`;
