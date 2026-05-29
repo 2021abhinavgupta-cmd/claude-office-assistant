@@ -778,9 +778,11 @@
                 <th>Post Day</th>
                 <th>Post Title / Brief</th>
                 <th>Type</th>
-                <th>Content / Link</th>
+                <th>Idea</th>
+                <th>Caption</th>
                 <th>Assigned To</th>
                 <th>Status</th>
+                <th>File (Drive Link)</th>
                 <th></th>
               </tr>
             </thead>
@@ -1093,7 +1095,7 @@
     function statusOptions(sel = "") {
       return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
     }
-    function addSocialRow(title = "", type = "Story", link = "", assignee = "", status = "Scheduled", postDay = "") {
+    function addSocialRow(title = "", type = "Story", idea = "", caption = "", assignee = "", status = "Scheduled", postDay = "", driveLink = "") {
       socialRowIdx++;
       const idx = socialRowIdx;
       const tbody = document.getElementById("social-tbody");
@@ -1105,9 +1107,10 @@
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
     <td><input class="st-input" type="date" value="${postDay}" style="width:130px"/></td>
-    <td><input class="st-input" value="${title}" placeholder="Post title or brief…" style="min-width:160px"/></td>
-    <td><select class="st-sel" style="width:100px">${typeOptions(type)}</select></td>
-    <td><input class="st-input" value="${link}" placeholder="Link or content notes…" style="min-width:160px"/></td>
+    <td><input class="st-input" value="${title}" placeholder="Post title or brief…" style="min-width:140px"/></td>
+    <td><select class="st-sel" style="width:90px">${typeOptions(type)}</select></td>
+    <td><input class="st-input" value="${idea}" placeholder="Content idea…" style="min-width:140px"/></td>
+    <td><textarea class="st-input" placeholder="Caption text…" style="min-width:160px;height:36px;resize:vertical">${caption}</textarea></td>
     <td style="min-width:140px">
       <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'),150)">
         <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="font-size:.75rem;padding:4px 8px;background:var(--s1);border:1px solid var(--bdr);border-radius:5px;cursor:pointer">Unassigned</div>
@@ -1117,6 +1120,7 @@
     <td>
       <select class="st-sel status-sel" style="width:120px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
     </td>
+    <td><input class="st-input" value="${driveLink}" placeholder="Drive link…" style="min-width:140px"/></td>
     <td><button class="st-del" onclick="removeSocialRow(this)" title="Delete">✕</button></td>`;
       tbody.appendChild(tr);
       // Pre-select assignee if provided
