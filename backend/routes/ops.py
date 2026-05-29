@@ -761,7 +761,7 @@ def notion_create_client():
             with conn:
                 conn.execute(
                     "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
-                    (c_user, c_pass, name, client["id"])
+                    (c_user, c_pass, name, client["notion_id"])
                 )
             conn.close()
         except Exception as e:
