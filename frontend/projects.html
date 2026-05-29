@@ -650,19 +650,19 @@ function renderClientSheets(clientId) {
     // Parse description for Brief, Idea, Caption, Link
     // Format: Brief: xxx | Idea: yyy | Caption: zzz | Link: www
     const notes = t.description || "";
-    const parts = notes.split(" | ");
     let brief = "", idea = "", caption = "", link = "";
     
-    parts.forEach(p => {
-      const colMatch = p.match(/^(Brief|Idea|Caption|Link):\s*(.*)$/);
-      if (colMatch) {
-        const k = colMatch[1], v = colMatch[2];
-        if (k === "Brief") brief = v;
-        if (k === "Idea") idea = v;
-        if (k === "Caption") caption = v;
-        if (k === "Link") link = v;
-      }
-    });
+    const bMatch = notes.match(/Brief:\s*([\s\S]*?)(?=\s*\|\s*(?:Idea|Caption|Link):|$)/);
+    if (bMatch) brief = bMatch[1].trim();
+    
+    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Caption|Link):|$)/);
+    if (iMatch) idea = iMatch[1].trim();
+    
+    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Link):|$)/);
+    if (cMatch) caption = cMatch[1].trim();
+    
+    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Caption):|$)/);
+    if (lMatch) link = lMatch[1].trim();
     
     // Status color
     const s = t.status || "not_started";
