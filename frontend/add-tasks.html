@@ -126,26 +126,20 @@
   <p class="sub">Select a client and apply new workflows.</p>
 
   <div class="steps">
-    <div class="step active" id="step1-dot">1 · Select Client</div>
-    <div class="step" id="step2-dot">2 · Select Workflows</div>
-    <div class="step" id="step3-dot">3 · Add Tasks</div>
+    <div class="step active" id="step1-dot">1 · Select Client & Workflows</div>
+    <div class="step" id="step2-dot">2 · Add Tasks</div>
   </div>
 
   <!-- Step 1 -->
   <div id="step1">
     <div class="fg">
       <label>Select Existing Client *</label>
-      <select id="client_id" style="width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px 14px;color:var(--txt);font-size:.9rem;outline:none">
+      <select id="client_id" onchange="clientChanged()" style="width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px 14px;color:var(--txt);font-size:.9rem;outline:none">
         <option value="">Loading clients...</option>
       </select>
     </div>
-    <p class="err" id="err1">Please select a client.</p>
-    <div class="btn-row"><button class="btn btn-acc" onclick="goStep2()">Next: Select Workflows →</button></div>
-  </div>
-
-  <!-- Step 2 -->
-  <div id="step2" style="display:none">
-    <div class="fg">
+    
+    <div class="fg" style="margin-top:24px">
       <label>Which workflows do you want to apply?</label>
       <div class="services-grid">
         <div class="svc-box" id="svc-social" onclick="toggleSvc('social',this)">
@@ -170,15 +164,12 @@
         </div>
       </div>
     </div>
-    <p class="err" id="err2">Please select at least one service.</p>
-    <div class="btn-row">
-      <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
-      <button class="btn btn-acc" onclick="goStep3()">Next →</button>
-    </div>
+    <p class="err" id="err1">Please select a client and at least one workflow.</p>
+    <div class="btn-row"><button class="btn btn-acc" onclick="goToAddTasks()">Next: Add Tasks →</button></div>
   </div>
 
-  <!-- Step 3 -->
-  <div id="step3" style="display:none">
+  <!-- Step 2 -->
+  <div id="step2" style="display:none">
     <div class="two">
       <div class="fg"><label>Client Name</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
       <div class="fg"><label>Target Deadline</label><input type="date" id="deadline"/></div>
@@ -217,7 +208,7 @@
 
     <p class="err" id="err3"></p>
     <div class="btn-row" style="margin-top:24px">
-      <button class="btn btn-back-btn" onclick="goStep(2)">← Back</button>
+      <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
       <button class="btn btn-acc" id="create-btn" onclick="addTasksToClient()">✨ Add Tasks</button>
     </div>
   </div>
@@ -378,11 +369,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (matched && selected.size > 0) {
       document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
-      buildStep3();
-      goStep(3);
-    } else if (matched) {
-      // Client matched but no services — go to step 2 with services pre-highlighted
+      
+      const urlDl = urlParams.get('deadline');
+      const csDl = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
+      const clientName = selEl.options[selEl.selectedIndex].text.toLowerCase().trim();
+      const savedDl = urlDl || csDl[clientName] || csDl[passedClientId] || "";
+      if (savedDl) document.getElementById("deadline").value = savedDl;
+
+      buildStep2();
       goStep(2);
+    } else if (matched) {
+      clientChanged();
+      goStep(1);
     }
   }
 });
@@ -393,51 +391,57 @@ function toggleSvc(svc, el){
 }
 
 function goStep(n){
-  [1,2,3].forEach(i=>{
-    document.getElementById("step"+i).style.display=i===n?"":"none";
+  [1,2].forEach(i=>{
+    const el = document.getElementById("step"+i);
+    if(el) el.style.display=i===n?"":"none";
     const dot=document.getElementById("step"+i+"-dot");
-    dot.className="step"+(i===n?" active":i<n?" done":"");
+    if(dot) dot.className="step"+(i===n?" active":i<n?" done":"");
   });
 }
 
-function goStep2(){
-  const clientId = document.getElementById("client_id").value;
-  if(!clientId){document.getElementById("err1").style.display="block";return;}
-  document.getElementById("err1").style.display="none";
-
-  // Look up saved services by client name (most reliable) then by ID
+function clientChanged() {
   const selEl = document.getElementById("client_id");
+  const clientId = selEl.value;
+  if(!clientId) return;
   const clientName = (selEl.options[selEl.selectedIndex]?.text || "").toLowerCase().trim();
   const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
   const savedSvcs = cs[clientName] || cs[clientId] || cs[String(clientId)] || cs[Number(clientId)] || null;
 
   if (savedSvcs && savedSvcs.length > 0) {
-    // Clear currently selected
     [...selected].forEach(svc => {
       const box = document.getElementById("svc-" + svc);
       if (box) { box.classList.remove("selected"); }
     });
     selected.clear();
-    // Apply saved services and visually mark them
     savedSvcs.forEach(svc => {
       const box = document.getElementById("svc-" + svc);
       if (box) toggleSvc(svc, box);
     });
   }
 
+  // Pre-fill deadline
+  const csDl = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
+  const savedDl = csDl[clientName] || csDl[clientId] || "";
+  if (savedDl) {
+    document.getElementById("deadline").value = savedDl;
+  }
+}
+
+function goToAddTasks(){
+  const selEl = document.getElementById("client_id");
+  const clientId = selEl.value;
+  if(!clientId || selected.size === 0){
+    document.getElementById("err1").style.display="block";
+    return;
+  }
+  document.getElementById("err1").style.display="none";
+  
+  document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
+  buildStep2();
   goStep(2);
 }
 
-function goStep3(){
-  if(!selected.size){document.getElementById("err2").style.display="block";return;}
-  document.getElementById("err2").style.display="none";
-  const selectEl = document.getElementById("client_id");
-  document.getElementById("r-name").textContent = selectEl.options[selectEl.selectedIndex].text;
-  buildStep3();
-  goStep(3);
-}
-
-function buildStep3(){
+function buildStep2(){
   // Expand card to full width if social is selected (needs table space)
   const hasSocial = selected.has('social');
   const onlyOtherServices = selected.size > 0 && !hasSocial;

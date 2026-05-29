@@ -331,9 +331,16 @@ async function createClient(){
 
       // Success — store by both id AND name (lowercase) for reliable recall
       const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+      const clientDeadlines = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
       const svcArr = [...selected];
+      const dl = document.getElementById("deadline")?.value || "";
       clientServices[data.client_id] = svcArr;
       clientServices[name.toLowerCase().trim()] = svcArr;
+      if (dl) {
+        clientDeadlines[data.client_id] = dl;
+        clientDeadlines[name.toLowerCase().trim()] = dl;
+        localStorage.setItem('claude_client_deadlines', JSON.stringify(clientDeadlines));
+      }
       localStorage.setItem('claude_client_services', JSON.stringify(clientServices));
 
       document.getElementById("main-card").style.display = "none";
@@ -342,7 +349,7 @@ async function createClient(){
         (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
       
       const addLink = document.getElementById("add-tasks-link");
-      if (addLink && data.client_id) { addLink.href = `add-tasks.html?client_id=${encodeURIComponent(data.client_id)}&client_name=${encodeURIComponent(name)}&services=${svcArr.join(',')}`; }
+      if (addLink && data.client_id) { addLink.href = `add-tasks.html?client_id=${encodeURIComponent(data.client_id)}&client_name=${encodeURIComponent(name)}&deadline=${encodeURIComponent(dl)}&services=${svcArr.join(',')}`; }
 
       document.getElementById("success").style.display = "block";
 
@@ -364,16 +371,23 @@ async function createClient(){
       if (!cd.success) { showErr(cd.error || "Failed to create client."); return; }
 
       const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+      const clientDeadlines = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
       const svcArr = [...selected];
+      const dl = document.getElementById("deadline")?.value || "";
       clientServices[cd.client_id] = svcArr;
       clientServices[name.toLowerCase().trim()] = svcArr;
+      if (dl) {
+        clientDeadlines[cd.client_id] = dl;
+        clientDeadlines[name.toLowerCase().trim()] = dl;
+        localStorage.setItem('claude_client_deadlines', JSON.stringify(clientDeadlines));
+      }
       localStorage.setItem('claude_client_services', JSON.stringify(clientServices));
 
       document.getElementById("main-card").style.display = "none";
       document.getElementById("success-msg").textContent = `"${name}" created successfully.`;
       
       const addLink = document.getElementById("add-tasks-link");
-      if (addLink && cd.client_id) { addLink.href = `add-tasks.html?client_id=${encodeURIComponent(cd.client_id)}&client_name=${encodeURIComponent(name)}&services=${svcArr.join(',')}`; }
+      if (addLink && cd.client_id) { addLink.href = `add-tasks.html?client_id=${encodeURIComponent(cd.client_id)}&client_name=${encodeURIComponent(name)}&deadline=${encodeURIComponent(dl)}&services=${svcArr.join(',')}`; }
 
       document.getElementById("success").style.display = "block";
     }
