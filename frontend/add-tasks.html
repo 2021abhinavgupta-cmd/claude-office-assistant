@@ -11,7 +11,7 @@
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
-    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:640px}
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:860px}
     .back{color:var(--muted);font-size:.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:5px;margin-bottom:26px;transition:color .2s}
     .back:hover{color:var(--acc)}
     h1{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;margin-bottom:4px}
@@ -47,15 +47,16 @@
     .svc-info .svc-team{font-size:.72rem;color:var(--muted);margin-top:2px}
     .svc-box.selected .svc-name{color:var(--acc)}
 
-    /* Editable task rows */
+    /* Editable task rows (branding / website / shoot) */
+    .preview-section{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--r);padding:20px;margin-top:18px}
+    .preview-section h3{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:4px}
+    .ps-sub{color:var(--muted);font-size:.78rem;margin-bottom:14px}
     .task-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bdr)}
     .task-row:last-of-type{border-bottom:none}
     .tp-icon{width:22px;text-align:center;flex-shrink:0;font-size:.9rem;color:var(--muted)}
-    .tp-title-input{flex:1;background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:.83rem;outline:none;transition:border-color .2s}
+    .tp-title-input{flex:1;background:var(--s1);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:.83rem;outline:none;transition:border-color .2s}
     .tp-title-input:focus{border-color:var(--acc)}
-    .tp-who-select{background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;outline:none;cursor:pointer;transition:border-color .2s}
-    .tp-who-select:focus{border-color:var(--acc);color:var(--txt)}
-    .tp-date-input{background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;outline:none;transition:border-color .2s;width:130px}
+    .tp-date-input{background:var(--s1);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;outline:none;transition:border-color .2s;width:130px}
     .tp-date-input:focus{border-color:var(--acc);color:var(--txt)}
     .tp-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:4px 6px;border-radius:4px;transition:color .2s;flex-shrink:0}
     .tp-del:hover{color:var(--red)}
@@ -63,14 +64,42 @@
     .add-task-btn:hover{border-color:var(--acc);color:var(--acc)}
     .no-preview{color:var(--muted);font-size:.82rem;font-style:italic;padding:8px 0}
 
-    /* Multi-select */
-    .ms-wrap { position: relative; width: 140px; outline: none; }
-    .ms-display { background:var(--s2);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; transition:border-color .2s; }
-    .ms-display:hover { border-color:var(--acc);color:var(--txt); }
-    .ms-dropdown { display:none; position:absolute; top:100%; left:0; width:160px; background:var(--s1); border:1px solid var(--bdr); border-radius:6px; padding:6px; z-index:10; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.5); margin-top:4px; }
-    .ms-wrap.open .ms-dropdown { display:block; }
-    .ms-dropdown label { display:flex; align-items:center; gap:6px; padding:4px 6px; cursor:pointer; font-size:.75rem; text-transform:none; margin-bottom:2px; color:var(--txt); font-weight:400; border-radius:4px; letter-spacing: normal;}
-    .ms-dropdown label:hover { background:var(--s2); }
+    /* Multi-select dropdown */
+    .ms-wrap{position:relative;width:140px;outline:none}
+    .ms-display{background:var(--s1);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .2s}
+    .ms-display:hover{border-color:var(--acc);color:var(--txt)}
+    .ms-dropdown{display:none;position:absolute;top:100%;left:0;width:160px;background:var(--s1);border:1px solid var(--bdr);border-radius:6px;padding:6px;z-index:10;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:4px}
+    .ms-wrap.open .ms-dropdown{display:block}
+    .ms-dropdown label{display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;font-size:.75rem;text-transform:none;margin-bottom:2px;color:var(--txt);font-weight:400;border-radius:4px;letter-spacing:normal}
+    .ms-dropdown label:hover{background:var(--s2)}
+
+    /* ── Social Media Spreadsheet Layout ─────────────────────────── */
+    .social-table-wrap{overflow-x:auto;margin-top:18px;border-radius:var(--r);border:1px solid var(--bdr)}
+    .social-table{width:100%;border-collapse:collapse;font-size:.8rem;min-width:680px}
+    .social-table thead tr{background:var(--s2)}
+    .social-table thead th{padding:10px 12px;text-align:left;font-size:.68rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--bdr);white-space:nowrap}
+    .social-table tbody tr{border-bottom:1px solid var(--bdr);transition:background .15s}
+    .social-table tbody tr:last-child{border-bottom:none}
+    .social-table tbody tr:hover{background:rgba(255,255,255,.02)}
+    .social-table td{padding:7px 10px;vertical-align:middle}
+    .st-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:600;white-space:nowrap}
+    .st-badge.idea{background:rgba(245,166,35,.15);color:var(--acc)}
+    .st-badge.pending{background:rgba(107,107,138,.2);color:var(--muted)}
+    .st-badge.posted{background:rgba(34,211,160,.15);color:var(--grn)}
+    .st-badge.final{background:rgba(100,180,255,.15);color:#7bc8ff}
+    .st-sel{background:var(--s1);border:1px solid var(--bdr);border-radius:5px;color:var(--txt);padding:4px 8px;font-size:.75rem;outline:none;width:100%;font-family:'DM Sans',sans-serif}
+    .st-sel:focus{border-color:var(--acc)}
+    .st-input{background:var(--s1);border:1px solid var(--bdr);border-radius:5px;color:var(--txt);padding:4px 8px;font-size:.75rem;outline:none;width:100%;font-family:'DM Sans',sans-serif}
+    .st-input:focus{border-color:var(--acc)}
+    .st-num{color:var(--muted);font-size:.75rem;font-weight:600;width:28px;text-align:center}
+    .add-row-btn{display:flex;align-items:center;gap:7px;background:transparent;border:1px dashed var(--bdr);border-radius:0 0 var(--r) var(--r);color:var(--muted);padding:9px 14px;font-size:.82rem;cursor:pointer;width:100%;transition:all .2s}
+    .add-row-btn:hover{border-color:var(--acc);color:var(--acc);background:rgba(245,166,35,.04)}
+    .st-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:3px 5px;border-radius:4px;transition:color .2s}
+    .st-del:hover{color:var(--red)}
+    .svc-section-header{display:flex;align-items:center;gap:8px;font-family:'Syne',sans-serif;font-size:.95rem;font-weight:700;margin:20px 0 8px;color:var(--txt)}
+    .svc-section-header span{font-size:1.1rem}
+    .social-summary{background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.2);border-radius:var(--rs);padding:12px 16px;margin-bottom:16px;font-size:.82rem;color:var(--muted)}
+    .social-summary strong{color:var(--acc)}
 
     /* Buttons */
     .btn-row{display:flex;gap:10px;margin-top:24px;justify-content:flex-end}
@@ -140,26 +169,6 @@
         </div>
       </div>
     </div>
-    <div id="sub-forms" style="margin-top:20px;">
-      <div id="sf-social" style="display:none;" class="fg">
-        <label style="color:var(--acc)">📱 Social Media Details</label>
-        <div class="two">
-           <div><input type="text" id="social_creds" placeholder="Social Credentials"/></div>
-           <div><input type="text" id="social_kpi" placeholder="KPI (e.g. 10k followers)"/></div>
-        </div>
-      </div>
-      <div id="sf-website" style="display:none;" class="fg">
-        <label style="color:var(--acc)">💻 Website Details</label>
-        <div class="two">
-           <div><input type="text" id="web_creds" placeholder="Hosting / CMS Credentials"/></div>
-           <div><input type="text" id="web_kpi" placeholder="KPI (e.g. >90 PageSpeed)"/></div>
-        </div>
-      </div>
-      <div id="sf-shoot" style="display:none;" class="fg">
-        <label style="color:var(--acc)">🎬 Shoot Requirements</label>
-        <textarea id="shoot_reqs" placeholder="Location, dates, actors, equipment needed..."></textarea>
-      </div>
-    </div>
     <p class="err" id="err2">Please select at least one service.</p>
     <div class="btn-row">
       <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
@@ -173,12 +182,38 @@
       <div class="fg"><label>Client Name</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
       <div class="fg"><label>Target Deadline</label><input type="date" id="deadline"/></div>
     </div>
-    <div class="preview-section">
-      <h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
-      <p class="ps-sub">Edit task names or assignees, delete unwanted tasks, or add custom ones.</p>
-      <div id="task-preview-list"></div>
-      <button class="add-task-btn" onclick="addTask()">＋ Add custom task</button>
+
+    <!-- Social Media: Spreadsheet / Content Calendar -->
+    <div id="social-section" style="display:none">
+      <div class="svc-section-header"><span>📱</span> Social Media Content Calendar</div>
+      <div class="social-summary">
+        Plan your content posts below. Each row is one post.
+        Set the post type, assign a team member, add a content link or idea, and track its status.
+        <strong>Tip:</strong> You can add as many posts as needed.
+      </div>
+      <div class="social-table-wrap">
+        <table class="social-table" id="social-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Post Day</th>
+              <th>Post Title / Brief</th>
+              <th>Type</th>
+              <th>Content / Link</th>
+              <th>Assigned To</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="social-tbody"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="addSocialRow()">＋ Add Post</button>
+      </div>
     </div>
+
+    <!-- Other services: Task List -->
+    <div id="task-sections"></div>
+
     <p class="err" id="err3"></p>
     <div class="btn-row" style="margin-top:24px">
       <button class="btn btn-back-btn" onclick="goStep(2)">← Back</button>
@@ -218,15 +253,47 @@ if (!ONBOARD_ADMINS.includes(user.user_id)) {
 }
 
 let EMP = {};
+let EMP_OPTS = "";
 const SVC_TASKS = {
-  social:[{title:"Content Ideation",who:"emp006"},{title:"Content Approval",who:"emp006"},{title:"Creative Assigning",who:"emp006"},{title:"Content Creation",who:"emp002"},{title:"Final Drive Link",who:"emp006"}],
-  branding:[{title:"Brand Essence",who:"emp002"},{title:"Stylescape",who:"emp002"},{title:"Logo Design Presentation",who:"emp002"},{title:"Brand guidelines",who:"emp002"}],
-  website:[{title:"Concept & Flow",who:"emp001"},{title:"UI Draft Review",who:"emp002"},{title:"Content",who:"emp006"},{title:"Final Build",who:"emp003"}],
-  shoot:[{title:"Video Script & Concept",who:"emp006"},{title:"Video Production",who:"emp005"},{title:"Video Editing",who:"emp005"}],
+  social:[
+    {title:"Content Ideation",who:"emp006"},
+    {title:"Content Approval (Cal Sheet)",who:"emp006"},
+    {title:"Discussion with Creative",who:"emp002"},
+    {title:"Creative Assigning",who:"emp006"},
+    {title:"Content Creation (Kanban)",who:"emp002"},
+    {title:"Final Drive Link",who:"emp006"}
+  ],
+  branding:[
+    {title:"Brand Essence",who:"emp002"},
+    {title:"Stylescape",who:"emp002"},
+    {title:"Logo Design Presentation",who:"emp002"},
+    {title:"Logo Iterations",who:"emp002"},
+    {title:"Visual Style",who:"emp002"},
+    {title:"Collateral",who:"emp002"},
+    {title:"Brand guidelines Content",who:"emp006"},
+    {title:"Brand guidelines",who:"emp002"}
+  ],
+  website:[
+    {title:"Concept & Flow",who:"emp001"},
+    {title:"UI 1st Draft Review",who:"emp002"},
+    {title:"Content",who:"emp006"},
+    {title:"Final Build",who:"emp003"}
+  ],
+  shoot:[
+    {title:"Video Script & Concept",who:"emp006"},
+    {title:"Video Shoot / Production",who:"emp005"},
+    {title:"Video Editing & Post",who:"emp005"}
+  ],
   miscellaneous:[{title:"Custom Deliverable Setup",who:"emp001"}],
 };
 
+const POST_TYPES = ["Story","Reel","Carousel","Post","FTC WIN"];
+const POST_STATUSES = ["Idea","Content","Final","Posted","Scheduled"];
+const SVC_LABELS = {social:"📱 Social Media",branding:"🎨 Branding",website:"💻 Website",shoot:"🎬 Shoot",miscellaneous:"📁 Miscellaneous"};
+
 let selected = new Set();
+// Stored clients list for name lookup
+let _clientsList = [];
 
 async function loadEmployees() {
   const r = await fetch(`${API}/api/employees`);
@@ -241,59 +308,63 @@ async function loadClients() {
     useNotion = nd.configured;
   } catch(e) {}
 
-  let clientsList = [];
   if (useNotion) {
     const res = await fetch(`${API}/api/notion/dashboard`);
     const data = await res.json();
-    clientsList = data.clients || [];
-    // map notion_id to id for consistency
-    clientsList.forEach(c => { c.id = c.notion_id; });
+    _clientsList = data.clients || [];
+    _clientsList.forEach(c => { c.id = c.notion_id; });
   } else {
     const res = await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
     const data = await res.json();
-    clientsList = data.clients || data || [];
+    _clientsList = data.clients || data || [];
   }
 
   const sel = document.getElementById("client_id");
-  sel.innerHTML = '<option value="">Select a client...</option>' + clientsList.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  sel.innerHTML = '<option value="">Select a client...</option>' + _clientsList.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   await loadEmployees();
   await loadClients();
-  EMP = window.EMP_DICT;
+  EMP = window.EMP_DICT || {};
   EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
 
   const urlParams = new URLSearchParams(window.location.search);
   const passedClientId = urlParams.get('client_id');
   const passedServices = urlParams.get('services');
 
-  if (passedClientId && passedServices) {
-    document.getElementById("client_id").value = passedClientId;
-    
-    const svcs = passedServices.split(',').filter(Boolean);
-    svcs.forEach(svc => {
-       const box = document.getElementById("svc-" + svc);
-       if (box) toggleSvc(svc, box);
-    });
-
-    const selectEl = document.getElementById("client_id");
-    if(selectEl.selectedIndex >= 0) {
-      document.getElementById("r-name").textContent = selectEl.options[selectEl.selectedIndex].text;
+  if (passedClientId) {
+    // Try to match by ID (handles both notion UUID and SQLite int)
+    const selEl = document.getElementById("client_id");
+    // Try direct match first
+    let matched = false;
+    for (let o of selEl.options) {
+      if (o.value == passedClientId || o.value === passedClientId) {
+        selEl.value = o.value;
+        matched = true;
+        break;
+      }
     }
 
-    goStep3();
+    if (passedServices && passedServices.trim()) {
+      const svcs = passedServices.split(',').filter(Boolean);
+      svcs.forEach(svc => {
+        const box = document.getElementById("svc-" + svc);
+        if (box && !selected.has(svc)) toggleSvc(svc, box);
+      });
+    }
+
+    if (matched && selected.size > 0) {
+      document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
+      buildStep3();
+      goStep(3);
+    }
   }
 });
 
 function toggleSvc(svc, el){
   el.classList.toggle("selected");
   if(selected.has(svc)) selected.delete(svc); else selected.add(svc);
-  
-  if(svc === 'social' || svc === 'website' || svc === 'shoot') {
-    const sf = document.getElementById("sf-" + svc);
-    if(sf) sf.style.display = selected.has(svc) ? "block" : "none";
-  }
 }
 
 function goStep(n){
@@ -309,18 +380,22 @@ function goStep2(){
   if(!clientId){document.getElementById("err1").style.display="block";return;}
   document.getElementById("err1").style.display="none";
 
-  // Load saved services from onboarding if they exist
+  // Load saved services from onboarding via localStorage
+  // Key by both the raw ID and string version to handle int/string mismatch
   const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
-  if (clientServices[clientId]) {
+  const savedSvcs = clientServices[clientId] || clientServices[String(clientId)] || clientServices[Number(clientId)] || null;
+
+  if (savedSvcs && savedSvcs.length > 0) {
     // Clear currently selected
     [...selected].forEach(svc => {
-       const box = document.getElementById("svc-" + svc);
-       if (box) toggleSvc(svc, box);
+      const box = document.getElementById("svc-" + svc);
+      if (box) { box.classList.remove("selected"); }
     });
+    selected.clear();
     // Apply saved services
-    clientServices[clientId].forEach(svc => {
-       const box = document.getElementById("svc-" + svc);
-       if (box && !selected.has(svc)) toggleSvc(svc, box);
+    savedSvcs.forEach(svc => {
+      const box = document.getElementById("svc-" + svc);
+      if (box) toggleSvc(svc, box);
     });
   }
 
@@ -331,18 +406,89 @@ function goStep3(){
   if(!selected.size){document.getElementById("err2").style.display="block";return;}
   document.getElementById("err2").style.display="none";
   const selectEl = document.getElementById("client_id");
-  const clientName = selectEl.options[selectEl.selectedIndex].text;
-  document.getElementById("r-name").textContent = clientName;
-
-  const wrap=document.getElementById("task-preview-list");
-  const allTasks=[];
-  for(const svc of selected) allTasks.push(...SVC_TASKS[svc]);
-  if(!allTasks.length){wrap.innerHTML='<p class="no-preview">No tasks — add them below.</p>';goStep(3);return;}
-  wrap.innerHTML="";
-  allTasks.forEach((t,i)=>addTaskRow(wrap,t.title,t.who,i));
+  document.getElementById("r-name").textContent = selectEl.options[selectEl.selectedIndex].text;
+  buildStep3();
   goStep(3);
 }
 
+function buildStep3(){
+  // Social section
+  const hasSocial = selected.has('social');
+  document.getElementById("social-section").style.display = hasSocial ? "block" : "none";
+  if (hasSocial) {
+    const tbody = document.getElementById("social-tbody");
+    if (tbody.children.length === 0) {
+      // Pre-populate with 3 blank rows
+      for(let i=0;i<3;i++) addSocialRow();
+    }
+  }
+
+  // Other services (branding, website, shoot, miscellaneous)
+  const wrap = document.getElementById("task-sections");
+  wrap.innerHTML = "";
+  for (const svc of selected) {
+    if (svc === 'social') continue;
+    const tasks = SVC_TASKS[svc] || [];
+    const section = document.createElement("div");
+    section.innerHTML = `<div class="svc-section-header"><span>${SVC_LABELS[svc]?.split(" ")[0]||"📋"}</span> ${SVC_LABELS[svc]?.slice(2)||svc}</div>`;
+    const preview = document.createElement("div");
+    preview.className = "preview-section";
+    preview.innerHTML = `<h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
+      <p class="ps-sub">Edit task names or assignees, delete unwanted tasks, or add custom ones.</p>
+      <div class="task-list-${svc}"></div>
+      <button class="add-task-btn" onclick="addTaskToSection('${svc}')">＋ Add custom task</button>`;
+    section.appendChild(preview);
+    wrap.appendChild(section);
+    const listEl = wrap.querySelector(`.task-list-${svc}`);
+    tasks.forEach((t,i) => addTaskRow(listEl, t.title, t.who, i));
+  }
+}
+
+/* ── Social Media Spreadsheet ───────────────────────── */
+let socialRowIdx = 0;
+function empOptions(selected="") {
+  return Object.entries(EMP).map(([id,name])=>`<option value="${id}" ${id===selected?"selected":""}>${name}</option>`).join("");
+}
+function typeOptions(sel="") {
+  return POST_TYPES.map(t=>`<option value="${t}" ${t===sel?"selected":""}>${t}</option>`).join("");
+}
+function statusOptions(sel="") {
+  return POST_STATUSES.map(s=>`<option value="${s}" ${s===sel?"selected":""}>${s}</option>`).join("");
+}
+function addSocialRow(title="",type="Post",link="",assignee="",status="Idea",postDay=""){
+  socialRowIdx++;
+  const idx = socialRowIdx;
+  const tbody = document.getElementById("social-tbody");
+  const tr = document.createElement("tr");
+  tr.dataset.rowId = idx;
+  tr.innerHTML = `
+    <td class="st-num">${tbody.children.length+1}</td>
+    <td><input class="st-input" type="date" value="${postDay}" style="width:130px"/></td>
+    <td><input class="st-input" value="${title}" placeholder="Post title or brief…" style="min-width:160px"/></td>
+    <td><select class="st-sel" style="width:100px">${typeOptions(type)}</select></td>
+    <td><input class="st-input" value="${link}" placeholder="Link or content notes…" style="min-width:160px"/></td>
+    <td><select class="st-sel" style="width:120px"><option value="">Unassigned</option>${empOptions(assignee)}</select></td>
+    <td>
+      <select class="st-sel status-sel" style="width:90px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
+    </td>
+    <td><button class="st-del" onclick="removeSocialRow(this)" title="Delete">✕</button></td>`;
+  tbody.appendChild(tr);
+  reIndexSocialRows();
+}
+
+function removeSocialRow(btn){
+  btn.closest("tr").remove();
+  reIndexSocialRows();
+}
+function reIndexSocialRows(){
+  document.querySelectorAll("#social-tbody tr").forEach((r,i)=>{
+    const numCell = r.querySelector(".st-num");
+    if(numCell) numCell.textContent = i+1;
+  });
+}
+function updateStatusBadge(sel){}
+
+/* ── Task list rows (branding / website / shoot) ─────── */
 function updateMsDisplay(el) {
   const wrap = el.closest('.ms-wrap');
   const chks = [...wrap.querySelectorAll('.ms-chk:checked')];
@@ -358,7 +504,7 @@ function addTaskRow(container, title="", who="", idx=0, dueDate=""){
     <span class="tp-icon">${idx===0?"🔑":"→"}</span>
     <input class="tp-title-input" value="${title.replace(/"/g,'&quot;')}" placeholder="Task name…" />
     <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
-      <div class="ms-display" onclick="this.parentElement.classList.toggle('open')">Select team...</div>
+      <div class="ms-display" onclick="this.parentElement.classList.toggle('open')">Unassigned</div>
       <div class="ms-dropdown">${EMP_OPTS}</div>
     </div>
     <input class="tp-date-input" type="date" value="${dueDate}" title="Task due date" />
@@ -368,20 +514,24 @@ function addTaskRow(container, title="", who="", idx=0, dueDate=""){
   row.querySelectorAll(".ms-chk").forEach(chk => {
     if (whoArr.includes(chk.value)) chk.checked = true;
   });
-  updateMsDisplay(row.querySelector(".ms-chk"));
+  const firstChk = row.querySelector(".ms-chk");
+  if(firstChk) updateMsDisplay(firstChk);
   container.appendChild(row);
 }
 
-function addTask(){
-  const wrap=document.getElementById("task-preview-list");
-  const existing=wrap.querySelectorAll(".task-row").length;
-  addTaskRow(wrap,"","emp001",existing);
-  wrap.querySelector(".task-row:last-child .tp-title-input").focus();
+function addTaskToSection(svc){
+  const container = document.querySelector(`.task-list-${svc}`);
+  if(!container) return;
+  const existing = container.querySelectorAll(".task-row").length;
+  addTaskRow(container, "", "emp001", existing);
+  container.querySelector(".task-row:last-child .tp-title-input").focus();
 }
 
 function removeTask(btn){
-  btn.closest(".task-row").remove();
-  document.querySelectorAll(".task-row").forEach((r,i)=>{
+  const row = btn.closest(".task-row");
+  const container = row.parentElement;
+  row.remove();
+  container.querySelectorAll(".task-row").forEach((r,i)=>{
     r.querySelector(".tp-icon").textContent=i===0?"🔑":"→";
   });
 }
@@ -401,28 +551,41 @@ async function addTasksToClient(){
 
   btn.disabled=true; btn.textContent="⏳ Adding Tasks...";
 
+  // Build services list to send
+  const servicesToSend = [...selected];
+
+  // Collect extra notes from social table if social is selected
   let extraNotes = "";
-  let wfDetails = [];
-  if (selected.has('social') && (document.getElementById("social_creds")?.value || document.getElementById("social_kpi")?.value)) {
-    wfDetails.push(`[Social Media] Creds: ${document.getElementById("social_creds")?.value || ''} | KPI: ${document.getElementById("social_kpi")?.value || ''}`);
-  }
-  if (selected.has('website') && (document.getElementById("web_creds")?.value || document.getElementById("web_kpi")?.value)) {
-    wfDetails.push(`[Website] Creds: ${document.getElementById("web_creds")?.value || ''} | KPI: ${document.getElementById("web_kpi")?.value || ''}`);
-  }
-  if (selected.has('shoot') && document.getElementById("shoot_reqs")?.value) {
-    wfDetails.push(`[Shoot] Reqs: ${document.getElementById("shoot_reqs")?.value || ''}`);
-  }
-  
-  if (wfDetails.length > 0) {
-    extraNotes = "\n\n--- Added Workflow Details ---\n" + wfDetails.join("\n");
+  if (selected.has('social')) {
+    const rows = document.querySelectorAll("#social-tbody tr");
+    if (rows.length > 0) {
+      const lines = [];
+      rows.forEach((r,i) => {
+        const inputs = r.querySelectorAll("input");
+        const sels = r.querySelectorAll("select");
+        const day = inputs[0]?.value || "";
+        const title = inputs[1]?.value || "";
+        const link = inputs[2]?.value || "";
+        const type = sels[0]?.value || "";
+        const assignee = sels[1]?.options[sels[1]?.selectedIndex]?.text || "";
+        const status = sels[2]?.value || "";
+        if (title || day) lines.push(`Post ${i+1}: [${type}] ${title} | Date: ${day} | Assignee: ${assignee} | Link: ${link} | Status: ${status}`);
+      });
+      if (lines.length) extraNotes += "\n\n--- Social Media Content Calendar ---\n" + lines.join("\n");
+    }
   }
 
   try {
     const ar = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({user_id:UID, services:[...selected], deadline:document.getElementById("deadline")?.value || "", extra_notes: extraNotes}),
-      signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({
+        user_id:UID,
+        services: servicesToSend,
+        deadline: document.getElementById("deadline")?.value || "",
+        extra_notes: extraNotes
+      }),
+      signal: AbortSignal.timeout(15000),
     });
     const ad = await ar.json();
     if (!ad.success && ad.error) {
@@ -431,6 +594,13 @@ async function addTasksToClient(){
        return;
     }
     
+    // Clear localStorage for this client
+    try {
+      const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+      delete cs[clientId];
+      localStorage.setItem('claude_client_services', JSON.stringify(cs));
+    } catch(e){}
+
     document.getElementById("main-card").style.display = "none";
     document.getElementById("success-msg").textContent = `Successfully added ${ad.tasks_created||0} tasks to the client project.`;
     document.getElementById("success").style.display = "block";
