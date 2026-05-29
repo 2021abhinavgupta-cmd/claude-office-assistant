@@ -329,9 +329,11 @@ async function createClient(){
       const data = await res.json();
       if (!data.success) { showErr(data.error || "Failed to create client in Notion."); return; }
 
-      // Success
+      // Success — store by both id AND name (lowercase) for reliable recall
       const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
-      clientServices[data.client_id] = [...selected];
+      const svcArr = [...selected];
+      clientServices[data.client_id] = svcArr;
+      clientServices[name.toLowerCase().trim()] = svcArr;
       localStorage.setItem('claude_client_services', JSON.stringify(clientServices));
 
       document.getElementById("main-card").style.display = "none";
@@ -340,7 +342,7 @@ async function createClient(){
         (data.notion_url ? `<a href="${data.notion_url}" target="_blank" style="color:var(--acc);text-decoration:none">→ Open in Notion ↗</a>` : "");
       
       const addLink = document.getElementById("add-tasks-link");
-      if (addLink && data.client_id) { addLink.href = `add-tasks.html?client_id=${data.client_id}&services=${[...selected].join(',')}`; }
+      if (addLink && data.client_id) { addLink.href = `add-tasks.html?client_id=${encodeURIComponent(data.client_id)}&client_name=${encodeURIComponent(name)}&services=${svcArr.join(',')}`; }
 
       document.getElementById("success").style.display = "block";
 
@@ -362,14 +364,16 @@ async function createClient(){
       if (!cd.success) { showErr(cd.error || "Failed to create client."); return; }
 
       const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
-      clientServices[cd.client_id] = [...selected];
+      const svcArr = [...selected];
+      clientServices[cd.client_id] = svcArr;
+      clientServices[name.toLowerCase().trim()] = svcArr;
       localStorage.setItem('claude_client_services', JSON.stringify(clientServices));
 
       document.getElementById("main-card").style.display = "none";
       document.getElementById("success-msg").textContent = `"${name}" created successfully.`;
       
       const addLink = document.getElementById("add-tasks-link");
-      if (addLink && cd.client_id) { addLink.href = `add-tasks.html?client_id=${cd.client_id}&services=${[...selected].join(',')}`; }
+      if (addLink && cd.client_id) { addLink.href = `add-tasks.html?client_id=${encodeURIComponent(cd.client_id)}&client_name=${encodeURIComponent(name)}&services=${svcArr.join(',')}`; }
 
       document.getElementById("success").style.display = "block";
     }

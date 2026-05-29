@@ -11,7 +11,8 @@
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
-    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:860px}
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:860px;transition:max-width .3s ease}
+    .card.wide{max-width:1200px}
     .back{color:var(--muted);font-size:.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:5px;margin-bottom:26px;transition:color .2s}
     .back:hover{color:var(--acc)}
     h1{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;margin-bottom:4px}
@@ -331,21 +332,29 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const urlParams = new URLSearchParams(window.location.search);
   const passedClientId = urlParams.get('client_id');
+  const passedClientName = urlParams.get('client_name') || '';
   const passedServices = urlParams.get('services');
 
-  if (passedClientId) {
-    // Try to match by ID (handles both notion UUID and SQLite int)
+  if (passedClientId || passedClientName) {
     const selEl = document.getElementById("client_id");
-    // Try direct match first
     let matched = false;
+
+    // Match by ID first, then by name (case-insensitive) as fallback
     for (let o of selEl.options) {
-      if (o.value == passedClientId || o.value === passedClientId) {
-        selEl.value = o.value;
-        matched = true;
-        break;
+      if (o.value && (o.value == passedClientId || o.value === passedClientId)) {
+        selEl.value = o.value; matched = true; break;
+      }
+    }
+    if (!matched && passedClientName) {
+      const nameLower = passedClientName.toLowerCase().trim();
+      for (let o of selEl.options) {
+        if (o.text.toLowerCase().trim() === nameLower) {
+          selEl.value = o.value; matched = true; break;
+        }
       }
     }
 
+    // Apply services from URL param
     if (passedServices && passedServices.trim()) {
       const svcs = passedServices.split(',').filter(Boolean);
       svcs.forEach(svc => {
@@ -354,10 +363,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     }
 
+    // If still no services, try localStorage by name then by id
+    if (selected.size === 0) {
+      const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+      const saved = (passedClientName && cs[passedClientName.toLowerCase().trim()])
+        || cs[passedClientId] || cs[String(passedClientId)] || null;
+      if (saved) {
+        saved.forEach(svc => {
+          const box = document.getElementById("svc-" + svc);
+          if (box && !selected.has(svc)) toggleSvc(svc, box);
+        });
+      }
+    }
+
     if (matched && selected.size > 0) {
       document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
       buildStep3();
       goStep(3);
+    } else if (matched) {
+      // Client matched but no services — go to step 2 with services pre-highlighted
+      goStep(2);
     }
   }
 });
@@ -380,10 +405,11 @@ function goStep2(){
   if(!clientId){document.getElementById("err1").style.display="block";return;}
   document.getElementById("err1").style.display="none";
 
-  // Load saved services from onboarding via localStorage
-  // Key by both the raw ID and string version to handle int/string mismatch
-  const clientServices = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
-  const savedSvcs = clientServices[clientId] || clientServices[String(clientId)] || clientServices[Number(clientId)] || null;
+  // Look up saved services by client name (most reliable) then by ID
+  const selEl = document.getElementById("client_id");
+  const clientName = (selEl.options[selEl.selectedIndex]?.text || "").toLowerCase().trim();
+  const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+  const savedSvcs = cs[clientName] || cs[clientId] || cs[String(clientId)] || cs[Number(clientId)] || null;
 
   if (savedSvcs && savedSvcs.length > 0) {
     // Clear currently selected
@@ -392,7 +418,7 @@ function goStep2(){
       if (box) { box.classList.remove("selected"); }
     });
     selected.clear();
-    // Apply saved services
+    // Apply saved services and visually mark them
     savedSvcs.forEach(svc => {
       const box = document.getElementById("svc-" + svc);
       if (box) toggleSvc(svc, box);
@@ -412,8 +438,12 @@ function goStep3(){
 }
 
 function buildStep3(){
-  // Social section
+  // Expand card to full width if social is selected (needs table space)
   const hasSocial = selected.has('social');
+  const onlyOtherServices = selected.size > 0 && !hasSocial;
+  document.getElementById("main-card").classList.toggle("wide", hasSocial);
+
+  // Social section
   document.getElementById("social-section").style.display = hasSocial ? "block" : "none";
   if (hasSocial) {
     const tbody = document.getElementById("social-tbody");
