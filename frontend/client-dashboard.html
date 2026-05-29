@@ -74,16 +74,24 @@
     .progress-fill { height:100%; background:var(--acc); border-radius:3px; transition:width .3s; }
 
     /* CALENDAR VIEW */
+    .cal-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .cal-nav-btn { background:var(--s1); border:1px solid var(--bdr); color:var(--txt); width:36px; height:36px; border-radius:10px; cursor:pointer; font-size:1.1rem; display:flex; align-items:center; justify-content:center; transition:all .2s; flex-shrink:0; }
+    .cal-nav-btn:hover { border-color:var(--acc); color:var(--acc); }
+    .cal-nav-label { font-size:1.2rem; font-weight:700; text-align:center; }
     .calendar-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:1px; background:var(--bdr); border:1px solid var(--bdr); border-radius:var(--r); overflow:hidden; }
     .cal-header-day { background:var(--s1); padding:12px; text-align:center; font-weight:700; font-size:.85rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
     .cal-day { background:var(--bg); min-height:120px; padding:10px; display:flex; flex-direction:column; transition:background .2s; }
     .cal-day:hover { background:var(--s1); }
     .cal-day.empty { background:var(--s2); opacity:0.5; }
     .cal-date-num { font-size:1rem; font-weight:600; color:var(--muted); margin-bottom:8px; }
-    .cal-day.today .cal-date-num { color:var(--acc); }
+    .cal-day.today .cal-date-num { color:var(--acc); background:rgba(245,166,35,.15); width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
     .cal-task { background:var(--s2); border-left:3px solid var(--acc); padding:6px 8px; border-radius:4px; font-size:.8rem; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:background .2s; }
     .cal-task:hover { background:rgba(245,166,35,.15); }
     .cal-task.done { border-left-color:var(--green); text-decoration:line-through; opacity:0.6; }
+
+    /* SOCIAL MEDIA KANBAN */
+    .kanban-board { display:flex; gap:16px; align-items:flex-start; overflow-x:auto; padding-bottom:20px; }
+    .kanban-col { flex:0 0 260px; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--r); display:flex; flex-direction:column; max-height:calc(100vh - 280px); }
 
     /* TIMELINE VIEW */
     .timeline-container { background:var(--s1); border:1px solid var(--bdr); border-radius:var(--r); padding:30px; }
@@ -135,29 +143,13 @@
 
     <!-- KANBAN -->
     <div id="view-kanban" class="view-container active">
-      <div class="kanban-board">
-        <div class="kanban-col">
-          <div class="col-header">To Do <span class="col-count" id="kb-todo-count">0</span></div>
-          <div class="col-body" id="kb-todo"></div>
-        </div>
-        <div class="kanban-col">
-          <div class="col-header" style="border-bottom-color:var(--blue)">In Progress <span class="col-count" id="kb-prog-count">0</span></div>
-          <div class="col-body" id="kb-prog"></div>
-        </div>
-        <div class="kanban-col">
-          <div class="col-header" style="border-bottom-color:var(--acc)">Review <span class="col-count" id="kb-rev-count">0</span></div>
-          <div class="col-body" id="kb-rev"></div>
-        </div>
-        <div class="kanban-col">
-          <div class="col-header" style="border-bottom-color:var(--green)">Done <span class="col-count" id="kb-done-count">0</span></div>
-          <div class="col-body" id="kb-done"></div>
-        </div>
-      </div>
+      <!-- Kanban columns rendered by JS based on task service type -->
+      <div class="kanban-board" id="kanban-board"></div>
     </div>
 
     <!-- CALENDAR -->
     <div id="view-calendar" class="view-container">
-      <!-- Calendar drawn by JS -->
+      <!-- Calendar nav + grid rendered by JS -->
       <div id="cal-root"></div>
     </div>
 
@@ -171,8 +163,11 @@
   <script src="client-auth.js"></script>
   <script>
     let allTasks = [];
+    let clientInfo = null;
+    let calDate = new Date(); // Current calendar month
 
     window.onClientAuthenticated = (client) => {
+      clientInfo = client;
       document.getElementById("client-greeting").innerHTML = `Welcome back, <span>${client.client_name}</span>`;
       fetchTasks();
     };
@@ -196,7 +191,6 @@
     function switchView(view) {
       document.querySelectorAll(".view-btn").forEach(b => b.classList.remove("active"));
       document.getElementById(`btn-${view}`).classList.add("active");
-      
       document.querySelectorAll(".view-container").forEach(v => v.classList.remove("active"));
       document.getElementById(`view-${view}`).classList.add("active");
     }
@@ -207,44 +201,92 @@
       renderTimeline();
     }
 
-    // --- KANBAN LOGIC ---
+    // ── Detect if this client uses Social Media ───────────────────────────────
+    function isSocialMediaClient() {
+      return allTasks.some(t => {
+        const svc = (t.service || "").toLowerCase();
+        const title = (t.title || "").toLowerCase();
+        return svc.includes("social") || title.includes("social");
+      });
+    }
+
+    // ── KANBAN LOGIC ─────────────────────────────────────────────────────────
+    const DEFAULT_COLS = [
+      { key:"not_started",   label:"To Do",       color:"var(--muted)",  emoji:"📋" },
+      { key:"in_progress",   label:"In Progress", color:"var(--blue)",   emoji:"🔄" },
+      { key:"pending_review",label:"In Review",   color:"var(--acc)",    emoji:"⏳" },
+      { key:"approved",      label:"Approved",    color:"var(--green)",  emoji:"✅" },
+    ];
+    const SOCIAL_COLS = [
+      { key:"need_to_start", label:"Need to Start", color:"var(--muted)",  emoji:"🔲" },
+      { key:"scheduled",     label:"Scheduled",     color:"var(--blue)",   emoji:"📅" },
+      { key:"in_progress",   label:"In Progress",   color:"#a78bfa",       emoji:"🔄" },
+      { key:"paused",        label:"Paused",         color:"#f59e0b",       emoji:"⏸️" },
+      { key:"posted",        label:"Posted",         color:"var(--green)",  emoji:"🚀" },
+      { key:"final",         label:"Final",          color:"#22d3ee",       emoji:"✨" },
+    ];
+
+    // Normalise a raw status string to a canonical key
+    function normaliseStatus(status, isSocial) {
+      const s = (status || "").toLowerCase().replace(/[^a-z_]/g, "").replace(/ /g, "_");
+      // Social mappings
+      if(isSocial) {
+        if(["need_to_start","not_started","unlocked"].includes(s)) return "need_to_start";
+        if(["scheduled"].includes(s)) return "scheduled";
+        if(["in_progress","inprogress"].includes(s)) return "in_progress";
+        if(["paused"].includes(s)) return "paused";
+        if(["posted","done","approved","final_posted"].includes(s)) return "posted";
+        if(["final"].includes(s)) return "final";
+        return "need_to_start";
+      }
+      // Default mappings
+      if(["not_started","todo","unlocked","need_to_start"].includes(s)) return "not_started";
+      if(["in_progress","inprogress"].includes(s)) return "in_progress";
+      if(["in_review","pending_review","submitted"].includes(s)) return "pending_review";
+      if(["approved","done","final","posted"].includes(s)) return "approved";
+      return "not_started";
+    }
+
     function renderKanban() {
-      const cols = {
-        todo: document.getElementById("kb-todo"),
-        prog: document.getElementById("kb-prog"),
-        rev:  document.getElementById("kb-rev"),
-        done: document.getElementById("kb-done")
-      };
-      
-      Object.values(cols).forEach(c => c.innerHTML = "");
-      const counts = { todo:0, prog:0, rev:0, done:0 };
+      const board = document.getElementById("kanban-board");
+      const isSocial = isSocialMediaClient();
+      const cols = isSocial ? SOCIAL_COLS : DEFAULT_COLS;
+
+      // Build a bucket for each column
+      const buckets = {};
+      cols.forEach(c => buckets[c.key] = []);
 
       allTasks.forEach(t => {
-        let col = "todo";
-        if(t.progress >= 100 || t.status === "done" || t.status === "approved") col = "done";
-        else if(t.status === "in_review" || t.status === "submitted" || t.progress >= 80) col = "rev";
-        else if(t.progress > 0 || t.status === "in_progress") col = "prog";
-        
-        counts[col]++;
-        cols[col].innerHTML += `
-          <div class="task-card">
-            <div class="progress-bar"><div class="progress-fill" style="width:${t.progress}%"></div></div>
-            <div class="task-title">${t.title}</div>
-            <div class="task-desc">${t.description || "No description provided."}</div>
-            <div class="task-meta">
-              <div class="task-date ${isOverdue(t.due_date) && col !== 'done' ? 'overdue' : ''}">
-                📅 ${t.due_date || "No due date"}
-              </div>
-              <div class="task-assignee">${t.assigned_to ? '👤 ' + t.assigned_to : ''}</div>
-            </div>
-          </div>
-        `;
+        const key = normaliseStatus(t.status, isSocial);
+        if(buckets[key]) buckets[key].push(t);
+        else buckets[cols[0].key].push(t); // fallback to first col
       });
-      
-      document.getElementById("kb-todo-count").textContent = counts.todo;
-      document.getElementById("kb-prog-count").textContent = counts.prog;
-      document.getElementById("kb-rev-count").textContent = counts.rev;
-      document.getElementById("kb-done-count").textContent = counts.done;
+
+      board.innerHTML = cols.map(col => {
+        const tasks = buckets[col.key];
+        const today = new Date().toISOString().slice(0,10);
+        return `
+          <div class="kanban-col">
+            <div class="col-header" style="border-bottom:2px solid ${col.color}">
+              ${col.emoji} ${col.label}
+              <span class="col-count">${tasks.length}</span>
+            </div>
+            <div class="col-body">
+              ${tasks.length ? tasks.map(t => `
+                <div class="task-card">
+                  <div class="progress-bar"><div class="progress-fill" style="width:${t.progress||0}%"></div></div>
+                  <div class="task-title">${t.title}</div>
+                  <div class="task-desc">${t.description || ""}</div>
+                  <div class="task-meta">
+                    <div class="task-date ${t.due_date && t.due_date < today ? 'overdue' : ''}">
+                      📅 ${t.due_date || "No due date"}
+                    </div>
+                    <div>${t.assigned_to ? '👤 ' + t.assigned_to : ''}</div>
+                  </div>
+                </div>`).join("") : '<div style="padding:20px;color:var(--muted);font-size:.85rem;text-align:center">No tasks</div>'}
+            </div>
+          </div>`;
+      }).join("");
     }
 
     function isOverdue(dateStr) {
@@ -252,87 +294,73 @@
       return new Date(dateStr) < new Date(new Date().setHours(0,0,0,0));
     }
 
-    // --- CALENDAR LOGIC ---
+    // ── CALENDAR LOGIC ────────────────────────────────────────────────────────
+    function calPrev() { calDate.setMonth(calDate.getMonth() - 1); renderCalendar(); }
+    function calNext() { calDate.setMonth(calDate.getMonth() + 1); renderCalendar(); }
+
     function renderCalendar() {
       const root = document.getElementById("cal-root");
-      
-      // Simple current month view
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      
-      const firstDay = new Date(year, month, 1).getDay(); // 0-6 (Sun-Sat)
+      const year  = calDate.getFullYear();
+      const month = calDate.getMonth();
+      const now   = new Date();
+      const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+      const firstDay    = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-      
-      let html = `<div style="text-align:center; font-size:1.2rem; font-weight:700; margin-bottom:16px;">
-        ${now.toLocaleString('default', { month: 'long' })} ${year}
-      </div>`;
-      
-      html += `<div class="calendar-grid">`;
-      ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => {
-        html += `<div class="cal-header-day">${d}</div>`;
-      });
-      
-      // Pad empty days at start
-      for(let i=0; i<firstDay; i++) {
+      const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+
+      let html = `
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="calPrev()">&#8592;</button>
+          <span class="cal-nav-label">${monthNames[month]} ${year}</span>
+          <button class="cal-nav-btn" onclick="calNext()">&#8594;</button>
+        </div>
+        <div class="calendar-grid">`;
+
+      ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d =>
+        html += `<div class="cal-header-day">${d}</div>`
+      );
+
+      for(let i = 0; i < firstDay; i++)
         html += `<div class="cal-day empty"></div>`;
-      }
-      
-      for(let d=1; d<=daysInMonth; d++) {
-        const isToday = d === now.getDate();
+
+      for(let d = 1; d <= daysInMonth; d++) {
+        const isToday = isCurrentMonth && d === now.getDate();
         const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        
-        // Find tasks due on this date
         const dayTasks = allTasks.filter(t => t.due_date === dateStr);
-        
+
         html += `<div class="cal-day ${isToday ? 'today' : ''}">
           <div class="cal-date-num">${d}</div>
           ${dayTasks.map(t => {
-            const isDone = t.progress >= 100 || t.status === "done";
+            const isDone = t.progress >= 100 || ["approved","done","posted","final"].includes(t.status);
             return `<div class="cal-task ${isDone ? 'done' : ''}" title="${t.title}">${t.title}</div>`;
           }).join('')}
         </div>`;
       }
-      
-      // Pad end to complete the grid (optional)
-      const totalCells = firstDay + daysInMonth;
-      const remainder = totalCells % 7;
-      if(remainder > 0) {
-        for(let i=0; i<(7 - remainder); i++) {
+
+      const remainder = (firstDay + daysInMonth) % 7;
+      if(remainder > 0)
+        for(let i = 0; i < (7 - remainder); i++)
           html += `<div class="cal-day empty"></div>`;
-        }
-      }
-      
+
       html += `</div>`;
       root.innerHTML = html;
     }
 
-    // --- TIMELINE LOGIC ---
+    // ── TIMELINE LOGIC ────────────────────────────────────────────────────────
     function renderTimeline() {
       const root = document.getElementById("tl-root");
-      
-      if(!allTasks.length) {
-        root.innerHTML = "";
-        return;
-      }
+      if(!allTasks.length) { root.innerHTML = ""; return; }
 
-      // Find min start date and max due date across all tasks
       let minDate = new Date();
       let maxDate = new Date();
-      maxDate.setMonth(maxDate.getMonth() + 1); // Default to +1 month scale
-      
+      maxDate.setMonth(maxDate.getMonth() + 1);
+
       allTasks.forEach(t => {
-        if(t.start_date) {
-          const s = new Date(t.start_date);
-          if(s < minDate) minDate = s;
-        }
-        if(t.due_date) {
-          const d = new Date(t.due_date);
-          if(d > maxDate) maxDate = d;
-        }
+        if(t.start_date) { const s = new Date(t.start_date); if(s < minDate) minDate = s; }
+        if(t.due_date)   { const d = new Date(t.due_date);   if(d > maxDate) maxDate = d; }
       });
-      
-      // Pad the scale a bit
+
       minDate.setDate(minDate.getDate() - 2);
       maxDate.setDate(maxDate.getDate() + 2);
       const totalMs = maxDate - minDate;
@@ -340,28 +368,23 @@
       let html = `<div class="tl-header">
         <div class="tl-col-task">Task / Deliverable</div>
         <div class="tl-col-chart">
-          <!-- Simplified marker for UI aesthetics -->
-          <div class="tl-month-marker">Timeline View (Scale: ${minDate.toISOString().split('T')[0]} to ${maxDate.toISOString().split('T')[0]})</div>
+          <div class="tl-month-marker">Timeline (${minDate.toISOString().slice(0,10)} → ${maxDate.toISOString().slice(0,10)})</div>
         </div>
       </div>`;
 
       allTasks.forEach(t => {
-        const startStr = t.start_date || t.created_at || new Date().toISOString().split('T')[0];
-        const endStr = t.due_date || maxDate.toISOString().split('T')[0];
-        
-        let start = new Date(startStr);
-        let end = new Date(endStr);
-        
+        const startStr = t.start_date || t.created_at || new Date().toISOString().slice(0,10);
+        const endStr   = t.due_date   || maxDate.toISOString().slice(0,10);
+        let start = new Date(startStr), end = new Date(endStr);
         if(start < minDate) start = minDate;
-        if(end > maxDate) end = maxDate;
-        if(start > end) start = end;
+        if(end   > maxDate) end   = maxDate;
+        if(start > end)     start = end;
 
-        const leftPct = ((start - minDate) / totalMs) * 100;
-        let widthPct = ((end - start) / totalMs) * 100;
-        if(widthPct < 5) widthPct = 5; // Min width for visibility
+        const leftPct  = ((start - minDate) / totalMs) * 100;
+        let widthPct   = ((end   - start)   / totalMs) * 100;
+        if(widthPct < 5) widthPct = 5;
+        const isDone = t.progress >= 100 || ["approved","done","posted","final"].includes(t.status);
 
-        const isDone = t.progress >= 100 || t.status === "done";
-        
         html += `
           <div class="tl-row">
             <div class="tl-info">
@@ -369,12 +392,9 @@
               <div class="tl-dates">${startStr} to ${endStr}</div>
             </div>
             <div class="tl-track">
-              <div class="tl-bar ${isDone ? 'done' : ''}" style="left:${leftPct}%; width:${widthPct}%">
-                ${t.progress}%
-              </div>
+              <div class="tl-bar ${isDone?'done':''}" style="left:${leftPct}%;width:${widthPct}%">${t.progress||0}%</div>
             </div>
-          </div>
-        `;
+          </div>`;
       });
 
       root.innerHTML = html;

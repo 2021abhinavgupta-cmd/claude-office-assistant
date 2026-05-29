@@ -1119,17 +1119,51 @@ load();
 
 // ── KANBAN ────────────────────────────────────────────────────────────────────
 const AVATAR_COLORS = {Vidit:"#5c9eff",Nupur:"#ff79c6",Abhinav:"#22d3a0",Kshitij:"#f5a623",Raj:"#ff5c5c",Mohit:"#bd93f9",Tanaya:"#50fa7b",Happy:"#ffb86c"};
-const STAGE_COLS = [
-  {key:"todo",   label:"To Do",      emoji:"📋", statuses:["not_started","Not Started","unlocked","Unlocked"]},
+
+// Default columns (Branding / Website / Shoot)
+const DEFAULT_STAGE_COLS = [
+  {key:"todo",   label:"To Do",      emoji:"📋", statuses:["not_started","Not Started","unlocked","Unlocked","need_to_start","Need to Start"]},
   {key:"prog",   label:"In Progress", emoji:"🔄", statuses:["in_progress","In Progress"]},
   {key:"review", label:"In Review",   emoji:"⏳", statuses:["pending_review","submitted","In Review"]},
-  {key:"done",   label:"Approved",    emoji:"✅", statuses:["approved","Done"]},
+  {key:"done",   label:"Approved",    emoji:"✅", statuses:["approved","Done","final","Final","posted","Posted"]},
 ];
-const STATUS_MAP = {todo:"not_started",prog:"in_progress",review:"pending_review",done:"approved"};
+const DEFAULT_STATUS_MAP = {todo:"not_started",prog:"in_progress",review:"pending_review",done:"approved"};
+
+// Social Media columns
+const SOCIAL_STAGE_COLS = [
+  {key:"need_to_start", label:"Need to Start", emoji:"🔲", statuses:["need_to_start","Need to Start","not_started","Not Started","unlocked","Unlocked"]},
+  {key:"scheduled",     label:"Scheduled",     emoji:"📅", statuses:["scheduled","Scheduled"]},
+  {key:"in_progress",   label:"In Progress",   emoji:"🔄", statuses:["in_progress","In Progress"]},
+  {key:"paused",        label:"Paused",         emoji:"⏸️", statuses:["paused","Paused"]},
+  {key:"posted",        label:"Posted",         emoji:"🚀", statuses:["posted","Posted","approved","Done","done"]},
+  {key:"final",         label:"Final",          emoji:"✨", statuses:["final","Final"]},
+];
+const SOCIAL_STATUS_MAP = {
+  need_to_start:"need_to_start",
+  scheduled:"scheduled",
+  in_progress:"in_progress",
+  paused:"paused",
+  posted:"posted",
+  final:"final",
+};
+
+// Keep legacy alias so nothing else breaks
+const STAGE_COLS = DEFAULT_STAGE_COLS;
+const STATUS_MAP = DEFAULT_STATUS_MAP;
+
 let kanbanGroup    = "stage";
 let draggedCard    = null;
 let selectedClient = "all";
 let quickTasks     = [];  // loaded from backend on init
+
+// Detect if a client's tasks are social-media-type
+function clientIsSocial(client){
+  return (client.tasks || []).some(t => {
+    const svc   = (t.service  || "").toLowerCase();
+    const title = (t.title    || "").toLowerCase();
+    return svc.includes("social") || title.includes("social");
+  }) || (client.requirements || "").toLowerCase().includes("[social");
+}
 
 async function loadQuickTasks(){
   try {
@@ -1156,11 +1190,15 @@ function renderClientKanban(clientId){
   const tasks = (client.tasks || []).map(t => ({...t, clientName: client.name, clientUrl: client.url, notionId: t.notion_id || null}));
   if(!tasks.length){board.innerHTML='<div class="empty" style="padding:24px 0;">No tasks for this client yet.</div>';return;}
 
-  board.innerHTML = STAGE_COLS.map(col=>buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t=>col.statuses.includes(t.status)))).join("");
-  bindDragEvents(board);
+  const isSocial = clientIsSocial(client);
+  const cols     = isSocial ? SOCIAL_STAGE_COLS : DEFAULT_STAGE_COLS;
+
+  board.innerHTML = cols.map(col => buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t => col.statuses.includes(t.status)))).join("");
+  bindDragEvents(board, isSocial);
 }
 
-function bindDragEvents(board){
+function bindDragEvents(board, isSocial){
+  const activeStatusMap = isSocial ? SOCIAL_STATUS_MAP : DEFAULT_STATUS_MAP;
   board.querySelectorAll(".kcard").forEach(card=>{
     card.addEventListener("dragstart", e=>{
       draggedCard={taskId:card.dataset.taskId,notionId:card.dataset.notionId,taskTitle:card.dataset.taskTitle,assignee:card.dataset.assignee,clientName:card.dataset.clientName,isQuick:card.dataset.isQuick==="true"};
@@ -1174,7 +1212,9 @@ function bindDragEvents(board){
     col.addEventListener("drop",async e=>{
       e.preventDefault();col.classList.remove("drag-over");
       if(!draggedCard)return;
-      const newStatus=STATUS_MAP[col.dataset.col];
+      // For social media boards the col key IS the status; for default boards use the map
+      const colKey = col.dataset.col;
+      const newStatus = activeStatusMap[colKey] || colKey;
       if(!newStatus)return;
       // Use the unified backend update logic for both quick and normal tasks
       await updateTaskStatus(draggedCard.taskId, draggedCard.notionId, newStatus, draggedCard.taskTitle, draggedCard.assignee, draggedCard.clientName);
