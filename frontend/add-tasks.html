@@ -1372,6 +1372,9 @@
 
       const clientId = document.getElementById("client_id").value;
       if (!clientId) return;
+      
+      const clientDropdown = document.getElementById("client_id");
+      const clientName = clientDropdown.options[clientDropdown.selectedIndex]?.text || "Unknown Client";
 
       btn.disabled = true; btn.textContent = "⏳ Adding Tasks...";
 
@@ -1405,6 +1408,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: UID,
+            client_name: clientName,
             services: servicesToSend,
             deadline: document.getElementById("deadline")?.value || "",
             extra_notes: extraNotes

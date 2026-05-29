@@ -2585,7 +2585,7 @@ SERVICE_TASK_TEMPLATES = {
 }
 
 # ── POST /api/clients/<id>/auto-tasks ─────────────────────────────────────────
-@app.route("/api/clients/<int:client_id>/auto-tasks", methods=["POST"])
+@app.route("/api/clients/<client_id>/auto-tasks", methods=["POST"])
 def auto_generate_tasks(client_id):
     """Auto-generate tasks from selected service types. Admin only."""
     body = request.get_json(silent=True) or {}
@@ -2596,10 +2596,10 @@ def auto_generate_tasks(client_id):
     services = body.get("services", [])
     due_date = body.get("due_date", body.get("deadline", ""))
     extra_notes = body.get("extra_notes", "")
+    client_name = body.get("client_name", "Unknown Client")
     if not services:
         return jsonify({"error": "No services selected"}), 400
 
-    conn = _pt_conn()
     created_ids = []
     ordered_tasks = []
     for svc in services:
@@ -2609,6 +2609,24 @@ def auto_generate_tasks(client_id):
     # Sort by order field so dependencies chain correctly
     ordered_tasks.sort(key=lambda x: x["order"])
 
+    # Notion Mode
+    if not str(client_id).isdigit():
+        for tmpl in ordered_tasks:
+            res = notion_store.create_task(
+                title=tmpl["title"],
+                client_name=client_name,
+                client_notion_id=client_id,
+                assigned_to=tmpl["assigned_to"],
+                due_date=due_date,
+                status="not_started",
+                progress=0
+            )
+            if res:
+                created_ids.append(res["notion_id"])
+        return jsonify({"success": True, "tasks_created": len(created_ids), "task_ids": created_ids})
+
+    # SQLite Mode
+    conn = _pt_conn()
     with conn:
         for tmpl in ordered_tasks:
             cur = conn.execute(
