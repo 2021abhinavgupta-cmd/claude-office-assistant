@@ -524,8 +524,8 @@
       outline: none;
       width: 100%;
       font-family: 'DM Sans', sans-serif;
-      resize: vertical;
-      min-height: 36px;
+      resize: none;
+      overflow-y: auto;
       line-height: 1.4
     }
 
@@ -1109,11 +1109,11 @@
       ).join("");
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
-    <td><input class="st-input" type="date" value="${postDay}" style="width:130px;min-height:36px"/></td>
-    <td><textarea class="st-input" placeholder="Post title or brief…" style="min-width:140px;min-height:60px">${title}</textarea></td>
+    <td><input class="st-input" type="date" value="${postDay}" style="width:130px;height:36px"/></td>
+    <td><textarea class="st-input" placeholder="Post title or brief…" style="min-width:140px;height:70px;resize:none;overflow-y:auto">${title}</textarea></td>
     <td><select class="st-sel" style="width:90px;margin-top:2px">${typeOptions(type)}</select></td>
-    <td><textarea class="st-input" placeholder="Content idea…" style="min-width:140px;min-height:60px">${idea}</textarea></td>
-    <td><textarea class="st-input" placeholder="Caption text…" style="min-width:180px;min-height:80px">${caption}</textarea></td>
+    <td><textarea class="st-input" placeholder="Content idea…" style="min-width:140px;height:70px;resize:none;overflow-y:auto">${idea}</textarea></td>
+    <td><textarea class="st-input" placeholder="Caption text…" style="min-width:180px;height:70px;resize:none;overflow-y:auto">${caption}</textarea></td>
     <td style="min-width:140px">
       <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'),150)">
         <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="font-size:.75rem;padding:6px 8px;background:var(--s1);border:1px solid var(--bdr);border-radius:5px;cursor:pointer">Unassigned</div>
@@ -1123,16 +1123,9 @@
     <td>
       <select class="st-sel status-sel" style="width:120px;margin-top:2px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
     </td>
-    <td><textarea class="st-input" placeholder="Drive link…" style="min-width:140px;min-height:60px">${driveLink}</textarea></td>
+    <td><textarea class="st-input" placeholder="Drive link…" style="min-width:140px;height:70px;resize:none;overflow-y:auto">${driveLink}</textarea></td>
     <td><button class="st-del" onclick="removeSocialRow(this)" title="Delete" style="margin-top:4px">✕</button></td>`;
       tbody.appendChild(tr);
-      // Auto-resize all textareas in this row
-      tr.querySelectorAll('textarea.st-input').forEach(ta => {
-        ta.addEventListener('input', () => {
-          ta.style.height = 'auto';
-          ta.style.height = ta.scrollHeight + 'px';
-        });
-      });
       // Pre-select assignee if provided
       if (assignee) {
         const whoArr = assignee.split(',').map(s => s.trim());
