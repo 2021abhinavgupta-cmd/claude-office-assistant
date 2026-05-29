@@ -432,7 +432,7 @@
       width: 100%;
       border-collapse: collapse;
       font-size: .8rem;
-      min-width: 680px
+      min-width: 1100px
     }
 
     .social-table thead tr {
@@ -467,7 +467,7 @@
     .social-table td {
       padding: 10px 10px;
       vertical-align: top;
-      max-width: 0;
+      overflow: hidden;
     }
 
     /* Hover cell popup */
@@ -1196,21 +1196,21 @@
       ).join("");
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
-    <td><input class="st-input" type="date" value="${postDay}" style="width:130px;height:36px"/></td>
-    <td><textarea class="st-input" placeholder="Post title or brief…" style="min-width:140px;height:70px;resize:none;overflow-y:auto">${title}</textarea></td>
-    <td><select class="st-sel" style="width:90px;margin-top:2px">${typeOptions(type)}</select></td>
-    <td><textarea class="st-input" placeholder="Content idea…" style="min-width:140px;height:70px;resize:none;overflow-y:auto">${idea}</textarea></td>
-    <td><textarea class="st-input" placeholder="Caption text…" style="min-width:180px;height:70px;resize:none;overflow-y:auto">${caption}</textarea></td>
-    <td style="min-width:140px">
+    <td><input class="st-input" type="date" value="${postDay}" style="width:100%;height:36px"/></td>
+    <td><textarea class="st-input" placeholder="Post title or brief…" style="width:100%;height:90px;resize:none;overflow-y:auto">${title}</textarea></td>
+    <td><select class="st-sel" style="width:100%;margin-top:2px">${typeOptions(type)}</select></td>
+    <td><textarea class="st-input" placeholder="Content idea…" style="width:100%;height:90px;resize:none;overflow-y:auto">${idea}</textarea></td>
+    <td><textarea class="st-input" placeholder="Caption text…" style="width:100%;height:90px;resize:none;overflow-y:auto">${caption}</textarea></td>
+    <td>
       <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'),150)">
         <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="font-size:.75rem;padding:6px 8px;background:var(--s1);border:1px solid var(--bdr);border-radius:5px;cursor:pointer">Unassigned</div>
         <div class="ms-dropdown">${empOptsHtml}</div>
       </div>
     </td>
     <td>
-      <select class="st-sel status-sel" style="width:120px;margin-top:2px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
+      <select class="st-sel status-sel" style="width:100%;margin-top:2px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
     </td>
-    <td><textarea class="st-input" placeholder="Drive link…" style="min-width:140px;height:70px;resize:none;overflow-y:auto">${driveLink}</textarea></td>
+    <td><textarea class="st-input" placeholder="Drive link…" style="width:100%;height:90px;resize:none;overflow-y:auto">${driveLink}</textarea></td>
     <td><button class="st-del" onclick="removeSocialRow(this)" title="Delete" style="margin-top:4px">✕</button></td>`;
       tbody.appendChild(tr);
       // Wire up popup on double-click for text areas
