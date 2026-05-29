@@ -679,15 +679,32 @@ function renderClientSheets(clientId) {
     html += `
       <tr style="border-bottom: 1px solid var(--bdr);">
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted);">${rowIndex++}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">${t.due_date || "—"}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500;">${title}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr);">${typeBadge}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${brief}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${idea}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${caption}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.85rem;">${assigneeName}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">${stLbl}</td>
-        <td style="padding: 10px; color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${link}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
+          <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${t.due_date || ""}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+        </td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${title}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr);">
+          <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+            <option value="Story" ${type.toLowerCase()==='story'?'selected':''}>Story</option>
+            <option value="Reel" ${type.toLowerCase()==='reel'?'selected':''}>Reel</option>
+            <option value="Static" ${type.toLowerCase()==='static'?'selected':''}>Static</option>
+            <option value="Carousel" ${type.toLowerCase()==='carousel'?'selected':''}>Carousel</option>
+            <option value="Post" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
+          </select>
+        </td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${brief}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${idea}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${caption}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.85rem; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${assigneeName}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">
+          <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+            <option value="not_started" ${s==='not_started'?'selected':''}>Not Started</option>
+            <option value="in_progress" ${s==='in_progress'?'selected':''}>In Progress</option>
+            <option value="in_review" ${s==='in_review'?'selected':''}>In Review</option>
+            <option value="approved" ${s==='approved'?'selected':''}>Approved</option>
+          </select>
+        </td>
+        <td style="padding: 10px; color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${link}</td>
       </tr>
     `;
   });
@@ -696,11 +713,16 @@ function renderClientSheets(clientId) {
   container.innerHTML = html;
 }
 
-async function saveSheetRow(taskId, cellElem) {
+async function saveSheetRow(taskId, cellElem, clientId) {
   const tr = cellElem.closest('tr');
+  const due_date = tr.cells[1].querySelector('input').value;
+  const title = tr.cells[2].innerText.trim();
+  const type = tr.cells[3].querySelector('select').value;
   const brief = tr.cells[4].innerText.trim();
   const idea = tr.cells[5].innerText.trim();
   const caption = tr.cells[6].innerText.trim();
+  const assigned_to = tr.cells[7].innerText.trim();
+  const status = tr.cells[8].querySelector('select').value;
   const link = tr.cells[9].innerText.trim();
   
   const detailParts = [];
@@ -715,19 +737,46 @@ async function saveSheetRow(taskId, cellElem) {
     taskObj = (c.tasks || []).find(t => String(t.id) === String(taskId));
     if (taskObj) break;
   }
-  if (!taskObj || taskObj.description === notes) return;
+  if (!taskObj) return;
+  
+  const newTitle = `[${type}] ${title.replace(/^\[.*?\]\s*/, '')}`;
+  
+  if (taskObj.description === notes && 
+      taskObj.due_date === due_date &&
+      taskObj.title === newTitle &&
+      taskObj.assigned_to === assigned_to &&
+      taskObj.status === status) return;
   
   taskObj.description = notes;
+  taskObj.due_date = due_date;
+  taskObj.title = newTitle;
+  taskObj.assigned_to = assigned_to;
+  taskObj.status = status;
+  
   cellElem.style.opacity = "0.5";
   
   try {
-    const res = await fetch(`/api/tasks/${taskId}`, {
+    const endpoint = notionMode 
+      ? `${API}/api/notion/tasks/${taskId}`
+      : `${API}/api/sqlite/tasks/${taskId}`;
+      
+    const res = await fetch(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: notes })
+      body: JSON.stringify({ 
+        submission_note: notes,
+        due_date: due_date,
+        new_title: newTitle,
+        assigned_to: assigned_to,
+        status: status
+      })
     });
     if (!res.ok) throw new Error("Network error");
-    // Optional: could toast success here, but auto-saving on blur usually stays silent
+    
+    if (clientId) {
+      renderClientCalendar(clientId);
+      if (typeof renderCalendar === 'function') renderCalendar();
+    }
   } catch(e) {
     toast("Error saving row", "error");
   } finally {

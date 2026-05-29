@@ -936,7 +936,8 @@ def sqlite_patch_task(task_id: int):
     body = request.get_json(silent=True) or {}
     updates, vals = [], []
     for field, col in [("new_title","title"),("assigned_to","assigned_to"),
-                       ("due_date","due_date"),("status","status"),("progress","progress")]:
+                       ("due_date","due_date"),("status","status"),("progress","progress"),
+                       ("submission_note","description")]:
         if field in body:
             updates.append(f"{col}=?"); vals.append(body[field])
     if not updates:
