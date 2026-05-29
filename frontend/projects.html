@@ -526,6 +526,7 @@ function renderDetail(clients){
           <button class="ctab" onclick="switchClientTab('${c.id}', 'blockers', this)">🔴 Blockers</button>
           <button class="ctab" onclick="switchClientTab('${c.id}', 'review', this)">⏳ In Review</button>
           <button class="ctab" onclick="switchClientTab('${c.id}', 'calendar', this)">📅 Calendar</button>
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'sheets', this)">📊 Sheets</button>
         </div>
         
         <div id="ctab-${c.id}-list" class="ctab-content" style="display:block">
@@ -569,6 +570,10 @@ function renderDetail(clients){
           </div>
         </div>
 
+        <div id="ctab-${c.id}-sheets" class="ctab-content" style="display:none; padding-top: 12px; overflow-x: auto;">
+          <div id="csheets-${c.id}"></div>
+        </div>
+
       </div>
     </div>`;
   }).join("");
@@ -587,6 +592,7 @@ function toggleDetail(id){
     renderClientKanban(id);
     renderClientBlockers(id);
     renderClientReview(id);
+    renderClientSheets(id);
   }
 }
 
@@ -598,6 +604,93 @@ function _clientCalDate(id){
 }
 function clientCalPrev(id){ const d=_clientCalDate(id); d.setMonth(d.getMonth()-1); renderClientCalendar(id); }
 function clientCalNext(id){ const d=_clientCalDate(id); d.setMonth(d.getMonth()+1); renderClientCalendar(id); }
+
+function renderClientSheets(clientId) {
+  const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
+  if(!client) return;
+  const tasks = client.tasks||[];
+  
+  // Find social media tasks (either labeled service='Social Media' or start with [Type])
+  const socialTasks = tasks.filter(t => t.service === "Social Media" || /^\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
+  
+  const container = document.getElementById(`csheets-${clientId}`);
+  if(!container) return;
+  
+  if (socialTasks.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:12px;">No social media posts found. Add tasks via "Add Tasks" → Social Media.</div>';
+    return;
+  }
+  
+  let html = `
+    <table style="width:100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; background: var(--s2); border: 1px solid var(--bdr); border-radius: var(--rs);">
+      <thead>
+        <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid var(--bdr); color: var(--txt);">
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 90px; font-weight: 600;">Date</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 80px; font-weight: 600;">Type</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 180px; font-weight: 600;">Post</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Brief</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Idea</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Caption</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 150px; font-weight: 600;">Link</th>
+          <th style="padding: 10px; width: 100px; font-weight: 600;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
+  socialTasks.sort((a,b) => (a.due_date||"").localeCompare(b.due_date||"")).forEach(t => {
+    let type = "Post";
+    let title = t.title;
+    const match = t.title.match(/^\[(.*?)\]\s*(.*)$/);
+    if (match) {
+      type = match[1];
+      title = match[2];
+    }
+    
+    // Parse description for Brief, Idea, Caption, Link
+    // Format: Brief: xxx | Idea: yyy | Caption: zzz | Link: www
+    const notes = t.description || "";
+    const parts = notes.split(" | ");
+    let brief = "", idea = "", caption = "", link = "";
+    
+    parts.forEach(p => {
+      const colMatch = p.match(/^(Brief|Idea|Caption|Link):\s*(.*)$/);
+      if (colMatch) {
+        const k = colMatch[1], v = colMatch[2];
+        if (k === "Brief") brief = v;
+        if (k === "Idea") idea = v;
+        if (k === "Caption") caption = v;
+        if (k === "Link") link = v;
+      }
+    });
+    
+    // Status color
+    const s = t.status || "not_started";
+    const stCol = s === "approved" ? "var(--grn)" : s.includes("review") ? "#f5a623" : "var(--muted)";
+    const stLbl = s.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+    
+    const typeCol = type.toLowerCase() === "story" ? "#a855f7" : type.toLowerCase() === "reel" ? "#3b82f6" : "#f43f5e";
+    const typeBadge = `<span style="background:${typeCol}20; color:${typeCol}; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">${type}</span>`;
+    
+    const linkHtml = link ? (link.startsWith("http") ? `<a href="${link}" target="_blank" style="color:var(--acc);text-decoration:none">Link ↗</a>` : link) : "";
+    
+    html += `
+      <tr style="border-bottom: 1px solid var(--bdr);">
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">${t.due_date || "—"}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr);">${typeBadge}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500;">${title}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); font-size: 0.8rem; white-space: pre-wrap;">${brief}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); font-size: 0.8rem; white-space: pre-wrap;">${idea}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); font-size: 0.8rem; white-space: pre-wrap;">${caption}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr);">${linkHtml}</td>
+        <td style="padding: 10px; color: ${stCol}; font-size: 0.8rem;">${stLbl}</td>
+      </tr>
+    `;
+  });
+  
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+}
 
 function renderClientCalendar(clientId){
   const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));

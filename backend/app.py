@@ -2644,7 +2644,8 @@ def auto_generate_tasks(client_id):
                 due_date=post_day,
                 status="not_started",
                 progress=0,
-                service="Social Media"
+                service="Social Media",
+                notes=notes
             )
             if res:
                 created_ids.append(res["notion_id"])
@@ -2672,12 +2673,22 @@ def auto_generate_tasks(client_id):
             title = post.get("title") or f"Post {idx + 1}"
             post_day = post.get("post_day") or due_date
             post_type = post.get("type", "")
+            brief = post.get("brief", "")
+            idea = post.get("idea", "")
+            caption = post.get("caption", "")
+            link = post.get("link", "")
             assignee = post.get("assignee", "")
             task_title = f"[{post_type}] {title}" if post_type else title
+            detail_parts = []
+            if brief:   detail_parts.append(f"Brief: {brief}")
+            if idea:    detail_parts.append(f"Idea: {idea}")
+            if caption: detail_parts.append(f"Caption: {caption}")
+            if link:    detail_parts.append(f"Link: {link}")
+            notes = " | ".join(detail_parts)
             cur = conn.execute(
-                """INSERT INTO tasks (client_id,title,assigned_to,due_date,status,progress)
-                   VALUES (?,?,?,?,'not_started',0)""",
-                (client_id, task_title, assignee, post_day)
+                """INSERT INTO tasks (client_id,title,description,assigned_to,due_date,status,progress)
+                   VALUES (?,?,?,?,?,'not_started',0)""",
+                (client_id, task_title, notes, assignee, post_day)
             )
             created_ids.append(cur.lastrowid)
 

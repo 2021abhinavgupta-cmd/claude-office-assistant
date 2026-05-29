@@ -276,7 +276,7 @@ def update_client_status(notion_id: str, status: str) -> bool:
 def create_task(title: str, client_name: str, client_notion_id: str,
                 assigned_to: str = "", due_date: str = "",
                 status: str = "not_started", progress: int = 0,
-                service: str = "") -> Optional[dict]:
+                service: str = "", notes: str = "") -> Optional[dict]:
     """
     Creates a new page in the Tasks Notion DB.
     Returns: { notion_id, title } or None on failure.
@@ -302,6 +302,8 @@ def create_task(title: str, client_name: str, client_notion_id: str,
             "Task Type":     _select(service),
         },
     }
+    if notes:
+        payload["properties"]["Notes"] = _text(notes)
 
     try:
         r = _notion_request(
@@ -365,6 +367,7 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                     "status":       _get_select(props.get("Status", {})),
                     "progress":    _get_number(props.get("Progress", {})),
                     "service":     _get_select(props.get("Task Type", {})),
+                    "description":  _get_text(props.get("Notes", {})),
                     "url":         p.get("url", ""),
                 })
             has_more = data.get("has_more", False)
