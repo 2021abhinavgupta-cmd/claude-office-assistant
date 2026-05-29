@@ -2,6 +2,8 @@
 
 This file provides essential context for AI coding assistants (Claude, Copilot, etc.) working on this codebase.
 
+**💡 Token Saving Tip for Users:** When starting a new chat, you can simply say *"Review CLAUDE.md to understand the architecture, then [do my task]"*. This gives the AI all the routing, database, and UI patterns immediately without having to burn context tokens manually scanning the repository files.
+
 ---
 
 ## Project Overview
@@ -219,14 +221,19 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 
 8. **Standup Auto-Carry-Over** — When an employee loads their tasks for today (`/api/standup/my-tasks`), if they have no tasks yet, the system automatically carries over pending tasks from their *most recent* active day (using `MAX(date)` before today). This safely handles weekends and skipped days without relying on a hardcoded "yesterday" (`timedelta(days=1)`).
 
-9. **Client Onboarding Flow (Two-Step)** — `client-onboard.html` creates the client record only (no tasks). After creation, the success screen offers two options: **Done** (→ Project Board) or **✨ Add Tasks** (→ `add-tasks.html`). The selected services are temporarily saved to `localStorage` (`claude_client_services`). The "Add Tasks" link includes the `client_id` and `services` in the URL parameters.
+9. **Client Onboarding Flow** — `client-onboard.html` creates the client record only. The success screen offers options to go to the Board or ✨ Add Tasks. To reliably pass context to the Add Tasks screen (and prevent ID type mismatches between Notion UUIDs and SQLite IDs), `client-onboard.html` saves selected services and deadline to `localStorage` (`claude_client_services` and `claude_client_deadlines`) keyed by **both the ID and the lowercase client name**, and passes the name, ID, and deadline in the URL.
 
-10. **Add Tasks Workflow Templates** — `add-tasks.html` fetches all existing clients via `GET /api/dashboard/founder?user_id=${UID}` (this safely handles both SQLite and Notion without crashing). It reads URL parameters to auto-advance to the Review Tasks step if coming from onboarding. If opened manually, it checks `localStorage` to auto-fill any previously saved services for the selected client. The 5 service types are:
-    - **social** (6 tasks): Content Ideation → Content Approval (Cal Sheet) → Discussion with Creative → Creative Assigning → Content Creation (Kanban) → Final Drive Link
-    - **branding** (8 tasks): Brand Essence → Stylescape → Logo Design Presentation → Logo Iterations → Visual Style → Collateral → Brand guidelines Content → Brand guidelines
-    - **website** (4 tasks): Concept & Flow → UI 1st Draft Review → Content → Final Build
-    - **shoot** (3 tasks): Video Script & Concept → Video Shoot / Production → Video Editing & Post
-    - **miscellaneous** (1 task): Custom Deliverable Setup
-    Tasks within each service are chained with sequential dependencies in the `dependencies` table. The `/api/clients/<id>/auto-tasks` endpoint also accepts `deadline` and `extra_notes` in the POST body.
+10. **Add Tasks UI (2 Steps)** — `add-tasks.html` has been streamlined into exactly 2 steps: "Select Client & Workflows" and "Add Tasks". The layout is permanently wide (`max-width: 1200px`) to accommodate the Social Media Content Calendar spreadsheet. 
+    - **Service Auto-Recall**: When opened via onboarding, or when a client is manually selected, the app checks `localStorage` by client name and auto-selects their chosen workflows and target deadline.
+    - **Social Media Calendar**: The "Social" workflow renders a specialized full-width HTML table for planning posts with dropdowns for Post Types (Story, Reel, Static, Carousel) and Statuses (Scheduled, In Progress, Need to Start, Posted, Paused, Final).
+    - **Standard Workflows**: Tasks for other workflows are rendered as editable lists. All tasks now start completely **Unassigned** so users can skip assigning them until later.
+    - The task templates are:
+      - **social** (10 tasks): Client Onboarding & Setup → Brand Brief → Content Strategy formulation → Approval on Strategy → Content Ideation → Content Approval (Cal Sheet) → Discussion with Creative → Creative Assigning → Content Creation (Kanban) → Final Drive Link
+      - **branding** (8 tasks): Brand Essence → Stylescape → Logo Design Presentation → Logo Iterations → Visual Style → Collateral → Brand Guidelines Content → Brand Guidelines
+      - **website** (4 tasks): Concept & Flow → UI 1st Draft Review → Content → Final Build
+      - **shoot** (3 tasks): Video Script & Concept → Video Shoot / Production → Video Editing & Post
+      - **miscellaneous** (1 task): Custom Deliverable Setup
 
-11. **Add Tasks Quick Action** — The `📝 Add Tasks` button in `dashboard.html`'s Quick Actions is visible to all users. The page itself restricts creation to admins (`ONBOARD_ADMINS = ["emp001", "emp003", "emp004"]`) and shows an "Access Restricted" message for everyone else.
+11. **Employee API Parsing** — The backend `/api/employees` returns an object `{"employees": [...]}`. Frontend scripts must parse this as an array of objects and convert it into a dictionary `{ id: name }` for dropdowns, otherwise `<option>` tags will render as `[object Object]`.
+
+12. **Add Tasks Quick Action** — The `📝 Add Tasks` button in `dashboard.html`'s Quick Actions is visible to all users. The page itself restricts creation to admins (`ONBOARD_ADMINS = ["emp001", "emp003", "emp004"]`) and shows an "Access Restricted" message for everyone else.
