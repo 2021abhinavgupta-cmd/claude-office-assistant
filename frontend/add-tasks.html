@@ -11,8 +11,7 @@
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
-    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:860px;transition:max-width .3s ease}
-    .card.wide{max-width:1200px}
+    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:1200px}
     .back{color:var(--muted);font-size:.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:5px;margin-bottom:26px;transition:color .2s}
     .back:hover{color:var(--acc)}
     h1{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;margin-bottom:4px}
@@ -279,8 +278,8 @@ const SVC_TASKS = {
   miscellaneous:[{title:"Custom Deliverable Setup",who:"emp001"}],
 };
 
-const POST_TYPES = ["Story","Reel","Carousel","Post","FTC WIN"];
-const POST_STATUSES = ["Idea","Content","Final","Posted","Scheduled"];
+const POST_TYPES = ["Story","Reel","Static","Carousel"];
+const POST_STATUSES = ["Scheduled","In Progress","Need to Start","Posted","Paused","Final"];
 const SVC_LABELS = {social:"📱 Social Media",branding:"🎨 Branding",website:"💻 Website",shoot:"🎬 Shoot",miscellaneous:"📁 Miscellaneous"};
 
 let selected = new Set();
@@ -445,7 +444,6 @@ function buildStep2(){
   // Expand card to full width if social is selected (needs table space)
   const hasSocial = selected.has('social');
   const onlyOtherServices = selected.size > 0 && !hasSocial;
-  document.getElementById("main-card").classList.toggle("wide", hasSocial);
 
   // Social section
   document.getElementById("social-section").style.display = hasSocial ? "block" : "none";
