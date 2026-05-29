@@ -288,7 +288,18 @@ let _clientsList = [];
 
 async function loadEmployees() {
   const r = await fetch(`${API}/api/employees`);
-  window.EMP_DICT = await r.json();
+  const list = await r.json();
+  const empMap = {};
+  if (Array.isArray(list)) {
+    list.forEach(e => {
+      const id = e.id || e.notion_id || e.emp_id || Object.values(e)[0];
+      const name = e.name || e.Name || id;
+      if (id) empMap[id] = name;
+    });
+  } else {
+    Object.assign(empMap, list);
+  }
+  window.EMP_DICT = empMap;
 }
 
 async function loadClients() {
