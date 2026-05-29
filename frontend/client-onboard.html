@@ -110,6 +110,15 @@
     <div class="fg"><label>Brief Description</label><textarea id="requirements" placeholder="High-level project overview..."></textarea></div>
     <div class="fg"><label>Docs & File Available (Drive Link)</label><input type="text" id="drive_link" placeholder="https://drive.google.com/..."/></div>
     <div class="fg"><label>Special Notes</label><input type="text" id="notes" placeholder="Any special requirements, restrictions, or context..."/></div>
+    
+    <div style="margin-top:24px; margin-bottom:12px; padding-top:20px; border-top:1px solid var(--bdr);">
+      <label style="color:var(--acc); font-size:0.8rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:12px;">Client Portal Access</label>
+      <div class="two">
+        <div class="fg"><label>Username</label><input type="text" id="client_username" placeholder="Leave blank to skip" autocomplete="off"/></div>
+        <div class="fg"><label>Password</label><input type="text" id="client_password" placeholder="Leave blank to skip" autocomplete="new-password"/></div>
+      </div>
+    </div>
+    
     <p class="err" id="err1">Please enter the client name.</p>
     <div class="btn-row"><button class="btn btn-acc" onclick="goStep2()">Next: Select Services →</button></div>
   </div>
@@ -321,6 +330,8 @@ async function createClient(){
           deadline:     document.getElementById("deadline")?.value || "",
           budget:       document.getElementById("budget") ? document.getElementById("budget").value.trim() : "",
           notes:        document.getElementById("notes").value.trim(),
+          client_username: document.getElementById("client_username").value.trim(),
+          client_password: document.getElementById("client_password").value.trim(),
           services:     [...selected],
           tasks:        [],
         }),
@@ -363,6 +374,8 @@ async function createClient(){
           contact:      document.getElementById("contact").value.trim(),
           requirements: document.getElementById("requirements").value.trim(),
           deadline:     document.getElementById("deadline")?.value || "",
+          client_username: document.getElementById("client_username").value.trim(),
+          client_password: document.getElementById("client_password").value.trim(),
           status: "active",
         }),
         signal: AbortSignal.timeout(10000),

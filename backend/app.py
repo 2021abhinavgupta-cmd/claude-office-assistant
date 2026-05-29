@@ -2328,7 +2328,18 @@ def create_client():
     name = body.get("name", "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
+        
+    c_user = body.get("client_username", "").strip()
+    c_pass = body.get("client_password", "").strip()
+    
     conn = _pt_conn()
+    
+    if c_user:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM client_users WHERE username=?", (c_user,))
+        if cur.fetchone():
+            conn.close()
+            return jsonify({"error": f"Username '{c_user}' is already taken. Please choose another."}), 400
     with conn:
         cur = conn.execute(
             "INSERT INTO clients (name,contact,requirements,deadline,status) VALUES (?,?,?,?,?)",
@@ -2336,6 +2347,17 @@ def create_client():
              body.get("deadline",""), body.get("status","active"))
         )
         client_id = cur.lastrowid
+        
+        c_user = body.get("client_username", "").strip()
+        c_pass = body.get("client_password", "").strip()
+        if c_user and c_pass:
+            try:
+                conn.execute(
+                    "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
+                    (c_user, c_pass, name, str(client_id))
+                )
+            except Exception as e:
+                logger.error(f"Failed to create client user: {e}")
     conn.close()
     return jsonify({"success": True, "client_id": client_id}), 201
 

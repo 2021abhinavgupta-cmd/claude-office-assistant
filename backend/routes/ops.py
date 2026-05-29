@@ -730,6 +730,17 @@ def notion_create_client():
     if not notion_store.is_configured():
         return jsonify({"error": "Notion is not configured. Add NOTION_TOKEN and DB IDs to config/.env"}), 503
 
+    c_user = body.get("client_username", "").strip()
+    c_pass = body.get("client_password", "").strip()
+    if c_user:
+        conn = _pt_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM client_users WHERE username=?", (c_user,))
+        if cur.fetchone():
+            conn.close()
+            return jsonify({"error": f"Username '{c_user}' is already taken. Please choose another."}), 400
+        conn.close()
+
     client = notion_store.create_client(
         name=name,
         contact=body.get("contact", ""),
@@ -741,6 +752,20 @@ def notion_create_client():
     )
     if not client:
         return jsonify({"error": "Failed to create client in Notion"}), 500
+
+    c_user = body.get("client_username", "").strip()
+    c_pass = body.get("client_password", "").strip()
+    if c_user and c_pass:
+        try:
+            conn = _pt_conn()
+            with conn:
+                conn.execute(
+                    "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
+                    (c_user, c_pass, name, client["id"])
+                )
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to create client user: {e}")
 
     EMP_NAMES = {
         "emp001": "Vidit", "emp002": "Nupur", "emp003": "Abhinav",
