@@ -877,8 +877,9 @@
             <colgroup>
               <col style="width:40px">        <!-- # -->
               <col style="width:140px">       <!-- Post Day -->
-              <col style="width:220px">       <!-- Post Title -->
+              <col style="width:200px">       <!-- Post Title -->
               <col style="width:110px">       <!-- Type -->
+              <col style="width:200px">       <!-- Brief -->
               <col style="width:220px">       <!-- Idea -->
               <col style="width:260px">       <!-- Caption -->
               <col style="width:160px">       <!-- Assigned To -->
@@ -890,8 +891,9 @@
               <tr>
                 <th>#</th>
                 <th>Post Day</th>
-                <th>Post Title / Brief</th>
+                <th>Post Title</th>
                 <th>Type</th>
+                <th>Brief</th>
                 <th>Idea</th>
                 <th>Caption</th>
                 <th>Assigned To</th>
@@ -1219,7 +1221,7 @@
     function statusOptions(sel = "") {
       return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
     }
-    function addSocialRow(title = "", type = "Story", idea = "", caption = "", assignee = "", status = "Scheduled", postDay = "", driveLink = "") {
+    function addSocialRow(title = "", type = "Story", brief = "", idea = "", caption = "", assignee = "", status = "Scheduled", postDay = "", driveLink = "") {
       socialRowIdx++;
       const idx = socialRowIdx;
       const tbody = document.getElementById("social-tbody");
@@ -1233,11 +1235,17 @@
     <td><input class="st-input" type="date" value="${postDay}" style="width:100%;height:36px"/></td>
     <td>
       <div class="ta-wrap">
-        <textarea class="st-input" placeholder="Post title or brief…" style="width:100%;height:90px;resize:none;overflow-y:auto">${title}</textarea>
-        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Post Title / Brief')" title="Expand">⤢</button>
+        <textarea class="st-input" placeholder="Post title…" style="width:100%;height:90px;resize:none;overflow-y:auto">${title}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Post Title')" title="Expand">⤢</button>
       </div>
     </td>
     <td><select class="st-sel" style="width:100%;margin-top:2px">${typeOptions(type)}</select></td>
+    <td>
+      <div class="ta-wrap">
+        <textarea class="st-input" placeholder="Brief…" style="width:100%;height:90px;resize:none;overflow-y:auto">${brief}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Brief')" title="Expand">⤢</button>
+      </div>
+    </td>
     <td>
       <div class="ta-wrap">
         <textarea class="st-input" placeholder="Content idea…" style="width:100%;height:90px;resize:none;overflow-y:auto">${idea}</textarea>
@@ -1388,17 +1396,28 @@
         if (rows.length > 0) {
           const lines = [];
           rows.forEach((r, i) => {
-            const inputs = r.querySelectorAll("input");
+            const inputs = r.querySelectorAll("input[type='date']");
+            const textareas = r.querySelectorAll("textarea");
             const sels = r.querySelectorAll("select");
+            
+            const checkedBoxes = [...r.querySelectorAll(".ms-chk:checked")];
+            const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling.textContent.trim()).join(", ") : "Unassigned";
+
             const day = inputs[0]?.value || "";
-            const title = inputs[1]?.value || "";
-            const link = inputs[2]?.value || "";
+            const title = textareas[0]?.value || "";
+            const brief = textareas[1]?.value || "";
+            const idea = textareas[2]?.value || "";
+            const caption = textareas[3]?.value || "";
+            const link = textareas[4]?.value || "";
+            
             const type = sels[0]?.value || "";
-            const assignee = sels[1]?.options[sels[1]?.selectedIndex]?.text || "";
-            const status = sels[2]?.value || "";
-            if (title || day) lines.push(`Post ${i + 1}: [${type}] ${title} | Date: ${day} | Assignee: ${assignee} | Link: ${link} | Status: ${status}`);
+            const status = sels[1]?.value || "";
+            
+            if (title || day) {
+              lines.push(`Post ${i + 1}: [${type}] ${title} | Date: ${day} | Assignee: ${assignee} | Status: ${status}\nBrief: ${brief}\nIdea: ${idea}\nCaption: ${caption}\nLink: ${link}`);
+            }
           });
-          if (lines.length) extraNotes += "\n\n--- Social Media Content Calendar ---\n" + lines.join("\n");
+          if (lines.length) extraNotes += "\n\n--- Social Media Content Calendar ---\n" + lines.join("\n\n");
         }
       }
 
