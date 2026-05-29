@@ -1389,36 +1389,30 @@
       // Build services list to send
       const servicesToSend = [...selected];
 
-      // Collect extra notes from social table if social is selected
-      let extraNotes = "";
+      // Collect social posts as structured data
+      let socialPosts = [];
       if (selected.has('social')) {
         const rows = document.querySelectorAll("#social-tbody tr");
-        if (rows.length > 0) {
-          const lines = [];
-          rows.forEach((r, i) => {
-            const inputs = r.querySelectorAll("input[type='date']");
-            const textareas = r.querySelectorAll("textarea");
-            const sels = r.querySelectorAll("select");
-            
-            const checkedBoxes = [...r.querySelectorAll(".ms-chk:checked")];
-            const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling.textContent.trim()).join(", ") : "Unassigned";
+        rows.forEach((r, i) => {
+          const inputs = r.querySelectorAll("input[type='date']");
+          const textareas = r.querySelectorAll("textarea");
+          const sels = r.querySelectorAll("select");
+          const checkedBoxes = [...r.querySelectorAll(".ms-chk:checked")];
+          const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling?.textContent?.trim() || "").join(", ") : "";
 
-            const day = inputs[0]?.value || "";
-            const title = textareas[0]?.value || "";
-            const brief = textareas[1]?.value || "";
-            const idea = textareas[2]?.value || "";
-            const caption = textareas[3]?.value || "";
-            const link = textareas[4]?.value || "";
-            
-            const type = sels[0]?.value || "";
-            const status = sels[1]?.value || "";
-            
-            if (title || day) {
-              lines.push(`Post ${i + 1}: [${type}] ${title} | Date: ${day} | Assignee: ${assignee} | Status: ${status}\nBrief: ${brief}\nIdea: ${idea}\nCaption: ${caption}\nLink: ${link}`);
-            }
-          });
-          if (lines.length) extraNotes += "\n\n--- Social Media Content Calendar ---\n" + lines.join("\n\n");
-        }
+          const day = inputs[0]?.value || "";
+          const title = textareas[0]?.value?.trim() || "";
+          const brief = textareas[1]?.value?.trim() || "";
+          const idea = textareas[2]?.value?.trim() || "";
+          const caption = textareas[3]?.value?.trim() || "";
+          const link = textareas[4]?.value?.trim() || "";
+          const type = sels[0]?.value || "Story";
+          const status = sels[1]?.value || "Scheduled";
+
+          if (title || day) {
+            socialPosts.push({ title, type, brief, idea, caption, link, assignee, post_day: day, status });
+          }
+        });
       }
 
       try {
@@ -1430,7 +1424,7 @@
             client_name: clientName,
             services: servicesToSend,
             deadline: document.getElementById("deadline")?.value || "",
-            extra_notes: extraNotes
+            social_posts: socialPosts
           }),
           signal: AbortSignal.timeout(15000),
         });

@@ -2596,13 +2596,19 @@ def auto_generate_tasks(client_id):
     services = body.get("services", [])
     due_date = body.get("due_date", body.get("deadline", ""))
     extra_notes = body.get("extra_notes", "")
+    social_posts = body.get("social_posts", [])  # structured post rows from the calendar
     client_name = body.get("client_name", "Unknown Client")
     if not services:
         return jsonify({"error": "No services selected"}), 400
 
     created_ids = []
     ordered_tasks = []
+
+    # For social: if custom posts were provided, use them directly as tasks
+    # instead of the generic templates. For other services, always use templates.
     for svc in services:
+        if svc == "social" and social_posts:
+            continue  # handled separately below
         templates = SERVICE_TASK_TEMPLATES.get(svc, [])
         ordered_tasks.extend(templates)
 
@@ -2611,6 +2617,39 @@ def auto_generate_tasks(client_id):
 
     # Notion Mode
     if not str(client_id).isdigit():
+        # Create one task per social post row
+        for idx, post in enumerate(social_posts):
+            title = post.get("title") or f"Post {idx + 1}"
+            post_day = post.get("post_day") or due_date
+            post_type = post.get("type", "")
+            brief = post.get("brief", "")
+            idea = post.get("idea", "")
+            caption = post.get("caption", "")
+            link = post.get("link", "")
+            assignee = post.get("assignee", "")
+            # Build a rich title: "[Type] Title"
+            task_title = f"[{post_type}] {title}" if post_type else title
+            # Pack extra detail into a description-like note via the brief
+            detail_parts = []
+            if brief:   detail_parts.append(f"Brief: {brief}")
+            if idea:    detail_parts.append(f"Idea: {idea}")
+            if caption: detail_parts.append(f"Caption: {caption}")
+            if link:    detail_parts.append(f"Link: {link}")
+            notes = " | ".join(detail_parts)
+            res = notion_store.create_task(
+                title=task_title,
+                client_name=client_name,
+                client_notion_id=client_id,
+                assigned_to=assignee,
+                due_date=post_day,
+                status="not_started",
+                progress=0,
+                service="Social Media"
+            )
+            if res:
+                created_ids.append(res["notion_id"])
+
+        # Generic template tasks for non-social services
         for tmpl in ordered_tasks:
             res = notion_store.create_task(
                 title=tmpl["title"],
@@ -2628,6 +2667,21 @@ def auto_generate_tasks(client_id):
     # SQLite Mode
     conn = _pt_conn()
     with conn:
+        # One task per social post row
+        for idx, post in enumerate(social_posts):
+            title = post.get("title") or f"Post {idx + 1}"
+            post_day = post.get("post_day") or due_date
+            post_type = post.get("type", "")
+            assignee = post.get("assignee", "")
+            task_title = f"[{post_type}] {title}" if post_type else title
+            cur = conn.execute(
+                """INSERT INTO tasks (client_id,title,assigned_to,due_date,status,progress)
+                   VALUES (?,?,?,?,'not_started',0)""",
+                (client_id, task_title, assignee, post_day)
+            )
+            created_ids.append(cur.lastrowid)
+
+        # Template tasks for non-social services
         for tmpl in ordered_tasks:
             cur = conn.execute(
                 """INSERT INTO tasks (client_id,title,assigned_to,due_date,status,progress)
