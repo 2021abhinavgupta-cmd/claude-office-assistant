@@ -509,7 +509,9 @@ function renderDetail(clients){
   wrap.innerHTML=clients.map(c=>{
     const approved=c.tasks.filter(t=>t.status==="approved").length;
     const notionLink = c.url ? `<a href="${c.url}" target="_blank" style="font-size:.72rem;color:var(--acc);text-decoration:none;margin-left:8px">↗ Notion</a>` : "";
-    return`<div class="cb" id="cb-${c.id}">
+    // Detect social media client: has tasks with [Type] prefix or service=Social Media
+    const isSocial = (c.tasks||[]).some(t => t.service === "Social Media" || /^\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
+    return`<div class="cb" id="cb-${c.id}" data-social="${isSocial}">
       <div class="cb-head" onclick="toggleDetail('${c.id}')">
         <div><div class="cb-name">🏢 ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
@@ -525,7 +527,7 @@ function renderDetail(clients){
           <button class="ctab" onclick="switchClientTab('${c.id}', 'blockers', this)">🔴 Blockers</button>
           <button class="ctab" onclick="switchClientTab('${c.id}', 'review', this)">⏳ In Review</button>
           <button class="ctab" onclick="switchClientTab('${c.id}', 'calendar', this)">📅 Calendar</button>
-          <button class="ctab" onclick="switchClientTab('${c.id}', 'sheets', this)">📊 Sheets</button>
+          ${isSocial ? `<button class="ctab" id="ctab-btn-${c.id}-sheets" onclick="switchClientTab('${c.id}', 'sheets', this)">📊 Sheets</button>` : ''}
         </div>
         
         <div id="ctab-${c.id}-list" class="ctab-content" style="display:block">
@@ -908,16 +910,35 @@ function hideCalPopup(){
 }
 
 function openEditTask(clientId, taskId){
-  // Find the task and open the task edit modal if available, else scroll to task
   const client=(allData.clients||[]).find(c=>String(c.id)===String(clientId));
   if(!client) return;
   const task=(client.tasks||[]).find(t=>(t.notion_id||String(t.id))===String(taskId)||(String(t.id)===String(taskId)));
   if(!task) return;
-  // Switch to task list tab and highlight
-  const listTabBtn=document.querySelector(`#dbody-${clientId} .ctab`);
-  if(listTabBtn) switchClientTab(clientId,'list',listTabBtn);
-  const el=document.getElementById('tc-'+taskId);
-  if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.outline='2px solid var(--acc)'; setTimeout(()=>el.style.outline='',2000); }
+
+  // For social media clients, go directly to Sheets tab
+  const isSocial = (client.tasks||[]).some(t => t.service === "Social Media" || /^\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
+  
+  if (isSocial) {
+    // Make sure client card is open
+    const body = document.getElementById(`dbody-${clientId}`);
+    if (body && body.style.display === 'none') toggleDetail(clientId);
+    // Switch to sheets tab
+    const sheetsBtn = document.getElementById(`ctab-btn-${clientId}-sheets`);
+    if (sheetsBtn) {
+      switchClientTab(clientId, 'sheets', sheetsBtn);
+      // Scroll to the sheets section
+      setTimeout(() => {
+        const sheetsEl = document.getElementById(`ctab-${clientId}-sheets`);
+        if (sheetsEl) sheetsEl.scrollIntoView({behavior:'smooth', block:'nearest'});
+      }, 150);
+    }
+  } else {
+    // Non-social: switch to task list tab and highlight the task
+    const listTabBtn=document.querySelector(`#dbody-${clientId} .ctab`);
+    if(listTabBtn) switchClientTab(clientId,'list',listTabBtn);
+    const el=document.getElementById('tc-'+taskId);
+    if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.outline='2px solid var(--acc)'; setTimeout(()=>el.style.outline='',2000); }
+  }
 }
 
 function switchClientTab(clientId, tabName, btn) {
