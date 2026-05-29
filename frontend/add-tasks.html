@@ -1093,24 +1093,41 @@
     function statusOptions(sel = "") {
       return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
     }
-    function addSocialRow(title = "", type = "Post", link = "", assignee = "", status = "Idea", postDay = "") {
+    function addSocialRow(title = "", type = "Story", link = "", assignee = "", status = "Scheduled", postDay = "") {
       socialRowIdx++;
       const idx = socialRowIdx;
       const tbody = document.getElementById("social-tbody");
       const tr = document.createElement("tr");
       tr.dataset.rowId = idx;
+      const empOptsHtml = Object.entries(EMP).map(([id, name]) =>
+        `<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`
+      ).join("");
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
     <td><input class="st-input" type="date" value="${postDay}" style="width:130px"/></td>
     <td><input class="st-input" value="${title}" placeholder="Post title or brief…" style="min-width:160px"/></td>
     <td><select class="st-sel" style="width:100px">${typeOptions(type)}</select></td>
     <td><input class="st-input" value="${link}" placeholder="Link or content notes…" style="min-width:160px"/></td>
-    <td><select class="st-sel" style="width:120px"><option value="">Unassigned</option>${empOptions(assignee)}</select></td>
+    <td style="min-width:140px">
+      <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'),150)">
+        <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="font-size:.75rem;padding:4px 8px;background:var(--s1);border:1px solid var(--bdr);border-radius:5px;cursor:pointer">Unassigned</div>
+        <div class="ms-dropdown">${empOptsHtml}</div>
+      </div>
+    </td>
     <td>
-      <select class="st-sel status-sel" style="width:90px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
+      <select class="st-sel status-sel" style="width:120px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
     </td>
     <td><button class="st-del" onclick="removeSocialRow(this)" title="Delete">✕</button></td>`;
       tbody.appendChild(tr);
+      // Pre-select assignee if provided
+      if (assignee) {
+        const whoArr = assignee.split(',').map(s => s.trim());
+        tr.querySelectorAll(".ms-chk").forEach(chk => {
+          if (whoArr.includes(chk.value)) { chk.checked = true; }
+        });
+        const firstChk = tr.querySelector(".ms-chk");
+        if (firstChk) updateMsDisplay(firstChk);
+      }
       reIndexSocialRows();
     }
 
