@@ -237,3 +237,13 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 11. **Employee API Parsing** — The backend `/api/employees` returns an object `{"employees": [...]}`. Frontend scripts must parse this as an array of objects and convert it into a dictionary `{ id: name }` for dropdowns, otherwise `<option>` tags will render as `[object Object]`.
 
 12. **Add Tasks Quick Action** — The `📝 Add Tasks` button in `dashboard.html`'s Quick Actions is visible to all users. The page itself restricts creation to admins (`ONBOARD_ADMINS = ["emp001", "emp003", "emp004"]`) and shows an "Access Restricted" message for everyone else.
+
+13. **Project Board — Sheets View (Social Media Only)** — `projects.html` includes a per-client **Sheets** tab that is **only visible for Social Media clients**. A client is detected as social if any of its tasks has `service === "Social Media"` or a title matching `/^\[(Story|Static|Reel|Carousel|Post|Video)\]/i`. The `<div class="cb" data-social="...">` attribute stores this flag.
+    - The Sheets view renders a spreadsheet-style table with columns: `#`, `Post Day`, `Post Title`, `Type`, `Brief`, `Idea`, `Caption`, `Assigned To`, `Status`, `File (Drive Link)`.
+    - **All columns are editable inline**: `Post Day` uses a `<input type="date">`, `Type` and `Status` use `<select>` dropdowns, all other text cells use `contenteditable="true"`.
+    - On edit (onblur / onchange), `saveSheetRow(taskId, cellElem, clientId)` fires and sends a `PATCH` to `/api/notion/tasks/<id>` (Notion mode) or `/api/sqlite/tasks/<id>` (SQLite mode) with `{ new_title, due_date, assigned_to, status, submission_note }`.
+    - After saving, `renderClientCalendar(clientId)` is called to immediately reflect changes in the Calendar tab.
+
+14. **Project Board — Edit Button Routing** — Clicking **✏️ Edit** in the calendar popup calls `openEditTask(clientId, taskId)`. For **social media clients** this navigates directly to the Sheets tab (opens the client card if collapsed, calls `switchClientTab` to `sheets`, scrolls into view). For **non-social clients** it switches to the Task List tab and highlights the task with an outline.
+
+15. **`/api/sqlite/tasks/<id>` PATCH** — Defined in `backend/routes/ops.py` → `sqlite_patch_task()`. Accepts fields: `new_title` (→ `title`), `assigned_to`, `due_date`, `status`, `progress`, `submission_note` (→ `description`).
