@@ -752,8 +752,8 @@ def notion_create_client():
         "video":    [("Video Script Writing", "emp006"), ("Video Shoot / Production", "emp005"), ("Video Editing & Post", "emp005"), ("AI Video Enhancements", "emp008")],
         "design":   [("Design Brief & Moodboard", "emp002"), ("UI/UX Design — Wireframes", "emp002"), ("Final Design Handoff", "emp002")],
         "website":  [("Website Architecture Plan", "emp001"), ("Frontend Development", "emp003"), ("Backend / Integrations", "emp001"), ("QA & Launch", "emp003")],
-        "social":   [("Social Media Strategy", "emp006"), ("Content Calendar", "emp006"), ("Graphics & Templates", "emp002")],
         "accounts": [("Invoice & Payment Setup", "emp007"), ("Monthly Reporting", "emp007")],
+        # "social" intentionally omitted — social posts are added via the Add Tasks calendar
     }
     deadline = body.get("deadline", "")
     tasks_created = 0
