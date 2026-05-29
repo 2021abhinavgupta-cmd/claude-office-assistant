@@ -2452,6 +2452,37 @@ def submit_task(task_id):
     )
     return jsonify({"success": True, "progress": new_progress, "status": new_status, "url_verified": url_valid})
 
+# ── PATCH /api/tasks/<id> ─────────────────────────────────────────────────────
+@app.route("/api/tasks/<int:task_id>", methods=["PATCH"])
+def update_task_endpoint(task_id):
+    body = request.get_json(silent=True) or {}
+    conn = _pt_conn()
+    cur = conn.cursor()
+    
+    # We may need to get Notion ID if we track it in db. Currently, Notion ID is not consistently stored 
+    # for all tasks, but `notion_store` might be able to update if we have it. 
+    # Actually, projects.html passes the local task_id.
+    updates = []
+    params = []
+    
+    if "description" in body:
+        updates.append("description=?")
+        params.append(body["description"])
+    if "title" in body:
+        updates.append("title=?")
+        params.append(body["title"])
+    if "due_date" in body:
+        updates.append("due_date=?")
+        params.append(body["due_date"])
+        
+    if updates:
+        params.append(task_id)
+        with conn:
+            conn.execute(f"UPDATE tasks SET {','.join(updates)} WHERE id=?", params)
+            
+    conn.close()
+    return jsonify({"success": True})
+
 # ── POST /api/tasks/<id>/approve ──────────────────────────────────────────────
 @app.route("/api/tasks/<int:task_id>/approve", methods=["POST"])
 def approve_task(task_id):

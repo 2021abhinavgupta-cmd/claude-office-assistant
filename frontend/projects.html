@@ -672,17 +672,15 @@ function renderClientSheets(clientId) {
     const typeCol = type.toLowerCase() === "story" ? "#a855f7" : type.toLowerCase() === "reel" ? "#3b82f6" : "#f43f5e";
     const typeBadge = `<span style="background:${typeCol}20; color:${typeCol}; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">${type}</span>`;
     
-    const linkHtml = link ? (link.startsWith("http") ? `<a href="${link}" target="_blank" style="color:var(--acc);text-decoration:none">Link ↗</a>` : link) : "";
-    
     html += `
       <tr style="border-bottom: 1px solid var(--bdr);">
         <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">${t.due_date || "—"}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr);">${typeBadge}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500;">${title}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); font-size: 0.8rem; white-space: pre-wrap;">${brief}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); font-size: 0.8rem; white-space: pre-wrap;">${idea}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); font-size: 0.8rem; white-space: pre-wrap;">${caption}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr);">${linkHtml}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${brief}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${idea}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${caption}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow(${t.id}, this)">${link}</td>
         <td style="padding: 10px; color: ${stCol}; font-size: 0.8rem;">${stLbl}</td>
       </tr>
     `;
@@ -690,6 +688,45 @@ function renderClientSheets(clientId) {
   
   html += `</tbody></table>`;
   container.innerHTML = html;
+}
+
+async function saveSheetRow(taskId, cellElem) {
+  const tr = cellElem.closest('tr');
+  const brief = tr.cells[3].innerText.trim();
+  const idea = tr.cells[4].innerText.trim();
+  const caption = tr.cells[5].innerText.trim();
+  const link = tr.cells[6].innerText.trim();
+  
+  const detailParts = [];
+  if (brief) detailParts.push(`Brief: ${brief}`);
+  if (idea) detailParts.push(`Idea: ${idea}`);
+  if (caption) detailParts.push(`Caption: ${caption}`);
+  if (link) detailParts.push(`Link: ${link}`);
+  const notes = detailParts.join(" | ");
+  
+  let taskObj = null;
+  for (const c of allData.clients || []) {
+    taskObj = (c.tasks || []).find(t => String(t.id) === String(taskId));
+    if (taskObj) break;
+  }
+  if (!taskObj || taskObj.description === notes) return;
+  
+  taskObj.description = notes;
+  cellElem.style.opacity = "0.5";
+  
+  try {
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: notes })
+    });
+    if (!res.ok) throw new Error("Network error");
+    // Optional: could toast success here, but auto-saving on blur usually stays silent
+  } catch(e) {
+    toast("Error saving row", "error");
+  } finally {
+    cellElem.style.opacity = "1";
+  }
 }
 
 function renderClientCalendar(clientId){
