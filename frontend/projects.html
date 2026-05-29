@@ -403,7 +403,6 @@ function switchTab(name,btn){
   btn.classList.add("on");
   if(name==="blockers") loadBlockers();
   if(name==="review")   loadReview();
-  if(name==="kanban")   renderKanban();
 }
 
 function overallStatus(tasks){
@@ -1134,7 +1133,7 @@ async function saveQuickTask(){
       document.getElementById("qt-due").value="";
       await loadQuickTasks();
       const filterBtn = document.querySelector(".client-filter-btn[onclick*='__quick__']");
-      if(filterBtn) filterByClient("__quick__", filterBtn); else renderKanban();
+      if(filterBtn) filterByClient("__quick__", filterBtn);
     } else {
       toast(d.error || "Failed to save task", "err");
     }
@@ -1211,7 +1210,7 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
         signal:AbortSignal.timeout(10000)
       });
       const d = await r.json();
-      if(d.success){toast("✅ Status updated in Notion!");await load();renderKanban();}
+      if(d.success){toast("✅ Status updated in Notion!");await load();}
       else toast(d.error||"Update failed","err");
     }catch(e){toast("Error: "+e.message,"err");}
   } else if(taskId){
@@ -1222,7 +1221,7 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
         body:JSON.stringify({status:newStatus})
       });
       const d = await r.json();
-      if(d.success){toast("✅ Status updated!");await load();renderKanban();}
+      if(d.success){toast("✅ Status updated!");await load();}
       else toast(d.error||"Update failed","err");
     }catch(e){toast("Error: "+e.message,"err");}
   }
@@ -1252,7 +1251,7 @@ async function deleteClient(clientId) {
     try {
       const res = await fetch(`${API}/api/notion/clients/${clientId}`, { method: 'DELETE' });
       const d   = await res.json();
-      if (d.success) { toast('Client deleted!'); await load(); renderKanban(); }
+      if (d.success) { toast('Client deleted!'); await load(); }
       else toast(d.error || 'Failed to delete client', 'err');
     } catch (e) { toast('Error: ' + e.message, 'err'); }
   } else {
@@ -1260,7 +1259,7 @@ async function deleteClient(clientId) {
     try {
       const res = await fetch(`${API}/api/sqlite/clients/${clientId}`, { method: 'DELETE' });
       const d   = await res.json();
-      if (d.success) { toast('Client deleted!'); await load(); renderKanban(); }
+      if (d.success) { toast('Client deleted!'); await load(); }
       else toast(d.error || 'Failed to delete client', 'err');
     } catch (e) { toast('Error: ' + e.message, 'err'); }
   }
@@ -1272,7 +1271,7 @@ async function deleteTask(taskId) {
     try {
       const res = await fetch(`${API}/api/notion/tasks/${taskId}`, { method: 'DELETE' });
       const d   = await res.json();
-      if (d.success) { toast('Task deleted!'); await load(); renderKanban(); }
+      if (d.success) { toast('Task deleted!'); await load(); }
       else toast(d.error || 'Failed to delete task', 'err');
     } catch (e) { toast('Error: ' + e.message, 'err'); }
   } else {
@@ -1280,7 +1279,7 @@ async function deleteTask(taskId) {
     try {
       const res = await fetch(`${API}/api/sqlite/tasks/${taskId}`, { method: 'DELETE' });
       const d   = await res.json();
-      if (d.success) { toast('Task deleted!'); await load(); renderKanban(); }
+      if (d.success) { toast('Task deleted!'); await load(); }
       else toast(d.error || 'Failed to delete task', 'err');
     } catch (e) { toast('Error: ' + e.message, 'err'); }
   }
@@ -1332,7 +1331,7 @@ async function saveTaskEdit() {
       toast('Task updated!');
       closeEditTaskModal();
       await load();
-      renderKanban();
+      
     } else {
       toast(d.error || 'Failed to update task', 'err');
     }
@@ -1380,7 +1379,7 @@ async function parseMeetingNotes() {
         document.getElementById('meeting-notes-input').value = '';
         out.style.display = 'none';
         load();
-        if (currentTab === 'kanban') renderKanban();
+        
       }, 2000);
     } else {
       out.textContent = 'Error: ' + (d.error || 'Failed to parse');
