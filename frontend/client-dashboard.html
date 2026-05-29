@@ -93,6 +93,20 @@
     .kanban-board { display:flex; gap:16px; align-items:flex-start; overflow-x:auto; padding-bottom:20px; }
     .kanban-col { flex:0 0 260px; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--r); display:flex; flex-direction:column; max-height:calc(100vh - 280px); }
 
+    /* CALENDAR TASK HOVER TOOLTIP */
+    .cal-task { position:relative; }
+    .cal-task .cal-tip {
+      display:none; position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+      background:#1e1e26; border:1px solid var(--bdr); border-radius:8px; padding:8px 12px;
+      font-size:.78rem; color:var(--txt); white-space:nowrap; z-index:999;
+      box-shadow:0 8px 24px rgba(0,0,0,.5); pointer-events:none; min-width:160px;
+    }
+    .cal-task .cal-tip::after {
+      content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+      border:5px solid transparent; border-top-color:#1e1e26;
+    }
+    .cal-task:hover .cal-tip { display:block; }
+
     /* TIMELINE VIEW */
     .timeline-container { background:var(--s1); border:1px solid var(--bdr); border-radius:var(--r); padding:30px; }
     .tl-header { display:flex; border-bottom:1px solid var(--bdr); padding-bottom:10px; margin-bottom:20px; font-weight:700; color:var(--muted); font-size:.85rem; text-transform:uppercase; }
@@ -204,9 +218,15 @@
     // ── Detect if this client uses Social Media ───────────────────────────────
     function isSocialMediaClient() {
       return allTasks.some(t => {
-        const svc = (t.service || "").toLowerCase();
-        const title = (t.title || "").toLowerCase();
-        return svc.includes("social") || title.includes("social");
+        const svc   = (t.service || "").toLowerCase();
+        const title = (t.title   || "").toLowerCase();
+        // Detect by service field
+        if(svc.includes("social")) return true;
+        // Detect by title containing "social"
+        if(title.includes("social")) return true;
+        // Detect by bracket-style post types: [Story], [Reel], [Static], [Carousel], [Post]
+        if(/^\[(story|reel|static|carousel|post|ig|instagram|fb|facebook|tiktok|youtube)\]/i.test(t.title || "")) return true;
+        return false;
       });
     }
 
@@ -332,8 +352,26 @@
         html += `<div class="cal-day ${isToday ? 'today' : ''}">
           <div class="cal-date-num">${d}</div>
           ${dayTasks.map(t => {
-            const isDone = t.progress >= 100 || ["approved","done","posted","final"].includes(t.status);
-            return `<div class="cal-task ${isDone ? 'done' : ''}" title="${t.title}">${t.title}</div>`;
+            const st = t.status || "need_to_start";
+            const isDone = t.progress >= 100 || ["approved","done","posted","final"].includes(st);
+            const statusLabel = st.replace(/_/g," ").replace(/\b\w/g, c => c.toUpperCase());
+            const statusColor =
+              st === "posted"      ? "#20c997" :
+              st === "final"       ? "#22d3ee" :
+              st === "scheduled"   ? "#339af0" :
+              st === "in_progress" ? "#a78bfa" :
+              st === "paused"      ? "#f59e0b" :
+              st === "approved"    ? "#20c997" : "#8b8b93";
+            const assignee = t.assigned_to ? `👤 ${t.assigned_to}` : "";
+            return `<div class="cal-task ${isDone ? 'done' : ''}" style="border-left-color:${statusColor}">
+              ${t.title}
+              <div class="cal-tip">
+                <div style="font-weight:700;margin-bottom:4px">${t.title}</div>
+                <div style="color:${statusColor};margin-bottom:2px">● ${statusLabel}</div>
+                ${assignee ? `<div style="color:var(--muted);font-size:.72rem">${assignee}</div>` : ""}
+                ${t.due_date ? `<div style="color:var(--muted);font-size:.72rem">📅 ${t.due_date}</div>` : ""}
+              </div>
+            </div>`;
           }).join('')}
         </div>`;
       }
