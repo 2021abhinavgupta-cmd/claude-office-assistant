@@ -534,6 +534,39 @@
       margin-top: 6px;
     }
 
+    .ta-wrap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .expand-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: var(--s2);
+      border: 1px solid var(--bdr);
+      color: var(--txt);
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s, color 0.15s;
+      font-size: 1rem;
+      line-height: 1;
+    }
+    .ta-wrap:hover .expand-btn {
+      opacity: 1;
+    }
+    .expand-btn:hover {
+      background: var(--acc);
+      color: #000;
+      border-color: var(--acc);
+    }
+
     .st-badge {
       display: inline-block;
       padding: 3px 9px;
@@ -1197,10 +1230,25 @@
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
     <td><input class="st-input" type="date" value="${postDay}" style="width:100%;height:36px"/></td>
-    <td><textarea class="st-input" placeholder="Post title or brief…" style="width:100%;height:90px;resize:none;overflow-y:auto">${title}</textarea></td>
+    <td>
+      <div class="ta-wrap">
+        <textarea class="st-input" placeholder="Post title or brief…" style="width:100%;height:90px;resize:none;overflow-y:auto">${title}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Post Title / Brief')" title="Expand">⤢</button>
+      </div>
+    </td>
     <td><select class="st-sel" style="width:100%;margin-top:2px">${typeOptions(type)}</select></td>
-    <td><textarea class="st-input" placeholder="Content idea…" style="width:100%;height:90px;resize:none;overflow-y:auto">${idea}</textarea></td>
-    <td><textarea class="st-input" placeholder="Caption text…" style="width:100%;height:90px;resize:none;overflow-y:auto">${caption}</textarea></td>
+    <td>
+      <div class="ta-wrap">
+        <textarea class="st-input" placeholder="Content idea…" style="width:100%;height:90px;resize:none;overflow-y:auto">${idea}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Idea')" title="Expand">⤢</button>
+      </div>
+    </td>
+    <td>
+      <div class="ta-wrap">
+        <textarea class="st-input" placeholder="Caption text…" style="width:100%;height:90px;resize:none;overflow-y:auto">${caption}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Caption')" title="Expand">⤢</button>
+      </div>
+    </td>
     <td>
       <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'),150)">
         <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="font-size:.75rem;padding:6px 8px;background:var(--s1);border:1px solid var(--bdr);border-radius:5px;cursor:pointer">Unassigned</div>
@@ -1210,19 +1258,14 @@
     <td>
       <select class="st-sel status-sel" style="width:100%;margin-top:2px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
     </td>
-    <td><textarea class="st-input" placeholder="Drive link…" style="width:100%;height:90px;resize:none;overflow-y:auto">${driveLink}</textarea></td>
+    <td>
+      <div class="ta-wrap">
+        <textarea class="st-input" placeholder="Drive link…" style="width:100%;height:90px;resize:none;overflow-y:auto">${driveLink}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'File (Drive Link)')" title="Expand">⤢</button>
+      </div>
+    </td>
     <td><button class="st-del" onclick="removeSocialRow(this)" title="Delete" style="margin-top:4px">✕</button></td>`;
       tbody.appendChild(tr);
-      // Wire up popup on double-click for text areas
-      const POPUP_LABELS = {
-        0: 'Post Title / Brief',
-        1: 'Idea',
-        2: 'Caption',
-        3: 'File (Drive Link)'
-      };
-      tr.querySelectorAll('textarea.st-input').forEach((ta, i) => {
-        ta.addEventListener('dblclick', () => openCellPopup(ta, POPUP_LABELS[i] || 'Edit'));
-      });
       // Pre-select assignee if provided
       if (assignee) {
         const whoArr = assignee.split(',').map(s => s.trim());
