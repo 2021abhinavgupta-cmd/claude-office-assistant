@@ -247,6 +247,15 @@
     <button class="gtab on" id="gtab-clients" onclick="switchGlobalTab('clients')">🏢 Clients</button>
     <button class="gtab" id="gtab-calendar" onclick="switchGlobalTab('calendar')">📅 Calendar</button>
   </div>
+  
+  <div id="clients-filter-bar" style="padding: 16px 28px 0 28px; display: flex; gap: 8px; flex-wrap: wrap;">
+    <button class="client-filter-btn on" data-type="All" onclick="filterClients('All')">All</button>
+    <button class="client-filter-btn" data-type="social" onclick="filterClients('social')">Social Media</button>
+    <button class="client-filter-btn" data-type="branding" onclick="filterClients('branding')">Branding</button>
+    <button class="client-filter-btn" data-type="website" onclick="filterClients('website')">Website</button>
+    <button class="client-filter-btn" data-type="shoot" onclick="filterClients('shoot')">Shoot</button>
+    <button class="client-filter-btn" data-type="miscellaneous" onclick="filterClients('miscellaneous')">Miscellaneous</button>
+  </div>
 
   <!-- Calendar Section -->
   <div id="cal-section" class="cal-section" style="display:none">
@@ -501,7 +510,7 @@ function renderDetail(clients){
   wrap.innerHTML=clients.map(c=>{
     const approved=c.tasks.filter(t=>t.status==="approved").length;
     const notionLink = c.url ? `<a href="${c.url}" target="_blank" style="font-size:.72rem;color:var(--acc);text-decoration:none;margin-left:8px">↗ Notion</a>` : "";
-    return`<div class="cb">
+    return`<div class="cb" id="cb-${c.id}">
       <div class="cb-head" onclick="toggleDetail('${c.id}')">
         <div><div class="cb-name">🏢 ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
@@ -563,6 +572,10 @@ function renderDetail(clients){
       </div>
     </div>`;
   }).join("");
+  
+  if (typeof filterClients === 'function') {
+    setTimeout(() => filterClients(currentClientFilter), 0);
+  }
 }
 
 function toggleDetail(id){
@@ -1253,20 +1266,75 @@ async function parseMeetingNotes() {
 let calDate = new Date();
 calDate.setDate(1);
 
+let currentClientFilter = 'All';
+function filterClients(type) {
+  currentClientFilter = type;
+  document.querySelectorAll('#clients-filter-bar .client-filter-btn').forEach(b => {
+    b.classList.toggle('on', b.getAttribute('data-type') === type);
+  });
+  
+  const localMap = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+  const templates = {
+    'social': ['content ideation', 'cal sheet', 'creative assigning', 'drive link'],
+    'branding': ['stylescape', 'logo', 'brand essence', 'collateral'],
+    'website': ['concept & flow', 'ui 1st draft', 'final build'],
+    'shoot': ['video script', 'shoot / production', 'video editing'],
+    'miscellaneous': ['custom deliverable']
+  };
+
+  (allData?.clients || []).forEach(c => {
+    const el = document.getElementById(`cb-${c.id}`);
+    if(!el) return;
+    
+    if(type === 'All') {
+      el.style.display = '';
+      return;
+    }
+    
+    let isMatch = false;
+    if(localMap[c.id] && localMap[c.id].includes(type)) isMatch = true;
+    if(localMap[(c.name||'').toLowerCase().trim()] && localMap[(c.name||'').toLowerCase().trim()].includes(type)) isMatch = true;
+    
+    const reqs = (c.requirements || "").toLowerCase();
+    if (type === 'social' && reqs.includes('[social media]')) isMatch = true;
+    if (type === 'website' && reqs.includes('[website]')) isMatch = true;
+    if (type === 'shoot' && reqs.includes('[shoot]')) isMatch = true;
+    if (type === 'branding' && reqs.includes('[branding]')) isMatch = true;
+    
+    if (!isMatch) {
+       const hasServiceTask = (c.tasks||[]).some(t => {
+          const s = (t.service || "").toLowerCase();
+          return s.includes(type) || (type==='social' && s.includes('social media'));
+       });
+       if (hasServiceTask) isMatch = true;
+       else {
+         const tLower = (c.tasks||[]).map(t => (t.title||"").toLowerCase());
+         if (tLower.some(title => templates[type] && templates[type].some(tpl => title.includes(tpl)))) {
+            isMatch = true;
+         }
+       }
+    }
+    el.style.display = isMatch ? '' : 'none';
+  });
+}
+
 function switchGlobalTab(tab){
   const calSec = document.getElementById("cal-section");
   const cliSec = document.getElementById("clients-container");
+  const filterBar = document.getElementById("clients-filter-bar");
   document.querySelectorAll(".gtab").forEach(b => b.classList.remove("on"));
   
   if(tab === "calendar"){
     document.getElementById("gtab-calendar").classList.add("on");
     cliSec.style.display = "none";
+    if(filterBar) filterBar.style.display = "none";
     calSec.style.display = "block";
     renderCalendar();
   } else {
     document.getElementById("gtab-clients").classList.add("on");
     calSec.style.display = "none";
     cliSec.style.display = "block";
+    if(filterBar) filterBar.style.display = "flex";
   }
 }
 
