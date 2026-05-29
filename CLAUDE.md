@@ -81,7 +81,7 @@ claude-office-assistant/
 │   ├── client-portal.html      # Client task view
 │   ├── client-admin.html       # Admin: manage client accounts
 │   ├── client-auth.js          # Auth guard for client portal pages
-│   ├── client-onboard.html     # New client onboarding form (3 steps: Info → Services → Review & Create). Success screen offers Done or ✨ Add Tasks
+│   ├── client-onboard.html     # New client onboarding form (3 steps: Info → Services → Review & Create). Includes Username/Password fields for client portal access. Success screen offers Done or ✨ Add Tasks
 │   └── add-tasks.html          # Apply workflow task templates to an existing client (select client → pick workflow(s) → POST to /api/clients/<id>/auto-tasks)
 ├── config/
 │   └── employees.json          # Static employee data (id, name, pin, role, etc.)
@@ -241,9 +241,25 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 13. **Project Board — Sheets View (Social Media Only)** — `projects.html` includes a per-client **Sheets** tab that is **only visible for Social Media clients**. A client is detected as social if any of its tasks has `service === "Social Media"` or a title matching `/^\[(Story|Static|Reel|Carousel|Post|Video)\]/i`. The `<div class="cb" data-social="...">` attribute stores this flag.
     - The Sheets view renders a spreadsheet-style table with columns: `#`, `Post Day`, `Post Title`, `Type`, `Brief`, `Idea`, `Caption`, `Assigned To`, `Status`, `File (Drive Link)`.
     - **All columns are editable inline**: `Post Day` uses a `<input type="date">`, `Type` and `Status` use `<select>` dropdowns, all other text cells use `contenteditable="true"`.
+    - **Status Dropdown (Sheets) — 6 Social Media Options**: `Need to Start`, `Scheduled`, `In Progress`, `Paused`, `Posted`, `Final`. These replaced the old generic 4-option dropdown (`Not Started / In Progress / In Review / Approved`). Old statuses like `approved`/`done`/`not_started` are auto-mapped to their nearest social media equivalent.
     - On edit (onblur / onchange), `saveSheetRow(taskId, cellElem, clientId)` fires and sends a `PATCH` to `/api/notion/tasks/<id>` (Notion mode) or `/api/sqlite/tasks/<id>` (SQLite mode) with `{ new_title, due_date, assigned_to, status, submission_note }`.
     - After saving, `renderClientCalendar(clientId)` is called to immediately reflect changes in the Calendar tab.
 
 14. **Project Board — Edit Button Routing** — Clicking **✏️ Edit** in the calendar popup calls `openEditTask(clientId, taskId)`. For **social media clients** this navigates directly to the Sheets tab (opens the client card if collapsed, calls `switchClientTab` to `sheets`, scrolls into view). For **non-social clients** it switches to the Task List tab and highlights the task with an outline.
 
 15. **`/api/sqlite/tasks/<id>` PATCH** — Defined in `backend/routes/ops.py` → `sqlite_patch_task()`. Accepts fields: `new_title` (→ `title`), `assigned_to`, `due_date`, `status`, `progress`, `submission_note` (→ `description`).
+
+16. **Client Onboarding — Portal Credentials** — `client-onboard.html` step 1 includes optional **Username** and **Password** fields under a "Client Portal Access" section. When the form is submitted, these are passed in the POST body as `client_username` and `client_password`. The backend (`routes/ops.py` for Notion mode, `app.py` for SQLite mode) performs a **pre-check** for username uniqueness before creating the client, then inserts into `client_users` table. For Notion clients, the correct field is `client["notion_id"]` (NOT `client["id"]`) — using the wrong key caused a silent `KeyError` that skipped account creation.
+
+17. **Social Media Kanban — Dynamic Columns** — Both `projects.html` (Project Board) and `client-dashboard.html` (Client Portal) now auto-detect social media clients and render **different Kanban column sets**:
+    - **Default clients** (Branding / Website / Shoot): 4 columns — To Do → In Progress → In Review → Approved
+    - **Social Media clients**: 6 columns — 🔲 Need to Start → 📅 Scheduled → 🔄 In Progress → ⏸️ Paused → 🚀 Posted → ✨ Final
+    - **Detection logic** (same in both files): a client is social if ANY task has `service` containing "social", OR title containing "social", OR title matching bracket-style post types `/^\[(story|reel|static|carousel|post|ig|instagram|fb|facebook|tiktok|youtube)\]/i`.
+    - `STATUS_MAP` / `SOCIAL_STATUS_MAP` in `projects.html` ensures drag-and-drop saves the correct status key. `bindDragEvents(board, isSocial)` now accepts an `isSocial` flag.
+    - Legacy aliases `STAGE_COLS = DEFAULT_STAGE_COLS` and `STATUS_MAP = DEFAULT_STATUS_MAP` are kept so no other code breaks.
+
+18. **Client Portal Calendar — Month Pagination** — `client-dashboard.html` calendar now supports navigating to past and future months via **← →** arrow buttons. A global `calDate = new Date()` tracks the current view month. `calPrev()` and `calNext()` decrement/increment the month and re-render. Today's date is only highlighted when viewing the actual current month.
+
+19. **Client Portal Calendar — Hover Status Tooltip** — Hovering over any task pill in the calendar shows a CSS-powered popup tooltip (`.cal-tip`) containing: task title (bold), status with colour coding, assigned-to, and due date. The task pill's left-border colour also reflects the status at a glance (green = Posted, cyan = Final, blue = Scheduled, purple = In Progress, orange = Paused, grey = Need to Start).
+
+20. **Social Media Statuses — Notion Sync** — The six social media status values (`need_to_start`, `scheduled`, `in_progress`, `paused`, `posted`, `final`) must exist as valid options in the **Status** property of the **Customer Onboarding Tasks** Notion database. If the Status property is a Notion "Select" type, Notion will auto-create new options on first use. If it's a "Status" type, options must be added manually in Notion's property settings.
