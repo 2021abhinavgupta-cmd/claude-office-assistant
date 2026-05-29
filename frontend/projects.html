@@ -668,9 +668,13 @@ function renderClientSheets(clientId) {
     const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Caption):|$)/);
     if (lMatch) link = lMatch[1].trim();
     
-    // Status color
-    const s = t.status || "not_started";
-    const stCol = s === "approved" ? "var(--grn)" : s.includes("review") ? "#f5a623" : "var(--muted)";
+    // Status color (social media statuses)
+    const s = t.status || "need_to_start";
+    const stCol = s === "posted"  ? "var(--grn)" :
+                  s === "final"   ? "#22d3ee" :
+                  s === "scheduled" ? "var(--blue)" :
+                  s === "in_progress" ? "#a78bfa" :
+                  s === "paused"  ? "#f5a623" : "var(--muted)";
     const stLbl = s.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
     
     const typeCol = type.toLowerCase() === "story" ? "#a855f7" : type.toLowerCase() === "reel" ? "#3b82f6" : "#f43f5e";
@@ -700,10 +704,12 @@ function renderClientSheets(clientId) {
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.85rem; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${assigneeName}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">
           <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
-            <option value="not_started" ${s==='not_started'?'selected':''}>Not Started</option>
-            <option value="in_progress" ${s==='in_progress'?'selected':''}>In Progress</option>
-            <option value="in_review" ${s==='in_review'?'selected':''}>In Review</option>
-            <option value="approved" ${s==='approved'?'selected':''}>Approved</option>
+            <option value="need_to_start" ${['need_to_start','not_started',''].includes(s)?'selected':''}>Need to Start</option>
+            <option value="scheduled"     ${s==='scheduled'    ?'selected':''}>Scheduled</option>
+            <option value="in_progress"   ${s==='in_progress'  ?'selected':''}>In Progress</option>
+            <option value="paused"         ${s==='paused'       ?'selected':''}>Paused</option>
+            <option value="posted"         ${['posted','approved','done'].includes(s)?'selected':''}>Posted</option>
+            <option value="final"          ${s==='final'        ?'selected':''}>Final</option>
           </select>
         </td>
         <td style="padding: 10px; color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${link}</td>
