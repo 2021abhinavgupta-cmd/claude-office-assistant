@@ -1,233 +1,821 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Add Tasks | Claude Office Assistant</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap"
+    rel="stylesheet" />
   <script src="auth.js"></script>
   <script src="shared-config.js"></script>
   <style>
-    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
-    .card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:40px;width:100%;max-width:1200px}
-    .back{color:var(--muted);font-size:.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:5px;margin-bottom:26px;transition:color .2s}
-    .back:hover{color:var(--acc)}
-    h1{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;margin-bottom:4px}
-    h1 span{color:var(--acc)}
-    .sub{color:var(--muted);font-size:.875rem;margin-bottom:30px}
+    :root {
+      --bg: #0c0c10;
+      --s1: #131318;
+      --s2: #1c1c24;
+      --bdr: rgba(255, 255, 255, .07);
+      --txt: #e8e8f0;
+      --muted: #6b6b8a;
+      --acc: #f5a623;
+      --grn: #22d3a0;
+      --red: #ff5c5c;
+      --r: 14px;
+      --rs: 8px
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--txt);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 20px
+    }
+
+    .card {
+      background: var(--s1);
+      border: 1px solid var(--bdr);
+      border-radius: var(--r);
+      padding: 40px;
+      width: 100%;
+      max-width: 1200px
+    }
+
+    .back {
+      color: var(--muted);
+      font-size: .8rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 26px;
+      transition: color .2s
+    }
+
+    .back:hover {
+      color: var(--acc)
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin-bottom: 4px
+    }
+
+    h1 span {
+      color: var(--acc)
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: .875rem;
+      margin-bottom: 30px
+    }
 
     /* Steps */
-    .steps{display:flex;gap:0;margin-bottom:30px;border-radius:var(--rs);overflow:hidden;border:1px solid var(--bdr)}
-    .step{flex:1;padding:10px;text-align:center;font-size:.72rem;font-weight:600;color:var(--muted);border-right:1px solid var(--bdr);cursor:default;background:var(--s2)}
-    .step:last-child{border-right:none}
-    .step.active{background:var(--acc);color:#000}
-    .step.done{background:rgba(34,211,160,.15);color:var(--grn)}
+    .steps {
+      display: flex;
+      gap: 0;
+      margin-bottom: 30px;
+      border-radius: var(--rs);
+      overflow: hidden;
+      border: 1px solid var(--bdr)
+    }
+
+    .step {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: .72rem;
+      font-weight: 600;
+      color: var(--muted);
+      border-right: 1px solid var(--bdr);
+      cursor: default;
+      background: var(--s2)
+    }
+
+    .step:last-child {
+      border-right: none
+    }
+
+    .step.active {
+      background: var(--acc);
+      color: #000
+    }
+
+    .step.done {
+      background: rgba(34, 211, 160, .15);
+      color: var(--grn)
+    }
 
     /* Form groups */
-    .fg{margin-bottom:18px}
-    .fg label{display:block;font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
-    .fg input,.fg textarea,.fg select{width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:11px 14px;font-family:'DM Sans',sans-serif;font-size:.9rem;outline:none;transition:border-color .2s}
-    .fg textarea{min-height:90px;resize:vertical}
-    .fg input:focus,.fg textarea:focus,.fg select:focus{border-color:var(--acc)}
-    .fg select option{background:var(--s2)}
-    .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    @media(max-width:500px){.two{grid-template-columns:1fr}}
+    .fg {
+      margin-bottom: 18px
+    }
+
+    .fg label {
+      display: block;
+      font-size: .72rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 7px
+    }
+
+    .fg input,
+    .fg textarea,
+    .fg select {
+      width: 100%;
+      background: var(--s2);
+      border: 1px solid var(--bdr);
+      border-radius: var(--rs);
+      color: var(--txt);
+      padding: 11px 14px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: .9rem;
+      outline: none;
+      transition: border-color .2s
+    }
+
+    .fg textarea {
+      min-height: 90px;
+      resize: vertical
+    }
+
+    .fg input:focus,
+    .fg textarea:focus,
+    .fg select:focus {
+      border-color: var(--acc)
+    }
+
+    .fg select option {
+      background: var(--s2)
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px
+    }
+
+    @media(max-width:500px) {
+      .two {
+        grid-template-columns: 1fr
+      }
+    }
 
     /* Service checkboxes */
-    .services-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
-    @media(max-width:480px){.services-grid{grid-template-columns:1fr}}
-    .svc-box{display:flex;align-items:center;gap:10px;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:12px 14px;cursor:pointer;transition:all .2s}
-    .svc-box:hover{border-color:var(--acc)}
-    .svc-box.selected{border-color:var(--acc);background:rgba(245,166,35,.08)}
-    .svc-box input[type=checkbox]{display:none}
-    .svc-icon{font-size:1.2rem}
-    .svc-info .svc-name{font-weight:600;font-size:.88rem}
-    .svc-info .svc-team{font-size:.72rem;color:var(--muted);margin-top:2px}
-    .svc-box.selected .svc-name{color:var(--acc)}
+    .services-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 6px
+    }
+
+    @media(max-width:480px) {
+      .services-grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .svc-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--s2);
+      border: 1px solid var(--bdr);
+      border-radius: var(--rs);
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: all .2s
+    }
+
+    .svc-box:hover {
+      border-color: var(--acc)
+    }
+
+    .svc-box.selected {
+      border-color: var(--acc);
+      background: rgba(245, 166, 35, .08)
+    }
+
+    .svc-box input[type=checkbox] {
+      display: none
+    }
+
+    .svc-icon {
+      font-size: 1.2rem
+    }
+
+    .svc-info .svc-name {
+      font-weight: 600;
+      font-size: .88rem
+    }
+
+    .svc-info .svc-team {
+      font-size: .72rem;
+      color: var(--muted);
+      margin-top: 2px
+    }
+
+    .svc-box.selected .svc-name {
+      color: var(--acc)
+    }
 
     /* Editable task rows (branding / website / shoot) */
-    .preview-section{background:var(--s2);border:1px solid var(--bdr);border-radius:var(--r);padding:20px;margin-top:18px}
-    .preview-section h3{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:4px}
-    .ps-sub{color:var(--muted);font-size:.78rem;margin-bottom:14px}
-    .task-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bdr)}
-    .task-row:last-of-type{border-bottom:none}
-    .tp-icon{width:22px;text-align:center;flex-shrink:0;font-size:.9rem;color:var(--muted)}
-    .tp-title-input{flex:1;background:var(--s1);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:.83rem;outline:none;transition:border-color .2s}
-    .tp-title-input:focus{border-color:var(--acc)}
-    .tp-date-input{background:var(--s1);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;outline:none;transition:border-color .2s;width:130px}
-    .tp-date-input:focus{border-color:var(--acc);color:var(--txt)}
-    .tp-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:4px 6px;border-radius:4px;transition:color .2s;flex-shrink:0}
-    .tp-del:hover{color:var(--red)}
-    .add-task-btn{display:flex;align-items:center;gap:7px;background:transparent;border:1px dashed var(--bdr);border-radius:var(--rs);color:var(--muted);padding:8px 14px;font-size:.82rem;cursor:pointer;width:100%;margin-top:10px;transition:all .2s}
-    .add-task-btn:hover{border-color:var(--acc);color:var(--acc)}
-    .no-preview{color:var(--muted);font-size:.82rem;font-style:italic;padding:8px 0}
+    .preview-section {
+      background: var(--s2);
+      border: 1px solid var(--bdr);
+      border-radius: var(--r);
+      padding: 20px;
+      margin-top: 18px
+    }
+
+    .preview-section h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 4px
+    }
+
+    .ps-sub {
+      color: var(--muted);
+      font-size: .78rem;
+      margin-bottom: 14px
+    }
+
+    .task-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--bdr)
+    }
+
+    .task-row:last-of-type {
+      border-bottom: none
+    }
+
+    .tp-icon {
+      width: 22px;
+      text-align: center;
+      flex-shrink: 0;
+      font-size: .9rem;
+      color: var(--muted)
+    }
+
+    .tp-title-input {
+      flex: 1;
+      background: var(--s1);
+      border: 1px solid var(--bdr);
+      border-radius: 6px;
+      color: var(--txt);
+      padding: 5px 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: .83rem;
+      outline: none;
+      transition: border-color .2s
+    }
+
+    .tp-title-input:focus {
+      border-color: var(--acc)
+    }
+
+    .tp-date-input {
+      background: var(--s1);
+      border: 1px solid var(--bdr);
+      border-radius: 6px;
+      color: var(--muted);
+      padding: 5px 8px;
+      font-size: .75rem;
+      outline: none;
+      transition: border-color .2s;
+      width: 130px
+    }
+
+    .tp-date-input:focus {
+      border-color: var(--acc);
+      color: var(--txt)
+    }
+
+    .tp-del {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: .9rem;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: color .2s;
+      flex-shrink: 0
+    }
+
+    .tp-del:hover {
+      color: var(--red)
+    }
+
+    .add-task-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: transparent;
+      border: 1px dashed var(--bdr);
+      border-radius: var(--rs);
+      color: var(--muted);
+      padding: 8px 14px;
+      font-size: .82rem;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+      transition: all .2s
+    }
+
+    .add-task-btn:hover {
+      border-color: var(--acc);
+      color: var(--acc)
+    }
+
+    .no-preview {
+      color: var(--muted);
+      font-size: .82rem;
+      font-style: italic;
+      padding: 8px 0
+    }
 
     /* Multi-select dropdown */
-    .ms-wrap{position:relative;width:140px;outline:none}
-    .ms-display{background:var(--s1);border:1px solid var(--bdr);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:.75rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .2s}
-    .ms-display:hover{border-color:var(--acc);color:var(--txt)}
-    .ms-dropdown{display:none;position:absolute;top:100%;left:0;width:160px;background:var(--s1);border:1px solid var(--bdr);border-radius:6px;padding:6px;z-index:10;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:4px}
-    .ms-wrap.open .ms-dropdown{display:block}
-    .ms-dropdown label{display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;font-size:.75rem;text-transform:none;margin-bottom:2px;color:var(--txt);font-weight:400;border-radius:4px;letter-spacing:normal}
-    .ms-dropdown label:hover{background:var(--s2)}
+    .ms-wrap {
+      position: relative;
+      width: 140px;
+      outline: none
+    }
+
+    .ms-display {
+      background: var(--s1);
+      border: 1px solid var(--bdr);
+      border-radius: 6px;
+      color: var(--muted);
+      padding: 5px 8px;
+      font-size: .75rem;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: border-color .2s
+    }
+
+    .ms-display:hover {
+      border-color: var(--acc);
+      color: var(--txt)
+    }
+
+    .ms-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 160px;
+      background: var(--s1);
+      border: 1px solid var(--bdr);
+      border-radius: 6px;
+      padding: 6px;
+      z-index: 10;
+      max-height: 180px;
+      overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      margin-top: 4px
+    }
+
+    .ms-wrap.open .ms-dropdown {
+      display: block
+    }
+
+    .ms-dropdown label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      cursor: pointer;
+      font-size: .75rem;
+      text-transform: none;
+      margin-bottom: 2px;
+      color: var(--txt);
+      font-weight: 400;
+      border-radius: 4px;
+      letter-spacing: normal
+    }
+
+    .ms-dropdown label:hover {
+      background: var(--s2)
+    }
 
     /* ── Social Media Spreadsheet Layout ─────────────────────────── */
-    .social-table-wrap{overflow-x:auto;margin-top:18px;border-radius:var(--r);border:1px solid var(--bdr)}
-    .social-table{width:100%;border-collapse:collapse;font-size:.8rem;min-width:680px}
-    .social-table thead tr{background:var(--s2)}
-    .social-table thead th{padding:10px 12px;text-align:left;font-size:.68rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--bdr);white-space:nowrap}
-    .social-table tbody tr{border-bottom:1px solid var(--bdr);transition:background .15s}
-    .social-table tbody tr:last-child{border-bottom:none}
-    .social-table tbody tr:hover{background:rgba(255,255,255,.02)}
-    .social-table td{padding:7px 10px;vertical-align:middle}
-    .st-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:600;white-space:nowrap}
-    .st-badge.idea{background:rgba(245,166,35,.15);color:var(--acc)}
-    .st-badge.pending{background:rgba(107,107,138,.2);color:var(--muted)}
-    .st-badge.posted{background:rgba(34,211,160,.15);color:var(--grn)}
-    .st-badge.final{background:rgba(100,180,255,.15);color:#7bc8ff}
-    .st-sel{background:var(--s1);border:1px solid var(--bdr);border-radius:5px;color:var(--txt);padding:4px 8px;font-size:.75rem;outline:none;width:100%;font-family:'DM Sans',sans-serif}
-    .st-sel:focus{border-color:var(--acc)}
-    .st-input{background:var(--s1);border:1px solid var(--bdr);border-radius:5px;color:var(--txt);padding:4px 8px;font-size:.75rem;outline:none;width:100%;font-family:'DM Sans',sans-serif}
-    .st-input:focus{border-color:var(--acc)}
-    .st-num{color:var(--muted);font-size:.75rem;font-weight:600;width:28px;text-align:center}
-    .add-row-btn{display:flex;align-items:center;gap:7px;background:transparent;border:1px dashed var(--bdr);border-radius:0 0 var(--r) var(--r);color:var(--muted);padding:9px 14px;font-size:.82rem;cursor:pointer;width:100%;transition:all .2s}
-    .add-row-btn:hover{border-color:var(--acc);color:var(--acc);background:rgba(245,166,35,.04)}
-    .st-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:3px 5px;border-radius:4px;transition:color .2s}
-    .st-del:hover{color:var(--red)}
-    .svc-section-header{display:flex;align-items:center;gap:8px;font-family:'Syne',sans-serif;font-size:.95rem;font-weight:700;margin:20px 0 8px;color:var(--txt)}
-    .svc-section-header span{font-size:1.1rem}
-    .social-summary{background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.2);border-radius:var(--rs);padding:12px 16px;margin-bottom:16px;font-size:.82rem;color:var(--muted)}
-    .social-summary strong{color:var(--acc)}
+    .social-table-wrap {
+      overflow-x: auto;
+      margin-top: 18px;
+      border-radius: var(--r);
+      border: 1px solid var(--bdr)
+    }
+
+    .social-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .8rem;
+      min-width: 680px
+    }
+
+    .social-table thead tr {
+      background: var(--s2)
+    }
+
+    .social-table thead th {
+      padding: 10px 12px;
+      text-align: left;
+      font-size: .68rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      border-bottom: 1px solid var(--bdr);
+      white-space: nowrap
+    }
+
+    .social-table tbody tr {
+      border-bottom: 1px solid var(--bdr);
+      transition: background .15s
+    }
+
+    .social-table tbody tr:last-child {
+      border-bottom: none
+    }
+
+    .social-table tbody tr:hover {
+      background: rgba(255, 255, 255, .02)
+    }
+
+    .social-table td {
+      padding: 7px 10px;
+      vertical-align: middle
+    }
+
+    .st-badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: .7rem;
+      font-weight: 600;
+      white-space: nowrap
+    }
+
+    .st-badge.idea {
+      background: rgba(245, 166, 35, .15);
+      color: var(--acc)
+    }
+
+    .st-badge.pending {
+      background: rgba(107, 107, 138, .2);
+      color: var(--muted)
+    }
+
+    .st-badge.posted {
+      background: rgba(34, 211, 160, .15);
+      color: var(--grn)
+    }
+
+    .st-badge.final {
+      background: rgba(100, 180, 255, .15);
+      color: #7bc8ff
+    }
+
+    .st-sel {
+      background: var(--s1);
+      border: 1px solid var(--bdr);
+      border-radius: 5px;
+      color: var(--txt);
+      padding: 4px 8px;
+      font-size: .75rem;
+      outline: none;
+      width: 100%;
+      font-family: 'DM Sans', sans-serif
+    }
+
+    .st-sel:focus {
+      border-color: var(--acc)
+    }
+
+    .st-input {
+      background: var(--s1);
+      border: 1px solid var(--bdr);
+      border-radius: 5px;
+      color: var(--txt);
+      padding: 4px 8px;
+      font-size: .75rem;
+      outline: none;
+      width: 100%;
+      font-family: 'DM Sans', sans-serif
+    }
+
+    .st-input:focus {
+      border-color: var(--acc)
+    }
+
+    .st-num {
+      color: var(--muted);
+      font-size: .75rem;
+      font-weight: 600;
+      width: 28px;
+      text-align: center
+    }
+
+    .add-row-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: transparent;
+      border: 1px dashed var(--bdr);
+      border-radius: 0 0 var(--r) var(--r);
+      color: var(--muted);
+      padding: 9px 14px;
+      font-size: .82rem;
+      cursor: pointer;
+      width: 100%;
+      transition: all .2s
+    }
+
+    .add-row-btn:hover {
+      border-color: var(--acc);
+      color: var(--acc);
+      background: rgba(245, 166, 35, .04)
+    }
+
+    .st-del {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: .85rem;
+      padding: 3px 5px;
+      border-radius: 4px;
+      transition: color .2s
+    }
+
+    .st-del:hover {
+      color: var(--red)
+    }
+
+    .svc-section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Syne', sans-serif;
+      font-size: .95rem;
+      font-weight: 700;
+      margin: 20px 0 8px;
+      color: var(--txt)
+    }
+
+    .svc-section-header span {
+      font-size: 1.1rem
+    }
+
+    .social-summary {
+      background: rgba(245, 166, 35, .06);
+      border: 1px solid rgba(245, 166, 35, .2);
+      border-radius: var(--rs);
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: .82rem;
+      color: var(--muted)
+    }
+
+    .social-summary strong {
+      color: var(--acc)
+    }
 
     /* Buttons */
-    .btn-row{display:flex;gap:10px;margin-top:24px;justify-content:flex-end}
-    .btn{padding:11px 24px;border-radius:var(--rs);border:none;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
-    .btn-acc{background:var(--acc);color:#000}.btn-acc:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 20px rgba(245,166,35,.3)}
-    .btn-back-btn{background:var(--s2);border:1px solid var(--bdr);color:var(--muted)}
-    .btn-back-btn:hover{color:var(--txt)}
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+      justify-content: flex-end
+    }
+
+    .btn {
+      padding: 11px 24px;
+      border-radius: var(--rs);
+      border: none;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s
+    }
+
+    .btn-acc {
+      background: var(--acc);
+      color: #000
+    }
+
+    .btn-acc:hover {
+      opacity: .9;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(245, 166, 35, .3)
+    }
+
+    .btn-back-btn {
+      background: var(--s2);
+      border: 1px solid var(--bdr);
+      color: var(--muted)
+    }
+
+    .btn-back-btn:hover {
+      color: var(--txt)
+    }
 
     /* Success */
-    .success{display:none;text-align:center;padding:20px 0}
-    .success .icon{font-size:3.5rem;margin-bottom:14px}
-    .success h2{font-family:'Syne',sans-serif;font-size:1.4rem;margin-bottom:8px}
-    .success p{color:var(--muted);margin-bottom:22px;font-size:.875rem}
-    .success a{display:inline-block;padding:10px 22px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--txt);text-decoration:none;font-size:.875rem;margin:4px;transition:all .2s}
-    .success a:hover{border-color:var(--acc);color:var(--acc)}
-    .err{color:var(--red);font-size:.8rem;margin-top:8px;display:none}
+    .success {
+      display: none;
+      text-align: center;
+      padding: 20px 0
+    }
+
+    .success .icon {
+      font-size: 3.5rem;
+      margin-bottom: 14px
+    }
+
+    .success h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.4rem;
+      margin-bottom: 8px
+    }
+
+    .success p {
+      color: var(--muted);
+      margin-bottom: 22px;
+      font-size: .875rem
+    }
+
+    .success a {
+      display: inline-block;
+      padding: 10px 22px;
+      border-radius: var(--rs);
+      border: 1px solid var(--bdr);
+      color: var(--txt);
+      text-decoration: none;
+      font-size: .875rem;
+      margin: 4px;
+      transition: all .2s
+    }
+
+    .success a:hover {
+      border-color: var(--acc);
+      color: var(--acc)
+    }
+
+    .err {
+      color: var(--red);
+      font-size: .8rem;
+      margin-top: 8px;
+      display: none
+    }
   </style>
 </head>
+
 <body>
-<div class="card" id="main-card">
-  <a href="projects.html" class="back">← Back to Project Board</a>
-  <h1>🏢 Add <span>Tasks</span></h1>
-  <p class="sub">Select a client and apply new workflows.</p>
+  <div class="card" id="main-card">
+    <a href="projects.html" class="back">← Back to Project Board</a>
+    <h1>🏢 Add <span>Tasks</span></h1>
+    <p class="sub">Select a client and apply new workflows.</p>
 
-  <div class="steps">
-    <div class="step active" id="step1-dot">1 · Select Client & Workflows</div>
-    <div class="step" id="step2-dot">2 · Add Tasks</div>
-  </div>
-
-  <!-- Step 1 -->
-  <div id="step1">
-    <div class="fg">
-      <label>Select Existing Client *</label>
-      <select id="client_id" onchange="clientChanged()" style="width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px 14px;color:var(--txt);font-size:.9rem;outline:none">
-        <option value="">Loading clients...</option>
-      </select>
+    <div class="steps">
+      <div class="step active" id="step1-dot">1 · Select Client & Workflows</div>
+      <div class="step" id="step2-dot">2 · Add Tasks</div>
     </div>
-    
-    <div class="fg" style="margin-top:24px">
-      <label>Which workflows do you want to apply?</label>
-      <div class="services-grid">
-        <div class="svc-box" id="svc-social" onclick="toggleSvc('social',this)">
-          <input type="checkbox" value="social"/><span class="svc-icon">📱</span>
-          <div class="svc-info"><div class="svc-name">Social Media</div></div>
-        </div>
-        <div class="svc-box" id="svc-branding" onclick="toggleSvc('branding',this)">
-          <input type="checkbox" value="branding"/><span class="svc-icon">🎨</span>
-          <div class="svc-info"><div class="svc-name">Branding</div></div>
-        </div>
-        <div class="svc-box" id="svc-website" onclick="toggleSvc('website',this)">
-          <input type="checkbox" value="website"/><span class="svc-icon">💻</span>
-          <div class="svc-info"><div class="svc-name">Website</div></div>
-        </div>
-        <div class="svc-box" id="svc-shoot" onclick="toggleSvc('shoot',this)">
-          <input type="checkbox" value="shoot"/><span class="svc-icon">🎬</span>
-          <div class="svc-info"><div class="svc-name">Shoot</div></div>
-        </div>
-        <div class="svc-box" id="svc-miscellaneous" style="grid-column: 1 / -1;" onclick="toggleSvc('miscellaneous',this)">
-          <input type="checkbox" value="miscellaneous"/><span class="svc-icon">📁</span>
-          <div class="svc-info"><div class="svc-name">Miscellaneous</div></div>
+
+    <!-- Step 1 -->
+    <div id="step1">
+      <div class="fg">
+        <label>Select Existing Client *</label>
+        <select id="client_id" onchange="clientChanged()"
+          style="width:100%;background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px 14px;color:var(--txt);font-size:.9rem;outline:none">
+          <option value="">Loading clients...</option>
+        </select>
+      </div>
+
+      <div class="fg" style="margin-top:24px">
+        <label>Which workflows do you want to apply?</label>
+        <div class="services-grid">
+          <div class="svc-box" id="svc-social" onclick="toggleSvc('social',this)">
+            <input type="checkbox" value="social" /><span class="svc-icon">📱</span>
+            <div class="svc-info">
+              <div class="svc-name">Social Media</div>
+            </div>
+          </div>
+          <div class="svc-box" id="svc-branding" onclick="toggleSvc('branding',this)">
+            <input type="checkbox" value="branding" /><span class="svc-icon">🎨</span>
+            <div class="svc-info">
+              <div class="svc-name">Branding</div>
+            </div>
+          </div>
+          <div class="svc-box" id="svc-website" onclick="toggleSvc('website',this)">
+            <input type="checkbox" value="website" /><span class="svc-icon">💻</span>
+            <div class="svc-info">
+              <div class="svc-name">Website</div>
+            </div>
+          </div>
+          <div class="svc-box" id="svc-shoot" onclick="toggleSvc('shoot',this)">
+            <input type="checkbox" value="shoot" /><span class="svc-icon">🎬</span>
+            <div class="svc-info">
+              <div class="svc-name">Shoot</div>
+            </div>
+          </div>
+          <div class="svc-box" id="svc-miscellaneous" style="grid-column: 1 / -1;"
+            onclick="toggleSvc('miscellaneous',this)">
+            <input type="checkbox" value="miscellaneous" /><span class="svc-icon">📁</span>
+            <div class="svc-info">
+              <div class="svc-name">Miscellaneous</div>
+            </div>
+          </div>
         </div>
       </div>
+      <p class="err" id="err1">Please select a client and at least one workflow.</p>
+      <div class="btn-row"><button class="btn btn-acc" onclick="goToAddTasks()">Next: Add Tasks →</button></div>
     </div>
-    <p class="err" id="err1">Please select a client and at least one workflow.</p>
-    <div class="btn-row"><button class="btn btn-acc" onclick="goToAddTasks()">Next: Add Tasks →</button></div>
+
+    <!-- Step 2 -->
+    <div id="step2" style="display:none">
+      <div class="two">
+        <div class="fg"><label>Client Name</label>
+          <div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div>
+        </div>
+        <div class="fg"><label>Target Deadline</label><input type="date" id="deadline" /></div>
+      </div>
+
+      <!-- Social Media: Spreadsheet / Content Calendar -->
+      <div id="social-section" style="display:none">
+        <div class="svc-section-header"><span>📱</span> Social Media Content Calendar</div>
+        <div class="social-summary">
+          Plan your content posts below. Each row is one post.
+          Set the post type, assign a team member, add a content link or idea, and track its status.
+          <strong>Tip:</strong> You can add as many posts as needed.
+        </div>
+        <div class="social-table-wrap">
+          <table class="social-table" id="social-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Post Day</th>
+                <th>Post Title / Brief</th>
+                <th>Type</th>
+                <th>Content / Link</th>
+                <th>Assigned To</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="social-tbody"></tbody>
+          </table>
+          <button class="add-row-btn" onclick="addSocialRow()">＋ Add Post</button>
+        </div>
+      </div>
+
+      <!-- Other services: Task List -->
+      <div id="task-sections"></div>
+
+      <p class="err" id="err3"></p>
+      <div class="btn-row" style="margin-top:24px">
+        <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
+        <button class="btn btn-acc" id="create-btn" onclick="addTasksToClient()">✨ Add Tasks</button>
+      </div>
+    </div>
   </div>
 
-  <!-- Step 2 -->
-  <div id="step2" style="display:none">
-    <div class="two">
-      <div class="fg"><label>Client Name</label><div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div></div>
-      <div class="fg"><label>Target Deadline</label><input type="date" id="deadline"/></div>
-    </div>
-
-    <!-- Social Media: Spreadsheet / Content Calendar -->
-    <div id="social-section" style="display:none">
-      <div class="svc-section-header"><span>📱</span> Social Media Content Calendar</div>
-      <div class="social-summary">
-        Plan your content posts below. Each row is one post.
-        Set the post type, assign a team member, add a content link or idea, and track its status.
-        <strong>Tip:</strong> You can add as many posts as needed.
-      </div>
-      <div class="social-table-wrap">
-        <table class="social-table" id="social-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Post Day</th>
-              <th>Post Title / Brief</th>
-              <th>Type</th>
-              <th>Content / Link</th>
-              <th>Assigned To</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="social-tbody"></tbody>
-        </table>
-        <button class="add-row-btn" onclick="addSocialRow()">＋ Add Post</button>
-      </div>
-    </div>
-
-    <!-- Other services: Task List -->
-    <div id="task-sections"></div>
-
-    <p class="err" id="err3"></p>
-    <div class="btn-row" style="margin-top:24px">
-      <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
-      <button class="btn btn-acc" id="create-btn" onclick="addTasksToClient()">✨ Add Tasks</button>
-    </div>
+  <div class="success" id="success">
+    <div class="icon">🎉</div>
+    <h2>Tasks Added!</h2>
+    <p id="success-msg">Tasks have been successfully applied to the client project.</p>
+    <a href="projects.html">📋 View Project Board</a>
   </div>
-</div>
 
-<div class="success" id="success">
-  <div class="icon">🎉</div>
-  <h2>Tasks Added!</h2>
-  <p id="success-msg">Tasks have been successfully applied to the client project.</p>
-  <a href="projects.html">📋 View Project Board</a>
-</div>
+  <script>
+    const API = location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:5000" : location.origin;
+    const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+    const UID = user.user_id || "emp003";
 
-<script>
-const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
-const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
-const UID = user.user_id || "emp003";
-
-const ONBOARD_ADMINS = ["emp001", "emp003", "emp004"];
-if (!ONBOARD_ADMINS.includes(user.user_id)) {
-  document.getElementById("main-card").innerHTML = `
+    const ONBOARD_ADMINS = ["emp001", "emp003", "emp004"];
+    if (!ONBOARD_ADMINS.includes(user.user_id)) {
+      document.getElementById("main-card").innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
       <div style="font-size:2rem">📝</div>
       <div>
@@ -241,271 +829,277 @@ if (!ONBOARD_ADMINS.includes(user.user_id)) {
       <p style="color:var(--muted);font-size:.875rem;margin-bottom:24px">Only authorized admins can add tasks.</p>
       <a href="my-tasks.html" style="display:inline-block;padding:10px 22px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--txt);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--bdr)'">← Back to My Tasks</a>
     </div>`;
-}
-
-let EMP = {};
-let EMP_OPTS = "";
-const SVC_TASKS = {
-  social:[
-    {title:"Content Ideation",who:"emp006"},
-    {title:"Content Approval (Cal Sheet)",who:"emp006"},
-    {title:"Discussion with Creative",who:"emp002"},
-    {title:"Creative Assigning",who:"emp006"},
-    {title:"Content Creation (Kanban)",who:"emp002"},
-    {title:"Final Drive Link",who:"emp006"}
-  ],
-  branding:[
-    {title:"Brand Essence",who:"emp002"},
-    {title:"Stylescape",who:"emp002"},
-    {title:"Logo Design Presentation",who:"emp002"},
-    {title:"Logo Iterations",who:"emp002"},
-    {title:"Visual Style",who:"emp002"},
-    {title:"Collateral",who:"emp002"},
-    {title:"Brand guidelines Content",who:"emp006"},
-    {title:"Brand guidelines",who:"emp002"}
-  ],
-  website:[
-    {title:"Concept & Flow",who:"emp001"},
-    {title:"UI 1st Draft Review",who:"emp002"},
-    {title:"Content",who:"emp006"},
-    {title:"Final Build",who:"emp003"}
-  ],
-  shoot:[
-    {title:"Video Script & Concept",who:"emp006"},
-    {title:"Video Shoot / Production",who:"emp005"},
-    {title:"Video Editing & Post",who:"emp005"}
-  ],
-  miscellaneous:[{title:"Custom Deliverable Setup",who:"emp001"}],
-};
-
-const POST_TYPES = ["Story","Reel","Static","Carousel"];
-const POST_STATUSES = ["Scheduled","In Progress","Need to Start","Posted","Paused","Final"];
-const SVC_LABELS = {social:"📱 Social Media",branding:"🎨 Branding",website:"💻 Website",shoot:"🎬 Shoot",miscellaneous:"📁 Miscellaneous"};
-
-let selected = new Set();
-// Stored clients list for name lookup
-let _clientsList = [];
-
-async function loadEmployees() {
-  const r = await fetch(`${API}/api/employees`);
-  const list = await r.json();
-  const empMap = {};
-  if (Array.isArray(list)) {
-    list.forEach(e => {
-      const id = e.id || e.notion_id || e.emp_id || Object.values(e)[0];
-      const name = e.name || e.Name || id;
-      if (id) empMap[id] = name;
-    });
-  } else {
-    Object.assign(empMap, list);
-  }
-  window.EMP_DICT = empMap;
-}
-
-async function loadClients() {
-  let useNotion = false;
-  try {
-    const ns = await fetch(`${API}/api/notion/status`);
-    const nd = await ns.json();
-    useNotion = nd.configured;
-  } catch(e) {}
-
-  if (useNotion) {
-    const res = await fetch(`${API}/api/notion/dashboard`);
-    const data = await res.json();
-    _clientsList = data.clients || [];
-    _clientsList.forEach(c => { c.id = c.notion_id; });
-  } else {
-    const res = await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
-    const data = await res.json();
-    _clientsList = data.clients || data || [];
-  }
-
-  const sel = document.getElementById("client_id");
-  sel.innerHTML = '<option value="">Select a client...</option>' + _clientsList.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
-}
-
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadEmployees();
-  await loadClients();
-  EMP = window.EMP_DICT || {};
-  EMP_OPTS = Object.entries(EMP).map(([id,name])=>`<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
-
-  const urlParams = new URLSearchParams(window.location.search);
-  const passedClientId = urlParams.get('client_id');
-  const passedClientName = urlParams.get('client_name') || '';
-  const passedServices = urlParams.get('services');
-
-  if (passedClientId || passedClientName) {
-    const selEl = document.getElementById("client_id");
-    let matched = false;
-
-    // Match by ID first, then by name (case-insensitive) as fallback
-    for (let o of selEl.options) {
-      if (o.value && (o.value == passedClientId || o.value === passedClientId)) {
-        selEl.value = o.value; matched = true; break;
-      }
     }
-    if (!matched && passedClientName) {
-      const nameLower = passedClientName.toLowerCase().trim();
-      for (let o of selEl.options) {
-        if (o.text.toLowerCase().trim() === nameLower) {
-          selEl.value = o.value; matched = true; break;
+
+    let EMP = {};
+    let EMP_OPTS = "";
+    const SVC_TASKS = {
+      social: [
+        { title: "Client Onboarding & Setup" },
+        { title: "Brand Brief" },
+        { title: "Content Strategy formulation" },
+        { title: "Approval on Strategy" },
+        { title: "Content Ideation" },
+        { title: "Content Approval (Cal Sheet)" },
+        { title: "Discussion with Creative" },
+        { title: "Creative Assigning" },
+        { title: "Content Creation (Kanban)" },
+        { title: "Final Drive Link" }
+      ],
+      branding: [
+        { title: "Brand Essence" },
+        { title: "Stylescape" },
+        { title: "Logo Design Presentation" },
+        { title: "Logo Iteration" },
+        { title: "Visual Style" },
+        { title: "Collateral" },
+        { title: "Brand Guidelines Content" },
+        { title: "Brand Guidelines" }
+      ],
+      website: [
+        { title: "Concept & Flow" },
+        { title: "UI 1st Draft Review" },
+        { title: "Final Build" }
+      ],
+      shoot: [
+        { title: "Video Script & Concept" },
+        { title: "Video Shoot / Production" },
+        { title: "Video Editing & Post" }
+      ],
+      miscellaneous: [{ title: "Custom Deliverable Setup" }],
+    };
+
+    const POST_TYPES = ["Story", "Reel", "Static", "Carousel"];
+    const POST_STATUSES = ["Scheduled", "In Progress", "Need to Start", "Posted", "Paused", "Final"];
+    const SVC_LABELS = { social: "📱 Social Media", branding: "🎨 Branding", website: "💻 Website", shoot: "🎬 Shoot", miscellaneous: "📁 Miscellaneous" };
+
+    let selected = new Set();
+    // Stored clients list for name lookup
+    let _clientsList = [];
+
+    async function loadEmployees() {
+      const r = await fetch(`${API}/api/employees`);
+      let list = await r.json();
+      if (list && list.employees) {
+        list = list.employees;
+      }
+      const empMap = {};
+      if (Array.isArray(list)) {
+        list.forEach(e => {
+          const id = e.id || e.notion_id || e.emp_id || Object.values(e)[0];
+          const name = e.name || e.Name || id;
+          if (id) empMap[id] = name;
+        });
+      } else {
+        Object.assign(empMap, list);
+      }
+      window.EMP_DICT = empMap;
+    }
+
+    async function loadClients() {
+      let useNotion = false;
+      try {
+        const ns = await fetch(`${API}/api/notion/status`);
+        const nd = await ns.json();
+        useNotion = nd.configured;
+      } catch (e) { }
+
+      if (useNotion) {
+        const res = await fetch(`${API}/api/notion/dashboard`);
+        const data = await res.json();
+        _clientsList = data.clients || [];
+        _clientsList.forEach(c => { c.id = c.notion_id; });
+      } else {
+        const res = await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
+        const data = await res.json();
+        _clientsList = data.clients || data || [];
+      }
+
+      const sel = document.getElementById("client_id");
+      sel.innerHTML = '<option value="">Select a client...</option>' + _clientsList.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      await loadEmployees();
+      await loadClients();
+      EMP = window.EMP_DICT || {};
+      EMP_OPTS = Object.entries(EMP).map(([id, name]) => `<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const passedClientId = urlParams.get('client_id');
+      const passedClientName = urlParams.get('client_name') || '';
+      const passedServices = urlParams.get('services');
+
+      if (passedClientId || passedClientName) {
+        const selEl = document.getElementById("client_id");
+        let matched = false;
+
+        // Match by ID first, then by name (case-insensitive) as fallback
+        for (let o of selEl.options) {
+          if (o.value && (o.value == passedClientId || o.value === passedClientId)) {
+            selEl.value = o.value; matched = true; break;
+          }
+        }
+        if (!matched && passedClientName) {
+          const nameLower = passedClientName.toLowerCase().trim();
+          for (let o of selEl.options) {
+            if (o.text.toLowerCase().trim() === nameLower) {
+              selEl.value = o.value; matched = true; break;
+            }
+          }
+        }
+
+        // Apply services from URL param
+        if (passedServices && passedServices.trim()) {
+          const svcs = passedServices.split(',').filter(Boolean);
+          svcs.forEach(svc => {
+            const box = document.getElementById("svc-" + svc);
+            if (box && !selected.has(svc)) toggleSvc(svc, box);
+          });
+        }
+
+        // If still no services, try localStorage by name then by id
+        if (selected.size === 0) {
+          const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+          const saved = (passedClientName && cs[passedClientName.toLowerCase().trim()])
+            || cs[passedClientId] || cs[String(passedClientId)] || null;
+          if (saved) {
+            saved.forEach(svc => {
+              const box = document.getElementById("svc-" + svc);
+              if (box && !selected.has(svc)) toggleSvc(svc, box);
+            });
+          }
+        }
+
+        if (matched && selected.size > 0) {
+          document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
+
+          const urlDl = urlParams.get('deadline');
+          const csDl = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
+          const clientName = selEl.options[selEl.selectedIndex].text.toLowerCase().trim();
+          const savedDl = urlDl || csDl[clientName] || csDl[passedClientId] || "";
+          if (savedDl) document.getElementById("deadline").value = savedDl;
+
+          buildStep2();
+          goStep(2);
+        } else if (matched) {
+          clientChanged();
+          goStep(1);
         }
       }
+    });
+
+    function toggleSvc(svc, el) {
+      el.classList.toggle("selected");
+      if (selected.has(svc)) selected.delete(svc); else selected.add(svc);
     }
 
-    // Apply services from URL param
-    if (passedServices && passedServices.trim()) {
-      const svcs = passedServices.split(',').filter(Boolean);
-      svcs.forEach(svc => {
-        const box = document.getElementById("svc-" + svc);
-        if (box && !selected.has(svc)) toggleSvc(svc, box);
+    function goStep(n) {
+      [1, 2].forEach(i => {
+        const el = document.getElementById("step" + i);
+        if (el) el.style.display = i === n ? "" : "none";
+        const dot = document.getElementById("step" + i + "-dot");
+        if (dot) dot.className = "step" + (i === n ? " active" : i < n ? " done" : "");
       });
     }
 
-    // If still no services, try localStorage by name then by id
-    if (selected.size === 0) {
+    function clientChanged() {
+      const selEl = document.getElementById("client_id");
+      const clientId = selEl.value;
+      if (!clientId) return;
+      const clientName = (selEl.options[selEl.selectedIndex]?.text || "").toLowerCase().trim();
       const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
-      const saved = (passedClientName && cs[passedClientName.toLowerCase().trim()])
-        || cs[passedClientId] || cs[String(passedClientId)] || null;
-      if (saved) {
-        saved.forEach(svc => {
+      const savedSvcs = cs[clientName] || cs[clientId] || cs[String(clientId)] || cs[Number(clientId)] || null;
+
+      if (savedSvcs && savedSvcs.length > 0) {
+        [...selected].forEach(svc => {
           const box = document.getElementById("svc-" + svc);
-          if (box && !selected.has(svc)) toggleSvc(svc, box);
+          if (box) { box.classList.remove("selected"); }
         });
+        selected.clear();
+        savedSvcs.forEach(svc => {
+          const box = document.getElementById("svc-" + svc);
+          if (box) toggleSvc(svc, box);
+        });
+      }
+
+      // Pre-fill deadline
+      const csDl = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
+      const savedDl = csDl[clientName] || csDl[clientId] || "";
+      if (savedDl) {
+        document.getElementById("deadline").value = savedDl;
       }
     }
 
-    if (matched && selected.size > 0) {
-      document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
-      
-      const urlDl = urlParams.get('deadline');
-      const csDl = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
-      const clientName = selEl.options[selEl.selectedIndex].text.toLowerCase().trim();
-      const savedDl = urlDl || csDl[clientName] || csDl[passedClientId] || "";
-      if (savedDl) document.getElementById("deadline").value = savedDl;
+    function goToAddTasks() {
+      const selEl = document.getElementById("client_id");
+      const clientId = selEl.value;
+      if (!clientId || selected.size === 0) {
+        document.getElementById("err1").style.display = "block";
+        return;
+      }
+      document.getElementById("err1").style.display = "none";
 
+      document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
       buildStep2();
       goStep(2);
-    } else if (matched) {
-      clientChanged();
-      goStep(1);
     }
-  }
-});
 
-function toggleSvc(svc, el){
-  el.classList.toggle("selected");
-  if(selected.has(svc)) selected.delete(svc); else selected.add(svc);
-}
+    function buildStep2() {
+      // Expand card to full width if social is selected (needs table space)
+      const hasSocial = selected.has('social');
+      const onlyOtherServices = selected.size > 0 && !hasSocial;
 
-function goStep(n){
-  [1,2].forEach(i=>{
-    const el = document.getElementById("step"+i);
-    if(el) el.style.display=i===n?"":"none";
-    const dot=document.getElementById("step"+i+"-dot");
-    if(dot) dot.className="step"+(i===n?" active":i<n?" done":"");
-  });
-}
+      // Social section
+      document.getElementById("social-section").style.display = hasSocial ? "block" : "none";
+      if (hasSocial) {
+        const tbody = document.getElementById("social-tbody");
+        if (tbody.children.length === 0) {
+          // Pre-populate with 3 blank rows
+          for (let i = 0; i < 3; i++) addSocialRow();
+        }
+      }
 
-function clientChanged() {
-  const selEl = document.getElementById("client_id");
-  const clientId = selEl.value;
-  if(!clientId) return;
-  const clientName = (selEl.options[selEl.selectedIndex]?.text || "").toLowerCase().trim();
-  const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
-  const savedSvcs = cs[clientName] || cs[clientId] || cs[String(clientId)] || cs[Number(clientId)] || null;
-
-  if (savedSvcs && savedSvcs.length > 0) {
-    [...selected].forEach(svc => {
-      const box = document.getElementById("svc-" + svc);
-      if (box) { box.classList.remove("selected"); }
-    });
-    selected.clear();
-    savedSvcs.forEach(svc => {
-      const box = document.getElementById("svc-" + svc);
-      if (box) toggleSvc(svc, box);
-    });
-  }
-
-  // Pre-fill deadline
-  const csDl = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
-  const savedDl = csDl[clientName] || csDl[clientId] || "";
-  if (savedDl) {
-    document.getElementById("deadline").value = savedDl;
-  }
-}
-
-function goToAddTasks(){
-  const selEl = document.getElementById("client_id");
-  const clientId = selEl.value;
-  if(!clientId || selected.size === 0){
-    document.getElementById("err1").style.display="block";
-    return;
-  }
-  document.getElementById("err1").style.display="none";
-  
-  document.getElementById("r-name").textContent = selEl.options[selEl.selectedIndex].text;
-  buildStep2();
-  goStep(2);
-}
-
-function buildStep2(){
-  // Expand card to full width if social is selected (needs table space)
-  const hasSocial = selected.has('social');
-  const onlyOtherServices = selected.size > 0 && !hasSocial;
-
-  // Social section
-  document.getElementById("social-section").style.display = hasSocial ? "block" : "none";
-  if (hasSocial) {
-    const tbody = document.getElementById("social-tbody");
-    if (tbody.children.length === 0) {
-      // Pre-populate with 3 blank rows
-      for(let i=0;i<3;i++) addSocialRow();
-    }
-  }
-
-  // Other services (branding, website, shoot, miscellaneous)
-  const wrap = document.getElementById("task-sections");
-  wrap.innerHTML = "";
-  for (const svc of selected) {
-    if (svc === 'social') continue;
-    const tasks = SVC_TASKS[svc] || [];
-    const section = document.createElement("div");
-    section.innerHTML = `<div class="svc-section-header"><span>${SVC_LABELS[svc]?.split(" ")[0]||"📋"}</span> ${SVC_LABELS[svc]?.slice(2)||svc}</div>`;
-    const preview = document.createElement("div");
-    preview.className = "preview-section";
-    preview.innerHTML = `<h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
+      // Other services (branding, website, shoot, miscellaneous)
+      const wrap = document.getElementById("task-sections");
+      wrap.innerHTML = "";
+      for (const svc of selected) {
+        if (svc === 'social') continue;
+        const tasks = SVC_TASKS[svc] || [];
+        const section = document.createElement("div");
+        section.innerHTML = `<div class="svc-section-header"><span>${SVC_LABELS[svc]?.split(" ")[0] || "📋"}</span> ${SVC_LABELS[svc]?.slice(2) || svc}</div>`;
+        const preview = document.createElement("div");
+        preview.className = "preview-section";
+        preview.innerHTML = `<h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
       <p class="ps-sub">Edit task names or assignees, delete unwanted tasks, or add custom ones.</p>
       <div class="task-list-${svc}"></div>
       <button class="add-task-btn" onclick="addTaskToSection('${svc}')">＋ Add custom task</button>`;
-    section.appendChild(preview);
-    wrap.appendChild(section);
-    const listEl = wrap.querySelector(`.task-list-${svc}`);
-    tasks.forEach((t,i) => addTaskRow(listEl, t.title, t.who, i));
-  }
-}
+        section.appendChild(preview);
+        wrap.appendChild(section);
+        const listEl = wrap.querySelector(`.task-list-${svc}`);
+        tasks.forEach((t, i) => addTaskRow(listEl, t.title, t.who, i));
+      }
+    }
 
-/* ── Social Media Spreadsheet ───────────────────────── */
-let socialRowIdx = 0;
-function empOptions(selected="") {
-  return Object.entries(EMP).map(([id,name])=>`<option value="${id}" ${id===selected?"selected":""}>${name}</option>`).join("");
-}
-function typeOptions(sel="") {
-  return POST_TYPES.map(t=>`<option value="${t}" ${t===sel?"selected":""}>${t}</option>`).join("");
-}
-function statusOptions(sel="") {
-  return POST_STATUSES.map(s=>`<option value="${s}" ${s===sel?"selected":""}>${s}</option>`).join("");
-}
-function addSocialRow(title="",type="Post",link="",assignee="",status="Idea",postDay=""){
-  socialRowIdx++;
-  const idx = socialRowIdx;
-  const tbody = document.getElementById("social-tbody");
-  const tr = document.createElement("tr");
-  tr.dataset.rowId = idx;
-  tr.innerHTML = `
-    <td class="st-num">${tbody.children.length+1}</td>
+    /* ── Social Media Spreadsheet ───────────────────────── */
+    let socialRowIdx = 0;
+    function empOptions(selected = "") {
+      return Object.entries(EMP).map(([id, name]) => `<option value="${id}" ${id === selected ? "selected" : ""}>${name}</option>`).join("");
+    }
+    function typeOptions(sel = "") {
+      return POST_TYPES.map(t => `<option value="${t}" ${t === sel ? "selected" : ""}>${t}</option>`).join("");
+    }
+    function statusOptions(sel = "") {
+      return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
+    }
+    function addSocialRow(title = "", type = "Post", link = "", assignee = "", status = "Idea", postDay = "") {
+      socialRowIdx++;
+      const idx = socialRowIdx;
+      const tbody = document.getElementById("social-tbody");
+      const tr = document.createElement("tr");
+      tr.dataset.rowId = idx;
+      tr.innerHTML = `
+    <td class="st-num">${tbody.children.length + 1}</td>
     <td><input class="st-input" type="date" value="${postDay}" style="width:130px"/></td>
     <td><input class="st-input" value="${title}" placeholder="Post title or brief…" style="min-width:160px"/></td>
     <td><select class="st-sel" style="width:100px">${typeOptions(type)}</select></td>
@@ -515,148 +1109,149 @@ function addSocialRow(title="",type="Post",link="",assignee="",status="Idea",pos
       <select class="st-sel status-sel" style="width:90px" onchange="updateStatusBadge(this)">${statusOptions(status)}</select>
     </td>
     <td><button class="st-del" onclick="removeSocialRow(this)" title="Delete">✕</button></td>`;
-  tbody.appendChild(tr);
-  reIndexSocialRows();
-}
+      tbody.appendChild(tr);
+      reIndexSocialRows();
+    }
 
-function removeSocialRow(btn){
-  btn.closest("tr").remove();
-  reIndexSocialRows();
-}
-function reIndexSocialRows(){
-  document.querySelectorAll("#social-tbody tr").forEach((r,i)=>{
-    const numCell = r.querySelector(".st-num");
-    if(numCell) numCell.textContent = i+1;
-  });
-}
-function updateStatusBadge(sel){}
+    function removeSocialRow(btn) {
+      btn.closest("tr").remove();
+      reIndexSocialRows();
+    }
+    function reIndexSocialRows() {
+      document.querySelectorAll("#social-tbody tr").forEach((r, i) => {
+        const numCell = r.querySelector(".st-num");
+        if (numCell) numCell.textContent = i + 1;
+      });
+    }
+    function updateStatusBadge(sel) { }
 
-/* ── Task list rows (branding / website / shoot) ─────── */
-function updateMsDisplay(el) {
-  const wrap = el.closest('.ms-wrap');
-  const chks = [...wrap.querySelectorAll('.ms-chk:checked')];
-  const display = wrap.querySelector('.ms-display');
-  if (chks.length === 0) { display.textContent = 'Unassigned'; display.style.color = 'var(--muted)'; }
-  else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
-}
+    /* ── Task list rows (branding / website / shoot) ─────── */
+    function updateMsDisplay(el) {
+      const wrap = el.closest('.ms-wrap');
+      const chks = [...wrap.querySelectorAll('.ms-chk:checked')];
+      const display = wrap.querySelector('.ms-display');
+      if (chks.length === 0) { display.textContent = 'Unassigned'; display.style.color = 'var(--muted)'; }
+      else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
+    }
 
-function addTaskRow(container, title="", who="", idx=0, dueDate=""){
-  const row=document.createElement("div");
-  row.className="task-row";
-  row.innerHTML=`
-    <span class="tp-icon">${idx===0?"🔑":"→"}</span>
-    <input class="tp-title-input" value="${title.replace(/"/g,'&quot;')}" placeholder="Task name…" />
+    function addTaskRow(container, title = "", who = "", idx = 0, dueDate = "") {
+      const row = document.createElement("div");
+      row.className = "task-row";
+      row.innerHTML = `
+    <span class="tp-icon">${idx === 0 ? "🔑" : "→"}</span>
+    <input class="tp-title-input" value="${title.replace(/"/g, '&quot;')}" placeholder="Task name…" />
     <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
       <div class="ms-display" onclick="this.parentElement.classList.toggle('open')">Unassigned</div>
       <div class="ms-dropdown">${EMP_OPTS}</div>
     </div>
     <input class="tp-date-input" type="date" value="${dueDate}" title="Task due date" />
     <button class="tp-del" onclick="removeTask(this)" title="Remove task">✕</button>`;
-  
-  const whoArr = (who||"").split(',').map(s=>s.trim());
-  row.querySelectorAll(".ms-chk").forEach(chk => {
-    if (whoArr.includes(chk.value)) chk.checked = true;
-  });
-  const firstChk = row.querySelector(".ms-chk");
-  if(firstChk) updateMsDisplay(firstChk);
-  container.appendChild(row);
-}
 
-function addTaskToSection(svc){
-  const container = document.querySelector(`.task-list-${svc}`);
-  if(!container) return;
-  const existing = container.querySelectorAll(".task-row").length;
-  addTaskRow(container, "", "emp001", existing);
-  container.querySelector(".task-row:last-child .tp-title-input").focus();
-}
-
-function removeTask(btn){
-  const row = btn.closest(".task-row");
-  const container = row.parentElement;
-  row.remove();
-  container.querySelectorAll(".task-row").forEach((r,i)=>{
-    r.querySelector(".tp-icon").textContent=i===0?"🔑":"→";
-  });
-}
-
-function showErr(msg) {
-  const errEl = document.getElementById("err3");
-  errEl.textContent = msg;
-  errEl.style.display = "block";
-}
-
-async function addTasksToClient(){
-  const btn = document.getElementById("create-btn");
-  if(btn.disabled) return;
-
-  const clientId = document.getElementById("client_id").value;
-  if(!clientId) return;
-
-  btn.disabled=true; btn.textContent="⏳ Adding Tasks...";
-
-  // Build services list to send
-  const servicesToSend = [...selected];
-
-  // Collect extra notes from social table if social is selected
-  let extraNotes = "";
-  if (selected.has('social')) {
-    const rows = document.querySelectorAll("#social-tbody tr");
-    if (rows.length > 0) {
-      const lines = [];
-      rows.forEach((r,i) => {
-        const inputs = r.querySelectorAll("input");
-        const sels = r.querySelectorAll("select");
-        const day = inputs[0]?.value || "";
-        const title = inputs[1]?.value || "";
-        const link = inputs[2]?.value || "";
-        const type = sels[0]?.value || "";
-        const assignee = sels[1]?.options[sels[1]?.selectedIndex]?.text || "";
-        const status = sels[2]?.value || "";
-        if (title || day) lines.push(`Post ${i+1}: [${type}] ${title} | Date: ${day} | Assignee: ${assignee} | Link: ${link} | Status: ${status}`);
+      const whoArr = (who || "").split(',').map(s => s.trim());
+      row.querySelectorAll(".ms-chk").forEach(chk => {
+        if (whoArr.includes(chk.value)) chk.checked = true;
       });
-      if (lines.length) extraNotes += "\n\n--- Social Media Content Calendar ---\n" + lines.join("\n");
+      const firstChk = row.querySelector(".ms-chk");
+      if (firstChk) updateMsDisplay(firstChk);
+      container.appendChild(row);
     }
-  }
 
-  try {
-    const ar = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        user_id:UID,
-        services: servicesToSend,
-        deadline: document.getElementById("deadline")?.value || "",
-        extra_notes: extraNotes
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const ad = await ar.json();
-    if (!ad.success && ad.error) {
-       showErr(ad.error);
-       btn.disabled=false; btn.textContent="✨ Add Tasks";
-       return;
+    function addTaskToSection(svc) {
+      const container = document.querySelector(`.task-list-${svc}`);
+      if (!container) return;
+      const existing = container.querySelectorAll(".task-row").length;
+      addTaskRow(container, "", "emp001", existing);
+      container.querySelector(".task-row:last-child .tp-title-input").focus();
     }
-    
-    // Clear localStorage for this client
-    try {
-      const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
-      delete cs[clientId];
-      localStorage.setItem('claude_client_services', JSON.stringify(cs));
-    } catch(e){}
 
-    document.getElementById("main-card").style.display = "none";
-    document.getElementById("success-msg").textContent = `Successfully added ${ad.tasks_created||0} tasks to the client project.`;
-    document.getElementById("success").style.display = "block";
-
-  } catch(err) {
-    if (err.name === "TimeoutError") {
-      showErr("Request timed out — check your server is running.");
-    } else {
-      showErr(`Error: ${err.message || "Something went wrong. Please try again."}`);
+    function removeTask(btn) {
+      const row = btn.closest(".task-row");
+      const container = row.parentElement;
+      row.remove();
+      container.querySelectorAll(".task-row").forEach((r, i) => {
+        r.querySelector(".tp-icon").textContent = i === 0 ? "🔑" : "→";
+      });
     }
-    btn.disabled=false; btn.textContent="✨ Add Tasks";
-  }
-}
-</script>
+
+    function showErr(msg) {
+      const errEl = document.getElementById("err3");
+      errEl.textContent = msg;
+      errEl.style.display = "block";
+    }
+
+    async function addTasksToClient() {
+      const btn = document.getElementById("create-btn");
+      if (btn.disabled) return;
+
+      const clientId = document.getElementById("client_id").value;
+      if (!clientId) return;
+
+      btn.disabled = true; btn.textContent = "⏳ Adding Tasks...";
+
+      // Build services list to send
+      const servicesToSend = [...selected];
+
+      // Collect extra notes from social table if social is selected
+      let extraNotes = "";
+      if (selected.has('social')) {
+        const rows = document.querySelectorAll("#social-tbody tr");
+        if (rows.length > 0) {
+          const lines = [];
+          rows.forEach((r, i) => {
+            const inputs = r.querySelectorAll("input");
+            const sels = r.querySelectorAll("select");
+            const day = inputs[0]?.value || "";
+            const title = inputs[1]?.value || "";
+            const link = inputs[2]?.value || "";
+            const type = sels[0]?.value || "";
+            const assignee = sels[1]?.options[sels[1]?.selectedIndex]?.text || "";
+            const status = sels[2]?.value || "";
+            if (title || day) lines.push(`Post ${i + 1}: [${type}] ${title} | Date: ${day} | Assignee: ${assignee} | Link: ${link} | Status: ${status}`);
+          });
+          if (lines.length) extraNotes += "\n\n--- Social Media Content Calendar ---\n" + lines.join("\n");
+        }
+      }
+
+      try {
+        const ar = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: UID,
+            services: servicesToSend,
+            deadline: document.getElementById("deadline")?.value || "",
+            extra_notes: extraNotes
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const ad = await ar.json();
+        if (!ad.success && ad.error) {
+          showErr(ad.error);
+          btn.disabled = false; btn.textContent = "✨ Add Tasks";
+          return;
+        }
+
+        // Clear localStorage for this client
+        try {
+          const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
+          delete cs[clientId];
+          localStorage.setItem('claude_client_services', JSON.stringify(cs));
+        } catch (e) { }
+
+        document.getElementById("main-card").style.display = "none";
+        document.getElementById("success-msg").textContent = `Successfully added ${ad.tasks_created || 0} tasks to the client project.`;
+        document.getElementById("success").style.display = "block";
+
+      } catch (err) {
+        if (err.name === "TimeoutError") {
+          showErr("Request timed out — check your server is running.");
+        } else {
+          showErr(`Error: ${err.message || "Something went wrong. Please try again."}`);
+        }
+        btn.disabled = false; btn.textContent = "✨ Add Tasks";
+      }
+    }
+  </script>
 </body>
+
 </html>
