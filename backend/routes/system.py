@@ -12,7 +12,7 @@ from io import StringIO
 from pathlib import Path
 
 import requests
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_file
 
 from budget_tracker import (check_budget_available, get_all_usage_logs,
                              get_usage_summary)
@@ -189,3 +189,62 @@ def export_usage():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=claude_api_usage.csv"}
     )
+
+
+# ── DB Transfer Utilities (temporary admin endpoints) ─────────────────────────
+# Protected by SECRET_KEY env var.  Remove these routes after transfer is done.
+
+DB_PATH = Path(__file__).parent.parent.parent / "logs" / "app.db"
+_SECRET = os.getenv("SECRET_KEY", "")
+
+
+def _check_secret():
+    """Return True if the ?secret= query param matches SECRET_KEY."""
+    provided = request.args.get("secret", "")
+    if not _SECRET or not provided:
+        return False
+    # constant-time compare
+    import hmac
+    return hmac.compare_digest(provided, _SECRET)
+
+
+@system_bp.route("/admin/download-db", methods=["GET"])
+def download_db():
+    """
+    Download the SQLite database file.
+    Usage: GET /admin/download-db?secret=<SECRET_KEY>
+    REMOVE this endpoint after transfer is complete.
+    """
+    if not _check_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+    if not DB_PATH.exists():
+        return jsonify({"error": f"DB not found at {DB_PATH}"}), 404
+    return send_file(
+        str(DB_PATH),
+        as_attachment=True,
+        download_name="app.db",
+        mimetype="application/octet-stream",
+    )
+
+
+@system_bp.route("/admin/upload-db", methods=["POST"])
+def upload_db():
+    """
+    Upload a replacement SQLite database file.
+    Usage: POST /admin/upload-db?secret=<SECRET_KEY>  with file field 'db'
+    REMOVE this endpoint after transfer is complete.
+    """
+    if not _check_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+    f = request.files.get("db")
+    if not f:
+        return jsonify({"error": "No file uploaded. Use field name 'db'"}), 400
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    backup = DB_PATH.with_suffix(".db.bak")
+    if DB_PATH.exists():
+        import shutil
+        shutil.copy2(DB_PATH, backup)
+        logger.info(f"Backed up existing DB to {backup}")
+    f.save(str(DB_PATH))
+    logger.info(f"DB uploaded successfully ({DB_PATH.stat().st_size} bytes)")
+    return jsonify({"success": True, "message": "DB uploaded. Restart the service to apply.", "backup": str(backup) if backup.exists() else None})
