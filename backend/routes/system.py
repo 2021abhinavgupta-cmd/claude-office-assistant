@@ -195,7 +195,7 @@ def export_usage():
 # Protected by SECRET_KEY env var.  Remove these routes after transfer is done.
 
 DB_PATH = Path(__file__).parent.parent.parent / "logs" / "app.db"
-_SECRET = os.getenv("SECRET_KEY", "")
+_SECRET = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY", "")
 
 
 def _check_secret():
