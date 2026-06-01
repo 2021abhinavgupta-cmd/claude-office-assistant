@@ -2841,6 +2841,28 @@ def quick_done(task_id):
 # ══════════════════════════════════════════════════════════════════════════════
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
+@app.route("/api/admin/backup-db", methods=["GET"])
+def backup_db():
+    from routes.auth import _verify_session
+    from datetime import date
+    from pathlib import Path
+    
+    token = request.cookies.get("session_token", "")
+    user_id = _verify_session(token)
+    
+    if not user_id or not _is_admin(user_id):
+        return jsonify({"error": "Unauthorised"}), 403
+        
+    db_path = Path(__file__).parent.parent / "logs" / "app.db"
+    if not db_path.exists():
+        return jsonify({"error": "Database file not found"}), 404
+        
+    from flask import send_file
+    return send_file(
+        db_path,
+        as_attachment=True,
+        download_name=f"backup_{date.today()}.db"
+    )
 
 if __name__ == "__main__":
 
