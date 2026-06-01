@@ -839,7 +839,7 @@ loadBudgetBanner();
 })();
 
 function copyClientLink() {
-  const link = `${window.location.origin}/client-portal.html`;
+  const link = `${window.location.origin}/client-login.html`;
   navigator.clipboard.writeText(link).then(() => {
     const lbl = document.getElementById("copy-client-link-label");
     if (lbl) {
@@ -847,7 +847,7 @@ function copyClientLink() {
       setTimeout(() => { lbl.textContent = "Copy Client Login Link"; }, 3000);
     }
   }).catch(() => {
-    prompt("Copy this link and send it to your client:", `${window.location.origin}/client-portal.html`);
+    prompt("Copy this link and send it to your client:", `${window.location.origin}/client-login.html`);
   });
 }
 
