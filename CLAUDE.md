@@ -109,6 +109,12 @@ claude-office-assistant/
 - Stored in `client_users` table. Separate `client_sessions` table.
 - Client pages include `client-auth.js` (NOT `auth.js`)
 
+> [!WARNING]
+> **Known Security Flaws in Client Onboarding:**
+> 1. **Plaintext Passwords:** Client passwords in `client_users` are currently stored and compared in plaintext (`routes/auth.py`). They need to be securely hashed.
+> 2. **Insecure Admin Authorization (Spoofing):** The SQLite `POST /api/clients` route trusts `body.get("user_id")` to verify admin status, allowing any user to spoof an admin ID to create clients.
+> 3. **Missing Auth on Notion endpoint:** `POST /api/notion/clients` (`routes/ops.py`) has completely missing authentication/authorization. Anyone can create a Notion client.
+
 ### 3. AI Routing
 - Task types: `general`, `coding`, `html_design`, `presentations`, `email`, `scripts`, `captions`, `meetings`, `announcements`, `analysis`, `data_analysis`, `content`
 - `model_router.py` maps task type → model tier (haiku/sonnet)
