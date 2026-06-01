@@ -1554,23 +1554,40 @@ def _shape_client_task(t: dict, source: str) -> dict:
             return None
         return s.split("T")[0] if "T" in s else s
 
+    desc = t.get("description") or ""
+    brief = t.get("brief") or ""
+    idea = t.get("idea") or ""
+    caption = t.get("caption") or ""
+    file_link = t.get("file_link") or ""
+
+    # Parse pipe-separated values from description/Notes if present
+    if not brief and desc and "|" in desc and "Brief:" in desc:
+        parts = [p.strip() for p in desc.split("|")]
+        for p in parts:
+            p_lower = p.lower()
+            if p_lower.startswith("brief:"): brief = p[6:].strip()
+            elif p_lower.startswith("idea:"): idea = p[5:].strip()
+            elif p_lower.startswith("caption:"): caption = p[8:].strip()
+            elif p_lower.startswith("link:"): file_link = p[5:].strip()
+            elif p_lower.startswith("file:"): file_link = p[5:].strip()
+
     return {
         "id":          t.get("notion_id") or t.get("id") or "",
         "title":       t.get("title") or "Untitled Task",
         "status":      status,
         "progress":    progress,
         "assigned_to": t.get("assigned_to") or "",
-        "description": t.get("description") or "",
+        "description": desc,
         "start_date":  _parse_date(start_raw),
         "due_date":    _parse_date(due_raw),
         "client_name": t.get("client_name") or "",
         "source":      source,
         "service":     t.get("service") or "",
         "type":        t.get("type") or "",
-        "brief":       t.get("brief") or "",
-        "idea":        t.get("idea") or "",
-        "caption":     t.get("caption") or "",
-        "file_link":   t.get("file_link") or "",
+        "brief":       brief,
+        "idea":        idea,
+        "caption":     caption,
+        "file_link":   file_link,
     }
 
 
