@@ -522,7 +522,8 @@
       try {
         const btnApp = document.querySelector('.btn-approve');
         const btnRej = document.querySelector('.btn-reject');
-        btnApp.disabled = true; btnRej.disabled = true;
+        const btnCom = document.querySelector('.btn-comment');
+        btnApp.disabled = true; btnRej.disabled = true; btnCom.disabled = true;
         
         const res = await fetch(`${API}/api/client-portal/tasks/${currentFeedbackTask.id}/feedback`, {
           method: 'POST',
@@ -540,9 +541,10 @@
           if(status === 'approved') {
              currentFeedbackTask.status = 'approved';
              currentFeedbackTask.progress = 100;
-          } else {
+          } else if(status === 'changes_requested') {
              currentFeedbackTask.status = 'pending_review';
           }
+          // if status === 'comment', we leave currentFeedbackTask.status unchanged.
           closeTaskFeedback();
           renderViews();
         } else {
@@ -553,7 +555,8 @@
       } finally {
         const btnApp = document.querySelector('.btn-approve');
         const btnRej = document.querySelector('.btn-reject');
-        btnApp.disabled = false; btnRej.disabled = false;
+        const btnCom = document.querySelector('.btn-comment');
+        btnApp.disabled = false; btnRej.disabled = false; btnCom.disabled = false;
       }
     }
   </script>
@@ -580,6 +583,7 @@
         <textarea id="ft-comments" class="feedback-textarea" placeholder="Leave a comment or request specific changes..."></textarea>
         <div class="modal-actions">
           <button class="btn-action btn-reject" onclick="submitTaskFeedback('changes_requested')">👎 Request Changes</button>
+          <button class="btn-action btn-comment" onclick="submitTaskFeedback('comment')" style="background:var(--acc);color:white">💬 Leave Comment</button>
           <button class="btn-action btn-approve" onclick="submitTaskFeedback('approved')">👍 Approve</button>
         </div>
       </div>
