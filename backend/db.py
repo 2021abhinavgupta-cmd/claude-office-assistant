@@ -139,6 +139,14 @@ def init_db():
             expires_at  TEXT NOT NULL
         )""")
 
+        # Client task feedback
+        conn.execute("""CREATE TABLE IF NOT EXISTS client_task_feedback (
+            task_id     TEXT PRIMARY KEY,
+            status      TEXT,
+            comments    TEXT,
+            updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+
         # Projects migration
         try:
             # Check if old schema exists (has 'data' column)

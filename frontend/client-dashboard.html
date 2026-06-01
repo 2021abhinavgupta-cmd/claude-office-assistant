@@ -123,6 +123,30 @@
     .tl-bar { position:absolute; height:100%; background:var(--acc); opacity:0.8; border-radius:16px; display:flex; align-items:center; padding:0 12px; font-size:.75rem; font-weight:700; color:#000; box-shadow:0 2px 8px rgba(245,166,35,.3); }
     .tl-bar.done { background:var(--green); box-shadow:none; opacity:0.6; }
 
+    /* MODAL */
+    .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.7); z-index:9999; display:none; align-items:center; justify-content:center; }
+    .modal-overlay.active { display:flex; animation:fadeIn .2s ease; }
+    .modal-content { background:var(--s1); width:90%; max-width:500px; border-radius:var(--r); border:1px solid var(--bdr); padding:30px; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .modal-header h2 { font-family:'Syne',sans-serif; font-size:1.4rem; font-weight:700; margin:0; }
+    .btn-close { background:transparent; border:none; color:var(--muted); font-size:1.5rem; cursor:pointer; transition:color .2s; }
+    .btn-close:hover { color:var(--red); }
+    .modal-body { display:flex; flex-direction:column; gap:16px; }
+    .modal-task-detail { background:var(--s2); padding:16px; border-radius:12px; font-size:.9rem; color:var(--muted); }
+    .modal-task-detail strong { color:var(--txt); }
+    .feedback-textarea { width:100%; min-height:100px; background:var(--bg); border:1px solid var(--bdr); border-radius:12px; padding:16px; color:var(--txt); font-family:'DM Sans',sans-serif; resize:vertical; font-size:.95rem; }
+    .feedback-textarea:focus { outline:none; border-color:var(--acc); }
+    .modal-actions { display:flex; gap:12px; margin-top:10px; }
+    .btn-action { flex:1; padding:12px; border-radius:12px; border:none; font-weight:700; font-size:1rem; cursor:pointer; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .btn-approve { background:rgba(32,201,151,.1); color:var(--green); border:1px solid rgba(32,201,151,.3); }
+    .btn-approve:hover { background:var(--green); color:#000; }
+    .btn-reject { background:rgba(255,75,75,.1); color:var(--red); border:1px solid rgba(255,75,75,.3); }
+    .btn-reject:hover { background:var(--red); color:#fff; }
+    
+    .feedback-banner { margin-top: 10px; padding: 12px; border-radius: 8px; font-size: .85rem; font-weight: 600; display: none; }
+    .feedback-banner.approved { background: rgba(32,201,151,.15); color: var(--green); border: 1px solid rgba(32,201,151,.3); }
+    .feedback-banner.rejected { background: rgba(255,75,75,.15); color: var(--red); border: 1px solid rgba(255,75,75,.3); }
+
   </style>
   <script src="shared-config.js"></script>
 </head>
@@ -210,9 +234,21 @@
     }
 
     function renderViews() {
-      renderKanban();
-      renderCalendar();
-      renderTimeline();
+      const isSocial = isSocialMediaClient();
+      
+      if (isSocial) {
+        document.getElementById('btn-kanban').style.display = 'none';
+        document.getElementById('btn-timeline').style.display = 'none';
+        // Force calendar view if it's social media
+        switchView('calendar');
+        renderCalendar();
+      } else {
+        document.getElementById('btn-kanban').style.display = 'inline-block';
+        document.getElementById('btn-timeline').style.display = 'inline-block';
+        renderKanban();
+        renderCalendar();
+        renderTimeline();
+      }
     }
 
     // ── Detect if this client uses Social Media ───────────────────────────────
@@ -363,7 +399,7 @@
               st === "paused"      ? "#f59e0b" :
               st === "approved"    ? "#20c997" : "#8b8b93";
             const assignee = t.assigned_to ? `👤 ${t.assigned_to}` : "";
-            return `<div class="cal-task ${isDone ? 'done' : ''}" style="border-left-color:${statusColor}">
+            return `<div class="cal-task ${isDone ? 'done' : ''}" style="border-left-color:${statusColor}" onclick="openTaskFeedback('${t.id}')">
               ${t.title}
               <div class="cal-tip">
                 <div style="font-weight:700;margin-bottom:4px">${t.title}</div>
@@ -437,6 +473,101 @@
 
       root.innerHTML = html;
     }
+    let currentFeedbackTask = null;
+
+    function openTaskFeedback(taskId) {
+      if(!isSocialMediaClient()) return; // Only for social media calendar view right now
+      const task = allTasks.find(t => t.id === taskId);
+      if(!task) return;
+      currentFeedbackTask = task;
+      
+      document.getElementById('ft-title').textContent = task.title;
+      document.getElementById('ft-date').textContent = task.due_date || 'No due date';
+      document.getElementById('ft-status').textContent = task.status.replace(/_/g," ").replace(/\b\w/g, c => c.toUpperCase());
+      document.getElementById('ft-comments').value = (task.feedback && task.feedback.comments) ? task.feedback.comments : "";
+      
+      const banner = document.getElementById('ft-banner');
+      if (task.feedback && task.feedback.status) {
+        banner.style.display = 'block';
+        banner.className = `feedback-banner ${task.feedback.status === 'approved' ? 'approved' : 'rejected'}`;
+        banner.textContent = task.feedback.status === 'approved' ? '✅ You previously approved this task.' : '❌ You requested changes for this task.';
+      } else {
+        banner.style.display = 'none';
+      }
+
+      document.getElementById('task-feedback-modal').classList.add('active');
+    }
+
+    function closeTaskFeedback() {
+      document.getElementById('task-feedback-modal').classList.remove('active');
+      currentFeedbackTask = null;
+    }
+
+    async function submitTaskFeedback(status) {
+      if(!currentFeedbackTask) return;
+      const comments = document.getElementById('ft-comments').value;
+      
+      try {
+        const btnApp = document.querySelector('.btn-approve');
+        const btnRej = document.querySelector('.btn-reject');
+        btnApp.disabled = true; btnRej.disabled = true;
+        
+        const res = await fetch(`${API}/api/client-portal/tasks/${currentFeedbackTask.id}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status,
+            comments,
+            source: currentFeedbackTask.source
+          })
+        });
+        
+        if (res.ok) {
+          // Update local state to reflect feedback
+          currentFeedbackTask.feedback = { status, comments };
+          if(status === 'approved') {
+             currentFeedbackTask.status = 'approved';
+             currentFeedbackTask.progress = 100;
+          } else {
+             currentFeedbackTask.status = 'pending_review';
+          }
+          closeTaskFeedback();
+          renderViews();
+        } else {
+          alert('Failed to submit feedback.');
+        }
+      } catch (e) {
+        alert('Error connecting to server.');
+      } finally {
+        const btnApp = document.querySelector('.btn-approve');
+        const btnRej = document.querySelector('.btn-reject');
+        btnApp.disabled = false; btnRej.disabled = false;
+      }
+    }
   </script>
+
+  <!-- TASK FEEDBACK MODAL -->
+  <div class="modal-overlay" id="task-feedback-modal" onclick="if(event.target===this) closeTaskFeedback()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Task Feedback</h2>
+        <button class="btn-close" onclick="closeTaskFeedback()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-task-detail">
+          <div style="font-size:1.1rem;font-weight:700;color:var(--txt);margin-bottom:8px" id="ft-title"></div>
+          <div>Due Date: <strong id="ft-date"></strong></div>
+          <div>Current Status: <strong id="ft-status"></strong></div>
+        </div>
+        <div id="ft-banner" class="feedback-banner"></div>
+        <textarea id="ft-comments" class="feedback-textarea" placeholder="Leave a comment or request specific changes..."></textarea>
+        <div class="modal-actions">
+          <button class="btn-action btn-reject" onclick="submitTaskFeedback('changes_requested')">👎 Request Changes</button>
+          <button class="btn-action btn-approve" onclick="submitTaskFeedback('approved')">👍 Approve</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

@@ -1506,6 +1506,23 @@ def client_portal_tasks():
         }, "sqlite") for r in rows]
         source = "sqlite"
 
+    # Fetch feedback for these tasks
+    try:
+        conn = _pt_conn()
+        cur = conn.cursor()
+        task_ids = [str(t.get("id")) for t in tasks if t.get("id")]
+        if task_ids:
+            placeholders = ",".join("?" * len(task_ids))
+            cur.execute(f"SELECT task_id, status, comments, updated_at FROM client_task_feedback WHERE task_id IN ({placeholders})", task_ids)
+            feedback_map = {r[0]: {"status": r[1], "comments": r[2], "updated_at": r[3]} for r in cur.fetchall()}
+            for t in tasks:
+                t_id = str(t.get("id"))
+                if t_id in feedback_map:
+                    t["feedback"] = feedback_map[t_id]
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error fetching task feedback: {e}")
+
     return jsonify({
         "tasks": tasks,
         "client_name": client_name,
@@ -1548,5 +1565,58 @@ def _shape_client_task(t: dict, source: str) -> dict:
         "due_date":    _parse_date(due_raw),
         "client_name": t.get("client_name") or "",
         "source":      source,
+        "service":     t.get("service") or "",
     }
+
+
+@ops_bp.route("/api/client-portal/tasks/<task_id>/feedback", methods=["POST"])
+def submit_task_feedback(task_id):
+    from routes.auth import _verify_client_session
+    token = request.cookies.get("client_session_token", "") or request.headers.get("X-Client-Token", "")
+    client = _verify_client_session(token)
+    if not client:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    status = data.get("status")
+    comments = data.get("comments", "")
+    source = data.get("source", "sqlite")
+    
+    # Store feedback locally
+    try:
+        conn = _pt_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO client_task_feedback (task_id, status, comments, updated_at) 
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(task_id) DO UPDATE SET status=excluded.status, comments=excluded.comments, updated_at=CURRENT_TIMESTAMP
+        """, (str(task_id), status, comments))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error saving task feedback: {e}")
+        return jsonify({"error": "Failed to save feedback"}), 500
+
+    # Update actual task status
+    if status == "approved":
+        new_task_status = "approved"
+    else:
+        new_task_status = "pending_review"  # changes requested
+
+    if source == "notion":
+        try:
+            notion_store.update_task(task_id, status=new_task_status, progress=100 if new_task_status == "approved" else None)
+        except Exception as e:
+            logger.error(f"Failed to update Notion task: {e}")
+    else:
+        try:
+            conn = _su_conn()
+            conn.execute("UPDATE tasks SET status = ?, progress = ? WHERE id = ?", 
+                         (new_task_status, 100 if new_task_status == "approved" else 80, task_id))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to update SQLite task: {e}")
+
+    return jsonify({"success": True})
 
