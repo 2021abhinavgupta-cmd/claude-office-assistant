@@ -2864,6 +2864,21 @@ def backup_db():
         download_name=f"backup_{date.today()}.db"
     )
 
+@app.route('/api/admin/restore-db', methods=['POST'])
+def restore_db():
+    from pathlib import Path
+    secret = request.args.get('secret')
+    if secret != 'restore123':
+        return 'Unauthorized', 401
+    
+    file = request.files.get('db')
+    if not file:
+        return 'No file', 400
+    
+    db_path = Path(__file__).parent.parent / "logs" / "app.db"
+    file.save(str(db_path))
+    return 'Database restored successfully!', 200
+
 if __name__ == "__main__":
 
     port  = int(os.getenv("FLASK_PORT", 5000))
