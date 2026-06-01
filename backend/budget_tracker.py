@@ -37,7 +37,11 @@ def get_available_months() -> list:
     cursor.execute("SELECT DISTINCT period FROM budget WHERE period != 'all_time' ORDER BY period DESC")
     rows = cursor.fetchall()
     conn.close()
-    return [r[0] for r in rows] if rows else [get_current_month_key()]
+    months = [r[0] for r in rows] if rows else []
+    curr = get_current_month_key()
+    if curr not in months:
+        months.insert(0, curr)
+    return months
 
 def check_budget_available(estimated_cost: float = 0.0) -> dict:
     """
