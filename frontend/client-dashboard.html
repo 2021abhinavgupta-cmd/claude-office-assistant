@@ -401,16 +401,6 @@
             const assignee = t.assigned_to ? `👤 ${t.assigned_to}` : "";
             return `<div class="cal-task ${isDone ? 'done' : ''}" style="border-left-color:${statusColor}" onclick="openTaskFeedback('${t.id}')">
               ${t.title}
-              <div class="cal-tip">
-                <div style="font-weight:700;margin-bottom:4px">${t.title}</div>
-                <div style="color:${statusColor};margin-bottom:2px">● ${statusLabel}</div>
-                ${t.due_date ? `<div style="color:var(--muted);font-size:.72rem">📅 ${t.due_date}</div>` : ""}
-                ${t.type ? `<div style="color:var(--muted);font-size:.72rem;margin-top:4px"><strong>Type:</strong> ${t.type}</div>` : ""}
-                ${t.brief ? `<div style="color:var(--muted);font-size:.72rem"><strong>Brief:</strong> ${t.brief}</div>` : ""}
-                ${t.idea ? `<div style="color:var(--muted);font-size:.72rem"><strong>Idea:</strong> ${t.idea}</div>` : ""}
-                ${t.caption ? `<div style="color:var(--muted);font-size:.72rem;white-space:normal"><strong>Caption:</strong> ${t.caption.substring(0, 50)}${t.caption.length > 50 ? '...' : ''}</div>` : ""}
-                ${t.file_link ? `<div style="color:var(--muted);font-size:.72rem"><strong>File:</strong> <a href="${t.file_link}" target="_blank" style="color:var(--acc);pointer-events:auto">View Link</a></div>` : ""}
-              </div>
             </div>`;
           }).join('')}
         </div>`;
