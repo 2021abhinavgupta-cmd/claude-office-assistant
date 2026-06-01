@@ -2857,6 +2857,15 @@ def backup_db():
     if not db_path.exists():
         return jsonify({"error": "Database file not found"}), 404
         
+    # Checkpoint WAL to ensure the downloaded app.db has all latest data
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(db_path), timeout=5.0)
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to checkpoint WAL before backup: {e}")
+
     from flask import send_file
     return send_file(
         db_path,
@@ -2877,6 +2886,15 @@ def restore_db():
     
     db_path = Path(__file__).parent.parent / "logs" / "app.db"
     file.save(str(db_path))
+    
+    # Safely remove WAL files to prevent corruption after overwrite
+    wal = Path(str(db_path) + "-wal")
+    shm = Path(str(db_path) + "-shm")
+    if wal.exists():
+        wal.unlink()
+    if shm.exists():
+        shm.unlink()
+        
     return 'Database restored successfully!', 200
 
 if __name__ == "__main__":

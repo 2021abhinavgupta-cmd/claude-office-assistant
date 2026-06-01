@@ -589,12 +589,14 @@ function renderDashboard(d) {
   document.getElementById("kpi-alltime").textContent   = formatCost(d.total_spent_ever || 0, 4);
   document.getElementById("kpi-month").textContent     = d.month || "—";
 
-  // Budget bar
-  const pct = Math.min(d.percent_used || 0, 100);
+  // Budget bar (user requested tracking all-time spend instead of monthly)
+  const allTimeSpent = d.total_spent_ever || 0;
+  const limitVal = d.budget_limit || 20;
+  const pct = Math.min((allTimeSpent / limitVal) * 100, 100);
   const bar  = document.getElementById("budget-bar-fill");
   bar.style.width = pct + "%";
   bar.className = "budget-bar-fill" + (pct >= 90 ? " limit" : pct >= 80 ? " warn" : "");
-  document.getElementById("bb-spent").textContent = formatCost(d.monthly_spend || 0, 4);
+  document.getElementById("bb-spent").textContent = formatCost(allTimeSpent, 4);
   document.getElementById("bb-pct").textContent   = pct.toFixed(1) + "%";
 
   // Alert
