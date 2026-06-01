@@ -437,6 +437,9 @@
         <a href="client-onboard.html" id="onboard-link" style="display:none;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span>➕</span> Onboard Client
         </a>
+        <a href="#" id="backup-db-link" style="display:none;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span>💾</span> Download Database Backup
+        </a>
       </div>
     </div>
     <div class="panel">
@@ -785,12 +788,18 @@ async function loadBudgetBanner() {
 }
 loadBudgetBanner();
 
-// ── Show "Onboard Client" only for admins ──
+// ── Show "Onboard Client" & Backup DB only for admins ──
 (function(){
   const u = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
   if (u.is_admin === true) {
     const el = document.getElementById("onboard-link");
     if (el) el.style.display = "flex";
+    
+    const dbBtn = document.getElementById("backup-db-link");
+    if (dbBtn) {
+      dbBtn.style.display = "flex";
+      dbBtn.href = `${API}/api/admin/backup-db`;
+    }
   }
 })();
 
