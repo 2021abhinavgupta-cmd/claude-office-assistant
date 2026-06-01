@@ -2,8 +2,10 @@ import sqlite3
 import json
 import os
 
-# SQLite database file located in the persistent logs directory
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "logs", "app.db")
+# DB_PATH env var lets you point to a Railway volume (e.g. DB_PATH=/logs/app.db)
+# Falls back to the local logs/ directory for development.
+_default_db = os.path.join(os.path.dirname(__file__), "..", "logs", "app.db")
+DB_PATH = os.environ.get("DB_PATH", _default_db)
 
 def get_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
