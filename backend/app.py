@@ -2313,6 +2313,15 @@ def get_clients():
     cur = conn.cursor()
     cur.execute("SELECT id,name,contact,requirements,deadline,status,created_at FROM clients ORDER BY created_at DESC")
     clients = [_client_row_to_dict(r) for r in cur.fetchall()]
+    
+    if _is_admin(user_id):
+        cur.execute("SELECT client_name, username, password FROM client_users")
+        users = {r[0]: {"username": r[1], "password": r[2]} for r in cur.fetchall()}
+        for c in clients:
+            if c.get("name") in users:
+                c["client_username"] = users[c["name"]]["username"]
+                c["client_password"] = users[c["name"]]["password"]
+            
     conn.close()
     return jsonify({"clients": clients})
 

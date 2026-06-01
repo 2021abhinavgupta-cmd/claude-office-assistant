@@ -897,6 +897,26 @@ def notion_delete_client(notion_id: str):
 @ops_bp.route("/api/notion/dashboard", methods=["GET"])
 def notion_dashboard():
     data = notion_store.get_dashboard_data()
+    user_id = request.args.get("user_id", "")
+    
+    try:
+        from utils import _is_admin
+        if _is_admin(user_id):
+            conn = _pt_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT client_notion_id, username, password FROM client_users WHERE client_notion_id IS NOT NULL")
+            users = {r[0]: {"username": r[1], "password": r[2]} for r in cur.fetchall()}
+            conn.close()
+            
+            if "clients" in data:
+                for c in data["clients"]:
+                    nid = c.get("notion_id") or c.get("id")
+                    if nid in users:
+                        c["client_username"] = users[nid]["username"]
+                        c["client_password"] = users[nid]["password"]
+    except Exception as e:
+        logger.error(f"Error attaching client credentials: {e}")
+        
     return jsonify(data)
 
 

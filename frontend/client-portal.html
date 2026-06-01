@@ -338,6 +338,7 @@ function renderClients(clients) {
             <div class="client-meta">
               ${tasks.length} task${tasks.length !== 1 ? 's' : ''}
               ${c.contact ? ' · ' + c.contact : ''}
+              ${IS_ADMIN && c.client_username ? `<br><span style="color:var(--acc);font-size:0.75rem;margin-top:4px;display:inline-block">🔐 Login: ${c.client_username} / ${c.client_password}</span>` : ''}
             </div>
           </div>
         </div>
@@ -404,7 +405,7 @@ async function loadPortal() {
     const notionOk = nsRes && nsRes.ok && (await nsRes.json()).configured;
 
     if (notionOk) {
-      const dashRes = await fetch(`${API}/api/notion/dashboard`, { signal: AbortSignal.timeout(15000) });
+      const dashRes = await fetch(`${API}/api/notion/dashboard?user_id=${encodeURIComponent(UID)}`, { signal: AbortSignal.timeout(15000) });
       if (dashRes.ok) {
         const dash = await dashRes.json();
         // Notion dashboard returns clients with tasks nested
@@ -418,7 +419,7 @@ async function loadPortal() {
       }
     } else {
       // SQLite fallback
-      const r = await fetch(`${API}/api/clients`, { signal: AbortSignal.timeout(10000) });
+      const r = await fetch(`${API}/api/clients?user_id=${encodeURIComponent(UID)}`, { signal: AbortSignal.timeout(10000) });
       if (!r.ok) throw new Error('Could not load clients');
       const data = await r.json();
       // Fetch tasks for each client
