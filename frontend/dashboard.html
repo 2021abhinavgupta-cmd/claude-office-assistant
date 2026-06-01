@@ -263,6 +263,7 @@
       <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Real-time Claude API spend monitoring</p>
     </div>
     <div class="header-meta">
+      <select class="currency-toggle" id="month-select" onchange="changeMonth(this.value)" style="display:none;"></select>
       <select class="currency-toggle" id="currency-select" onchange="toggleCurrency(this.value)">
         <option value="USD">USD ($)</option>
         <option value="INR">INR (₹)</option>
@@ -477,6 +478,12 @@ const TASK_ICONS = {
 let employeesMap = {};
 let currentDashboardData = null;
 let currencyMode = 'USD';
+let currentMonthFilter = null;
+
+function changeMonth(m) {
+  currentMonthFilter = m;
+  loadDashboard();
+}
 
 function toggleCurrency(val) {
   currencyMode = val;
@@ -504,8 +511,11 @@ function formatUser(userId) {
 async function loadDashboard() {
   const offlineIds = ["kpi-spent", "kpi-remaining", "kpi-calls", "kpi-alltime"];
   try {
+    let url = `${API}/api/usage`;
+    if (currentMonthFilter) url += `?month=${currentMonthFilter}`;
+    
     const [usageRes, empRes] = await Promise.all([
-      fetch(`${API}/api/usage`),
+      fetch(url),
       fetch(`${API}/api/employees`).catch(() => null)
     ]);
     
@@ -538,6 +548,23 @@ async function loadDashboard() {
 }
 
 function renderDashboard(d) {
+  const mSelect = document.getElementById("month-select");
+  if (mSelect && d.available_months && d.available_months.length > 0) {
+    mSelect.style.display = "inline-block";
+    if (mSelect.options.length === 0) {
+      d.available_months.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m;
+        opt.textContent = m;
+        mSelect.appendChild(opt);
+      });
+    }
+    // Update value without triggering onchange
+    if (mSelect.value !== d.month) {
+        mSelect.value = d.month;
+    }
+  }
+
   // Dynamic Limits
   const limit = d.budget_limit || 20;
   const warnLimit = limit * 0.8;

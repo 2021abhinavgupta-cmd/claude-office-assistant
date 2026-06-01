@@ -21,15 +21,23 @@ def get_current_month_key() -> str:
     """Returns YYYY-MM string for current month."""
     return datetime.utcnow().strftime("%Y-%m")
 
-def get_monthly_spend() -> float:
-    """Returns total spend for the current calendar month (USD)."""
+def get_monthly_spend(month_key: str = None) -> float:
+    """Returns total spend for the specified calendar month (USD)."""
+    if not month_key: month_key = get_current_month_key()
     conn = get_connection()
     cursor = conn.cursor()
-    month_key = get_current_month_key()
     cursor.execute("SELECT total_cost FROM budget WHERE period=?", (month_key,))
     row = cursor.fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
+
+def get_available_months() -> list:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT period FROM budget WHERE period != 'all_time' ORDER BY period DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows] if rows else [get_current_month_key()]
 
 def check_budget_available(estimated_cost: float = 0.0) -> dict:
     """
@@ -106,10 +114,10 @@ def get_all_usage_logs() -> list:
     conn.close()
     return all_logs
 
-def get_usage_summary(all_calls: bool = False) -> dict:
+def get_usage_summary(all_calls: bool = False, month_key: str = None) -> dict:
     """Returns full usage summary for dashboard display."""
-    month_key = get_current_month_key()
-    monthly_spend = get_monthly_spend()
+    if not month_key: month_key = get_current_month_key()
+    monthly_spend = get_monthly_spend(month_key)
     
     conn = get_connection()
     cursor = conn.cursor()
@@ -159,6 +167,7 @@ def get_usage_summary(all_calls: bool = False) -> dict:
 
     return {
         "month":            month_key,
+        "available_months": get_available_months(),
         "monthly_spend":    round(monthly_spend, 4),
         "budget_limit":     BUDGET_LIMIT,
         "remaining":        round(BUDGET_LIMIT - monthly_spend, 4),

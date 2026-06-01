@@ -121,7 +121,8 @@ def budget_status():
 def usage_dashboard():
     """Full usage dashboard data — powers the cost monitoring dashboard."""
     all_flag = request.args.get("all", "false").lower() == "true"
-    summary  = get_usage_summary(all_calls=all_flag)
+    month = request.args.get("month")
+    summary  = get_usage_summary(all_calls=all_flag, month_key=month)
     return jsonify({
         **summary,
         "budget_alerts": {
