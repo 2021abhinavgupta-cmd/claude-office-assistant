@@ -2876,6 +2876,7 @@ def backup_db():
 @app.route('/api/admin/restore-db', methods=['POST'])
 def restore_db():
     from pathlib import Path
+    from db import DB_PATH as _db_path
     secret = request.args.get('secret')
     if secret != 'restore123':
         return 'Unauthorized', 401
@@ -2884,7 +2885,8 @@ def restore_db():
     if not file:
         return 'No file', 400
     
-    db_path = Path(__file__).parent.parent / "logs" / "app.db"
+    db_path = Path(_db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     file.save(str(db_path))
     
     # Safely remove WAL files to prevent corruption after overwrite
