@@ -359,16 +359,21 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                 props = p.get("properties", {})
                 tasks.append({
                     "notion_id":   p["id"],
-                    "title":        _get_text(props.get("Task", {})),
+                    "title":        _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})),
                     "client_name":  _get_text(props.get("Customer Name", {})),
                     "client_notion_id": _get_text(props.get("Client ID", {})),
                     "assigned_to":  _get_multi_select(props.get("Assigned To", {})),
-                    "due_date":     _get_date(props.get("Due Date", {})),
+                    "due_date":     _get_date(props.get("Due Date", {})) or _get_date(props.get("Post Day", {})),
                     "status":       _get_select(props.get("Status", {})),
                     "progress":    _get_number(props.get("Progress", {})),
                     "service":     _get_select(props.get("Task Type", {})),
                     "description":  _get_text(props.get("Notes", {})),
                     "url":         p.get("url", ""),
+                    "type":         _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {})),
+                    "brief":        _get_text(props.get("Brief", {})),
+                    "idea":         _get_text(props.get("Idea", {})),
+                    "caption":      _get_text(props.get("Caption", {})),
+                    "file_link":    props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
                 })
             has_more = data.get("has_more", False)
             if has_more:

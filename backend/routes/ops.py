@@ -1566,6 +1566,11 @@ def _shape_client_task(t: dict, source: str) -> dict:
         "client_name": t.get("client_name") or "",
         "source":      source,
         "service":     t.get("service") or "",
+        "type":        t.get("type") or "",
+        "brief":       t.get("brief") or "",
+        "idea":        t.get("idea") or "",
+        "caption":     t.get("caption") or "",
+        "file_link":   t.get("file_link") or "",
     }
 
 
