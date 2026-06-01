@@ -441,6 +441,9 @@
         <a href="#" id="backup-db-link" style="display:none;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span>💾</span> Download Database Backup
         </a>
+        <button id="copy-client-link-btn" onclick="copyClientLink()" style="display:none;align-items:center;gap:8px;padding:12px;border-radius:8px;background:linear-gradient(135deg,rgba(124,111,255,.15),rgba(255,111,145,.1));border:1px solid rgba(124,111,255,.4);color:var(--text);font-size:.875rem;font-family:inherit;cursor:pointer;text-align:left;width:100%;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(124,111,255,.4)'">
+          <span>🔗</span> <span id="copy-client-link-label">Copy Client Login Link</span>
+        </button>
       </div>
     </div>
     <div class="panel">
@@ -817,7 +820,7 @@ async function loadBudgetBanner() {
 }
 loadBudgetBanner();
 
-// ── Show "Onboard Client" & Backup DB only for admins ──
+// ── Show "Onboard Client", Backup DB & Copy Client Link only for admins ──
 (function(){
   const u = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
   if (u.is_admin === true) {
@@ -829,8 +832,24 @@ loadBudgetBanner();
       dbBtn.style.display = "flex";
       dbBtn.href = `${API}/api/admin/backup-db`;
     }
+
+    const clBtn = document.getElementById("copy-client-link-btn");
+    if (clBtn) clBtn.style.display = "flex";
   }
 })();
+
+function copyClientLink() {
+  const link = `${window.location.origin}/client-portal.html`;
+  navigator.clipboard.writeText(link).then(() => {
+    const lbl = document.getElementById("copy-client-link-label");
+    if (lbl) {
+      lbl.textContent = "✅ Copied! Share this with your client";
+      setTimeout(() => { lbl.textContent = "Copy Client Login Link"; }, 3000);
+    }
+  }).catch(() => {
+    prompt("Copy this link and send it to your client:", `${window.location.origin}/client-portal.html`);
+  });
+}
 
 // ── AI Daily Report ──
 async function generateDailyReport() {
