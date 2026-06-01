@@ -8,7 +8,7 @@ var API = window.API || (location.hostname === "localhost" || location.hostname 
 async function verifyClientSession() {
   const clientInfoStr = localStorage.getItem("claude_office_client");
   if (!clientInfoStr) {
-    window.location.href = "login.html";
+    window.location.href = "client-login.html";
     return null;
   }
   
@@ -20,14 +20,14 @@ async function verifyClientSession() {
     
     if (res.status === 401) {
       localStorage.removeItem("claude_office_client");
-      window.location.href = "login.html";
+      window.location.href = "client-login.html";
       return null;
     }
     
     const data = await res.json();
     if (!data.valid) {
       localStorage.removeItem("claude_office_client");
-      window.location.href = "login.html";
+      window.location.href = "client-login.html";
       return null;
     }
     
@@ -45,7 +45,7 @@ async function clientLogout() {
     console.error(err);
   }
   localStorage.removeItem("claude_office_client");
-  window.location.href = "login.html";
+  window.location.href = "client-login.html";
 }
 
 // Run immediately
