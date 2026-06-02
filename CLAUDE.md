@@ -10,7 +10,7 @@ This file provides essential context for AI coding assistants (System, Copilot, 
 
 **Agency Portal Assistant** is a full-stack, production-deployed internal tool for a small team (8 employees). It is a System AI-powered workspace that combines:
 
-- Multi-turn AI chat (System Haiku + Sonnet, auto-routed by task complexity)
+- Multi-turn intelligent chat workspace (auto-routed by task complexity)
 - Project & client management with per-project knowledge bases
 - Daily standups, task tracking, and attendance
 - Live "Huddle" chat (multi-user real-time via Server-Sent Events)
@@ -28,7 +28,7 @@ This file provides essential context for AI coding assistants (System, Copilot, 
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.11, Flask, Gunicorn |
-| AI | Anthropic Python SDK (claude-haiku-4-5, claude-sonnet-4-6) |
+| AI | Anthropic Python SDK (Standard/Fast models) |
 | Frontend | Vanilla HTML/CSS/JS (zero build step) |
 | Database | SQLite via `logs/app.db` (WAL mode) |
 | Deployment | Railway with Nixpacks |
@@ -269,3 +269,5 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 19. **Client Portal Calendar — Hover Status Tooltip** — Hovering over any task pill in the calendar shows a CSS-powered popup tooltip (`.cal-tip`) containing: task title (bold), status with colour coding, assigned-to, and due date. The task pill's left-border colour also reflects the status at a glance (green = Posted, cyan = Final, blue = Scheduled, purple = In Progress, orange = Paused, grey = Need to Start).
 
 20. **Social Media Statuses — Notion Sync** — The six social media status values (`need_to_start`, `scheduled`, `in_progress`, `paused`, `posted`, `final`) must exist as valid options in the **Status** property of the **Customer Onboarding Tasks** Notion database. If the Status property is a Notion "Select" type, Notion will auto-create new options on first use. If it's a "Status" type, options must be added manually in Notion's property settings.
+
+21. **White-label UI & AI Branding Removal** — The UI has been entirely stripped of "AI", "Bot", and "System" terminology, as well as emojis, model chips, optimizer badges, and thinking indicators, in order to look like a standard human-built agency portal. Future edits should **not** introduce new emojis or AI-related phrasing into the UI.
