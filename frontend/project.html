@@ -2,10 +2,10 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <title>Project - Claude Office</title>
+  <title>Project - Agency Portal</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    /* Project UI specific overrides to match Claude */
+    /* Project UI specific overrides to match System */
     body {
       background-color: var(--bg);
       color: var(--text);
@@ -198,7 +198,7 @@
     <div class="sidebar-top">
       <div class="brand">
         <div class="brand-icon">✦</div>
-        <span class="brand-name">Claude Office</span>
+        <span class="brand-name">Agency Portal</span>
       </div>
       <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -208,7 +208,7 @@
 
     <div class="projects-panel" style="margin-bottom: 16px;">
       <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600; cursor:pointer;" onclick="toggleProjectsPanel()" id="projects-panel-header">
-        <span>📁 Projects</span>
+        <span> Projects</span>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;" onclick="event.stopPropagation()">+</button>
           <span id="projects-chevron" style="font-size:0.7rem; transition:transform 0.2s; display:inline-block; transform:rotate(-90deg);">▼</span>
@@ -220,7 +220,7 @@
     </div>
 
     <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
-      <span>💬 Recent Chats</span>
+      <span> Recent Chats</span>
     </div>
     <div style="padding: 0 12px 12px;">
       <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
@@ -230,7 +230,7 @@
     <div class="sidebar-footer">
       <div class="budget-mini">
         <div class="budget-mini-row">
-          <span class="budget-mini-label">💰 Budget</span>
+          <span class="budget-mini-label"> Budget</span>
           <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
         </div>
         <div class="budget-mini-track">
@@ -253,7 +253,7 @@
     <div class="project-main">
       <a href="index.html" class="back-link">← All projects</a>
       <h1 class="project-title" id="proj-title">Loading...</h1>
-      <div id="proj-desc" style="display:none;"></div> <!-- Hidden to match Claude UI -->
+      <div id="proj-desc" style="display:none;"></div> <!-- Hidden to match System UI -->
       
       <!-- Chat Input Card -->
       <div class="chat-card">
@@ -285,7 +285,7 @@
       <div class="sidebar-card">
         <div class="sidebar-card-header">
           <h3 class="sidebar-card-title">Memory</h3>
-          <span class="sidebar-card-pill">🔒 Only you</span>
+          <span class="sidebar-card-pill"> Only you</span>
         </div>
         <div class="sidebar-card-content" id="proj-memory-display">
           Project memory will show here after a few chats.
@@ -299,7 +299,7 @@
           <button class="chat-card-btn" id="edit-inst-btn">+</button>
         </div>
         <div class="sidebar-card-content" id="inst-display">
-          Add instructions to tailor Claude's responses
+          Add instructions to tailor System's responses
         </div>
         <textarea id="inst-input" style="width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; color: var(--text); font-family: inherit; resize: vertical; display: none; margin-top: 8px; font-size: 0.85rem;"></textarea>
         <div id="inst-actions" style="display:none; justify-content:flex-end; gap:8px; margin-top:8px;">
@@ -315,7 +315,7 @@
           <button class="chat-card-btn" onclick="document.getElementById('file-input').click()">+</button>
         </div>
         <div class="drop-zone" id="file-drop-zone">
-          <div style="margin-bottom: 8px;">📄</div>
+          <div style="margin-bottom: 8px;"></div>
           Add PDFs, documents, or other text to reference in this project.
           <input type="file" id="file-input" style="display:none" multiple />
         </div>

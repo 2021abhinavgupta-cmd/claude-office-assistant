@@ -1,6 +1,6 @@
 """
 User Memory Store — Cross-conversation persistent memory per employee.
-Memories are injected into every Claude system prompt automatically.
+Memories are injected into every System system prompt automatically.
 Stored in SQLite via db.py
 
 Data format (always a JSON list of objects):
@@ -210,7 +210,7 @@ def update_profile(user_id: str, profile_json: str):
 
 
 def format_for_prompt(user_id: str) -> str:
-    """Format memories for injection into Claude's system prompt."""
+    """Format memories for injection into System's system prompt."""
     conn, mems = _load(user_id)
     conn.close()
     if not mems:

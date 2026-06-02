@@ -1,4 +1,4 @@
-# Hosting Options for Claude Office Assistant
+# Hosting Options for Agency Portal Assistant
 
 ## Architecture Context
 Your app relies on local JSON files (`logs/usage.json`, `logs/conversations.json`) to store memory and budget tracking. This requires a hosting environment that supports **Persistent Storage (Volumes)**. If the host wipes the hard drive on every deployment or restart (which many modern cloud hosts do), your team will lose their chat history and budget counts.

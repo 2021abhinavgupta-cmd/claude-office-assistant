@@ -1,10 +1,10 @@
-# ✦ Claude Office Assistant
+# ✦ Agency Portal Assistant
 
-An AI-powered office assistant built on the Claude API. Multiple employees can run independent conversations, upload files, and Claude remembers important context across sessions.
+An AI-powered office assistant built on the System API. Multiple employees can run independent conversations, upload files, and System remembers important context across sessions.
 
 ---
 
-## 🚀 How to Run
+##  How to Run
 
 ### Step 1 — Set your API key
 Open `config/.env` and fill in the two required values:
@@ -63,7 +63,7 @@ On first **PPT export**, if `pptx` is missing, the server tries **`pip install p
 
 ---
 
-## 🌐 Pages
+##  Pages
 
 | URL | Description |
 |-----|-------------|
@@ -82,28 +82,28 @@ On first **PPT export**, if `pptx` is missing, the server tries **`pip install p
 - Conversations are persisted across page refreshes
 
 ### Real-Time Streaming
-- Claude's response appears **word by word**, exactly like Claude.ai
-- Blinking cursor while Claude is thinking
+- System's response appears **word by word**, exactly like System.ai
+- Blinking cursor while System is thinking
 - Copy and Retry buttons on every response
 
 ### File Uploads
-- **Images** → Claude sees them (vision API)
+- **Images** → System sees them (vision API)
 - **PDF, DOCX, XLSX** → text extracted and included in context
 - **Code files** (`.py`, `.js`, `.ts`, etc.) → read as text
 - Drag & drop files anywhere on the page
 - Max 20MB per file
 
 ### Persistent Memory
-- Click **🧠 Memory** in the sidebar
-- Add facts Claude should always remember: `"I prefer Python"`, `"My company is X"`
+- Click ** Memory** in the sidebar
+- Add facts System should always remember: `"I prefer Python"`, `"My company is X"`
 - Memories are injected into every conversation automatically
 - Per-user — each employee has their own memory store
 
 ### Smart Model Routing (saves cost)
 | Task | Model | Why |
 |------|-------|-----|
-| General chat, captions, scripts | Claude Haiku | Fast & cheap |
-| Coding, HTML design, presentations | Claude Sonnet | More capable |
+| General chat, captions, scripts | System Haiku | Fast & cheap |
+| Coding, HTML design, presentations | System Sonnet | More capable |
 
 ### Budget Tracking
 - Monthly cap: `$150` (configurable in `config/.env`)
@@ -112,7 +112,7 @@ On first **PPT export**, if `pptx` is missing, the server tries **`pip install p
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 claude-office-assistant/
@@ -125,7 +125,7 @@ claude-office-assistant/
 │   ├── budget_tracker.py      # Monthly spend tracking
 │   └── requirements.txt
 ├── frontend/
-│   ├── index.html             # Main Claude-like chat UI
+│   ├── index.html             # Main System-like chat UI
 │   ├── app.js                 # Frontend logic (streaming, uploads, memory)
 │   ├── style.css              # Complete design system
 │   ├── dashboard.html         # Cost monitoring dashboard
@@ -146,7 +146,7 @@ claude-office-assistant/
 
 ---
 
-## ⚙️ Configuration (`config/.env`)
+##  Configuration (`config/.env`)
 
 ```env
 # Required
@@ -166,7 +166,7 @@ TWILIO_AUTH_TOKEN=...
 
 ---
 
-## 🔧 Troubleshooting
+##  Troubleshooting
 
 **"Invalid API key" error**
 → Set `ANTHROPIC_API_KEY` in `config/.env`

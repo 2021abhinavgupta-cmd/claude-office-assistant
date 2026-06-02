@@ -1,5 +1,5 @@
 """
-File Processor — Extract content from uploaded files for Claude context.
+File Processor — Extract content from uploaded files for System context.
 Supports: Images (vision), PDF, DOCX, XLSX, plain text, code files.
 """
 import base64, logging
@@ -27,7 +27,7 @@ def process_file(file_bytes: bytes, filename: str, mime_type: str = '') -> dict:
     """
     ext = Path(filename).suffix.lower()
 
-    # ── Images → base64 for Claude vision ──────────────────────────────────
+    # ── Images → base64 for System vision ──────────────────────────────────
     if mime_type in IMAGE_MIMES or ext in {'.jpg', '.jpeg', '.png', '.gif', '.webp'}:
         mt = mime_type if mime_type in IMAGE_MIMES else f"image/{ext.lstrip('.')}"
         return {

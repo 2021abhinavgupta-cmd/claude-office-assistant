@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Client Portal — Claude Office</title>
+  <title>Client Portal — Agency Portal</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -154,7 +154,7 @@
 
   <header>
     <div class="logo">
-      <div class="logo-icon">🤖</div>
+      <div class="logo-icon"></div>
       <div class="logo-text">Client Portal</div>
     </div>
     <div class="header-right">
@@ -268,18 +268,18 @@
 
     // ── KANBAN LOGIC ─────────────────────────────────────────────────────────
     const DEFAULT_COLS = [
-      { key:"not_started",   label:"To Do",       color:"var(--muted)",  emoji:"📋" },
-      { key:"in_progress",   label:"In Progress", color:"var(--blue)",   emoji:"🔄" },
+      { key:"not_started",   label:"To Do",       color:"var(--muted)",  emoji:"" },
+      { key:"in_progress",   label:"In Progress", color:"var(--blue)",   emoji:"" },
       { key:"pending_review",label:"In Review",   color:"var(--acc)",    emoji:"⏳" },
-      { key:"approved",      label:"Approved",    color:"var(--green)",  emoji:"✅" },
+      { key:"approved",      label:"Approved",    color:"var(--green)",  emoji:"" },
     ];
     const SOCIAL_COLS = [
-      { key:"need_to_start", label:"Need to Start", color:"var(--muted)",  emoji:"🔲" },
-      { key:"scheduled",     label:"Scheduled",     color:"var(--blue)",   emoji:"📅" },
-      { key:"in_progress",   label:"In Progress",   color:"#a78bfa",       emoji:"🔄" },
-      { key:"paused",        label:"Paused",         color:"#f59e0b",       emoji:"⏸️" },
-      { key:"posted",        label:"Posted",         color:"var(--green)",  emoji:"🚀" },
-      { key:"final",         label:"Final",          color:"#22d3ee",       emoji:"✨" },
+      { key:"need_to_start", label:"Need to Start", color:"var(--muted)",  emoji:"" },
+      { key:"scheduled",     label:"Scheduled",     color:"var(--blue)",   emoji:"" },
+      { key:"in_progress",   label:"In Progress",   color:"#a78bfa",       emoji:"" },
+      { key:"paused",        label:"Paused",         color:"#f59e0b",       emoji:"⏸" },
+      { key:"posted",        label:"Posted",         color:"var(--green)",  emoji:"" },
+      { key:"final",         label:"Final",          color:"#22d3ee",       emoji:"" },
     ];
 
     // Normalise a raw status string to a canonical key
@@ -335,9 +335,9 @@
                   <div class="task-desc">${t.description || ""}</div>
                   <div class="task-meta">
                     <div class="task-date ${t.due_date && t.due_date < today ? 'overdue' : ''}">
-                      📅 ${t.due_date || "No due date"}
+                       ${t.due_date || "No due date"}
                     </div>
-                    <div>${t.assigned_to ? '👤 ' + t.assigned_to : ''}</div>
+                    <div>${t.assigned_to ? ' ' + t.assigned_to : ''}</div>
                   </div>
                 </div>`).join("") : '<div style="padding:20px;color:var(--muted);font-size:.85rem;text-align:center">No tasks</div>'}
             </div>
@@ -398,7 +398,7 @@
               st === "in_progress" ? "#a78bfa" :
               st === "paused"      ? "#f59e0b" :
               st === "approved"    ? "#20c997" : "#8b8b93";
-            const assignee = t.assigned_to ? `👤 ${t.assigned_to}` : "";
+            const assignee = t.assigned_to ? ` ${t.assigned_to}` : "";
             return `<div class="cal-task ${isDone ? 'done' : ''}" style="border-left-color:${statusColor}" onclick="openTaskFeedback('${t.id}')">
               ${t.title}
             </div>`;
@@ -502,7 +502,7 @@
       if (task.feedback && task.feedback.status) {
         banner.style.display = 'block';
         banner.className = `feedback-banner ${task.feedback.status === 'approved' ? 'approved' : 'rejected'}`;
-        banner.textContent = task.feedback.status === 'approved' ? '✅ You previously approved this task.' : '❌ You requested changes for this task.';
+        banner.textContent = task.feedback.status === 'approved' ? ' You previously approved this task.' : ' You requested changes for this task.';
       } else {
         banner.style.display = 'none';
       }
@@ -582,9 +582,9 @@
         <div id="ft-banner" class="feedback-banner"></div>
         <textarea id="ft-comments" class="feedback-textarea" placeholder="Leave a comment or request specific changes..."></textarea>
         <div class="modal-actions">
-          <button class="btn-action btn-reject" onclick="submitTaskFeedback('changes_requested')">👎 Request Changes</button>
-          <button class="btn-action btn-comment" onclick="submitTaskFeedback('comment')" style="background:var(--acc);color:white">💬 Leave Comment</button>
-          <button class="btn-action btn-approve" onclick="submitTaskFeedback('approved')">👍 Approve</button>
+          <button class="btn-action btn-reject" onclick="submitTaskFeedback('changes_requested')"> Request Changes</button>
+          <button class="btn-action btn-comment" onclick="submitTaskFeedback('comment')" style="background:var(--acc);color:white"> Leave Comment</button>
+          <button class="btn-action btn-approve" onclick="submitTaskFeedback('approved')"> Approve</button>
         </div>
       </div>
     </div>

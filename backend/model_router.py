@@ -1,5 +1,5 @@
 """
-Model Router — Routes tasks to Claude Haiku (cheap) or Sonnet (powerful)
+Model Router — Routes tasks to System Haiku (cheap) or Sonnet (powerful)
 Task complexity determines which model is used.
 """
 
@@ -31,7 +31,7 @@ TASK_ROUTING = {
     "data_analysis":   "sonnet",
 }
 
-# Cost per 1M tokens (USD) — Claude 4 pricing (May 2025)
+# Cost per 1M tokens (USD) — System 4 pricing (May 2025)
 MODEL_COSTS = {
     "haiku": {
         "input":  0.80,   # $0.80 / 1M input tokens  (claude-haiku-4-5-20251001)

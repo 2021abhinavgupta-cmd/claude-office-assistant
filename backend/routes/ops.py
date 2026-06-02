@@ -18,7 +18,7 @@ ops_bp = Blueprint("ops", __name__)
 
 
 def _claude_call(system: str, user: str, max_tokens: int = 1024) -> str:
-    """Call Claude API using Haiku model for fast, cheap task assistant responses."""
+    """Call System API using Haiku model for fast, cheap task assistant responses."""
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
@@ -31,7 +31,7 @@ def _claude_call(system: str, user: str, max_tokens: int = 1024) -> str:
         )
         return response.content[0].text.strip()
     except Exception as e:
-        logger.error(f"Claude API call failed: {e}")
+        logger.error(f"System API call failed: {e}")
         raise
 
 
@@ -1032,7 +1032,7 @@ def export_document():
     body    = request.get_json(silent=True) or {}
     content = body.get("content", "").strip()
     fmt     = body.get("format", "pdf").lower()
-    title   = body.get("title", "Claude Export")[:120]
+    title   = body.get("title", "System Export")[:120]
 
     if not content:
         return jsonify({"error": "No content provided"}), 400
@@ -1096,7 +1096,7 @@ def export_standup_tasks():
 @ops_bp.route("/api/ai/breakdown", methods=["POST"])
 def ai_task_breakdown():
     """
-    Feature 1: Ask Claude to auto-generate sub-tasks for a given task title.
+    Feature 1: Ask System to auto-generate sub-tasks for a given task title.
     Body: { task_title, client_name (optional) }
     Returns: { subtasks: ["step 1", "step 2", ...] }
     """
@@ -1371,9 +1371,9 @@ def daily_summary():
     standup_text = ""
     for uid, tasks in by_user.items():
         name = emp_map.get(uid, uid)
-        standup_text += f"\n👤 {name}:\n"
+        standup_text += f"\n {name}:\n"
         for t in tasks:
-            status_icon = "✅" if t["status"] == "done" else "⏳"
+            status_icon = "" if t["status"] == "done" else "⏳"
             standup_text += f"  {status_icon} {t['title']}"
             if t.get("blocker"):
                 standup_text += f" [BLOCKER: {t['blocker']}]"
@@ -1384,9 +1384,9 @@ Here is a summary of what everyone did today:
 {standup_text}
 
 Write a concise end-of-day manager report with exactly 3 sections:
-1. ✅ **Wins Today** – What was accomplished (2-3 bullet points max)
-2. ⚠️ **Watch List** – Who is behind or has blockers (name specific people)
-3. 🎯 **Tomorrow's Priority** – The single most critical thing the team must focus on
+1.  **Wins Today** – What was accomplished (2-3 bullet points max)
+2. ⚠ **Watch List** – Who is behind or has blockers (name specific people)
+3.  **Tomorrow's Priority** – The single most critical thing the team must focus on
 
 Be direct, specific, and use names. Keep total response under 200 words."""
 

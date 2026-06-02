@@ -1,5 +1,5 @@
 /**
- * project.js — Powers the Claude-style Project Workspace page
+ * project.js — Powers the System-style Project Workspace page
  * Handles: loading project data, instructions editor, file upload/delete,
  *          memory display, conversation list, and starting new chats.
  */
@@ -41,7 +41,7 @@ function escHtml(s) {
 }
 
 function loadUserFromStorage() {
-  try { return JSON.parse(localStorage.getItem('claude_office_user')) || null; }
+  try { return JSON.parse(localStorage.getItem('agency_portal_user')) || null; }
   catch { return null; }
 }
 
@@ -112,7 +112,7 @@ async function loadProject() {
 
     // Title
     projTitle.textContent = data.name || 'Untitled Project';
-    document.title = `${data.name} — Claude Office`;
+    document.title = `${data.name} — Agency Portal`;
 
     // Memory
     if (data.memory) {
@@ -184,7 +184,7 @@ function setupInstructions() {
       });
       if (res.ok) {
         projectData.instructions    = text;
-        instDisplay.textContent     = text || 'Add instructions to tailor Claude\'s responses';
+        instDisplay.textContent     = text || 'Add instructions to tailor System\'s responses';
         instInput.style.display     = 'none';
         instActions.style.display   = 'none';
         instDisplay.style.display   = '';
@@ -228,7 +228,7 @@ async function uploadFiles(files) {
       const res  = await fetch(`${API}/api/projects/${PROJECT_ID}/files`, { method: 'POST', body: form });
       const data = await res.json();
       if (res.ok) {
-        showToast(`✅ ${file.name} uploaded`);
+        showToast(` ${file.name} uploaded`);
         await loadProject();
       } else {
         showToast(data.error || 'Upload failed', 'err');
@@ -246,7 +246,7 @@ function renderFiles(files) {
   }
   fileList.innerHTML = files.map(f => `
     <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:.85rem;margin-top:6px;">
-      <span>📄 ${escHtml(f.filename)}</span>
+      <span> ${escHtml(f.filename)}</span>
       <button onclick="deleteFile('${f.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;" title="Remove">✕</button>
     </div>
   `).join('');

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Daily Standup | Claude Office Assistant</title>
+  <title>Daily Standup | Agency Portal Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="shared-config.js"></script>
@@ -95,13 +95,13 @@
 <div class="wrap">
   <div class="hdr">
     <div>
-      <h1>☀️ Daily <span>Standup</span></h1>
+      <h1>☀ Daily <span>Standup</span></h1>
       <p id="greeting-line" style="color:var(--muted);font-size:.83rem;margin-top:4px">Good morning! Quick update.</p>
     </div>
     <div class="nav">
-      <a href="projects.html" class="nl">📋 Board</a>
-      <a href="my-tasks.html" class="nl">✅ My Tasks</a>
-      <a href="dashboard.html" class="nl">📊 Dashboard</a>
+      <a href="projects.html" class="nl"> Board</a>
+      <a href="my-tasks.html" class="nl"> My Tasks</a>
+      <a href="dashboard.html" class="nl"> Dashboard</a>
     </div>
   </div>
 
@@ -111,14 +111,14 @@
 
       <!-- Personal Task Tracker -->
       <div class="card">
-        <h2>🗒️ Today's Task List</h2>
+        <h2> Today's Task List</h2>
         <p class="card-sub">Personal tasks — tick off as you go. Unfinished tasks carry over tomorrow.</p>
 
         <div class="task-add-row">
           <input class="task-input" id="new-task-input" list="notion-tasks-list" placeholder="Add a task for today…" onkeydown="if(event.key==='Enter')addTask(this.nextElementSibling)"/>
           <datalist id="notion-tasks-list"></datalist>
           <button class="task-add-btn" onclick="addTask(this)">+ Add</button>
-          <button class="task-add-btn" id="autofill-btn" onclick="autoFillStandup()" style="background:var(--s2);color:var(--acc);margin-left:8px;white-space:nowrap" title="Auto-fill tasks from Notion (In Progress / Due Today)">⚡ Auto-Fill</button>
+          <button class="task-add-btn" id="autofill-btn" onclick="autoFillStandup()" style="background:var(--s2);color:var(--acc);margin-left:8px;white-space:nowrap" title="Auto-fill tasks from Notion (In Progress / Due Today)"> Auto-Fill</button>
         </div>
 
         <div class="task-stats" id="task-stats" style="display:none">
@@ -133,16 +133,16 @@
         <div class="wrap-divider"></div>
 
         <button class="btn btn-wrap" id="wrap-btn" onclick="wrapUpDay()">
-          <span>🌙 Wrap Up Day — carry unfinished to tomorrow</span>
+          <span> Wrap Up Day — carry unfinished to tomorrow</span>
         </button>
         <div id="wrap-confirm" style="display:none;margin-top:10px;background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.25);border-radius:var(--rs);padding:11px;text-align:center;font-size:.83rem;color:var(--grn)"></div>
       </div>
 
       <!-- Alerts (admin only) -->
       <div class="alerts-panel" id="alerts-panel" style="display:none">
-        <h2>🔴 Risk Alerts <span id="alert-count" style="font-size:.78rem;color:var(--muted);font-weight:400"></span></h2>
+        <h2> Risk Alerts <span id="alert-count" style="font-size:.78rem;color:var(--muted);font-weight:400"></span></h2>
         <div id="alerts-list"></div>
-        <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:7px 14px;border-radius:var(--rs);font-size:.78rem;cursor:pointer;margin-top:4px" onclick="runCheck()">🔄 Run Overdue Check</button>
+        <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:7px 14px;border-radius:var(--rs);font-size:.78rem;cursor:pointer;margin-top:4px" onclick="runCheck()"> Run Overdue Check</button>
       </div>
     </div>
 
@@ -150,8 +150,8 @@
     <div class="col">
       <div class="card" style="flex:1">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-           <h2 style="margin-bottom:0">👥 Team Standups</h2>
-           <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'" onclick="window.location.href=API+'/api/export/standup-tasks'">📥 Export CSV</button>
+           <h2 style="margin-bottom:0"> Team Standups</h2>
+           <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'" onclick="window.location.href=API+'/api/export/standup-tasks'"> Export CSV</button>
         </div>
         <p class="card-sub">See what everyone is working on</p>
         
@@ -165,7 +165,7 @@
       <!-- Velocity Tracking Card -->
       <div class="card" style="margin-top:0">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <h2>📈 Velocity Tracking</h2>
+          <h2> Velocity Tracking</h2>
           <div style="display:flex;gap:8px;align-items:center">
             <select id="velocity-scope" onchange="loadVelocity()" style="background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:5px 10px;font-size:0.75rem;outline:none;cursor:pointer;">
               <option value="me">My Tasks</option>
@@ -190,7 +190,7 @@
 
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
-const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
+const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
 const UID = user.user_id;
 if (!UID) window.location.href = "login.html";
 const IS_ADMIN = user.is_admin === true;
@@ -299,10 +299,10 @@ function renderTasks(){
             <input type="text" placeholder="Add a blocker (optional)..." 
                    value="${esc(t.blocker)}" onchange="updateBlocker(${t.id}, this.value)"
                    style="background:rgba(255,92,92,0.1); border:1px solid rgba(255,92,92,0.3); border-radius:4px; color:var(--txt); padding:4px 8px; font-size:0.75rem; width:100%; outline:none; font-family:'DM Sans',sans-serif;" />
-          ` : (t.blocker ? `<div style="font-size:0.75rem;color:var(--red);">🚧 Blocker: ${esc(t.blocker)}</div>` : "")}
+          ` : (t.blocker ? `<div style="font-size:0.75rem;color:var(--red);"> Blocker: ${esc(t.blocker)}</div>` : "")}
         </div>
         <div style="display:flex; align-items:center; gap:4px">
-          ${!t.notion_id ? `<button onclick="pushToBoard(${t.id}, this)" title="Push to Notion Board" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:1.1rem;padding:2px;transition:opacity 0.2s;">↗️</button>` : ''}
+          ${!t.notion_id ? `<button onclick="pushToBoard(${t.id}, this)" title="Push to Notion Board" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:1.1rem;padding:2px;transition:opacity 0.2s;">↗</button>` : ''}
           <button class="task-del" onclick="deleteTask(${t.id})" title="Remove">✕</button>
         </div>
       </div>
@@ -411,12 +411,12 @@ async function pushToBoard(id, btn){
       renderTasks();
     } else {
       alert("Error pushing to Notion.");
-      btn.textContent = "↗️";
+      btn.textContent = "↗";
       btn.style.opacity = "1";
     }
   } catch(e){
       alert("Network error.");
-      btn.textContent = "↗️";
+      btn.textContent = "↗";
       btn.style.opacity = "1";
   }
 }
@@ -438,7 +438,7 @@ async function autoFillStandup(pull_upcoming = false) {
     const d = await r.json();
     if (d.success) {
       if (d.added > 0) {
-        alert(`⚡ Added ${d.added} task(s) from Notion to your standup!`);
+        alert(` Added ${d.added} task(s) from Notion to your standup!`);
         loadMyTasks();
       } else {
         if (!pull_upcoming) {
@@ -457,7 +457,7 @@ async function autoFillStandup(pull_upcoming = false) {
     alert("Network error.");
   } finally {
     btn.disabled = false;
-    btn.textContent = "⚡ Auto-Fill";
+    btn.textContent = " Auto-Fill";
   }
 }
 
@@ -499,7 +499,7 @@ async function wrapUpDay(){
   const conf = document.getElementById("wrap-confirm");
   if(pend.length===0){
     conf.style.display="block";
-    conf.textContent = "✅ All tasks done! Great work today.";
+    conf.textContent = " All tasks done! Great work today.";
     return;
   }
   btn.disabled = true;
@@ -510,12 +510,12 @@ async function wrapUpDay(){
   });
   const d = await r.json();
   btn.disabled = false;
-  btn.querySelector("span").textContent = "🌙 Wrap Up Day — carry unfinished to tomorrow";
+  btn.querySelector("span").textContent = " Wrap Up Day — carry unfinished to tomorrow";
   if(d.success){
     conf.style.display = "block";
     conf.textContent = d.carried>0
-      ? `🌙 Done! ${d.carried} task${d.carried>1?"s":""} carried over to tomorrow (${d.date}).`
-      : "✅ All tasks were already done — nothing to carry over!";
+      ? ` Done! ${d.carried} task${d.carried>1?"s":""} carried over to tomorrow (${d.date}).`
+      : " All tasks were already done — nothing to carry over!";
   }
 }
 
@@ -575,20 +575,20 @@ async function loadTeamStandups(dateStr = ""){
         taskHtml = `<div class="sc-field" style="margin-top:4px">`;
         
         if (newTasks.length > 0) {
-            taskHtml += `<div class="fl" style="margin-top:6px">🆕 New Tasks</div>`;
+            taskHtml += `<div class="fl" style="margin-top:6px"> New Tasks</div>`;
             taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
             newTasks.forEach(task => {
                 const isDone = task.status === "done";
                 taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px'}">
                     ${isDone ? '✓' : '•'} ${esc(task.title)}
-                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;">🚧 Blocker: ${esc(task.blocker)}</div>` : ""}
+                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
                 </li>`;
             });
             taskHtml += `</ul>`;
         }
 
         if (carriedTasks.length > 0) {
-            taskHtml += `<div class="fl" style="margin-top:10px; color:var(--acc);">🔄 Carried Over</div>`;
+            taskHtml += `<div class="fl" style="margin-top:10px; color:var(--acc);"> Carried Over</div>`;
             taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
             carriedTasks.forEach(task => {
                 const isDone = task.status === "done";
@@ -603,8 +603,8 @@ async function loadTeamStandups(dateStr = ""){
                     : '';
 
                 taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}">
-                    ${isDone ? '✓' : '⚠️'} ${esc(task.title)} ${overdueBadge}
-                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;">🚧 Blocker: ${esc(task.blocker)}</div>` : ""}
+                    ${isDone ? '✓' : '⚠'} ${esc(task.title)} ${overdueBadge}
+                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
                 </li>`;
             });
             taskHtml += `</ul>`;
@@ -621,10 +621,10 @@ async function loadTeamStandups(dateStr = ""){
         <div><div class="sc-name">${name}</div><div class="sc-time">${timeStr}</div></div>
       </div>
       <div class="sc-body">
-        ${s && s.yesterday?`<div class="sc-field"><div class="fl">✅ Done Yesterday</div><div class="fv">${esc(s.yesterday)}</div></div>`:""}
-        ${s && s.today?`<div class="sc-field"><div class="fl">🎯 Today's Plan</div><div class="fv">${esc(s.today)}</div></div>`:""}
+        ${s && s.yesterday?`<div class="sc-field"><div class="fl"> Done Yesterday</div><div class="fv">${esc(s.yesterday)}</div></div>`:""}
+        ${s && s.today?`<div class="sc-field"><div class="fl"> Today's Plan</div><div class="fv">${esc(s.today)}</div></div>`:""}
         ${taskHtml}
-        ${s && s.blockers?`<div class="sc-field blocker"><div class="fl">🚧 Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
+        ${s && s.blockers?`<div class="sc-field blocker"><div class="fl"> Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
       </div></div>`;
   }).join("");
 }
@@ -639,10 +639,10 @@ async function loadAlerts(){
   const alerts=data.alerts||[];
   document.getElementById("alert-count").textContent=alerts.length?`(${alerts.length} active)`:"(none)";
   const wrap=document.getElementById("alerts-list");
-  if(!alerts.length){wrap.innerHTML='<div class="empty" style="text-align:left;padding:10px 0">✅ No at-risk or critical tasks.</div>';return;}
+  if(!alerts.length){wrap.innerHTML='<div class="empty" style="text-align:left;padding:10px 0"> No at-risk or critical tasks.</div>';return;}
   wrap.innerHTML=alerts.map(a=>`<div class="alert-card alert-${a.risk_level}">
-    <div><div class="alert-title">${a.assignee_name} — ${a.title}</div><div class="alert-sub">📁 ${a.client_name} · Due: ${a.due_date||"N/A"}</div></div>
-    <span class="risk-pill rp-${a.risk_level}">${a.risk_level==="critical"?"🚨 CRITICAL":"🔴 AT RISK"}</span>
+    <div><div class="alert-title">${a.assignee_name} — ${a.title}</div><div class="alert-sub"> ${a.client_name} · Due: ${a.due_date||"N/A"}</div></div>
+    <span class="risk-pill rp-${a.risk_level}">${a.risk_level==="critical"?" CRITICAL":" AT RISK"}</span>
   </div>`).join("");
 }
 
@@ -689,7 +689,7 @@ async function loadVelocity() {
         labels,
         datasets: [
           {
-            label: "Completed ✅",
+            label: "Completed ",
             data: completed,
             backgroundColor: "rgba(34,211,160,0.75)",
             borderRadius: 4,

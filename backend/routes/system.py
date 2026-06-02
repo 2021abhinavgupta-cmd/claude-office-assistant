@@ -34,7 +34,7 @@ def _duckduckgo_instant(query: str) -> dict:
             "https://api.duckduckgo.com/",
             params={"q": q, "format": "json", "no_html": 1, "skip_disambig": 1},
             timeout=10,
-            headers={"User-Agent": "ClaudeOfficeAssistant/1.0 (+https://localhost)"},
+            headers={"User-Agent": "SystemOfficeAssistant/1.0 (+https://localhost)"},
         )
         r.raise_for_status()
         try:
@@ -75,7 +75,7 @@ def health():
         pdf_ready = importlib.util.find_spec("weasyprint") is not None
     return jsonify({
         "status": "ok",
-        "service": "Claude Office Assistant API",
+        "service": "Agency Portal Assistant API",
         "budget_remaining": budget["remaining"],
         "budget_percent_used": budget["percent_used"],
         "pptx_export_ready": importlib.util.find_spec("pptx") is not None,

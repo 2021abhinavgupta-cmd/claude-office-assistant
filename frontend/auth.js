@@ -22,7 +22,7 @@ document.documentElement.style.visibility = 'hidden';
     const data = await res.json();
 
     if (!data.valid) {
-      localStorage.removeItem("claude_office_user");
+      localStorage.removeItem("agency_portal_user");
       window.location.href = "login.html";
       return;
     }
@@ -34,7 +34,7 @@ document.documentElement.style.visibility = 'hidden';
       role:     data.role,
       is_admin: data.is_admin,
     };
-    localStorage.setItem("claude_office_user", JSON.stringify(user));
+    localStorage.setItem("agency_portal_user", JSON.stringify(user));
     window.__currentUser = user;
     // Auth passed — reveal the page
     document.documentElement.style.visibility = 'visible';
@@ -56,7 +56,7 @@ document.documentElement.style.visibility = 'hidden';
 window.authLogout = async function () {
   const authApi = getAuthApiBase();
   const token = sessionStorage.getItem("_session_token") || localStorage.getItem("_session_token");
-  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
   if (user.user_id) {
     await fetch(`${authApi}/api/attendance/checkout`, {
       method: "POST",
@@ -74,6 +74,6 @@ window.authLogout = async function () {
       body: JSON.stringify({}),
     }).catch(() => {});
   sessionStorage.removeItem("_session_token");
-  localStorage.removeItem("claude_office_user");
+  localStorage.removeItem("agency_portal_user");
   window.location.href = "login.html";
 };

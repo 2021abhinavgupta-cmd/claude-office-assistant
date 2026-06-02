@@ -1,5 +1,5 @@
 """
-Flask Backend — Claude Office Assistant API
+Flask Backend — Agency Portal Assistant API
 Routes:
   GET  /api/health                        — Health check
   GET  /api/budget                        — Current month budget
@@ -736,12 +736,12 @@ def _anthropic_response_text(response, *, include_thinking: bool = False) -> str
     return ""
 
 
-# ── Helper: call Claude ───────────────────────────────────────────────────────
+# ── Helper: call System ───────────────────────────────────────────────────────
 def call_claude(task_type: str, message: str, user_id: str = "api",
                 max_tokens: int = MAX_TOKENS, force_tier: Optional[str] = None,
                 project_id: Optional[str] = None) -> dict:
     """
-    Shared helper to call Claude with budget check + usage logging.
+    Shared helper to call System with budget check + usage logging.
     Returns dict with: success, response, model_used, model_tier, tokens, cost_usd, budget
     """
     budget = check_budget_available()
@@ -753,7 +753,7 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
     model_tier    = model_config["tier"]
     system_prompt, _ = _build_system_prompt(task_type, user_id, project_id, message=message)
 
-    logger.info(f"Claude call | task={task_type} | model={model_tier} | user={user_id}")
+    logger.info(f"System call | task={task_type} | model={model_tier} | user={user_id}")
 
     # ── Reasoning step for complex requests ─────────────────────────────────
     reasoning_context = ""
@@ -796,8 +796,8 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
         response = client.messages.create(**kwargs)
         output_text = _anthropic_response_text(response)
         if not output_text:
-            logger.error("Claude returned no text blocks (present?). content=%r", getattr(response, "content", None))
-            return {"success": False, "error": "Claude returned an empty response. Try again or shorten the deck."}
+            logger.error("System returned no text blocks (present?). content=%r", getattr(response, "content", None))
+            return {"success": False, "error": "System returned an empty response. Try again or shorten the deck."}
         # ── Quality check (auto-fix filler phrases & incomplete responses) ──
         output_text = _quality_check(output_text, task_type, model_name)
         # ── End quality check ──
@@ -832,7 +832,7 @@ def call_claude(task_type: str, message: str, user_id: str = "api",
         return {"success": False, "error": "Rate limit reached. Please wait and retry."}
     except anthropic.APIError as e:
         logger.error(f"Anthropic API error: {e}")
-        return {"success": False, "error": f"Claude API error: {str(e)}"}
+        return {"success": False, "error": f"System API error: {str(e)}"}
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
         return {"success": False, "error": "Internal server error"}
@@ -858,7 +858,7 @@ def _duckduckgo_instant(query: str) -> dict:
             "https://api.duckduckgo.com/",
             params={"q": q, "format": "json", "no_html": 1, "skip_disambig": 1},
             timeout=10,
-            headers={"User-Agent": "ClaudeOfficeAssistant/1.0 (+https://localhost)"},
+            headers={"User-Agent": "SystemOfficeAssistant/1.0 (+https://localhost)"},
         )
         r.raise_for_status()
         try:
@@ -1058,7 +1058,7 @@ def html_generate():
 
         html_code = result["response"]
         
-        # Strip markdown code fences if Claude wrapped the output
+        # Strip markdown code fences if System wrapped the output
         if html_code.strip().startswith("```"):
             lines = html_code.strip().split("\n")
             inner = lines[1:] if len(lines) > 1 else lines
@@ -1263,7 +1263,7 @@ def create_presentation():
         slides = _parse_slides(result["response"])
     except Exception as e:
         logger.exception("Slide parse failed: %s", e)
-        return jsonify({"success": False, "error": "Could not parse slide format from Claude response."}), 500
+        return jsonify({"success": False, "error": "Could not parse slide format from System response."}), 500
 
     return jsonify({
         **result,
@@ -1311,7 +1311,7 @@ def call_claude_with_context(task_type: str, messages: list,
                              model_override: str = None,
                              output_contract: dict = None) -> dict:
     """
-    Call Claude with full conversation history + optional file attachments.
+    Call System with full conversation history + optional file attachments.
     Memories are automatically injected into the system prompt.
     attachments: [{type:'image'|'document', ...}] from file_processor
     """
@@ -1388,8 +1388,8 @@ def call_claude_with_context(task_type: str, messages: list,
         )
         output_text = _anthropic_response_text(response)
         if not output_text:
-            logger.error("Claude returned no text (conversation path). content=%r", getattr(response, "content", None))
-            return {"success": False, "error": "Claude returned an empty response. Try again."}
+            logger.error("System returned no text (conversation path). content=%r", getattr(response, "content", None))
+            return {"success": False, "error": "System returned an empty response. Try again."}
         input_tokens  = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
         cost          = calculate_cost(model_tier, input_tokens, output_tokens)
@@ -1416,7 +1416,7 @@ def call_claude_with_context(task_type: str, messages: list,
     except anthropic.RateLimitError:
         return {"success": False, "error": "Rate limit reached. Please wait and retry."}
     except anthropic.APIError as e:
-        return {"success": False, "error": f"Claude API error: {str(e)}"}
+        return {"success": False, "error": f"System API error: {str(e)}"}
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
         return {"success": False, "error": "Internal server error"}
@@ -1477,7 +1477,7 @@ def _maybe_generate_project_memory(project_id):
     if len(convs) >= 3:
         titles = [c.get("title", "Untitled") for c in convs[:5]]
         titles_str = "\n".join(f"- {t}" for t in titles)
-        prompt = f"Based on the following recent conversation titles in this project, write a 2-3 line summary of what Claude has learned about this project and its ongoing context. Be concise and write in the third person.\n\nTitles:\n{titles_str}"
+        prompt = f"Based on the following recent conversation titles in this project, write a 2-3 line summary of what System has learned about this project and its ongoing context. Be concise and write in the third person.\n\nTitles:\n{titles_str}"
         try:
             haiku = get_model_for_task("general")["name"]
             resp = client.messages.create(
@@ -1751,7 +1751,7 @@ def conversation_chat(conv_id):
     if not conv.get("task_type"):
         conversation_store.update_task_type(conv_id, task_type)
 
-    # Build context for Claude (full history including message just saved)
+    # Build context for System (full history including message just saved)
     context = conversation_store.get_context_messages(conv_id)
     if len(context) == 1:
         threading.Thread(target=_auto_tag_bg, args=(conv_id, message)).start()
@@ -1761,7 +1761,7 @@ def conversation_chat(conv_id):
             context = _inject_web_context(list(context), snip)
             logger.info("Chat | web_search context injected | len=%d", len(snip))
 
-    # Call Claude with full conversation context + any file attachments
+    # Call System with full conversation context + any file attachments
     result = call_claude_with_context(
         task_type,
         context,
@@ -1789,7 +1789,7 @@ def conversation_chat(conv_id):
 
     # Broadcast assistant reply to huddle listeners
     if is_huddle:
-        _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "Claude", "content": result["response"]})
+        _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "content": result["response"]})
 
     updated_conv = conversation_store.get_conversation(conv_id)
     return jsonify({
@@ -1805,7 +1805,7 @@ def conversation_chat(conv_id):
 def conversation_stream(conv_id):
     """
     POST /api/conversations/<id>/stream
-    Server-Sent Events: yields text chunks as Claude generates them.
+    Server-Sent Events: yields text chunks as System generates them.
     Events: {type:"text",text:"..."} | {type:"done",...stats} | {type:"error",error:"..."}
     """
     conv = conversation_store.get_conversation(conv_id)
@@ -2008,7 +2008,7 @@ def conversation_stream(conv_id):
         except anthropic.RateLimitError:
             stream_error = "Rate limit reached — please retry shortly"
         except anthropic.APIError as e:
-            stream_error = f"Claude API error: {e}"
+            stream_error = f"System API error: {e}"
         except Exception as e:
             logger.exception(f"Streaming error: {e}")
             stream_error = "Internal server error during stream"
@@ -2043,7 +2043,7 @@ def conversation_stream(conv_id):
         })
 
         if is_huddle:
-            _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "Claude", "content": clean_response})
+            _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "content": clean_response})
 
         updated_conv   = conversation_store.get_conversation(conv_id)
         updated_budget = check_budget_available()
@@ -2071,7 +2071,7 @@ Rules:
 def optimize_prompt():
     """
     POST /api/optimize-prompt  body: {prompt, task_type?}
-    Uses Claude Haiku to rewrite a rough prompt into a precise one.
+    Uses System Haiku to rewrite a rough prompt into a precise one.
     Cost: ~$0.00008 per call (Haiku, minimal tokens).
     """
     data      = request.get_json(silent=True) or {}
@@ -2110,7 +2110,7 @@ def optimize_prompt():
     except anthropic.RateLimitError:
         return jsonify({"error": "Rate limit — please retry in a moment"}), 429
     except anthropic.APIError as e:
-        return jsonify({"error": f"Claude API error: {e}"}), 502
+        return jsonify({"error": f"System API error: {e}"}), 502
     except Exception as e:
         logger.exception(f"Optimize prompt error: {e}")
         return jsonify({"error": "Server error"}), 500
@@ -2912,5 +2912,5 @@ if __name__ == "__main__":
 
     port  = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
-    logger.info(f"Starting Claude Office Assistant API on port {port}")
+    logger.info(f"Starting Agency Portal Assistant API on port {port}")
     app.run(host="0.0.0.0", port=port, debug=debug)

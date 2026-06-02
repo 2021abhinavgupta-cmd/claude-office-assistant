@@ -83,9 +83,9 @@ def notify_task_submitted(task_title: str, assignee: str, client_name: str) -> b
     """Sent when a team member submits a task for review."""
     msg = (
         f"⏳ *Review Request*\n"
-        f"👤 *{assignee}* has submitted a task for your approval:\n\n"
-        f"📋 *{task_title}*\n"
-        f"📁 Client: {client_name}\n\n"
+        f" *{assignee}* has submitted a task for your approval:\n\n"
+        f" *{task_title}*\n"
+        f" Client: {client_name}\n\n"
         f"Open the Project Board to approve or request changes."
     )
     return send_whatsapp(msg)
@@ -94,10 +94,10 @@ def notify_task_submitted(task_title: str, assignee: str, client_name: str) -> b
 def notify_task_approved(task_title: str, assignee: str, client_name: str) -> bool:
     """Sent when a task is approved."""
     msg = (
-        f"✅ *Task Approved*\n"
-        f"📋 *{task_title}*\n"
-        f"👤 Assigned to: {assignee}\n"
-        f"📁 Client: {client_name}\n\n"
+        f" *Task Approved*\n"
+        f" *{task_title}*\n"
+        f" Assigned to: {assignee}\n"
+        f" Client: {client_name}\n\n"
         f"Great work! The task has been marked as approved."
     )
     return send_whatsapp(msg)
@@ -106,13 +106,13 @@ def notify_task_approved(task_title: str, assignee: str, client_name: str) -> bo
 def notify_task_changes_requested(task_title: str, assignee: str, client_name: str, note: str = "") -> bool:
     """Sent when changes are requested on a task."""
     msg = (
-        f"↩️ *Changes Requested*\n"
-        f"📋 *{task_title}*\n"
-        f"👤 Assigned to: {assignee}\n"
-        f"📁 Client: {client_name}\n"
+        f"↩ *Changes Requested*\n"
+        f" *{task_title}*\n"
+        f" Assigned to: {assignee}\n"
+        f" Client: {client_name}\n"
     )
     if note:
-        msg += f"\n📝 Note: {note}"
+        msg += f"\n Note: {note}"
     return send_whatsapp(msg)
 
 
@@ -123,13 +123,13 @@ def notify_task_status_changed(task_title: str, assignee: str, client_name: str,
     Only notifies for meaningful transitions.
     """
     STATUS_EMOJI = {
-        "not_started":    "📋 Not Started",
-        "unlocked":       "🔓 Unlocked",
-        "in_progress":    "🔄 In Progress",
+        "not_started":    " Not Started",
+        "unlocked":       " Unlocked",
+        "in_progress":    " In Progress",
         "pending_review": "⏳ In Review",
         "submitted":      "⏳ Submitted",
-        "approved":       "✅ Approved",
-        "rejected":       "↩️ Changes Requested",
+        "approved":       " Approved",
+        "rejected":       "↩ Changes Requested",
     }
 
     # Only notify for important transitions (not every tiny change)
@@ -155,10 +155,10 @@ def notify_daily_digest(overdue_tasks: list) -> bool:
     if not overdue_tasks:
         return False
 
-    lines = [f"🌅 *Daily Digest — Overdue Tasks*\n"]
+    lines = [f" *Daily Digest — Overdue Tasks*\n"]
     for t in overdue_tasks[:10]:  # cap at 10
-        lines.append(f"🔴 *{t['title']}* ({t.get('client', '—')})\n"
-                     f"   👤 {t.get('assignee', '—')} · {t.get('days_overdue', 0)}d overdue\n")
+        lines.append(f" *{t['title']}* ({t.get('client', '—')})\n"
+                     f"    {t.get('assignee', '—')} · {t.get('days_overdue', 0)}d overdue\n")
 
     lines.append(f"\nTotal: {len(overdue_tasks)} overdue task(s). Check the Project Board.")
     return send_whatsapp("\n".join(lines))

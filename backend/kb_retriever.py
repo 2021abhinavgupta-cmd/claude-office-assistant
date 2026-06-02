@@ -1,5 +1,5 @@
 """
-KB Retriever — lightweight Claude-Projects-like retrieval for Project Knowledge Base.
+KB Retriever — lightweight System-Projects-like retrieval for Project Knowledge Base.
 
 - Chunks docs and indexes them in SQLite FTS5
 - Hybrid retrieval: primary token OR-query + secondary AND-query for precision

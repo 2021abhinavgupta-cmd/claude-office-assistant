@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Project Board | Claude Office Assistant</title>
+  <title>Project Board | Agency Portal Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script src="auth.js"></script>
   <script src="shared-config.js"></script>
@@ -233,19 +233,19 @@
 <div class="wrap">
   <div class="hdr">
     <div>
-      <h1>📋 Project <span>Board</span></h1>
+      <h1> Project <span>Board</span></h1>
       <p style="color:var(--muted);font-size:.82rem;margin-top:3px">Dependency-aware tracker — one glance tells you everything</p>
     </div>
     <div class="nav">
-      <a href="dashboard.html" class="nl">📊 Dashboard</a>
-      <button onclick="openMeetingNotesModal()" class="btn" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd">📝 Paste Meeting Notes</button>
+      <a href="dashboard.html" class="nl"> Dashboard</a>
+      <button onclick="openMeetingNotesModal()" class="btn" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd"> Paste Meeting Notes</button>
       <a href="client-onboard.html" class="btn btn-acc">+ New Client</a>
     </div>
   </div>
   
   <div class="global-tabs">
-    <button class="gtab on" id="gtab-clients" onclick="switchGlobalTab('clients')">🏢 Clients</button>
-    <button class="gtab" id="gtab-calendar" onclick="switchGlobalTab('calendar')">📅 Calendar</button>
+    <button class="gtab on" id="gtab-clients" onclick="switchGlobalTab('clients')"> Clients</button>
+    <button class="gtab" id="gtab-calendar" onclick="switchGlobalTab('calendar')"> Calendar</button>
   </div>
   
   <div id="clients-filter-bar" style="padding: 16px 28px 0 28px; display: flex; gap: 8px; flex-wrap: wrap;">
@@ -292,7 +292,7 @@
 <!-- Quick Task Modal -->
 <div class="qt-modal-ov" id="qt-modal">
   <div class="qt-modal">
-    <h3>📌 Quick Task</h3>
+    <h3> Quick Task</h3>
     <div class="qt-field">
       <label>Task title *</label>
       <input id="qt-title" type="text" placeholder="What needs to be done?" />
@@ -324,7 +324,7 @@
 <!-- Edit Task Modal -->
 <div class="qt-modal-ov" id="edit-task-modal">
   <div class="qt-modal">
-    <h3>✏️ Edit Task</h3>
+    <h3>✏ Edit Task</h3>
     <input type="hidden" id="et-id" />
     <div class="qt-field">
       <label>Task title</label>
@@ -352,7 +352,7 @@
 
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
-const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
+const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
 const UID = user.user_id || "emp003";
 
 // Employee lookups — works for both emp-id keys (SQLite) and name keys (Notion)
@@ -428,11 +428,11 @@ function cellForCol(col, tasks){
   const hasReview=colTasks.some(t=>t.status==="pending_review"||t.status==="In Review");
   const avgPct=Math.round(colTasks.reduce((a,t)=>a+(t.progress||0),0)/colTasks.length);
   let cls,icon,label;
-  if(allApproved){cls="cell-done";icon="✅";label="Done";}
-  else if(hasOverdue){cls="cell-risk";icon="🔴";label="Delayed";}
+  if(allApproved){cls="cell-done";icon="";label="Done";}
+  else if(hasOverdue){cls="cell-risk";icon="";label="Delayed";}
   else if(hasBlocked){cls="cell-blocked";icon="⏸";label="Blocked";}
   else if(hasReview){cls="cell-review";icon="⏳";label="In Review";}
-  else if(colTasks.some(t=>t.status==="in_progress"||t.status==="In Progress")){cls="cell-progress";icon="🔄";label="In Progress";}
+  else if(colTasks.some(t=>t.status==="in_progress"||t.status==="In Progress")){cls="cell-progress";icon="";label="In Progress";}
   else{cls="cell-waiting";icon="⏳";label="Waiting";}
   return`<td><div class="cell ${cls}"><span class="icon">${icon}</span><span class="label">${label}</span><span class="pct">${avgPct}%</span></div></td>`;
 }
@@ -513,21 +513,21 @@ function renderDetail(clients){
     const isSocial = (c.tasks||[]).some(t => t.service === "Social Media" || /^\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
     return`<div class="cb" id="cb-${c.id}" data-social="${isSocial}">
       <div class="cb-head" onclick="toggleDetail('${c.id}')">
-        <div><div class="cb-name">🏢 ${c.name}${notionLink}</div>
+        <div><div class="cb-name"> ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
         <div style="display:flex; gap: 8px; align-items: center;">
-          <button class="btn-sm" style="background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25);" onclick="event.stopPropagation(); deleteClient('${c.id}')">🗑️ Delete Client</button>
+          <button class="btn-sm" style="background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25);" onclick="event.stopPropagation(); deleteClient('${c.id}')"> Delete Client</button>
           <span style="color:var(--muted);font-size:.8rem">▼</span>
         </div>
       </div>
       <div class="cb-body" id="dbody-${c.id}" style="display:none">
         <div class="client-tabs">
-          <button class="ctab on" onclick="switchClientTab('${c.id}', 'list', this)">📋 Task List</button>
-          <button class="ctab" onclick="switchClientTab('${c.id}', 'kanban', this)">📌 Kanban</button>
-          <button class="ctab" onclick="switchClientTab('${c.id}', 'blockers', this)">🔴 Blockers</button>
+          <button class="ctab on" onclick="switchClientTab('${c.id}', 'list', this)"> Task List</button>
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'kanban', this)"> Kanban</button>
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'blockers', this)"> Blockers</button>
           <button class="ctab" onclick="switchClientTab('${c.id}', 'review', this)">⏳ In Review</button>
-          <button class="ctab" onclick="switchClientTab('${c.id}', 'calendar', this)">📅 Calendar</button>
-          ${isSocial ? `<button class="ctab" id="ctab-btn-${c.id}-sheets" onclick="switchClientTab('${c.id}', 'sheets', this)">📊 Sheets</button>` : ''}
+          <button class="ctab" onclick="switchClientTab('${c.id}', 'calendar', this)"> Calendar</button>
+          ${isSocial ? `<button class="ctab" id="ctab-btn-${c.id}-sheets" onclick="switchClientTab('${c.id}', 'sheets', this)"> Sheets</button>` : ''}
         </div>
         
         <div id="ctab-${c.id}-list" class="ctab-content" style="display:block">
@@ -871,7 +871,7 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
   const t = dayTasks[idx];
   const assigneeName = (t.assigned_to||'').split(',').map(s=>EMP[s.trim()]||s.trim()||'—').join(', ') || '—';
   const statusLabel = {not_started:'Not Started',in_progress:'In Progress',pending_review:'⏳ Review',
-    approved:'✅ Approved',rejected:'↩ Changes',unlocked:'Unlocked'}[t.status]||t.status||'—';
+    approved:' Approved',rejected:'↩ Changes',unlocked:'Unlocked'}[t.status]||t.status||'—';
   const taskId = t.notion_id || t.id;
   const cid = clientId || t.clientId;
   let nav = dayTasks.length>1 ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -883,13 +883,13 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
   window._popupTasks = dayTasks;
   popup.innerHTML = nav + `
     <div class="cp-title">${t.title}</div>
-    <div class="cp-row">👤 Assignee: <span>${assigneeName}</span></div>
-    <div class="cp-row">📊 Status: <span>${statusLabel}</span></div>
-    <div class="cp-row">📅 Due: <span>${t.due_date||'—'}</span></div>
+    <div class="cp-row"> Assignee: <span>${assigneeName}</span></div>
+    <div class="cp-row"> Status: <span>${statusLabel}</span></div>
+    <div class="cp-row"> Due: <span>${t.due_date||'—'}</span></div>
     ${t.description?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.5">${t.description.slice(0,100)}${t.description.length>100?'…':''}</div>`:''}
     <div class="cp-actions">
-      <button class="cp-edit" onclick="hideCalPopup();openEditTask('${cid}','${taskId}')">✏️ Edit</button>
-      <button class="cp-del" onclick="hideCalPopup();deleteTask('${taskId}')">🗑️ Delete</button>
+      <button class="cp-edit" onclick="hideCalPopup();openEditTask('${cid}','${taskId}')">✏ Edit</button>
+      <button class="cp-del" onclick="hideCalPopup();deleteTask('${taskId}')"> Delete</button>
     </div>`;
 }
 
@@ -961,28 +961,28 @@ function renderTaskCard(t){
   // Support multiple assignees (comma-separated emp-ids or names)
   const assigneeName = (t.assigned_to || "").split(',').map(s => EMP[s.trim()] || s.trim() || "—").join(', ');
   const taskId = t.notion_id || t.id;
-  const statusLabel = {not_started:"Not Started","Not Started":"Not Started",unlocked:"Unlocked",in_progress:"In Progress","In Progress":"In Progress",pending_review:"⏳ Review","In Review":"⏳ Review",approved:"✅ Approved","Done":"✅ Done",rejected:"↩ Changes"}[t.status]||t.status;
+  const statusLabel = {not_started:"Not Started","Not Started":"Not Started",unlocked:"Unlocked",in_progress:"In Progress","In Progress":"In Progress",pending_review:"⏳ Review","In Review":"⏳ Review",approved:" Approved","Done":" Done",rejected:"↩ Changes"}[t.status]||t.status;
   const statusKey = t.status?.toLowerCase().replace(/ /g,"_").replace(/-/g,"_") || "not_started";
 
   return`<div class="tc" id="tc-${taskId}">
     <div class="tc-top">
       <div><div class="tc-title">${t.title}</div>
-        <div class="tc-who">👤 ${assigneeName}${t.due_date?" · Due: "+t.due_date:""}</div></div>
+        <div class="tc-who"> ${assigneeName}${t.due_date?" · Due: "+t.due_date:""}</div></div>
       <span class="sp sp-${statusKey}">${statusLabel}</span>
     </div>
     <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
     ${t.submission_note?`<div class="sub-box"><div class="sub-label">Submission</div>${t.submission_note}</div>`:""}
     ${isInReview(t)&&!notionMode?`<div class="tc-actions">
-      <button class="btn-sm btn-approve" onclick="approveTask(${t.id})">✅ Approve</button>
+      <button class="btn-sm btn-approve" onclick="approveTask(${t.id})"> Approve</button>
       <button class="btn-sm btn-reject" onclick="openModal(${t.id},null)">↩ Changes</button>
     </div>`:""}
     ${isInReview(t)&&notionMode?`<div class="tc-actions">
-      <button class="btn-sm btn-approve" onclick="approveTaskNotion('${t.notion_id}')">✅ Approve</button>
+      <button class="btn-sm btn-approve" onclick="approveTaskNotion('${t.notion_id}')"> Approve</button>
       <button class="btn-sm btn-reject" onclick="openModal(null,'${t.notion_id}')">↩ Changes</button>
     </div>`:""}
     <div class="tc-actions" style="margin-top: 8px;">
-      <button class="btn-sm" style="background:var(--s1);color:var(--txt);border:1px solid var(--bdr);" onclick="openEditTaskModal('${taskId}', '${(t.title||'').replace(/'/g, '&apos;')}', '${t.assigned_to||''}', '${t.due_date||''}')">✏️ Edit Task</button>
-      <button class="btn-sm" style="background:rgba(255,92,92,.1);color:var(--red);border:1px solid rgba(255,92,92,.2);" onclick="deleteTask('${taskId}')">🗑️ Delete</button>
+      <button class="btn-sm" style="background:var(--s1);color:var(--txt);border:1px solid var(--bdr);" onclick="openEditTaskModal('${taskId}', '${(t.title||'').replace(/'/g, '&apos;')}', '${t.assigned_to||''}', '${t.due_date||''}')">✏ Edit Task</button>
+      <button class="btn-sm" style="background:rgba(255,92,92,.1);color:var(--red);border:1px solid rgba(255,92,92,.2);" onclick="deleteTask('${taskId}')"> Delete</button>
     </div>
   </div>`;
 }
@@ -1008,15 +1008,15 @@ async function renderClientBlockers(clientId){
         blockers.push({client:client.name,task:t.title,assignee:assignees,days:Math.floor((new Date()-new Date(t.due_date))/86400000)});
       }
     });
-    if(!blockers.length){wrap.innerHTML=`<div class="empty" style="padding:24px 0;">🎉 No blockers right now.</div>`;return;}
+    if(!blockers.length){wrap.innerHTML=`<div class="empty" style="padding:24px 0;"> No blockers right now.</div>`;return;}
     wrap.innerHTML=blockers.map(b=>`
       <div class="blocker-card">
         <div class="blocker-top">
-          <div><div class="blocker-who">👤 ${b.assignee}</div>
+          <div><div class="blocker-who"> ${b.assignee}</div>
             <div class="blocker-task">${b.task}</div></div>
           <span class="overdue-badge overdue-yes">${b.days}d overdue</span>
         </div>
-        <div class="action-note">⚡ Action needed: Follow up with ${b.assignee}</div>
+        <div class="action-note"> Action needed: Follow up with ${b.assignee}</div>
       </div>`).join("");
     return;
   }
@@ -1029,7 +1029,7 @@ async function renderClientBlockers(clientId){
   // Filter for this client's tasks being blockers
   const clientBlockers = (data.blockers||[]).filter(b => String(b.blocker_task.client_id) === String(clientId));
   
-  if(!clientBlockers.length){wrap.innerHTML=`<div class="empty" style="padding:24px 0;">🎉 No blockers right now. Everything is flowing smoothly.</div>`;return;}
+  if(!clientBlockers.length){wrap.innerHTML=`<div class="empty" style="padding:24px 0;"> No blockers right now. Everything is flowing smoothly.</div>`;return;}
   const grouped={};
   for(const b of clientBlockers){
     const key=b.blocker_task.id;
@@ -1040,14 +1040,14 @@ async function renderClientBlockers(clientId){
     const badge=g.days>0?`<span class="overdue-badge overdue-yes">${g.days}d overdue</span>`:`<span class="overdue-badge overdue-no">Not yet due</span>`;
     return`<div class="blocker-card">
       <div class="blocker-top">
-        <div><div class="blocker-who">👤 ${g.blocker.name}</div>
+        <div><div class="blocker-who"> ${g.blocker.name}</div>
           <div class="blocker-task">${g.blocker.title}</div></div>
         ${badge}
       </div>
       <div class="blocker-chain">
         ${g.blocked.map(b=>`<div class="chain-item"><span class="arrow">└─▶</span> Blocking <strong>${b.name}</strong> — <span>${b.title}</span></div>`).join("")}
       </div>
-      <div class="action-note">⚡ Action needed: Follow up with ${g.blocker.name}</div>
+      <div class="action-note"> Action needed: Follow up with ${g.blocker.name}</div>
     </div>`;
   }).join("");
 }
@@ -1056,7 +1056,7 @@ async function renderClientBlockers(clientId){
 async function approveTask(id){
   const r=await fetch(`${API}/api/tasks/${id}/approve`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID})});
   const d=await r.json();
-  if(d.success){toast("✅ Task approved!");load();}else toast(d.error||"Error","err");
+  if(d.success){toast(" Task approved!");load();}else toast(d.error||"Error","err");
 }
 
 async function renderClientReview(clientId){
@@ -1067,7 +1067,7 @@ async function renderClientReview(clientId){
 
   const tasks = (client.tasks||[]).filter(t => isInReview(t));
   if(!tasks.length){
-    wrap.innerHTML=`<div class="empty" style="padding:24px 0;">🎉 No tasks awaiting review.</div>`;
+    wrap.innerHTML=`<div class="empty" style="padding:24px 0;"> No tasks awaiting review.</div>`;
     return;
   }
 
@@ -1099,7 +1099,7 @@ async function approveTaskNotion(notionId){
   try {
     const r=await fetch(`${API}/api/notion/tasks/${notionId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"approved",progress:100}),signal:AbortSignal.timeout(10000)});
     const d=await r.json();
-    if(d.success){toast("✅ Task approved in Notion!");load();}else toast(d.error||"Error","err");
+    if(d.success){toast(" Task approved in Notion!");load();}else toast(d.error||"Error","err");
   } catch(e){toast("Error: "+e.message,"err");}
 }
 
@@ -1128,21 +1128,21 @@ const AVATAR_COLORS = {Vidit:"#5c9eff",Nupur:"#ff79c6",Abhinav:"#22d3a0",Kshitij
 
 // Default columns (Branding / Website / Shoot)
 const DEFAULT_STAGE_COLS = [
-  {key:"todo",   label:"To Do",      emoji:"📋", statuses:["not_started","Not Started","unlocked","Unlocked","need_to_start","Need to Start"]},
-  {key:"prog",   label:"In Progress", emoji:"🔄", statuses:["in_progress","In Progress"]},
+  {key:"todo",   label:"To Do",      emoji:"", statuses:["not_started","Not Started","unlocked","Unlocked","need_to_start","Need to Start"]},
+  {key:"prog",   label:"In Progress", emoji:"", statuses:["in_progress","In Progress"]},
   {key:"review", label:"In Review",   emoji:"⏳", statuses:["pending_review","submitted","In Review"]},
-  {key:"done",   label:"Approved",    emoji:"✅", statuses:["approved","Done","final","Final","posted","Posted"]},
+  {key:"done",   label:"Approved",    emoji:"", statuses:["approved","Done","final","Final","posted","Posted"]},
 ];
 const DEFAULT_STATUS_MAP = {todo:"not_started",prog:"in_progress",review:"pending_review",done:"approved"};
 
 // Social Media columns
 const SOCIAL_STAGE_COLS = [
-  {key:"need_to_start", label:"Need to Start", emoji:"🔲", statuses:["need_to_start","Need to Start","not_started","Not Started","unlocked","Unlocked"]},
-  {key:"scheduled",     label:"Scheduled",     emoji:"📅", statuses:["scheduled","Scheduled"]},
-  {key:"in_progress",   label:"In Progress",   emoji:"🔄", statuses:["in_progress","In Progress"]},
-  {key:"paused",        label:"Paused",         emoji:"⏸️", statuses:["paused","Paused"]},
-  {key:"posted",        label:"Posted",         emoji:"🚀", statuses:["posted","Posted","approved","Done","done"]},
-  {key:"final",         label:"Final",          emoji:"✨", statuses:["final","Final"]},
+  {key:"need_to_start", label:"Need to Start", emoji:"", statuses:["need_to_start","Need to Start","not_started","Not Started","unlocked","Unlocked"]},
+  {key:"scheduled",     label:"Scheduled",     emoji:"", statuses:["scheduled","Scheduled"]},
+  {key:"in_progress",   label:"In Progress",   emoji:"", statuses:["in_progress","In Progress"]},
+  {key:"paused",        label:"Paused",         emoji:"⏸", statuses:["paused","Paused"]},
+  {key:"posted",        label:"Posted",         emoji:"", statuses:["posted","Posted","approved","Done","done"]},
+  {key:"final",         label:"Final",          emoji:"", statuses:["final","Final"]},
 ];
 const SOCIAL_STATUS_MAP = {
   need_to_start:"need_to_start",
@@ -1285,7 +1285,7 @@ function buildCard(t, today){
   const allNames = assignees.join(', ');
 
   const isOverdue = t.due_date && t.due_date < today && t.status !== "approved";
-  const dueLabel = t.due_date ? (isOverdue ? "🔴 "+t.due_date : "📅 "+t.due_date) : "";
+  const dueLabel = t.due_date ? (isOverdue ? " "+t.due_date : " "+t.due_date) : "";
   const pct = t.progress || 0;
   const taskId = t.id || t.notion_id || "";
   const notionId = t.notionId || t.notion_id || "";
@@ -1333,7 +1333,7 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
         signal:AbortSignal.timeout(10000)
       });
       const d = await r.json();
-      if(d.success){toast("✅ Status updated in Notion!");await load();}
+      if(d.success){toast(" Status updated in Notion!");await load();}
       else toast(d.error||"Update failed","err");
     }catch(e){toast("Error: "+e.message,"err");}
   } else if(taskId){
@@ -1344,7 +1344,7 @@ async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assig
         body:JSON.stringify({status:newStatus})
       });
       const d = await r.json();
-      if(d.success){toast("✅ Status updated!");await load();}
+      if(d.success){toast(" Status updated!");await load();}
       else toast(d.error||"Update failed","err");
     }catch(e){toast("Error: "+e.message,"err");}
   }
@@ -1495,7 +1495,7 @@ async function parseMeetingNotes() {
     const d = await r.json();
     
     if (d.success) {
-      toast(`✅ Created ${d.tasks.length} tasks!`);
+      toast(` Created ${d.tasks.length} tasks!`);
       out.innerHTML = `<span style="color:var(--grn)">Successfully extracted and created ${d.tasks.length} tasks!</span>`;
       setTimeout(() => {
         closeMeetingNotesModal();
@@ -1512,7 +1512,7 @@ async function parseMeetingNotes() {
   }
   
   btn.disabled = false;
-  btn.textContent = '✨ Extract Tasks';
+  btn.textContent = ' Extract Tasks';
 }
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
 let calDate = new Date();
@@ -1702,7 +1702,7 @@ window.load = async function() {
 <div id="meeting-notes-modal" class="modal-ov">
   <div class="modal" style="max-width:550px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h3 style="margin:0;font-family:'Syne',sans-serif;color:#c4b5fd">📝 Parse Meeting Notes</h3>
+      <h3 style="margin:0;font-family:'Syne',sans-serif;color:#c4b5fd"> Parse Meeting Notes</h3>
       <button onclick="closeMeetingNotesModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
     </div>
     <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Paste raw meeting transcripts or rough notes. The AI will automatically extract action items, assign them to team members, and add them to the board.</p>
@@ -1716,7 +1716,7 @@ window.load = async function() {
     <div id="meeting-notes-output" style="display:none;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:12px;font-size:.85rem;margin-bottom:14px;color:var(--muted)"></div>
     
     <div style="display:flex;justify-content:flex-end">
-      <button id="meeting-notes-btn" onclick="parseMeetingNotes()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">✨ Extract Tasks</button>
+      <button id="meeting-notes-btn" onclick="parseMeetingNotes()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer"> Extract Tasks</button>
     </div>
   </div>
 </div>

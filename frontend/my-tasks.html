@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>My Tasks | Claude Office Assistant</title>
+  <title>My Tasks | Agency Portal Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script src="auth.js"></script>
   <style>
@@ -176,17 +176,17 @@
 <body>
 <div class="wrap">
   <div class="hdr">
-    <h1>✅ My <span>Tasks</span></h1>
+    <h1> My <span>Tasks</span></h1>
     <p id="greeting">Loading...</p>
     <div class="nav">
-      <a href="index.html" class="nl">⌨️ Chat</a>
-      <a href="projects.html" class="nl">📋 Board</a>
-      <a href="dashboard.html" class="nl">📊 Dashboard</a>
+      <a href="index.html" class="nl">⌨ Chat</a>
+      <a href="projects.html" class="nl"> Board</a>
+      <a href="dashboard.html" class="nl"> Dashboard</a>
     </div>
   </div>
 
   <div class="alert-banner" id="alert-banner">
-    <div class="al-title">⚠️ Your delays are blocking teammates</div>
+    <div class="al-title">⚠ Your delays are blocking teammates</div>
     <div id="alert-items"></div>
   </div>
   <div class="view-toggles" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -195,10 +195,10 @@
       <button class="kgroup-btn" id="btn-view-client" onclick="setViewMode('client')">By Client</button>
       <button class="kgroup-btn" id="btn-view-date" onclick="setViewMode('date')">By Date</button>
       <button class="kgroup-btn" id="btn-view-calendar" onclick="setViewMode('calendar')">Calendar</button>
-      <button class="kgroup-btn" id="btn-priority" onclick="showPriorityModal()" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border-color:rgba(124,58,237,.4);color:#c4b5fd">🎯 Priority</button>
+      <button class="kgroup-btn" id="btn-priority" onclick="showPriorityModal()" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border-color:rgba(124,58,237,.4);color:#c4b5fd"> Priority</button>
     </div>
     <div style="flex:1; min-width:260px; max-width:400px; display:flex; gap:6px;">
-      <input type="text" id="task-search-input" placeholder="🔍 Search tasks..." oninput="renderTasks()" style="flex:1; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
+      <input type="text" id="task-search-input" placeholder=" Search tasks..." oninput="renderTasks()" style="flex:1; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
       <input type="text" id="quick-task-input" placeholder="What needs to be done?" onkeydown="if(event.key==='Enter')quickCreateTask()" style="flex:1; background:var(--s2); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />
       <button class="btn btn-acc" style="padding:8px 16px; white-space:nowrap;" onclick="quickCreateTask()">Add</button>
     </div>
@@ -207,10 +207,10 @@
   <div id="dashboard-widgets" class="dashboard-widgets"></div>
 
   <!-- AI Coach Floating Widget -->
-  <button id="ai-coach-btn" onclick="toggleCoach()" title="Ask your AI Coach">🧠</button>
+  <button id="ai-coach-btn" onclick="toggleCoach()" title="Ask your AI Coach"></button>
   <div id="ai-coach-panel">
     <div class="coach-header">
-      <h4>🧠 AI Task Coach</h4>
+      <h4> AI Task Coach</h4>
       <button class="coach-close" onclick="toggleCoach()">✕</button>
     </div>
     <div class="coach-messages" id="coach-messages">
@@ -230,7 +230,7 @@
 <div id="priority-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;align-items:center;justify-content:center">
   <div style="background:#131318;border:1px solid rgba(124,58,237,.4);border-radius:16px;padding:28px;width:90%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.8)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h3 style="font-family:'Syne',sans-serif;font-size:1.1rem;color:#c4b5fd">🎯 AI Priority Advisor</h3>
+      <h3 style="font-family:'Syne',sans-serif;font-size:1.1rem;color:#c4b5fd"> AI Priority Advisor</h3>
       <button onclick="document.getElementById('priority-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
     </div>
     <div id="priority-output" style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:16px;font-size:.875rem;line-height:1.7;min-height:80px;color:var(--txt);white-space:pre-wrap">⏳ Analyzing your tasks...</div>
@@ -241,15 +241,15 @@
 <div id="client-update-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;align-items:center;justify-content:center">
   <div style="background:#131318;border:1px solid rgba(245,166,35,.3);border-radius:16px;padding:28px;width:90%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.8)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h3 style="font-family:'Syne',sans-serif;font-size:1.1rem">📧 Draft Client Update</h3>
+      <h3 style="font-family:'Syne',sans-serif;font-size:1.1rem"> Draft Client Update</h3>
       <button onclick="document.getElementById('client-update-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button id="cu-email-btn" onclick="setCuChannel('email')" style="flex:1;padding:7px;border-radius:6px;border:1px solid var(--acc);background:rgba(245,166,35,.15);color:var(--acc);font-size:.82rem;font-weight:600;cursor:pointer">📧 Email</button>
-      <button id="cu-wa-btn" onclick="setCuChannel('whatsapp')" style="flex:1;padding:7px;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--muted);font-size:.82rem;font-weight:600;cursor:pointer">💬 WhatsApp</button>
+      <button id="cu-email-btn" onclick="setCuChannel('email')" style="flex:1;padding:7px;border-radius:6px;border:1px solid var(--acc);background:rgba(245,166,35,.15);color:var(--acc);font-size:.82rem;font-weight:600;cursor:pointer"> Email</button>
+      <button id="cu-wa-btn" onclick="setCuChannel('whatsapp')" style="flex:1;padding:7px;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--muted);font-size:.82rem;font-weight:600;cursor:pointer"> WhatsApp</button>
     </div>
     <div id="client-update-output" style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:14px;font-size:.875rem;line-height:1.7;min-height:80px;color:var(--txt);white-space:pre-wrap">⏳ Generating draft...</div>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('client-update-output').textContent).then(()=>toast('Copied!'))" style="margin-top:12px;width:100%;background:var(--s2);border:1px solid var(--bdr);color:var(--txt);padding:8px;border-radius:6px;font-size:.83rem;cursor:pointer">📋 Copy to Clipboard</button>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('client-update-output').textContent).then(()=>toast('Copied!'))" style="margin-top:12px;width:100%;background:var(--s2);border:1px solid var(--bdr);color:var(--txt);padding:8px;border-radius:6px;font-size:.83rem;cursor:pointer"> Copy to Clipboard</button>
   </div>
 </div>
 
@@ -259,7 +259,7 @@
 <script src="shared-config.js"></script>
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
-const user = JSON.parse(localStorage.getItem("claude_office_user")||"{}");
+const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
 const UID = user.user_id || user.id;
 if (!UID) { window.location.href = "login.html"; }
 
@@ -277,7 +277,7 @@ function normStatus(s){
   return map[s.toLowerCase()]||lower;
 }
 
-function spLabel(s){return{not_started:"Not Started",in_progress:"In Progress 🔄",submitted:"⏳ In Review",approved:"✅ Approved"}[s]||s}
+function spLabel(s){return{not_started:"Not Started",in_progress:"In Progress ",submitted:"⏳ In Review",approved:" Approved"}[s]||s}
 function progressPct(s){return{not_started:0,in_progress:40,submitted:75,approved:100}[s]??0}
 
 let useNotion = false;
@@ -313,14 +313,14 @@ async function load(){
   } catch(e){}
 
   if(!useNotion){
-    wrap.innerHTML='<div class="empty">⚙️ Notion is not configured. Add NOTION_TOKEN and DB IDs to Railway env vars.</div>';
+    wrap.innerHTML='<div class="empty"> Notion is not configured. Add NOTION_TOKEN and DB IDs to Railway env vars.</div>';
     return;
   }
 
   // Fetch tasks assigned to this user
   const assignedName = USER_NAME || "";
   if(!assignedName){
-    wrap.innerHTML='<div class="empty">⚠️ Could not determine your name. Please log in again.</div>';
+    wrap.innerHTML='<div class="empty">⚠ Could not determine your name. Please log in again.</div>';
     return;
   }
 
@@ -329,7 +329,7 @@ async function load(){
     const d = await r.json();
     window.allTasks = (d.tasks||[]).map(t=>({...t, status: normStatus(t.status)}));
   } catch(e){
-    wrap.innerHTML=`<div class="empty">⚠️ Could not load tasks: ${e.message}</div>`;
+    wrap.innerHTML=`<div class="empty">⚠ Could not load tasks: ${e.message}</div>`;
     return;
   }
 
@@ -352,7 +352,7 @@ function renderTasks() {
   renderDashboardWidgets(filteredTasks);
 
   if(!filteredTasks.length){
-    wrap.innerHTML='<div class="empty">🎉 No tasks found matching your search.</div>';
+    wrap.innerHTML='<div class="empty"> No tasks found matching your search.</div>';
     return;
   }
 
@@ -364,10 +364,10 @@ function renderTasks() {
     const review  = filteredTasks.filter(t=>t.status==="submitted");
     const done    = filteredTasks.filter(t=>t.status==="approved");
 
-    if(active.length)  html+=renderSection('sec-active', `🔥 Active — ${active.length} task${active.length>1?"s":""}`, active, today);
-    if(pending.length) html+=renderSection('sec-pending', `📋 Up Next — ${pending.length}`, pending, today);
+    if(active.length)  html+=renderSection('sec-active', ` Active — ${active.length} task${active.length>1?"s":""}`, active, today);
+    if(pending.length) html+=renderSection('sec-pending', ` Up Next — ${pending.length}`, pending, today);
     if(review.length)  html+=renderSection('sec-review', `⏳ In Review — ${review.length}`, review, today);
-    if(done.length)    html+=renderSection('sec-done', `✅ Done — ${done.length}`, done, today);
+    if(done.length)    html+=renderSection('sec-done', ` Done — ${done.length}`, done, today);
     
   } else if (currentViewMode === 'client') {
     const byClient = {};
@@ -377,7 +377,7 @@ function renderTasks() {
        byClient[c].push(t);
     });
     Object.keys(byClient).sort().forEach((c, i) => {
-       html += renderSection(`sec-client-${i}`, `📁 ${c} — ${byClient[c].length} task${byClient[c].length>1?"s":""}`, byClient[c], today);
+       html += renderSection(`sec-client-${i}`, ` ${c} — ${byClient[c].length} task${byClient[c].length>1?"s":""}`, byClient[c], today);
     });
     
   } else if (currentViewMode === 'date') {
@@ -391,9 +391,9 @@ function renderTasks() {
     // Sort upcoming chronologically
     upcoming.sort((a,b) => a.due_date.localeCompare(b.due_date));
     
-    if(overdue.length)    html+=renderSection('sec-overdue', `<span style="color:var(--red)">🔴 Overdue — ${overdue.length}</span>`, overdue, today);
-    if(todayTasks.length) html+=renderSection('sec-today', `<span style="color:var(--acc)">⚡ Due Today — ${todayTasks.length}</span>`, todayTasks, today);
-    if(upcoming.length)   html+=renderSection('sec-upcoming', `📅 Upcoming — ${upcoming.length}`, upcoming, today);
+    if(overdue.length)    html+=renderSection('sec-overdue', `<span style="color:var(--red)"> Overdue — ${overdue.length}</span>`, overdue, today);
+    if(todayTasks.length) html+=renderSection('sec-today', `<span style="color:var(--acc)"> Due Today — ${todayTasks.length}</span>`, todayTasks, today);
+    if(upcoming.length)   html+=renderSection('sec-upcoming', ` Upcoming — ${upcoming.length}`, upcoming, today);
     if(nodate.length)     html+=renderSection('sec-nodate', `⚪ No Due Date — ${nodate.length}`, nodate, today);
     
   } else if (currentViewMode === 'calendar') {
@@ -501,7 +501,7 @@ function attachSubmitHandlers() {
         const d = await r.json();
         if(d.success){
           confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-          toast("✅ Submitted for review — 75% progress");
+          toast(" Submitted for review — 75% progress");
           load();
         }
         else{toast(d.error||"Error","err");btn.disabled=false;btn.textContent="Submit Work →";}
@@ -549,8 +549,8 @@ function renderTask(t, today){
             <span>${st.text}</span>
           </div>
           <div style="display:flex; gap:6px;">
-            <button onclick="editMySubtask('${t.notion_id}', ${idx}, '${st.text.replace(/'/g, "\\'")}')" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem;" title="Edit Sub-task">✏️</button>
-            <button onclick="removeMySubtask('${t.notion_id}', ${idx})" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem; color:var(--red);" title="Remove Sub-task">🗑️</button>
+            <button onclick="editMySubtask('${t.notion_id}', ${idx}, '${st.text.replace(/'/g, "\\'")}')" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem;" title="Edit Sub-task">✏</button>
+            <button onclick="removeMySubtask('${t.notion_id}', ${idx})" style="background:transparent; border:none; cursor:pointer; font-size:0.8rem; color:var(--red);" title="Remove Sub-task"></button>
           </div>
         </div>
       `;
@@ -558,7 +558,7 @@ function renderTask(t, today){
     subtasksHtml += `
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="add-subtask-btn" style="flex:1" onclick="addMySubtask('${t.notion_id}')">+ Add Sub-task</button>
-        <button class="ai-breakdown-btn" style="width:auto;padding:7px 14px;" id="ai-btn-${t.notion_id}" onclick="aiBreakdownTask('${t.notion_id}','${safeTitleForAttr}','${safeClientForAttr}')">🧠 AI Breakdown</button>
+        <button class="ai-breakdown-btn" style="width:auto;padding:7px 14px;" id="ai-btn-${t.notion_id}" onclick="aiBreakdownTask('${t.notion_id}','${safeTitleForAttr}','${safeClientForAttr}')"> AI Breakdown</button>
       </div>
     </div>`;
     subtasksHtml = subtasksHtml; // close container added in loop body
@@ -572,7 +572,7 @@ function renderTask(t, today){
     // Draft Client Update button
     const safeClient2 = (t.client_name||t.client||'').replace(/'/g,"&apos;");
     const safeNote2 = (t.submission_note||'').replace(/'/g,"&apos;").replace(/`/g,'&#96;').substring(0,200);
-    body+=`<button onclick="openClientUpdateModal('${t.notion_id}','${safeTitleForAttr}','${safeClient2}','${safeNote2}')" class="ai-breakdown-btn" style="margin-top:10px;width:auto;padding:7px 16px">📧 Draft Client Update</button>`;
+    body+=`<button onclick="openClientUpdateModal('${t.notion_id}','${safeTitleForAttr}','${safeClient2}','${safeNote2}')" class="ai-breakdown-btn" style="margin-top:10px;width:auto;padding:7px 16px"> Draft Client Update</button>`;
   }
   // Submission note (if any)
   if(t.submission_note && t.status==="submitted") body+=`<div class="rej-box" style="border-color:rgba(245,166,35,.3)"><div class="rej-title" style="color:var(--acc)">Your Note</div><p>${t.submission_note}</p></div>`;
@@ -598,14 +598,14 @@ function renderTask(t, today){
     body+=`<form class="submit-form sf" data-nid="${t.notion_id}" data-title="${t.title||''}" data-client="${t.client_name||t.client||''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <label style="margin-bottom:0">Progress Update</label>
-        <button type="button" class="ai-breakdown-btn" style="width:auto;padding:5px 12px;font-size:0.75rem;" onclick="aiDraftProofOfWork(this.closest('form'),'${safeTitleForAttr}','${safeClientForAttr}')">🧠 AI Draft</button>
+        <button type="button" class="ai-breakdown-btn" style="width:auto;padding:5px 12px;font-size:0.75rem;" onclick="aiDraftProofOfWork(this.closest('form'),'${safeTitleForAttr}','${safeClientForAttr}')"> AI Draft</button>
       </div>
       <textarea id="ta-${t.notion_id}" placeholder="What did you do on this task?" required></textarea>
       <label>Proof of Work — link or file URL <span style="color:var(--muted)">(optional)</span></label>
       <input type="url" class="file-input" placeholder="https://drive.google.com/... or figma.com/..." />
       <div class="form-row">
         <button type="submit" class="btn btn-acc">Submit Work</button>
-        <button type="button" class="btn btn-quick" onclick="quickDone('${t.notion_id}')">⚡ Quick Mark Done</button>
+        <button type="button" class="btn btn-quick" onclick="quickDone('${t.notion_id}')"> Quick Mark Done</button>
       </div>
     </form>`;
   }
@@ -628,7 +628,7 @@ function renderTask(t, today){
       <div>
         <div class="tc-title" style="display:flex; align-items:center; gap:8px">
           ${t.title||"Untitled"}
-          <button onclick="editTask('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || ""}', '${t.due_date || ""}')" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.8rem;" title="Edit Task">✏️</button>
+          <button onclick="editTask('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || ""}', '${t.due_date || ""}')" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.8rem;" title="Edit Task">✏</button>
         </div>
         <div class="tc-meta">${tagHtml}</div>
       </div>
@@ -649,7 +649,7 @@ async function startTask(nid){
       signal:AbortSignal.timeout(10000),
     });
     const d = await r.json();
-    if(d.success){toast("Task started! 🚀");load();}
+    if(d.success){toast("Task started! ");load();}
     else toast(d.error||"Error","err");
   }catch(err){toast("Error: "+err.message,"err");}
 }
@@ -693,7 +693,7 @@ async function editTask(nid, currentTitle, currentDate) {
     });
     const d = await r.json();
     if (d.success) {
-      toast("✅ Task updated successfully!");
+      toast(" Task updated successfully!");
       load();
     } else {
       toast(d.error || "Failed to update task", "err");
@@ -712,7 +712,7 @@ async function pushToStandup(notion_id, title) {
     });
     const d = await r.json();
     if (d.success) {
-      toast("✅ Added to today's Standup list!");
+      toast(" Added to today's Standup list!");
     } else {
       toast(d.error || "Error adding to standup", "err");
     }
@@ -816,7 +816,7 @@ function renderDashboardWidgets(tasks) {
     html += `
       <div class="dash-card smart-suggestion">
         <div class="dash-info" style="flex:1">
-          <h3>⚠️ Bulk Defer Overdue Tasks</h3>
+          <h3>⚠ Bulk Defer Overdue Tasks</h3>
           <p>You have ${overdueCount} overdue tasks causing clutter. Start with a clean slate tomorrow?</p>
         </div>
         <button class="btn btn-quick" onclick="bulkDefer('${overdueIds.join(',')}')">Defer All</button>
@@ -837,7 +837,7 @@ function renderDashboardWidgets(tasks) {
       html += `
         <div class="dash-card smart-suggestion">
           <div class="dash-info" style="flex:1">
-            <h3>💡 Smart Sprint: ${sprintClient}</h3>
+            <h3> Smart Sprint: ${sprintClient}</h3>
             <p>You have ${sprintIds.length} pending tasks for this client. Group them into a sprint and start now?</p>
           </div>
           <button class="btn btn-acc" onclick="bulkStart('${sprintIds.join(',')}')">Start Sprint</button>
@@ -980,10 +980,10 @@ async function quickCreateTask() {
   inp.disabled = true;
   
   const placeholder = inp.placeholder;
-  inp.placeholder = "🧠 Claude is parsing...";
+  inp.placeholder = " System is parsing...";
   
   try {
-    // Feature 3: NL Task Parsing — send to Claude first
+    // Feature 3: NL Task Parsing — send to System first
     let title = rawText, client_name = "", due_date = new Date().toISOString().slice(0,10);
     
     try {
@@ -1123,7 +1123,7 @@ load();
 // Feature 1: AI Auto-Breakdown for Sub-Tasks
 async function aiBreakdownTask(nid, taskTitle, clientName) {
   const btn = document.getElementById(`ai-btn-${nid}`);
-  if(btn) { btn.disabled = true; btn.textContent = '🧠 Thinking...'; }
+  if(btn) { btn.disabled = true; btn.textContent = ' Thinking...'; }
   
   try {
     const r = await fetch(`${API}/api/ai/breakdown`, {
@@ -1134,7 +1134,7 @@ async function aiBreakdownTask(nid, taskTitle, clientName) {
     const d = await r.json();
     if(d.subtasks && d.subtasks.length) {
       const subtaskListStr = d.subtasks.map(t => "• " + t).join("\n");
-      if(confirm(`🧠 AI generated these sub-tasks:\n\n${subtaskListStr}\n\nDo you want to add them to your task?`)) {
+      if(confirm(` AI generated these sub-tasks:\n\n${subtaskListStr}\n\nDo you want to add them to your task?`)) {
         let existing = [];
         try { existing = JSON.parse(localStorage.getItem(`my_subtasks_${nid}`) || "[]"); } catch(e){}
         
@@ -1142,7 +1142,7 @@ async function aiBreakdownTask(nid, taskTitle, clientName) {
         const merged = [...existing, ...newSubtasks];
         localStorage.setItem(`my_subtasks_${nid}`, JSON.stringify(merged));
         renderTasks();
-        toast(`🧠 Added ${d.subtasks.length} AI-generated sub-tasks!`);
+        toast(` Added ${d.subtasks.length} AI-generated sub-tasks!`);
       } else {
         toast("AI breakdown discarded.");
       }
@@ -1152,7 +1152,7 @@ async function aiBreakdownTask(nid, taskTitle, clientName) {
   } catch(e) {
     toast('AI breakdown failed: ' + e.message, 'err');
   } finally {
-    if(btn) { btn.disabled = false; btn.textContent = '🧠 AI Breakdown'; }
+    if(btn) { btn.disabled = false; btn.textContent = ' AI Breakdown'; }
   }
 }
 
@@ -1163,7 +1163,7 @@ async function aiDraftProofOfWork(form, taskTitle, clientName) {
   if(!ta) return;
   
   const origPlaceholder = ta.placeholder;
-  ta.placeholder = '🧠 Claude is drafting your submission note...';
+  ta.placeholder = ' System is drafting your submission note...';
   ta.disabled = true;
 
   let subtasks = [];
@@ -1178,7 +1178,7 @@ async function aiDraftProofOfWork(form, taskTitle, clientName) {
     const d = await r.json();
     if(d.draft) {
       ta.value = d.draft;
-      toast('🧠 AI drafted your submission note. Review and edit as needed!');
+      toast(' AI drafted your submission note. Review and edit as needed!');
     } else {
       toast(d.error || 'Could not draft note', 'err');
     }
@@ -1214,7 +1214,7 @@ async function sendCoachMessage() {
 
   // Thinking indicator
   const thinkId = 'think-' + Date.now();
-  messages.innerHTML += `<div class="coach-msg ai thinking" id="${thinkId}">Claude is thinking...</div>`;
+  messages.innerHTML += `<div class="coach-msg ai thinking" id="${thinkId}">System is thinking...</div>`;
   messages.scrollTop = messages.scrollHeight;
 
   try {

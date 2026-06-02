@@ -1,5 +1,5 @@
 """
-Budget Tracker — Tracks monthly Claude API spend, enforces $20/month cap.
+Budget Tracker — Tracks monthly System API spend, enforces $20/month cap.
 Usage data is stored in SQLite via db.py
 """
 

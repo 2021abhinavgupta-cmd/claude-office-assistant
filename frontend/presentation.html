@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Presentation Creator | Claude Office Assistant</title>
-  <meta name="description" content="AI-powered presentation generator — turn any topic into structured, professional slide decks instantly using Claude API." />
+  <title>Presentation Creator | Agency Portal Assistant</title>
+  <meta name="description" content="AI-powered presentation generator — turn any topic into structured, professional slide decks instantly using System API." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -194,13 +194,13 @@
 
   <header class="page-header">
     <div>
-      <h1>📊 Presentation <span>Creator</span></h1>
-      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Turn any topic into a structured slide deck — powered by Claude Sonnet</p>
+      <h1> Presentation <span>Creator</span></h1>
+      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Turn any topic into a structured slide deck — powered by System Sonnet</p>
     </div>
     <nav class="header-nav">
       <a href="index.html" class="nav-link">← Chat</a>
-      <a href="dashboard.html" class="nav-link">📊 Dashboard</a>
-      <a href="html-generator.html" class="nav-link">🎨 HTML Gen</a>
+      <a href="dashboard.html" class="nav-link"> Dashboard</a>
+      <a href="html-generator.html" class="nav-link"> HTML Gen</a>
     </nav>
   </header>
 
@@ -208,7 +208,7 @@
 
     <!-- Form -->
     <aside class="form-panel">
-      <h2>⚙️ Slide Settings</h2>
+      <h2> Slide Settings</h2>
 
       <div class="form-group">
         <label>Topic / Title *</label>
@@ -252,22 +252,22 @@
       </button>
 
       <p style="margin-top:10px;font-size:.7rem;color:var(--muted);text-align:center">
-        Uses Claude Sonnet · ~$0.003–0.005 per deck
+        Uses System Sonnet · ~$0.003–0.005 per deck
       </p>
     </aside>
 
     <!-- Slides Output -->
     <div class="slides-panel">
       <div class="slides-header">
-        <h2 id="deck-title">📋 Your Slides</h2>
+        <h2 id="deck-title"> Your Slides</h2>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="view-toggle">
-            <button class="view-btn active" id="view-deck" onclick="switchView('deck')">🖼 Deck</button>
-            <button class="view-btn" id="view-md" onclick="switchView('md')">📝 Markdown</button>
+            <button class="view-btn active" id="view-deck" onclick="switchView('deck')"> Deck</button>
+            <button class="view-btn" id="view-md" onclick="switchView('md')"> Markdown</button>
           </div>
           <div class="slides-actions">
-            <button class="action-btn" id="copy-md-btn" onclick="copyMarkdown()" style="display:none">📋 Copy MD</button>
-            <button class="action-btn" id="download-md-btn" onclick="downloadMarkdown()" style="display:none">⬇️ Download</button>
+            <button class="action-btn" id="copy-md-btn" onclick="copyMarkdown()" style="display:none"> Copy MD</button>
+            <button class="action-btn" id="download-md-btn" onclick="downloadMarkdown()" style="display:none">⬇ Download</button>
           </div>
         </div>
       </div>
@@ -282,7 +282,7 @@
       <!-- Deck view -->
       <div class="slide-display" id="slide-display">
         <div class="empty-slides" id="empty-slides">
-          <div class="icon">📊</div>
+          <div class="icon"></div>
           <p>Your presentation will appear here</p>
           <p style="font-size:.75rem;opacity:.6">Enter a topic on the left and click Generate</p>
         </div>
@@ -372,7 +372,7 @@ function renderDeck(data) {
       <ul class="slide-bullets">
         ${slide.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join("")}
       </ul>
-      ${slide.notes ? `<div class="slide-notes"><strong>🎤 Speaker:</strong> ${escapeHtml(slide.notes)}</div>` : ""}`;
+      ${slide.notes ? `<div class="slide-notes"><strong> Speaker:</strong> ${escapeHtml(slide.notes)}</div>` : ""}`;
     display.appendChild(card);
   });
 
@@ -388,7 +388,7 @@ function renderDeck(data) {
   document.getElementById("download-md-btn").style.display = "";
 
   // Deck title
-  document.getElementById("deck-title").textContent = `📋 ${slides.length} Slides Generated`;
+  document.getElementById("deck-title").textContent = ` ${slides.length} Slides Generated`;
 
   // Usage
   const strip = document.getElementById("usage-strip");
@@ -433,8 +433,8 @@ document.addEventListener("keydown", e => {
 function copyMarkdown() {
   navigator.clipboard.writeText(rawMarkdown).then(() => {
     const btn = document.getElementById("copy-md-btn");
-    btn.textContent = "✅ Copied!";
-    setTimeout(() => btn.textContent = "📋 Copy MD", 2000);
+    btn.textContent = " Copied!";
+    setTimeout(() => btn.textContent = " Copy MD", 2000);
   });
 }
 

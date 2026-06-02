@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// ⚡ PROMPT OPTIMIZER — Split Preview Panel (Option B)
+//  PROMPT OPTIMIZER — Split Preview Panel (Option B)
 // Loaded after app.js via <script src="optimizer.js">
 // ══════════════════════════════════════════════════════════════════════════════
 (function initPromptOptimizer() {
@@ -55,7 +55,7 @@
     if (typeof showToast === "function") showToast(msg, type);
   }
 
-  // ── ⚡ Click → call API ──────────────────────────────────────────────────
+  // ──  Click → call API ──────────────────────────────────────────────────
   optimizeBtn.addEventListener("click", async () => {
     const prompt = inputEl?.value?.trim();
     if (!prompt || prompt.length < 5) {
@@ -85,7 +85,7 @@
 
       if (!res.ok || data.error) {
         closePanel();
-        toast("❌ " + (data.error || "Optimization failed"), "error");
+        toast(" " + (data.error || "Optimization failed"), "error");
         return;
       }
 
@@ -94,13 +94,13 @@
       showDiffHint(data.original, data.optimized);
 
       if (data.cost_usd != null) {
-        optCostDisplay.textContent = "⚡ $" + data.cost_usd.toFixed(6);
+        optCostDisplay.textContent = " $" + data.cost_usd.toFixed(6);
         optCostDisplay.classList.add("visible");
       }
 
     } catch (_) {
       closePanel();
-      toast("⚠️ Could not connect to server", "error");
+      toast("⚠ Could not connect to server", "error");
     } finally {
       optLoadingEl.classList.add("hidden");
       optUseBtn.disabled = false;
@@ -129,7 +129,7 @@
     if (e.key === "Escape" && !optPanel.classList.contains("hidden")) closePanel();
   });
 
-  // Keep ⚡ disabled while input is empty
+  // Keep  disabled while input is empty
   if (inputEl) {
     inputEl.addEventListener("input", () => {
       if (!optimizeBtn.classList.contains("loading"))

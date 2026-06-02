@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Client Portal | Claude Office Assistant</title>
+  <title>Client Portal | Agency Portal Assistant</title>
   <meta name="description" content="Client delivery portal — track project tasks and delivery status for all active clients."/>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script src="auth.js"></script>
@@ -132,13 +132,13 @@
   <!-- Header -->
   <header class="hdr">
     <div class="hdr-left">
-      <h1>🔒 Client <span>Portal</span></h1>
+      <h1> Client <span>Portal</span></h1>
       <p>Live delivery status for all active client projects</p>
     </div>
     <nav class="nav">
-      <a href="projects.html" class="nl">📋 Project Board</a>
-      <a href="standup.html" class="nl">☀️ Standup</a>
-      <a href="index.html" class="nl">⌨️ Chat</a>
+      <a href="projects.html" class="nl"> Project Board</a>
+      <a href="standup.html" class="nl">☀ Standup</a>
+      <a href="index.html" class="nl">⌨ Chat</a>
       <a href="client-onboard.html" class="nl" id="onboard-btn" style="display:none">➕ New Client</a>
     </nav>
   </header>
@@ -174,11 +174,11 @@
 
   <!-- Filter bar -->
   <div class="filter-bar">
-    <input type="text" class="search-box" id="search-input" placeholder="🔍 Search clients or tasks…" oninput="applyFilters()"/>
+    <input type="text" class="search-box" id="search-input" placeholder=" Search clients or tasks…" oninput="applyFilters()"/>
     <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
-    <button class="filter-btn" data-filter="active" onclick="setFilter('active',this)">🟢 Active</button>
-    <button class="filter-btn" data-filter="risk" onclick="setFilter('risk',this)">🔴 At Risk</button>
-    <button class="filter-btn" data-filter="done" onclick="setFilter('done',this)">✅ Complete</button>
+    <button class="filter-btn" data-filter="active" onclick="setFilter('active',this)"> Active</button>
+    <button class="filter-btn" data-filter="risk" onclick="setFilter('risk',this)"> At Risk</button>
+    <button class="filter-btn" data-filter="done" onclick="setFilter('done',this)"> Complete</button>
     <button class="btn btn-ghost" onclick="loadPortal()" title="Refresh">↻ Refresh</button>
   </div>
 
@@ -197,7 +197,7 @@ const API = location.hostname === 'localhost' || location.hostname === '127.0.0.
   ? 'http://localhost:5000'
   : location.origin;
 
-const user = JSON.parse(localStorage.getItem('claude_office_user') || '{}');
+const user = JSON.parse(localStorage.getItem('agency_portal_user') || '{}');
 const UID = user.user_id || '';
 const IS_ADMIN = user.is_admin === true;
 
@@ -257,7 +257,7 @@ function deadlineLabel(deadline) {
   const diff = Math.floor((d - now) / 86400000);
   let cls = '';
   let label = d.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'2-digit' });
-  if (diff < 0) { cls = 'overdue'; label = '⚠️ Overdue · ' + label; }
+  if (diff < 0) { cls = 'overdue'; label = '⚠ Overdue · ' + label; }
   else if (diff <= 7) { cls = 'soon'; label = '⏳ ' + diff + 'd left · ' + label; }
   return `<span class="deadline-badge ${cls}">${label}</span>`;
 }
@@ -294,7 +294,7 @@ function renderClients(clients) {
   const grid = document.getElementById('clients-grid');
   if (!clients.length) {
     grid.innerHTML = `<div class="empty-state">
-      <div class="ei">📭</div>
+      <div class="ei"></div>
       <p>No clients match your current filter.</p>
       <button class="btn btn-ghost" onclick="setFilter('all', document.querySelector('[data-filter=all]'))">Show All</button>
     </div>`;
@@ -315,13 +315,13 @@ function renderClients(clients) {
     const taskRows = sorted.map(t => {
       const isDone = t.status === 'done' || t.status === 'approved';
       const blocker = t.rejection_note
-        ? `<div class="blocker-note">🚫 ${t.rejection_note.slice(0, 80)}${t.rejection_note.length > 80 ? '…' : ''}</div>`
+        ? `<div class="blocker-note"> ${t.rejection_note.slice(0, 80)}${t.rejection_note.length > 80 ? '…' : ''}</div>`
         : '';
       return `<div class="task-item">
         <div class="task-status-dot ${dotClass(t.status)}"></div>
         <div class="task-info">
           <div class="task-title${isDone ? ' done-text' : ''}">${t.title || 'Untitled task'}</div>
-          <div class="task-assignee">${t.assigned_to ? '👤 ' + t.assigned_to : '—'}</div>
+          <div class="task-assignee">${t.assigned_to ? ' ' + t.assigned_to : '—'}</div>
           ${blocker}
         </div>
         <span class="task-badge ${badgeClass(t.status)}">${statusLabel(t.status)}</span>
@@ -338,7 +338,7 @@ function renderClients(clients) {
             <div class="client-meta">
               ${tasks.length} task${tasks.length !== 1 ? 's' : ''}
               ${c.contact ? ' · ' + c.contact : ''}
-              ${IS_ADMIN && c.client_username ? `<br><span style="color:var(--acc);font-size:0.75rem;margin-top:4px;display:inline-block">🔐 Login: ${c.client_username} / ${c.client_password}</span>` : ''}
+              ${IS_ADMIN && c.client_username ? `<br><span style="color:var(--acc);font-size:0.75rem;margin-top:4px;display:inline-block"> Login: ${c.client_username} / ${c.client_password}</span>` : ''}
             </div>
           </div>
         </div>
@@ -440,11 +440,11 @@ async function loadPortal() {
 
   } catch (err) {
     grid.innerHTML = `<div class="empty-state">
-      <div class="ei">⚠️</div>
+      <div class="ei">⚠</div>
       <p style="color:var(--red);margin-bottom:8px">Failed to load client data</p>
       <p style="color:var(--muted);font-size:.82rem;margin-bottom:20px">${err.message}</p>
       <button class="btn btn-ghost" onclick="loadPortal()">↻ Try Again</button>
-      <a href="projects.html" class="btn btn-ghost" style="text-decoration:none;margin-left:8px">📋 Project Board</a>
+      <a href="projects.html" class="btn btn-ghost" style="text-decoration:none;margin-left:8px"> Project Board</a>
     </div>`;
   }
 }

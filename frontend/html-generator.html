@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HTML Generator | Claude Office Assistant</title>
+  <title>HTML Generator | Agency Portal Assistant</title>
   <meta name="description" content="AI-powered HTML page generator — describe any webpage and get instant beautiful, production-ready HTML/CSS/JS code with live preview." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -183,13 +183,13 @@
 
   <header class="page-header">
     <div>
-      <h1>🎨 HTML <span>Generator</span></h1>
+      <h1> HTML <span>Generator</span></h1>
       <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Describe any webpage → get complete HTML/CSS/JS instantly</p>
     </div>
     <nav class="header-nav">
       <a href="index.html" class="nav-link">← Chat</a>
-      <a href="dashboard.html" class="nav-link">📊 Dashboard</a>
-      <a href="presentation.html" class="nav-link">📋 Slides</a>
+      <a href="dashboard.html" class="nav-link"> Dashboard</a>
+      <a href="presentation.html" class="nav-link"> Slides</a>
     </nav>
   </header>
 
@@ -197,7 +197,7 @@
 
     <!-- Form Panel -->
     <aside class="form-panel">
-      <h2>⚙️ Generator Settings</h2>
+      <h2> Generator Settings</h2>
 
       <div class="form-group">
         <label>Page Description *</label>
@@ -207,12 +207,12 @@
       <div class="form-group">
         <label>Design Style</label>
         <div class="style-chips" id="style-chips">
-          <button class="style-chip active" data-style="dark mode, glassmorphism">🌑 Dark Glass</button>
-          <button class="style-chip" data-style="light, minimalist, clean">☀️ Light Clean</button>
-          <button class="style-chip" data-style="vibrant, neon, cyberpunk">⚡ Neon/Cyber</button>
-          <button class="style-chip" data-style="corporate, professional, blue">💼 Corporate</button>
-          <button class="style-chip" data-style="playful, colorful, fun">🎨 Playful</button>
-          <button class="style-chip" data-style="brutalist, bold, high contrast">💪 Brutalist</button>
+          <button class="style-chip active" data-style="dark mode, glassmorphism"> Dark Glass</button>
+          <button class="style-chip" data-style="light, minimalist, clean">☀ Light Clean</button>
+          <button class="style-chip" data-style="vibrant, neon, cyberpunk"> Neon/Cyber</button>
+          <button class="style-chip" data-style="corporate, professional, blue"> Corporate</button>
+          <button class="style-chip" data-style="playful, colorful, fun"> Playful</button>
+          <button class="style-chip" data-style="brutalist, bold, high contrast"> Brutalist</button>
         </div>
       </div>
 
@@ -227,7 +227,7 @@
       </button>
 
       <div class="cost-info">
-        <span>🤖 Uses Claude Sonnet</span>
+        <span> Uses System Sonnet</span>
         <span>~$0.002 per gen</span>
       </div>
 
@@ -244,17 +244,17 @@
     <!-- Output Panel -->
     <div class="output-panel">
       <div class="output-tabs">
-        <button class="tab-btn active" id="tab-preview" onclick="switchTab('preview')">👁 Preview</button>
-        <button class="tab-btn" id="tab-code" onclick="switchTab('code')">💻 Code</button>
+        <button class="tab-btn active" id="tab-preview" onclick="switchTab('preview')"> Preview</button>
+        <button class="tab-btn" id="tab-code" onclick="switchTab('code')"> Code</button>
         <div class="output-actions">
-          <button class="action-btn" id="copy-btn" onclick="copyCode()" style="display:none">📋 Copy</button>
-          <button class="action-btn" id="download-btn" onclick="downloadHTML()" style="display:none">⬇️ Download</button>
+          <button class="action-btn" id="copy-btn" onclick="copyCode()" style="display:none"> Copy</button>
+          <button class="action-btn" id="download-btn" onclick="downloadHTML()" style="display:none">⬇ Download</button>
         </div>
       </div>
 
       <div class="tab-content active" id="content-preview">
         <div class="empty-output" id="empty-preview">
-          <div class="icon">🎨</div>
+          <div class="icon"></div>
           <p>Your generated page will appear here</p>
           <p style="font-size:.75rem;opacity:.6">Describe a webpage on the left and click Generate</p>
         </div>
@@ -429,8 +429,8 @@ function copyCode() {
   if (!generatedHTML) return;
   navigator.clipboard.writeText(generatedHTML).then(() => {
     const btn = document.getElementById("copy-btn");
-    btn.textContent = "✅ Copied!";
-    setTimeout(() => btn.textContent = "📋 Copy", 2000);
+    btn.textContent = " Copied!";
+    setTimeout(() => btn.textContent = " Copy", 2000);
   });
 }
 

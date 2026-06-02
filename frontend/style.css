@@ -1,5 +1,5 @@
 /* ============================================================
-   Claude Office — Design System (Claude-like Multi-Chat UI)
+   Agency Portal — Design System (System-like Multi-Chat UI)
    ============================================================ */
 
 :root {
@@ -965,10 +965,10 @@ body {
 .drag-overlay-inner small  { color: var(--text-2); font-size: 0.9rem; }
 
 /* ══════════════════════════════════════════════════════════════
-   ⚡ Prompt Optimizer — Button + Panel
+    Prompt Optimizer — Button + Panel
    ══════════════════════════════════════════════════════════════ */
 
-/* ── ⚡ Optimize button in input bar ─────────────────────────── */
+/* ──  Optimize button in input bar ─────────────────────────── */
 .optimize-btn {
   flex-shrink: 0;
   width: 34px; height: 34px;

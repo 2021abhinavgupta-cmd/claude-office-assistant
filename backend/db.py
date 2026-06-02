@@ -177,7 +177,7 @@ def init_db():
         )""")
 
         # Project Knowledge Base search index (FTS5)
-        # Stores chunked text for fast, Claude-Projects-like retrieval.
+        # Stores chunked text for fast, System-Projects-like retrieval.
         try:
             conn.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5(
                 project_id UNINDEXED,

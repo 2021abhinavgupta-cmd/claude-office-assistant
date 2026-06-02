@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Login | Claude Office Assistant</title>
+  <title>Login | Agency Portal Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <style>
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
@@ -63,8 +63,8 @@
 <body>
 <div class="card">
   <div class="logo">
-    <div class="logo-icon">🤖</div>
-    <div class="logo-text">Claude Office</div>
+    <div class="logo-icon"></div>
+    <div class="logo-text">Agency Portal</div>
   </div>
   <h1>Welcome <span>back</span></h1>
 
@@ -88,27 +88,27 @@
       </div>
       <div class="numpad" id="numpad-container"></div>
       <div class="err-msg" id="err-msg"></div>
-      <div class="loading" id="loading">🔐 Verifying...</div>
+      <div class="loading" id="loading"> Verifying...</div>
       <button class="btn-back" onclick="goBack()">← Choose different person</button>
     </div>
 
     <!-- Step 3: Preferences -->
     <div class="prefs-section" id="step-prefs">
-      <div class="prefs-q">Have you used Claude before? 🤔</div>
+      <div class="prefs-q">Have you used System before? </div>
       <div class="prefs-sub">This helps us personalise your experience.</div>
       <div class="toggle-row">
-        <div class="tog" id="tog-yes" onclick="setClaudeUse(true)">Yes, I use it ✅</div>
-        <div class="tog" id="tog-no"  onclick="setClaudeUse(false)">Not yet 👋</div>
+        <div class="tog" id="tog-yes" onclick="setSystemUse(true)">Yes, I use it </div>
+        <div class="tog" id="tog-no"  onclick="setSystemUse(false)">Not yet </div>
       </div>
-      <div class="prefs-q" style="margin-top:4px">Which tasks do you care about? 🎯</div>
+      <div class="prefs-q" style="margin-top:4px">Which tasks do you care about? </div>
       <div class="prefs-sub">Select all that apply — filters your task board.</div>
       <div class="task-chips">
-        <div class="chip on" data-cat="content"   onclick="toggleChip(this)">✍️ Content</div>
-        <div class="chip on" data-cat="video"     onclick="toggleChip(this)">🎥 Video</div>
-        <div class="chip on" data-cat="design"    onclick="toggleChip(this)">🎨 Design</div>
-        <div class="chip on" data-cat="website"   onclick="toggleChip(this)">💻 Website</div>
-        <div class="chip on" data-cat="accounts"  onclick="toggleChip(this)">📊 Accounts</div>
-        <div class="chip on" data-cat="review"    onclick="toggleChip(this)">🔍 Review</div>
+        <div class="chip on" data-cat="content"   onclick="toggleChip(this)">✍ Content</div>
+        <div class="chip on" data-cat="video"     onclick="toggleChip(this)"> Video</div>
+        <div class="chip on" data-cat="design"    onclick="toggleChip(this)"> Design</div>
+        <div class="chip on" data-cat="website"   onclick="toggleChip(this)"> Website</div>
+        <div class="chip on" data-cat="accounts"  onclick="toggleChip(this)"> Accounts</div>
+        <div class="chip on" data-cat="review"    onclick="toggleChip(this)"> Review</div>
       </div>
       <button class="btn-go" onclick="savePrefsAndGo()">Continue →</button>
     </div>
@@ -213,7 +213,7 @@ async function submitPin(){
   document.getElementById("loading").style.display="none";
   if(d.success){
     // Token is now set via HttpOnly cookie
-    localStorage.setItem("claude_office_user", JSON.stringify({...d.user, user_id: d.user.id}));
+    localStorage.setItem("agency_portal_user", JSON.stringify({...d.user, user_id: d.user.id}));
     await fetch(`${API}/api/attendance/checkin`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
@@ -231,7 +231,7 @@ function redirect(userOrData, showPreferences = false) {
     showPrefs();
   } else {
     // Go directly to dashboard — read is_admin from localStorage or the verify payload
-    const stored = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+    const stored = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
     const isAdmin = stored.is_admin || userOrData.is_admin;
     window.location.href = isAdmin ? "dashboard.html" : "my-tasks.html";
   }
@@ -242,9 +242,9 @@ function showPrefs(){
   document.getElementById("step-prefs").style.display = "block";
 }
 
-let usesClaudeVal = null;
-function setClaudeUse(val){
-  usesClaudeVal = val;
+let usesSystemVal = null;
+function setSystemUse(val){
+  usesSystemVal = val;
   document.getElementById("tog-yes").classList.toggle("on", val);
   document.getElementById("tog-no").classList.toggle("on", !val);
 }
@@ -252,9 +252,9 @@ function toggleChip(el){ el.classList.toggle("on"); }
 
 function savePrefsAndGo(){
   const cats = [...document.querySelectorAll(".chip.on")].map(c => c.dataset.cat);
-  const prefs = { usesClaude: usesClaudeVal, taskCategories: cats, setAt: new Date().toISOString() };
+  const prefs = { usesSystem: usesSystemVal, taskCategories: cats, setAt: new Date().toISOString() };
   localStorage.setItem("claude_prefs", JSON.stringify(prefs));
-  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
   const dest = user.is_admin ? "dashboard.html" : "my-tasks.html";
   window.location.href = dest;
 }

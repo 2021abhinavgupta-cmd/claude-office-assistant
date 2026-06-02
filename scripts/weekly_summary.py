@@ -1,6 +1,6 @@
 """
 Weekly Team Summary Generator
-Run this script every Friday to compile a digest of how Claude is being used by the team.
+Run this script every Friday to compile a digest of how System is being used by the team.
 """
 
 import os
@@ -16,7 +16,7 @@ def get_connection():
     return sqlite3.connect(DB_PATH)
 
 def generate_weekly_digest():
-    print("📊 Generating Weekly Claude Digest...")
+    print(" Generating Weekly System Digest...")
     
     if not DB_PATH.exists():
         print("No database found.")
@@ -66,16 +66,16 @@ def generate_weekly_digest():
     
     # Build Digest
     digest = [
-        "## 📈 Claude Weekly Team Digest",
+        "##  System Weekly Team Digest",
         f"**Date:** {datetime.utcnow().strftime('%Y-%m-%d')}\n",
         f"**Total Prompts Answered:** {total_calls}",
         f"**Total API Cost this Week:** ${total_cost:.4f}\n",
-        "### 🏆 Top 3 Most Used Task Types:",
+        "###  Top 3 Most Used Task Types:",
     ]
     for i, (task, count) in enumerate(top_tasks, 1):
         digest.append(f"{i}. **{task.title()}** ({count} queries)")
         
-    digest.append("\n### 🧑‍💻 Top 3 Most Active Employees:")
+    digest.append("\n### ‍ Top 3 Most Active Employees:")
     for i, (user, count) in enumerate(top_users, 1):
         digest.append(f"{i}. **{user}** ({count} queries)")
         
@@ -86,7 +86,7 @@ def generate_weekly_digest():
     with open(digest_path, "w") as f:
         f.write("\n".join(digest))
         
-    print(f"✅ Digest generated successfully at {digest_path.resolve()}")
+    print(f" Digest generated successfully at {digest_path.resolve()}")
     print("\n" + "\n".join(digest))
     
     conn.close()

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Add Tasks | Claude Office Assistant</title>
+  <title>Add Tasks | Agency Portal Assistant</title>
   <link
     href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap"
     rel="stylesheet" />
@@ -797,7 +797,7 @@
 <body>
   <div class="card" id="main-card">
     <a href="projects.html" class="back">← Back to Project Board</a>
-    <h1>🏢 Add <span>Tasks</span></h1>
+    <h1> Add <span>Tasks</span></h1>
     <p class="sub">Select a client and apply new workflows.</p>
 
     <div class="steps">
@@ -819,32 +819,32 @@
         <label>Which workflows do you want to apply?</label>
         <div class="services-grid">
           <div class="svc-box" id="svc-social" onclick="toggleSvc('social',this)">
-            <input type="checkbox" value="social" /><span class="svc-icon">📱</span>
+            <input type="checkbox" value="social" /><span class="svc-icon"></span>
             <div class="svc-info">
               <div class="svc-name">Social Media</div>
             </div>
           </div>
           <div class="svc-box" id="svc-branding" onclick="toggleSvc('branding',this)">
-            <input type="checkbox" value="branding" /><span class="svc-icon">🎨</span>
+            <input type="checkbox" value="branding" /><span class="svc-icon"></span>
             <div class="svc-info">
               <div class="svc-name">Branding</div>
             </div>
           </div>
           <div class="svc-box" id="svc-website" onclick="toggleSvc('website',this)">
-            <input type="checkbox" value="website" /><span class="svc-icon">💻</span>
+            <input type="checkbox" value="website" /><span class="svc-icon"></span>
             <div class="svc-info">
               <div class="svc-name">Website</div>
             </div>
           </div>
           <div class="svc-box" id="svc-shoot" onclick="toggleSvc('shoot',this)">
-            <input type="checkbox" value="shoot" /><span class="svc-icon">🎬</span>
+            <input type="checkbox" value="shoot" /><span class="svc-icon"></span>
             <div class="svc-info">
               <div class="svc-name">Shoot</div>
             </div>
           </div>
           <div class="svc-box" id="svc-miscellaneous" style="grid-column: 1 / -1;"
             onclick="toggleSvc('miscellaneous',this)">
-            <input type="checkbox" value="miscellaneous" /><span class="svc-icon">📁</span>
+            <input type="checkbox" value="miscellaneous" /><span class="svc-icon"></span>
             <div class="svc-info">
               <div class="svc-name">Miscellaneous</div>
             </div>
@@ -866,7 +866,7 @@
 
       <!-- Social Media: Spreadsheet / Content Calendar -->
       <div id="social-section" style="display:none">
-        <div class="svc-section-header"><span>📱</span> Social Media Content Calendar</div>
+        <div class="svc-section-header"><span></span> Social Media Content Calendar</div>
         <div class="social-summary">
           Plan your content posts below. Each row is one post.
           Set the post type, assign a team member, add a content link or idea, and track its status.
@@ -924,35 +924,35 @@
       <p class="err" id="err3"></p>
       <div class="btn-row" style="margin-top:24px">
         <button class="btn btn-back-btn" onclick="goStep(1)">← Back</button>
-        <button class="btn btn-acc" id="create-btn" onclick="addTasksToClient()">✨ Add Tasks</button>
+        <button class="btn btn-acc" id="create-btn" onclick="addTasksToClient()"> Add Tasks</button>
       </div>
     </div>
   </div>
 
   <div class="success" id="success">
-    <div class="icon">🎉</div>
+    <div class="icon"></div>
     <h2>Tasks Added!</h2>
     <p id="success-msg">Tasks have been successfully applied to the client project.</p>
-    <a href="projects.html">📋 View Project Board</a>
+    <a href="projects.html"> View Project Board</a>
   </div>
 
   <script>
     const API = location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:5000" : location.origin;
-    const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+    const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
     const UID = user.user_id || "emp003";
 
     const ONBOARD_ADMINS = ["emp001", "emp003", "emp004"];
     if (!ONBOARD_ADMINS.includes(user.user_id)) {
       document.getElementById("main-card").innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-      <div style="font-size:2rem">📝</div>
+      <div style="font-size:2rem"></div>
       <div>
         <h1 style="font-size:1.6rem;font-weight:700">Add <span style="color:var(--acc)">Tasks</span></h1>
         <p style="color:var(--muted);font-size:.9rem;margin-top:4px">Apply task workflows to an existing client project.</p>
       </div>
     </div>
     <div style="text-align:center;padding:40px 20px">
-      <div style="font-size:3rem;margin-bottom:16px">🔒</div>
+      <div style="font-size:3rem;margin-bottom:16px"></div>
       <h2 style="font-family:'Syne',sans-serif;margin-bottom:8px">Access Restricted</h2>
       <p style="color:var(--muted);font-size:.875rem;margin-bottom:24px">Only authorized admins can add tasks.</p>
       <a href="my-tasks.html" style="display:inline-block;padding:10px 22px;border-radius:var(--rs);border:1px solid var(--bdr);color:var(--txt);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--bdr)'">← Back to My Tasks</a>
@@ -1000,7 +1000,7 @@
 
     const POST_TYPES = ["Story", "Reel", "Static", "Carousel"];
     const POST_STATUSES = ["Scheduled", "In Progress", "Need to Start", "Posted", "Paused", "Final"];
-    const SVC_LABELS = { social: "📱 Social Media", branding: "🎨 Branding", website: "💻 Website", shoot: "🎬 Shoot", miscellaneous: "📁 Miscellaneous" };
+    const SVC_LABELS = { social: " Social Media", branding: " Branding", website: " Website", shoot: " Shoot", miscellaneous: " Miscellaneous" };
 
     let selected = new Set();
     // Stored clients list for name lookup
@@ -1196,10 +1196,10 @@
         if (svc === 'social') continue;
         const tasks = SVC_TASKS[svc] || [];
         const section = document.createElement("div");
-        section.innerHTML = `<div class="svc-section-header"><span>${SVC_LABELS[svc]?.split(" ")[0] || "📋"}</span> ${SVC_LABELS[svc]?.slice(2) || svc}</div>`;
+        section.innerHTML = `<div class="svc-section-header"><span>${SVC_LABELS[svc]?.split(" ")[0] || ""}</span> ${SVC_LABELS[svc]?.slice(2) || svc}</div>`;
         const preview = document.createElement("div");
         preview.className = "preview-section";
-        preview.innerHTML = `<h3>📋 Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
+        preview.innerHTML = `<h3> Tasks to be created <span style="font-size:.72rem;font-weight:400;color:var(--muted);margin-left:6px">— click to edit</span></h3>
       <p class="ps-sub">Edit task names or assignees, delete unwanted tasks, or add custom ones.</p>
       <div class="task-list-${svc}"></div>
       <button class="add-task-btn" onclick="addTaskToSection('${svc}')">＋ Add custom task</button>`;
@@ -1333,7 +1333,7 @@
       const row = document.createElement("div");
       row.className = "task-row";
       row.innerHTML = `
-    <span class="tp-icon">${idx === 0 ? "🔑" : "→"}</span>
+    <span class="tp-icon">${idx === 0 ? "" : "→"}</span>
     <input class="tp-title-input" value="${title.replace(/"/g, '&quot;')}" placeholder="Task name…" />
     <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
       <div class="ms-display" onclick="this.parentElement.classList.toggle('open')">Unassigned</div>
@@ -1364,7 +1364,7 @@
       const container = row.parentElement;
       row.remove();
       container.querySelectorAll(".task-row").forEach((r, i) => {
-        r.querySelector(".tp-icon").textContent = i === 0 ? "🔑" : "→";
+        r.querySelector(".tp-icon").textContent = i === 0 ? "" : "→";
       });
     }
 
@@ -1431,7 +1431,7 @@
         const ad = await ar.json();
         if (!ad.success && ad.error) {
           showErr(ad.error);
-          btn.disabled = false; btn.textContent = "✨ Add Tasks";
+          btn.disabled = false; btn.textContent = " Add Tasks";
           return;
         }
 
@@ -1452,7 +1452,7 @@
         } else {
           showErr(`Error: ${err.message || "Something went wrong. Please try again."}`);
         }
-        btn.disabled = false; btn.textContent = "✨ Add Tasks";
+        btn.disabled = false; btn.textContent = " Add Tasks";
       }
     }
   </script>

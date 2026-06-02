@@ -1,7 +1,7 @@
-# Claude Office Assistant - Architecture & Project Overview
+# Agency Portal Assistant - Architecture & Project Overview
 
 ## Project Summary
-Claude Office Assistant is a lightweight, production-ready web application built to replicate the core experience of the official Anthropic Claude UI (claude.ai). It offers multi-turn chat streaming, advanced layout features (Artifacts, Message Editing), model auto-routing, and persistent volume storage, deployed natively on Railway.
+Agency Portal Assistant is a lightweight, production-ready web application built to replicate the core experience of the official Anthropic System UI (claude.ai). It offers multi-turn chat streaming, advanced layout features (Artifacts, Message Editing), model auto-routing, and persistent volume storage, deployed natively on Railway.
 
 ## Technology Stack
 - **Backend:** Python (Flask), Flask-CORS, Gunicorn

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cost Dashboard | Claude Office Assistant</title>
-  <meta name="description" content="Real-time API cost monitoring dashboard for Claude Office Assistant — track spend, model usage, and budget alerts." />
+  <title>Cost Dashboard | Agency Portal Assistant</title>
+  <meta name="description" content="Real-time API cost monitoring dashboard for Agency Portal Assistant — track spend, model usage, and budget alerts." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -260,7 +260,7 @@
   <header class="dash-header">
     <div>
       <h1>Cost <span>Dashboard</span></h1>
-      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Real-time Claude API spend monitoring</p>
+      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Real-time System API spend monitoring</p>
     </div>
     <div class="header-meta">
       <select class="currency-toggle" id="month-select" onchange="changeMonth(this.value)" style="display:none;"></select>
@@ -276,7 +276,7 @@
 
   <!-- Alert Banner -->
   <div class="alert-banner" id="alert-banner" role="alert">
-    <span id="alert-icon">⚠️</span>
+    <span id="alert-icon">⚠</span>
     <span id="alert-text">Budget alert</span>
   </div>
 
@@ -309,7 +309,7 @@
 
   <!-- Budget Bar -->
   <section class="budget-section" aria-label="Budget progress">
-    <h2>📊 Budget Utilization</h2>
+    <h2> Budget Utilization</h2>
     <div class="budget-bar-wrap">
       <div class="budget-bar-fill" id="budget-bar-fill" style="width:0%"></div>
     </div>
@@ -319,9 +319,9 @@
       <span>Limit: <strong id="bb-limit">$...</strong></span>
     </div>
     <div class="threshold-row">
-      <span class="threshold-chip warn" id="warn-chip">⚠️ Warning at ...</span>
-      <span class="threshold-chip crit" id="crit-chip">🚨 Critical at ...</span>
-      <span class="threshold-chip ok">✅ Current status: <strong id="status-chip">OK</strong></span>
+      <span class="threshold-chip warn" id="warn-chip">⚠ Warning at ...</span>
+      <span class="threshold-chip crit" id="crit-chip"> Critical at ...</span>
+      <span class="threshold-chip ok"> Current status: <strong id="status-chip">OK</strong></span>
     </div>
   </section>
 
@@ -330,7 +330,7 @@
 
     <!-- Model split -->
     <div class="panel">
-      <h2>🤖 Model Usage</h2>
+      <h2> Model Usage</h2>
       <div class="model-split">
         <div class="model-stat haiku">
           <div class="count" id="haiku-count">—</div>
@@ -350,7 +350,7 @@
 
     <!-- Task breakdown -->
     <div class="panel">
-      <h2>📋 Task Breakdown</h2>
+      <h2> Task Breakdown</h2>
       <div id="task-breakdown">
         <div class="empty-state">No data yet</div>
       </div>
@@ -360,7 +360,7 @@
 
   <!-- Top Users by Spend -->
   <div class="panel" style="margin-bottom:24px">
-    <h2>🏆 Top Users by Spend (This Month)</h2>
+    <h2> Top Users by Spend (This Month)</h2>
     <div id="top-users-wrap">
       <div class="empty-state">No data yet</div>
     </div>
@@ -369,8 +369,8 @@
   <!-- Recent Calls -->
   <div class="panel" style="margin-bottom:24px">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h2 style="margin-bottom:0">🕐 All API Calls This Month</h2>
-      <a href="/api/usage/export" target="_blank" style="display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Export Full CSV</a>
+      <h2 style="margin-bottom:0"> All API Calls This Month</h2>
+      <a href="/api/usage/export" target="_blank" style="display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇ Export Full CSV</a>
     </div>
     <div id="recent-calls-wrap" style="overflow-x:auto; max-height: 450px; overflow-y: auto;">
       <div class="empty-state">No calls recorded yet</div>
@@ -381,12 +381,12 @@
   <div class="panel" style="margin-bottom:24px" id="admin-attendance-panel">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
       <div>
-        <h2 style="margin-bottom:4px">🕒 Live Attendance</h2>
+        <h2 style="margin-bottom:4px"> Live Attendance</h2>
         <div style="color:var(--muted);font-size:.8rem" id="att-date">Loading...</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <span id="att-summary-badge" style="font-size:.8rem;background:var(--surface2);border:1px solid var(--border);padding:4px 12px;border-radius:100px">—</span>
-        <a href="#" id="export-attendance-btn" target="_blank" style="display:none; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ CSV</a>
+        <a href="#" id="export-attendance-btn" target="_blank" style="display:none; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇ CSV</a>
       </div>
     </div>
     <div id="attendance-wrap">
@@ -398,10 +398,10 @@
   <div class="panel" id="ai-report-panel" style="margin-bottom:24px;background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(59,130,246,.04));border:1px solid rgba(124,58,237,.25)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div>
-        <h2 style="margin-bottom:4px">🧠 Manager's Daily Report</h2>
+        <h2 style="margin-bottom:4px"> Manager's Daily Report</h2>
         <p style="color:var(--muted);font-size:.8rem;margin:0">AI-generated end-of-day summary from team standups</p>
       </div>
-      <button id="gen-report-btn" onclick="generateDailyReport()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;color:#fff;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .2s;white-space:nowrap">✨ Generate Report</button>
+      <button id="gen-report-btn" onclick="generateDailyReport()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;color:#fff;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .2s;white-space:nowrap"> Generate Report</button>
     </div>
     <div id="ai-report-output" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:.875rem;line-height:1.7;white-space:pre-wrap;color:var(--text)"></div>
   </div>
@@ -409,58 +409,58 @@
   <!-- Quick links -->
   <div class="two-col">
     <div class="panel">
-      <h2>⚡ Quick Actions</h2>
+      <h2> Quick Actions</h2>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
         <a href="index.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>⌨️</span> Open Chat Assistant
+          <span>⌨</span> Open Chat Assistant
         </a>
         <a href="html-generator.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>🎨</span> HTML Generator
+          <span></span> HTML Generator
         </a>
         <a href="presentation.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>📊</span> Presentation Creator
+          <span></span> Presentation Creator
         </a>
         <a href="projects.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>📋</span> Project Tracker
+          <span></span> Project Tracker
         </a>
         <a href="my-tasks.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>✅</span> My Tasks
+          <span></span> My Tasks
         </a>
         <a href="standup.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>☀️</span> Daily Standup
+          <span>☀</span> Daily Standup
         </a>
         <a href="client-portal.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>🔒</span> Client Portal
+          <span></span> Client Portal
         </a>
         <a href="add-tasks.html" id="add-tasks-link" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>📝</span> Add Tasks
+          <span></span> Add Tasks
         </a>
         <a href="client-onboard.html" id="onboard-link" style="display:none;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span>➕</span> Onboard Client
         </a>
         <a href="#" id="backup-db-link" style="display:none;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <span>💾</span> Download Database Backup
+          <span></span> Download Database Backup
         </a>
         <button id="copy-client-link-btn" onclick="copyClientLink()" style="display:none;align-items:center;gap:8px;padding:12px;border-radius:8px;background:linear-gradient(135deg,rgba(124,111,255,.15),rgba(255,111,145,.1));border:1px solid rgba(124,111,255,.4);color:var(--text);font-size:.875rem;font-family:inherit;cursor:pointer;text-align:left;width:100%;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(124,111,255,.4)'">
-          <span>🔗</span> <span id="copy-client-link-label">Copy Client Login Link</span>
+          <span></span> <span id="copy-client-link-label">Copy Client Login Link</span>
         </button>
       </div>
     </div>
     <div class="panel">
-      <h2>📅 Monthly Maintenance</h2>
+      <h2> Monthly Maintenance</h2>
       <div style="font-size:.8rem;color:var(--muted);line-height:1.8">
-        <p>✅ Review usage logs weekly</p>
-        <p>✅ Check spend vs budget</p>
-        <p>✅ Optimize model routing if needed</p>
-        <p>✅ Back up usage data monthly</p>
-        <p>✅ Test all features bi-weekly</p>
-        <p>✅ Gather team feedback</p>
+        <p> Review usage logs weekly</p>
+        <p> Check spend vs budget</p>
+        <p> Optimize model routing if needed</p>
+        <p> Back up usage data monthly</p>
+        <p> Test all features bi-weekly</p>
+        <p> Gather team feedback</p>
       </div>
     </div>
   </div>
 
   <footer class="dash-footer">
-    <p>Claude Office Assistant · Cost Dashboard · Auto-refreshes every 60s</p>
+    <p>Agency Portal Assistant · Cost Dashboard · Auto-refreshes every 60s</p>
   </footer>
 
 </div>
@@ -474,8 +474,8 @@ const API = (window.location.protocol === "file:" || !window.location.hostname)
       : window.location.origin);
 
 const TASK_ICONS = {
-  coding: "⌨️", html_design: "🎨", presentations: "📊",
-  captions: "✍️", scripts: "🎬", general: "💬",
+  coding: "⌨", html_design: "", presentations: "",
+  captions: "✍", scripts: "", general: "",
 };
 
 let employeesMap = {};
@@ -580,10 +580,10 @@ function renderDashboard(d) {
   if (elBbLimit) elBbLimit.textContent = formatCost(limit, 2);
   
   const elWarnChip = document.getElementById("warn-chip");
-  if (elWarnChip) elWarnChip.innerHTML = `⚠️ Warning at ${formatCost(warnLimit, 2)} (80%)`;
+  if (elWarnChip) elWarnChip.innerHTML = `⚠ Warning at ${formatCost(warnLimit, 2)} (80%)`;
   
   const elCritChip = document.getElementById("crit-chip");
-  if (elCritChip) elCritChip.innerHTML = `🚨 Critical at ${formatCost(critLimit, 2)} (90%)`;
+  if (elCritChip) elCritChip.innerHTML = ` Critical at ${formatCost(critLimit, 2)} (90%)`;
 
   // KPIs
   document.getElementById("kpi-spent").textContent     = formatCost(d.monthly_spend || 0, 4);
@@ -609,12 +609,12 @@ function renderDashboard(d) {
   document.getElementById("status-chip").textContent = level;
   if (level === "CRITICAL") {
     banner.className = "alert-banner visible critical";
-    document.getElementById("alert-icon").textContent = "🚨";
+    document.getElementById("alert-icon").textContent = "";
     document.getElementById("alert-text").textContent =
       `CRITICAL: You have spent ${pct.toFixed(1)}% of your monthly budget ($${(d.monthly_spend||0).toFixed(2)} of $${d.budget_limit}). Non-critical tasks pausing soon.`;
   } else if (level === "WARNING") {
     banner.className = "alert-banner visible warning";
-    document.getElementById("alert-icon").textContent = "⚠️";
+    document.getElementById("alert-icon").textContent = "⚠";
     document.getElementById("alert-text").textContent =
       `WARNING: You have used ${pct.toFixed(1)}% of your monthly budget. Consider switching more tasks to Haiku.`;
   } else {
@@ -635,7 +635,7 @@ function renderDashboard(d) {
     tbEl.innerHTML = tasks.sort((a,b) => b[1].cost - a[1].cost).map(([task, stat]) => `
       <div class="task-row">
         <div class="task-name">
-          <span class="task-emoji">${TASK_ICONS[task] || "🔷"}</span>
+          <span class="task-emoji">${TASK_ICONS[task] || ""}</span>
           <span>${task.replace(/_/g," ")}</span>
           <span class="task-calls">(${stat.calls} calls)</span>
         </div>
@@ -683,7 +683,7 @@ function renderDashboard(d) {
           ${calls.map(c => `
             <tr>
               <td style="color:var(--muted);font-size:.75rem;font-family:JetBrains Mono,monospace">${c.timestamp ? new Date(c.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : "—"}</td>
-              <td>${TASK_ICONS[c.task_type]||"🔷"} ${c.task_type||"—"}</td>
+              <td>${TASK_ICONS[c.task_type]||""} ${c.task_type||"—"}</td>
               <td><span class="tier-badge ${c.model_tier}">${c.model_tier}</span></td>
               <td style="font-family:JetBrains Mono,monospace">${((c.input_tokens||0)+(c.output_tokens||0)).toLocaleString()}</td>
               <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">${formatCost(c.cost_usd || 0, 5)}</td>
@@ -699,7 +699,7 @@ async function loadAttendance() {
   const badge = document.getElementById("att-summary-badge");
   const dateEl = document.getElementById("att-date");
 
-  const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
   const isAdmin = user.is_admin === true;
 
   // Export button — admins only
@@ -779,15 +779,15 @@ async function loadAttendance() {
         return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:border-color .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <div style="font-weight:700;font-size:.95rem">${statusDot}${emp.name}</div>
           <div style="color:var(--muted);font-size:.75rem">${emp.role}</div>
-          <div style="font-size:.78rem;color:var(--text)">🟢 In: <span style="color:var(--muted)">${checkin}</span></div>
-          <div style="font-size:.78rem;color:var(--text)">🔴 Out: <span style="color:var(--muted)">${checkout}</span></div>
+          <div style="font-size:.78rem;color:var(--text)"> In: <span style="color:var(--muted)">${checkin}</span></div>
+          <div style="font-size:.78rem;color:var(--text)"> Out: <span style="color:var(--muted)">${checkout}</span></div>
           <div style="font-size:.78rem;color:var(--text)">⏱ Total: <span style="color:var(--muted)">${total}</span></div>
         </div>`;
       }).join("")
     }</div>`;
 
   } catch(e) {
-    wrap.innerHTML = `<div class="empty-state">⚠️ Could not load attendance: ${e.message}</div>`;
+    wrap.innerHTML = `<div class="empty-state">⚠ Could not load attendance: ${e.message}</div>`;
   }
 }
 
@@ -811,10 +811,10 @@ async function loadBudgetBanner() {
     banner.className = "budget-topbanner";
     if (lvl === "critical") {
       banner.classList.add("critical");
-      banner.innerHTML = `🚨 <strong>Budget Critical:</strong> You've used ${d.percent_used?.toFixed(1)}% of your monthly Claude budget. Non-critical tasks may pause.`;
+      banner.innerHTML = ` <strong>Budget Critical:</strong> You've used ${d.percent_used?.toFixed(1)}% of your monthly System budget. Non-critical tasks may pause.`;
     } else if (lvl === "warning") {
       banner.classList.add("warning");
-      banner.innerHTML = `⚠️ <strong>Budget Warning:</strong> You've used ${d.percent_used?.toFixed(1)}% of your monthly Claude budget. Consider switching tasks to Haiku.`;
+      banner.innerHTML = `⚠ <strong>Budget Warning:</strong> You've used ${d.percent_used?.toFixed(1)}% of your monthly System budget. Consider switching tasks to Haiku.`;
     }
   } catch {}
 }
@@ -822,7 +822,7 @@ loadBudgetBanner();
 
 // ── Show "Onboard Client", Backup DB & Copy Client Link only for admins ──
 (function(){
-  const u = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+  const u = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
   if (u.is_admin === true) {
     const el = document.getElementById("onboard-link");
     if (el) el.style.display = "flex";
@@ -843,7 +843,7 @@ function copyClientLink() {
   navigator.clipboard.writeText(link).then(() => {
     const lbl = document.getElementById("copy-client-link-label");
     if (lbl) {
-      lbl.textContent = "✅ Copied! Share this with your client";
+      lbl.textContent = " Copied! Share this with your client";
       setTimeout(() => { lbl.textContent = "Copy Client Login Link"; }, 3000);
     }
   }).catch(() => {
@@ -859,7 +859,7 @@ async function generateDailyReport() {
   btn.textContent = "⏳ Generating...";
   out.style.display = "none";
   try {
-    const user = JSON.parse(localStorage.getItem("claude_office_user") || "{}");
+    const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
     const r = await fetch(`${API}/api/ai/daily-summary`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -873,7 +873,7 @@ async function generateDailyReport() {
     out.style.display = "block";
   }
   btn.disabled = false;
-  btn.textContent = "✨ Regenerate";
+  btn.textContent = " Regenerate";
 }
 </script>
 </body>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Client Portal Login | Claude Office</title>
+  <title>Client Portal Login | Agency Portal</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <style>
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--r:14px;--rs:8px}
@@ -32,8 +32,8 @@
 <body>
 <div class="card">
   <div class="logo">
-    <div class="logo-icon">🤖</div>
-    <div class="logo-text">Claude Office</div>
+    <div class="logo-icon"></div>
+    <div class="logo-text">Agency Portal</div>
   </div>
   <h1>Client <span>Portal</span></h1>
   <p class="sub">Log in to view your project updates and timelines.</p>
@@ -47,7 +47,7 @@
     <input type="password" id="client-password" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitClientLogin()" />
   </div>
   <div class="err-msg" id="client-err-msg"></div>
-  <div class="loading" id="client-loading">🔐 Logging in...</div>
+  <div class="loading" id="client-loading"> Logging in...</div>
   <button class="client-btn" onclick="submitClientLogin()">Log In to Portal</button>
 </div>
 
@@ -56,7 +56,7 @@ const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "
 
 // If already logged in with valid session, redirect
 (async()=>{
-  const stored = localStorage.getItem("claude_office_client");
+  const stored = localStorage.getItem("agency_portal_client");
   if(stored) {
     try {
       const c = JSON.parse(stored);
@@ -90,7 +90,7 @@ async function submitClientLogin() {
     document.getElementById("client-loading").style.display = "none";
     
     if(d.success) {
-      localStorage.setItem("claude_office_client", JSON.stringify(d.client));
+      localStorage.setItem("agency_portal_client", JSON.stringify(d.client));
       window.location.href = "client-dashboard.html";
     } else {
       err.textContent = d.error || "Login failed";

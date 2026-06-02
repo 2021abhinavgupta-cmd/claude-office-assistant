@@ -1,16 +1,16 @@
 # CLAUDE.md — AI Coding Assistant Guide
 
-This file provides essential context for AI coding assistants (Claude, Copilot, etc.) working on this codebase.
+This file provides essential context for AI coding assistants (System, Copilot, etc.) working on this codebase.
 
-**💡 Token Saving Tip for Users:** When starting a new chat, you can simply say *"Review CLAUDE.md to understand the architecture, then [do my task]"*. This gives the AI all the routing, database, and UI patterns immediately without having to burn context tokens manually scanning the repository files.
+** Token Saving Tip for Users:** When starting a new chat, you can simply say *"Review CLAUDE.md to understand the architecture, then [do my task]"*. This gives the AI all the routing, database, and UI patterns immediately without having to burn context tokens manually scanning the repository files.
 
 ---
 
 ## Project Overview
 
-**Claude Office Assistant** is a full-stack, production-deployed internal tool for a small team (8 employees). It is a Claude AI-powered workspace that combines:
+**Agency Portal Assistant** is a full-stack, production-deployed internal tool for a small team (8 employees). It is a System AI-powered workspace that combines:
 
-- Multi-turn AI chat (Claude Haiku + Sonnet, auto-routed by task complexity)
+- Multi-turn AI chat (System Haiku + Sonnet, auto-routed by task complexity)
 - Project & client management with per-project knowledge bases
 - Daily standups, task tracking, and attendance
 - Live "Huddle" chat (multi-user real-time via Server-Sent Events)
@@ -50,7 +50,7 @@ claude-office-assistant/
 │   ├── system_prompt.py        # Master system prompt + per-task prompt builder
 │   ├── budget_tracker.py       # Monthly API cost tracking + budget enforcement
 │   ├── file_processor.py       # PDF/CSV/Word file parsing for attachments
-│   ├── kb_retriever.py         # FTS5 knowledge base retrieval (Claude Projects-style)
+│   ├── kb_retriever.py         # FTS5 knowledge base retrieval (System Projects-style)
 │   ├── document_exporter.py    # Export chats to DOCX/PDF
 │   ├── notifications.py        # WhatsApp notifications via Twilio
 │   ├── notion_store.py         # Full Notion API integration
@@ -81,7 +81,7 @@ claude-office-assistant/
 │   ├── client-portal.html      # Client task view
 │   ├── client-admin.html       # Admin: manage client accounts
 │   ├── client-auth.js          # Auth guard for client portal pages
-│   ├── client-onboard.html     # New client onboarding form (3 steps: Info → Services → Review & Create). Includes Username/Password fields for client portal access. Success screen offers Done or ✨ Add Tasks
+│   ├── client-onboard.html     # New client onboarding form (3 steps: Info → Services → Review & Create). Includes Username/Password fields for client portal access. Success screen offers Done or  Add Tasks
 │   └── add-tasks.html          # Apply workflow task templates to an existing client (select client → pick workflow(s) → POST to /api/clients/<id>/auto-tasks)
 ├── config/
 │   └── employees.json          # Static employee data (id, name, pin, role, etc.)
@@ -102,7 +102,7 @@ claude-office-assistant/
 - Login is PIN-based (4-digit PIN in `config/employees.json`)
 - `auth.py` issues a session token stored in the `sessions` table
 - Every protected page includes `<script src="auth.js"></script>` which calls `/api/auth/verify` and redirects to `login.html` if invalid
-- The `currentUser` object (`{user_id, user_name, role, is_admin}`) is stored in `localStorage` under `"claude_office_user"`
+- The `currentUser` object (`{user_id, user_name, role, is_admin}`) is stored in `localStorage` under `"agency_portal_user"`
 
 ### 2. Authentication (Client Portal)
 - Clients log in at `client-login.html` using username + password
@@ -131,7 +131,7 @@ claude-office-assistant/
 
 ### 5. Smart Auto-Tagging
 - When the **first message** of a new conversation is sent, `_auto_tag_bg()` runs in a background thread
-- It calls Claude Haiku with a list of all projects/clients, asks which one matches the message
+- It calls System Haiku with a list of all projects/clients, asks which one matches the message
 - If a match is found, it updates the conversation's `project_id` or `client_id` in the DB
 - The frontend re-renders the tag badge automatically via the SSE `done` event
 
@@ -227,7 +227,7 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 
 8. **Standup Auto-Carry-Over** — When an employee loads their tasks for today (`/api/standup/my-tasks`), if they have no tasks yet, the system automatically carries over pending tasks from their *most recent* active day (using `MAX(date)` before today). This safely handles weekends and skipped days without relying on a hardcoded "yesterday" (`timedelta(days=1)`).
 
-9. **Client Onboarding Flow** — `client-onboard.html` creates the client record only. The success screen offers options to go to the Board or ✨ Add Tasks. To reliably pass context to the Add Tasks screen (and prevent ID type mismatches between Notion UUIDs and SQLite IDs), `client-onboard.html` saves selected services and deadline to `localStorage` (`claude_client_services` and `claude_client_deadlines`) keyed by **both the ID and the lowercase client name**, and passes the name, ID, and deadline in the URL.
+9. **Client Onboarding Flow** — `client-onboard.html` creates the client record only. The success screen offers options to go to the Board or  Add Tasks. To reliably pass context to the Add Tasks screen (and prevent ID type mismatches between Notion UUIDs and SQLite IDs), `client-onboard.html` saves selected services and deadline to `localStorage` (`claude_client_services` and `claude_client_deadlines`) keyed by **both the ID and the lowercase client name**, and passes the name, ID, and deadline in the URL.
 
 10. **Add Tasks UI (2 Steps)** — `add-tasks.html` has been streamlined into exactly 2 steps: "Select Client & Workflows" and "Add Tasks". The layout is permanently wide (`max-width: 1200px`) to accommodate the Social Media Content Calendar spreadsheet. 
     - **Service Auto-Recall**: When opened via onboarding, or when a client is manually selected, the app checks `localStorage` by client name and auto-selects their chosen workflows and target deadline.
@@ -242,7 +242,7 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 
 11. **Employee API Parsing** — The backend `/api/employees` returns an object `{"employees": [...]}`. Frontend scripts must parse this as an array of objects and convert it into a dictionary `{ id: name }` for dropdowns, otherwise `<option>` tags will render as `[object Object]`.
 
-12. **Add Tasks Quick Action** — The `📝 Add Tasks` button in `dashboard.html`'s Quick Actions is visible to all users. The page itself restricts creation to admins (`ONBOARD_ADMINS = ["emp001", "emp003", "emp004"]`) and shows an "Access Restricted" message for everyone else.
+12. **Add Tasks Quick Action** — The ` Add Tasks` button in `dashboard.html`'s Quick Actions is visible to all users. The page itself restricts creation to admins (`ONBOARD_ADMINS = ["emp001", "emp003", "emp004"]`) and shows an "Access Restricted" message for everyone else.
 
 13. **Project Board — Sheets View (Social Media Only)** — `projects.html` includes a per-client **Sheets** tab that is **only visible for Social Media clients**. A client is detected as social if any of its tasks has `service === "Social Media"` or a title matching `/^\[(Story|Static|Reel|Carousel|Post|Video)\]/i`. The `<div class="cb" data-social="...">` attribute stores this flag.
     - The Sheets view renders a spreadsheet-style table with columns: `#`, `Post Day`, `Post Title`, `Type`, `Brief`, `Idea`, `Caption`, `Assigned To`, `Status`, `File (Drive Link)`.
@@ -251,7 +251,7 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
     - On edit (onblur / onchange), `saveSheetRow(taskId, cellElem, clientId)` fires and sends a `PATCH` to `/api/notion/tasks/<id>` (Notion mode) or `/api/sqlite/tasks/<id>` (SQLite mode) with `{ new_title, due_date, assigned_to, status, submission_note }`.
     - After saving, `renderClientCalendar(clientId)` is called to immediately reflect changes in the Calendar tab.
 
-14. **Project Board — Edit Button Routing** — Clicking **✏️ Edit** in the calendar popup calls `openEditTask(clientId, taskId)`. For **social media clients** this navigates directly to the Sheets tab (opens the client card if collapsed, calls `switchClientTab` to `sheets`, scrolls into view). For **non-social clients** it switches to the Task List tab and highlights the task with an outline.
+14. **Project Board — Edit Button Routing** — Clicking **✏ Edit** in the calendar popup calls `openEditTask(clientId, taskId)`. For **social media clients** this navigates directly to the Sheets tab (opens the client card if collapsed, calls `switchClientTab` to `sheets`, scrolls into view). For **non-social clients** it switches to the Task List tab and highlights the task with an outline.
 
 15. **`/api/sqlite/tasks/<id>` PATCH** — Defined in `backend/routes/ops.py` → `sqlite_patch_task()`. Accepts fields: `new_title` (→ `title`), `assigned_to`, `due_date`, `status`, `progress`, `submission_note` (→ `description`).
 
@@ -259,7 +259,7 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 
 17. **Social Media Kanban — Dynamic Columns** — Both `projects.html` (Project Board) and `client-dashboard.html` (Client Portal) now auto-detect social media clients and render **different Kanban column sets**:
     - **Default clients** (Branding / Website / Shoot): 4 columns — To Do → In Progress → In Review → Approved
-    - **Social Media clients**: 6 columns — 🔲 Need to Start → 📅 Scheduled → 🔄 In Progress → ⏸️ Paused → 🚀 Posted → ✨ Final
+    - **Social Media clients**: 6 columns —  Need to Start →  Scheduled →  In Progress → ⏸ Paused →  Posted →  Final
     - **Detection logic** (same in both files): a client is social if ANY task has `service` containing "social", OR title containing "social", OR title matching bracket-style post types `/^\[(story|reel|static|carousel|post|ig|instagram|fb|facebook|tiktok|youtube)\]/i`.
     - `STATUS_MAP` / `SOCIAL_STATUS_MAP` in `projects.html` ensures drag-and-drop saves the correct status key. `bindDragEvents(board, isSocial)` now accepts an `isSocial` flag.
     - Legacy aliases `STAGE_COLS = DEFAULT_STAGE_COLS` and `STATUS_MAP = DEFAULT_STATUS_MAP` are kept so no other code breaks.

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Claude Office | AI Workspace</title>
-  <meta name="description" content="AI office assistant — code, write, design, analyze with Claude. Multiple conversations per employee." />
+  <title>Agency Portal | AI Workspace</title>
+  <meta name="description" content="AI office assistant — code, write, design, analyze with System. Multiple conversations per employee." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -25,7 +25,7 @@
 <div class="modal-overlay" id="employee-modal" role="dialog" aria-modal="true">
   <div class="modal-card">
     <div class="modal-icon">✦</div>
-    <h2>Welcome to Claude Office</h2>
+    <h2>Welcome to Agency Portal</h2>
     <p class="modal-sub">Who are you? Choose your profile to begin.</p>
     <div class="emp-grid" id="emp-grid">
       <div class="emp-loading">Loading…</div>
@@ -43,7 +43,7 @@
   <div class="modal-card" style="max-width: 480px; text-align: left; padding: 32px;">
     <h2 style="margin-bottom:16px; font-size:1.4rem; font-family:var(--font-sans); font-weight:600;">Create a personal project</h2>
     <div style="background:var(--surface2); padding:16px; border-radius:8px; margin-bottom:24px; font-size:0.9rem; color:var(--muted); line-height:1.5;">
-      Projects help organise your work. Upload docs, code, and files to create themed collections Claude can reference again and again.
+      Projects help organise your work. Upload docs, code, and files to create themed collections System can reference again and again.
     </div>
     
     <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500; color:var(--text);">What are you working on?</label>
@@ -67,7 +67,7 @@
     <div class="sidebar-top">
       <div class="brand">
         <div class="brand-icon">✦</div>
-        <span class="brand-name">Claude Office</span>
+        <span class="brand-name">Agency Portal</span>
       </div>
       <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -77,7 +77,7 @@
 
     <div class="projects-panel" style="margin-bottom: 16px;">
       <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600; cursor:pointer;" onclick="toggleProjectsPanel()" id="projects-panel-header">
-        <span>📁 Projects</span>
+        <span> Projects</span>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;" onclick="event.stopPropagation()">+</button>
           <span id="projects-chevron" style="font-size:0.7rem; transition:transform 0.2s; display:inline-block; transform:rotate(-90deg);">▼</span>
@@ -89,7 +89,7 @@
     </div>
 
     <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
-      <span>💬 Recent Chats</span>
+      <span> Recent Chats</span>
     </div>
     <div style="padding: 0 12px 12px;">
       <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
@@ -101,7 +101,7 @@
     <!-- Memory Panel -->
     <div class="memory-panel" id="memory-panel">
       <div class="memory-header" id="memory-toggle">
-        <span>🧠 Memory</span>
+        <span> Memory</span>
         <div class="memory-header-actions">
           <span class="memory-count" id="memory-count">0</span>
           <button class="memory-add-btn" id="memory-add-btn" title="Add memory">+</button>
@@ -122,7 +122,7 @@
     <div class="sidebar-footer">
       <div class="budget-mini">
         <div class="budget-mini-row">
-          <span class="budget-mini-label">💰 Budget</span>
+          <span class="budget-mini-label"> Budget</span>
           <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
           <a href="dashboard.html" class="budget-dash-link" title="Full dashboard">↗</a>
         </div>
@@ -136,7 +136,7 @@
           <span class="user-name-text" id="user-name-text">Select profile</span>
           <span class="pill-switch">⇅</span>
         </button>
-        <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark mode" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:8px; cursor:pointer; font-size:1rem; flex-shrink:0;">☀️</button>
+        <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark mode" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:8px; cursor:pointer; font-size:1rem; flex-shrink:0;">☀</button>
       </div>
     </div>
   </aside>
@@ -153,32 +153,32 @@
         <p class="welcome-sub-text">Ask me anything — code, design, write, analyze, plan.</p>
         <div class="qs-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
           <button class="qs-card" data-prompt="Write a professional email about ">
-            <span class="qs-emoji">📧</span>
+            <span class="qs-emoji"></span>
             <strong>Write an Email</strong>
             <small>Professional, quick drafts</small>
           </button>
           <button class="qs-card" data-prompt="Summarize the following document: \n\n">
-            <span class="qs-emoji">📝</span>
+            <span class="qs-emoji"></span>
             <strong>Summarize</strong>
             <small>Documents & long texts</small>
           </button>
           <button class="qs-card" data-prompt="Please write an official office announcement regarding: ">
-            <span class="qs-emoji">📢</span>
+            <span class="qs-emoji"></span>
             <strong>Announcement</strong>
             <small>Formal office notices</small>
           </button>
           <button class="qs-card" data-prompt="Draft a meeting agenda for ">
-            <span class="qs-emoji">🗓️</span>
+            <span class="qs-emoji"></span>
             <strong>Meeting Agenda</strong>
             <small>Structure your next sync</small>
           </button>
           <button class="qs-card" data-prompt="I need help with this code: \n\n">
-            <span class="qs-emoji">💻</span>
+            <span class="qs-emoji"></span>
             <strong>Help with Code</strong>
             <small>Debug, review, build</small>
           </button>
           <button class="qs-card" data-prompt="Please analyze the following data: \n\n">
-            <span class="qs-emoji">📊</span>
+            <span class="qs-emoji"></span>
             <strong>Analyze Data</strong>
             <small>Insights & spreadsheets</small>
           </button>
@@ -218,7 +218,7 @@
 
       <section class="messages" id="messages" aria-live="polite" aria-label="Messages"></section>
 
-      <!-- Thinking indicator — shown while Claude thinks -->
+      <!-- Thinking indicator — shown while System thinks -->
       <div id="thinking-indicator" style="display:none">
           <div class="thinking-bubble">
               <div class="thinking-dots">
@@ -263,11 +263,11 @@
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
             </svg>
           </button>
-          <button class="optimize-btn" id="optimize-btn" title="Optimize prompt with AI (⚡ cheap)">
-            ⚡
+          <button class="optimize-btn" id="optimize-btn" title="Optimize prompt with AI ( cheap)">
+            
           </button>
           <textarea id="msg-input" class="msg-input" rows="1"
-            placeholder="Message Claude… (or drop a file here)" maxlength="500000"></textarea>
+            placeholder="Message System… (or drop a file here)" maxlength="500000"></textarea>
           <div class="input-actions">
             <span class="char-count" id="char-count"></span>
             <button class="send-btn" id="send-btn" disabled title="Send (Enter)">
@@ -287,11 +287,11 @@
           <span> · </span>
           <select id="model-override" style="background:transparent; border:none; color:var(--text); cursor:pointer; font-size:inherit; outline:none; font-family:inherit;">
             <option value="auto">Auto (Smart Routing)</option>
-            <option value="claude-sonnet-4-6">Claude 4.6 Sonnet</option>
-            <option value="claude-haiku-4-5-20251001">Claude 4.5 Haiku</option>
+            <option value="claude-sonnet-4-6">System 4.6 Sonnet</option>
+            <option value="claude-haiku-4-5-20251001">System 4.5 Haiku</option>
           </select>
           <span> · </span>
-          <a href="dashboard.html" style="color:var(--accent);text-decoration:none">📊 dashboard</a>
+          <a href="dashboard.html" style="color:var(--accent);text-decoration:none"> dashboard</a>
         </p>
       </footer>
     </div>
@@ -318,12 +318,12 @@
       <div class="project-dashboard-content" style="padding:32px 24px; max-width:800px; margin:0 auto; width:100%; overflow-y:auto; flex:1;">
         <h2 style="margin-bottom:16px; font-size:1.25rem; font-weight:600;">Custom Instructions</h2>
         <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">These instructions will be injected into every chat created inside this project.</p>
-        <textarea id="project-custom-instructions" style="min-height:120px; margin-bottom:32px; padding:16px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; color:var(--text); width:100%; font-family:var(--font-sans); resize:vertical;" placeholder="Set specific instructions for how Claude should behave within this project (tone, role, formatting)..."></textarea>
+        <textarea id="project-custom-instructions" style="min-height:120px; margin-bottom:32px; padding:16px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; color:var(--text); width:100%; font-family:var(--font-sans); resize:vertical;" placeholder="Set specific instructions for how System should behave within this project (tone, role, formatting)..."></textarea>
         
         <h2 style="margin-bottom:16px; font-size:1.25rem; font-weight:600;">Knowledge Base</h2>
-        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">Upload documents, code, or context that Claude can always reference.</p>
+        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">Upload documents, code, or context that System can always reference.</p>
         <div class="project-kb-upload" id="project-kb-upload" style="border:2px dashed var(--border); border-radius:12px; padding:32px; text-align:center; margin-bottom:24px; cursor:pointer; transition:all 0.2s; background:var(--surface2);">
-          <span style="font-size:2rem; margin-bottom:12px; display:block;">📄</span>
+          <span style="font-size:2rem; margin-bottom:12px; display:block;"></span>
           <p style="color:var(--text); font-weight:500;">Click to upload documents to the Knowledge Base</p>
           <input type="file" id="project-file-input" hidden />
         </div>
@@ -344,16 +344,16 @@
     <aside id="artifacts-pane" class="artifacts-pane" aria-label="Live preview">
       <div class="artifacts-pane-header">
         <div class="artifacts-pane-title">
-          <span id="artifact-icon">✨</span>
+          <span id="artifact-icon"></span>
           <div>
             <div id="artifact-title" class="artifacts-pane-title-text">Live preview</div>
             <div class="artifacts-pane-sub">Upload files in chat for grounded answers. Use PDF / DOCX / PPT to download deliverables.</div>
           </div>
         </div>
         <div class="artifacts-pane-actions">
-          <button onclick="exportDocument('pdf', this)" type="button" title="Download as PDF">📄 PDF</button>
-          <button onclick="exportDocument('docx', this)" type="button" title="Download as DOCX">📝 DOCX</button>
-          <button onclick="exportDocument('pptx', this)" type="button" title="Download as PowerPoint">📊 PPT</button>
+          <button onclick="exportDocument('pdf', this)" type="button" title="Download as PDF"> PDF</button>
+          <button onclick="exportDocument('docx', this)" type="button" title="Download as DOCX"> DOCX</button>
+          <button onclick="exportDocument('pptx', this)" type="button" title="Download as PowerPoint"> PPT</button>
           <button onclick="closeArtifact()" type="button" title="Close preview" class="artifacts-close" aria-label="Close preview">&times;</button>
         </div>
       </div>
@@ -370,7 +370,7 @@
 <!-- Drag-Drop Overlay -->
 <div class="drag-overlay hidden" id="drag-overlay">
   <div class="drag-overlay-inner">
-    <div style="font-size:3rem">📎</div>
+    <div style="font-size:3rem"></div>
     <strong>Drop files to attach</strong>
     <small>Images, PDF, DOCX, code, and more</small>
   </div>
@@ -385,7 +385,7 @@
   <!-- Header -->
   <div class="opt-header">
     <div class="opt-title">
-      <span class="opt-icon">⚡</span>
+      <span class="opt-icon"></span>
       <span>Prompt Optimizer</span>
       <span class="opt-badge">Powered by Haiku · ~$0.00008</span>
     </div>
@@ -426,7 +426,7 @@
   <!-- Loading state -->
   <div class="opt-loading hidden" id="opt-loading">
     <div class="opt-spinner"></div>
-    <span>Optimizing with Claude Haiku…</span>
+    <span>Optimizing with System Haiku…</span>
   </div>
 
   <!-- Footer actions -->
@@ -443,14 +443,14 @@
 <script src="optimizer.js"></script>
 <script>
 // ── Export State ────────────────────────────────────────────────────────────
-window._lastAIResponse = { text: "", title: "Claude Export" };
+window._lastAIResponse = { text: "", title: "System Export" };
 
 // Call from app.js after each AI reply
 window.setLastAIResponse = function(text, title) {
-  window._lastAIResponse = { text, title: title || "Claude Export" };
+  window._lastAIResponse = { text, title: title || "System Export" };
 };
 
-// Strip chat preamble / fake labels so DOCX matches what users expect (like Claude artifacts)
+// Strip chat preamble / fake labels so DOCX matches what users expect (like System artifacts)
 function markdownBodyForExport(md) {
   if (!md || !String(md).trim()) return md;
   let s = String(md).trim();
@@ -477,7 +477,7 @@ function slideMarkdownForExport(md) {
   const mdSlideRe = /^##\s*SLIDE\s+\d+\s*:/i;
   let idx = lines.findIndex((l) => slideRe.test(l.trim()) || mdSlideRe.test(l.trim()));
   if (idx <= 0) return String(md).trim();
-  const junk = /^(?:✏️\s*)?edit\s*$|^(?:✦)+\s*$|^claude\s*$/i;
+  const junk = /^(?:✏\s*)?edit\s*$|^(?:✦)+\s*$|^claude\s*$/i;
   const goodPre = [];
   for (let i = 0; i < idx; i++) {
     const t = lines[i].trim();
@@ -493,7 +493,7 @@ function slideMarkdownForExport(md) {
 async function exportDocument(format, triggerEl) {
   let { text, title } = window._lastAIResponse;
   if (!text) {
-    alert("No AI response found yet. Ask Claude something first!");
+    alert("No AI response found yet. Ask System something first!");
     return;
   }
 
@@ -535,7 +535,7 @@ async function exportDocument(format, triggerEl) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (e) {
-    alert(`❌ Export error: ${e.message}`);
+    alert(` Export error: ${e.message}`);
   } finally {
     if (btn) {
       btn.textContent = origLabel;

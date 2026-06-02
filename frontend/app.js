@@ -1,7 +1,7 @@
 /**
- * Claude Office Assistant — Multi-user, multi-conversation frontend
+ * Agency Portal Assistant — Multi-user, multi-conversation frontend
  * Each employee gets their own set of conversations.
- * Full Claude-like experience with task auto-detection and persistent history.
+ * Full System-like experience with task auto-detection and persistent history.
  */
 
 // Auto-detect API base — handles localhost, file://, and production
@@ -18,8 +18,8 @@ let currentConvId = null;   // active conversation ID
 let isLoading     = false;
 
 const TASK_ICONS = {
-  coding: "⌨️", html_design: "🎨", presentations: "📊",
-  captions: "✍️", scripts: "🎬", general: "💬",
+  coding: "⌨", html_design: "", presentations: "",
+  captions: "✍", scripts: "", general: "",
 };
 const TASK_MODELS = {
   coding: "sonnet", html_design: "sonnet", presentations: "sonnet",
@@ -66,7 +66,7 @@ window.copyMessage = function(btn) {
   const decoded = text.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
   navigator.clipboard.writeText(decoded).then(() => {
     const orig = btn.innerHTML;
-    btn.innerHTML = "✅ Copied";
+    btn.innerHTML = " Copied";
     btn.classList.add("copied");
     setTimeout(() => {
       btn.innerHTML = orig;
@@ -77,7 +77,7 @@ window.copyMessage = function(btn) {
 
 window.dislikeMessage = function(btn) {
   btn.style.color = "var(--error)";
-  btn.innerHTML = "👎 Marked Bad";
+  btn.innerHTML = " Marked Bad";
   showToast("Feedback submitted. Thank you!", "info");
 };
 
@@ -341,7 +341,7 @@ async function loadProjects() {
     
     projectsList.innerHTML = projs.map(p => `
       <a href="project.html?id=${p.id}" class="conv-item" style="text-decoration:none;">
-        <span class="conv-item-icon">📁</span>
+        <span class="conv-item-icon"></span>
         <div class="conv-item-body">
           <div class="conv-item-title">${escHtml(p.name)}</div>
         </div>
@@ -406,7 +406,7 @@ function renderConvList(convs) {
     if (!items.length) continue;
     html += `<div class="conv-group-label">${label}</div>`;
     items.forEach(c => {
-      const icon    = TASK_ICONS[c.task_type] || "💬";
+      const icon    = TASK_ICONS[c.task_type] || "";
       const isActive = c.id === currentConvId ? " active" : "";
       const msgCount = c.message_count || "";
       
@@ -500,7 +500,7 @@ async function openConversation(convId) {
     const isHuddle = participants.length > 1;
     participantBar.style.display = participants.length > 0 ? "flex" : "none";
     participantBar.innerHTML = `
-      <span style="color:var(--muted);margin-right:4px;">${isHuddle ? "🎙️ Huddle:" : "💬"}</span>
+      <span style="color:var(--muted);margin-right:4px;">${isHuddle ? " Huddle:" : ""}</span>
       ${participants.map(uid => `<span style="background:var(--surface2);border-radius:12px;padding:2px 10px;color:var(--txt);">${names[uid] || uid}</span>`).join("")}
       <button onclick="openHuddleInvite('${convId}')" title="Invite to Huddle" style="margin-left:auto;background:var(--accent);color:#000;border:none;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem;font-weight:600;">+ Invite</button>
     `;
@@ -544,7 +544,7 @@ function _connectHuddleSSE(convId) {
           scrollToBottom();
         }
       } else if (evt.type === "joined") {
-        showToast(`${evt.user_name} joined the huddle 🎙️`, "success");
+        showToast(`${evt.user_name} joined the huddle `, "success");
         openConversation(convId); // Refresh participant bar
       }
     } catch (_) {}
@@ -571,7 +571,7 @@ async function openHuddleInvite(convId) {
     modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;";
     modal.innerHTML = `
       <div style="background:var(--surface);border:1px solid var(--bdr);border-radius:14px;padding:28px;min-width:320px;max-width:400px;">
-        <h3 style="margin:0 0 16px;font-size:1rem;">🎙️ Invite to Huddle</h3>
+        <h3 style="margin:0 0 16px;font-size:1rem;"> Invite to Huddle</h3>
         <select id="huddle-invite-sel" style="width:100%;padding:10px;border-radius:8px;background:var(--surface2);border:1px solid var(--bdr);color:var(--txt);outline:none;">
           <option value="">-- Select teammate --</option>
           ${opts}
@@ -594,7 +594,7 @@ async function openHuddleInvite(convId) {
         body: JSON.stringify({ user_id: uid, user_name: uname })
       });
       modal.remove();
-      showToast(`${uname} invited to huddle! 🎙️`, "success");
+      showToast(`${uname} invited to huddle! `, "success");
       openConversation(convId);
     };
   } catch (e) {
@@ -749,7 +749,7 @@ function appendMessage(role, content, meta = {}) {
     : `<div class="msg-avatar">✦</div>`;
   const name = role === "user"
     ? (currentUser ? currentUser.user_name : "You")
-    : "Claude";
+    : "System";
 
   const metaHtml = (role === "assistant" && (meta.model_tier || meta.cost_usd))
     ? `<div class="msg-meta">
@@ -760,11 +760,11 @@ function appendMessage(role, content, meta = {}) {
 
   const actionsBtn = role === "assistant"
     ? `<div class="msg-actions">
-         <button class="msg-action-btn copy-btn" onclick="copyMessage(this)" data-text="${escHtml(content).replace(/"/g,'&quot;')}" title="Copy">📋 Copy</button>
-         <button class="msg-action-btn dislike-btn" onclick="dislikeMessage(this)" title="Bad Response">👎 Dislike</button>
+         <button class="msg-action-btn copy-btn" onclick="copyMessage(this)" data-text="${escHtml(content).replace(/"/g,'&quot;')}" title="Copy"> Copy</button>
+         <button class="msg-action-btn dislike-btn" onclick="dislikeMessage(this)" title="Bad Response"> Dislike</button>
        </div>`
     : `<div class="msg-actions">
-         <button class="msg-action-btn edit-btn" onclick="editMessage(this)" title="Edit Message">✏️ Edit</button>
+         <button class="msg-action-btn edit-btn" onclick="editMessage(this)" title="Edit Message">✏ Edit</button>
        </div>`;
 
   el.innerHTML = `
@@ -786,7 +786,7 @@ function appendErrorMessage(text) {
   const el = document.createElement("div");
   el.className = "msg error";
   el.innerHTML = `
-    <div class="msg-avatar">⚠️</div>
+    <div class="msg-avatar">⚠</div>
     <div class="msg-body">
       <div class="msg-name">Error</div>
       <div class="msg-text">${escHtml(text)}</div>
@@ -802,7 +802,7 @@ function appendTyping() {
   el.innerHTML = `
     <div class="msg-avatar">✦</div>
     <div class="msg-body">
-      <div class="msg-name">Claude</div>
+      <div class="msg-name">System</div>
       <div class="msg-text">
         <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
       </div>
@@ -874,7 +874,7 @@ function formatText(text) {
     if (codeBlocks % 2 !== 0) {
       text += "\n```"; 
     }
-    // Claude-like small touch: avoid rendering empty output as "null"/"undefined"
+    // System-like small touch: avoid rendering empty output as "null"/"undefined"
     const out = marked.parse(String(text || ""));
     return out || "";
   }
@@ -1047,11 +1047,11 @@ function showToast(msg, type = "info") {
 
 // ── localStorage ──────────────────────────────────────────────────────────────
 function saveUserToStorage(user) {
-  try { localStorage.setItem("claude_office_user", JSON.stringify(user)); } catch (_) {}
+  try { localStorage.setItem("agency_portal_user", JSON.stringify(user)); } catch (_) {}
 }
 function loadUserFromStorage() {
   try {
-    const raw = localStorage.getItem("claude_office_user");
+    const raw = localStorage.getItem("agency_portal_user");
     if (!raw) return null;
     const u = JSON.parse(raw);
     // Normalize field names: login.html saves 'name'+'id', app.js expects 'user_name'+'user_id'
@@ -1101,7 +1101,7 @@ async function compressImage(file, maxSizeMB = 4.5) {
         
         let width = img.width;
         let height = img.height;
-        const maxDim = 2048; // Safe dimension for Claude API
+        const maxDim = 2048; // Safe dimension for System API
         
         if (width > maxDim || height > maxDim) {
           if (width > height) {
@@ -1159,7 +1159,7 @@ async function uploadFile(originalFile) {
 
     if (!res.ok || !data.success) {
       updateChipError(chipId, data.error || "Upload failed");
-      showToast(`❌ ${file.name}: ${data.error || "Upload failed"}`, "error");
+      showToast(` ${file.name}: ${data.error || "Upload failed"}`, "error");
       return;
     }
 
@@ -1177,11 +1177,11 @@ async function uploadFile(originalFile) {
     }
     pendingAttachments.push(att);
 
-    const icon = data.type === "image" ? "🖼️" : getFileIcon(file.name);
+    const icon = data.type === "image" ? "" : getFileIcon(file.name);
     updateChipReady(chipId, att, icon);
   } catch (err) {
     updateChipError(chipId, "Server unreachable");
-    showToast("❌ Upload failed: server offline", "error");
+    showToast(" Upload failed: server offline", "error");
   }
 }
 
@@ -1212,7 +1212,7 @@ function updateChipError(id, msg) {
   const el = document.getElementById(id);
   if (!el) return;
   el.className = "file-chip error";
-  el.innerHTML = `<span class="file-chip-icon">⚠️</span><span class="file-chip-name">${msg}</span>
+  el.innerHTML = `<span class="file-chip-icon">⚠</span><span class="file-chip-name">${msg}</span>
     <button class="file-chip-remove" data-id="${id}">✕</button>`;
   el.querySelector(".file-chip-remove").addEventListener("click", () => el.remove());
 }
@@ -1230,10 +1230,10 @@ function clearAttachments() {
 
 function getFileIcon(name) {
   const ext = name.split(".").pop().toLowerCase();
-  const MAP = { pdf: "📄", docx: "📝", doc: "📝", xlsx: "📊", xls: "📊",
-                py: "🐍", js: "🟨", ts: "🔷", html: "🌐", css: "🎨",
-                json: "📋", csv: "📊", md: "📄", txt: "📄" };
-  return MAP[ext] || "📎";
+  const MAP = { pdf: "", docx: "", doc: "", xlsx: "", xls: "",
+                py: "", js: "", ts: "", html: "", css: "",
+                json: "", csv: "", md: "", txt: "" };
+  return MAP[ext] || "";
 }
 
 function formatBytes(b) {
@@ -1285,7 +1285,7 @@ async function loadMemories() {
 }
 
 function formatMemoryContent(content) {
-  // Detect "key: {json}" or "key: [json]" patterns from Claude's auto-profile
+  // Detect "key: {json}" or "key: [json]" patterns from System's auto-profile
   const match = content.match(/^([^:]+):\s*([\s\S]*)$/);
   if (match) {
     const label = match[1].trim()
@@ -1324,7 +1324,7 @@ function formatMemoryContent(content) {
 
 function renderMemories(mems) {
   if (!mems.length) {
-    memoryList.innerHTML = "<div class='memory-empty'>No memories yet. Add facts Claude should always know about you.</div>";
+    memoryList.innerHTML = "<div class='memory-empty'>No memories yet. Add facts System should always know about you.</div>";
     return;
   }
   memoryList.innerHTML = mems.map(m => `
@@ -1349,7 +1349,7 @@ async function saveMemory() {
       body: JSON.stringify({ content }),
     });
     if (res.ok) {
-      showToast("🧠 Memory saved", "success");
+      showToast(" Memory saved", "success");
       loadMemories();
     }
   } catch (_) { showToast("Could not save memory", "error"); }
@@ -1372,7 +1372,7 @@ window.applyUser = function(user) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STREAMING — replaces the override from the file-upload section
-// Uses fetch + ReadableStream to consume SSE, exactly like Claude.ai
+// Uses fetch + ReadableStream to consume SSE, exactly like System.ai
 // ══════════════════════════════════════════════════════════════════════════════
 function showThinkingIndicator() {
   const el = document.getElementById("thinking-indicator");
@@ -1456,7 +1456,7 @@ window.regenerateWithNote = function(assistantEl, note) {
     showToast("Could not find your previous message", "error");
     return;
   }
-  const userText = prevUser.querySelector(".msg-text")?.innerText?.split("\n📎")[0].trim() || "";
+  const userText = prevUser.querySelector(".msg-text")?.innerText?.split("\n")[0].trim() || "";
   if (!userText) return;
   const combined = userText + "\n\n---\nRegenerate your last reply with this instruction: " + n;
   window.sendMessage(combined, idx, { amend_last_user: true });
@@ -1485,7 +1485,7 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
 
   // Show user message (with file indicator if files attached)
   const displayText = atts.length
-    ? text + `\n\n📎 _${atts.length} file(s): ${atts.map(a => a.filename).join(", ")}_`
+    ? text + `\n\n _${atts.length} file(s): ${atts.map(a => a.filename).join(", ")}_`
     : text;
   if (!opts.amend_last_user) {
     appendMessage("user", displayText);
@@ -1543,7 +1543,7 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
       const err = await response.json().catch(() => ({}));
       streamEl.remove();
       appendErrorMessage(err.error || `HTTP ${response.status}`);
-      showToast("❌ " + (err.error || "Error"), "error");
+      showToast(" " + (err.error || "Error"), "error");
       return;
     }
 
@@ -1591,21 +1591,21 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
               setTimeout(() => {
                 try {
                   exportDocument("pptx");
-                  showToast("📊 Downloading PowerPoint (.pptx)…", "success");
+                  showToast(" Downloading PowerPoint (.pptx)…", "success");
                 } catch (_) {}
               }, 80);
             } else if (userAskedForPdfExport(text)) {
               setTimeout(() => {
                 try {
                   exportDocument("pdf");
-                  showToast("📄 Downloading PDF…", "success");
+                  showToast(" Downloading PDF…", "success");
                 } catch (_) {}
               }, 80);
             } else if (userAskedForWordExport(text)) {
               setTimeout(() => {
                 try {
                   exportDocument("docx");
-                  showToast("📝 Downloading Word document…", "success");
+                  showToast(" Downloading Word document…", "success");
                 } catch (_) {}
               }, 80);
             }
@@ -1622,7 +1622,7 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
           hideThinkingIndicator();
           streamEl.remove();
           appendErrorMessage(event.error);
-          showToast("❌ " + event.error, "error");
+          showToast(" " + event.error, "error");
         }
       }
     }
@@ -1641,7 +1641,7 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
       hideThinkingIndicator();
       streamEl.remove();
       appendErrorMessage("Network error: " + err.message);
-      showToast("⚠️ " + err.message, "error");
+      showToast("⚠ " + err.message, "error");
     }
   } finally {
     hideThinkingIndicator();
@@ -1662,7 +1662,7 @@ msgInput.addEventListener("keydown", e => {
 
 /**
  * Adds visual “presentation wrapping” around assistant replies (card + optional deliverable ribbon).
- * Claude web bundles layout polish in-product; here we frame the same story more clearly.
+ * System web bundles layout polish in-product; here we frame the same story more clearly.
  */
 function decorateAssistantReply(el, rawText) {
   if (!el || !el.classList.contains("assistant") || el.classList.contains("typing-indicator")) return;
@@ -1689,11 +1689,11 @@ function decorateAssistantReply(el, rawText) {
   if (looksDeck) {
     hint.innerHTML =
       '<span class="hint-label">Deliverable</span>' +
-      '<span class="hint-text">Use <strong>📊 PPT</strong> for slides, <strong>📝 DOCX</strong> for Word, or <strong>📄 PDF</strong> for a print-ready file.</span>';
+      '<span class="hint-text">Use <strong> PPT</strong> for slides, <strong> DOCX</strong> for Word, or <strong> PDF</strong> for a print-ready file.</span>';
   } else {
     hint.innerHTML =
       '<span class="hint-label">Deliverable</span>' +
-      '<span class="hint-text">Use <strong>📝 DOCX</strong> or <strong>📄 PDF</strong> from the footer above the input.</span>';
+      '<span class="hint-text">Use <strong> DOCX</strong> or <strong> PDF</strong> from the footer above the input.</span>';
   }
   nameEl.after(hint);
 }
@@ -1705,7 +1705,7 @@ function createStreamingMessage() {
   el.innerHTML = `
     <div class="msg-avatar">✦</div>
     <div class="msg-body">
-      <div class="msg-name">Claude</div>
+      <div class="msg-name">System</div>
       <div class="msg-text stream-text"><span class="cursor-blink"></span></div>
     </div>`;
   messagesEl.appendChild(el);
@@ -1726,7 +1726,7 @@ function finalizeStreamingMessage(el, text, meta = {}) {
   // Keep artifact/export pane in sync (streaming bypassed appendMessage wrapper).
   if (window.setLastAIResponse) {
     const convTitle = document.getElementById("conv-title-header")?.textContent?.trim()
-                      || "Claude Export";
+                      || "System Export";
     window.setLastAIResponse(text, convTitle);
   }
 
@@ -1752,10 +1752,10 @@ function finalizeStreamingMessage(el, text, meta = {}) {
   const actions = document.createElement("div");
   actions.className = "msg-actions";
   actions.innerHTML = `
-    <button class="msg-action-btn copy-btn" title="Copy response">📋 Copy</button>
-    <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF">📄 PDF</button>
-    <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>
-    <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">📊 PPT</button>
+    <button class="msg-action-btn copy-btn" title="Copy response"> Copy</button>
+    <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF"> PDF</button>
+    <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word"> DOCX</button>
+    <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint"> PPT</button>
     <button class="msg-action-btn regen-btn" title="Remove this reply and re-send your last question">↺ Retry</button>`;
   body.appendChild(actions);
 
@@ -1776,7 +1776,7 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     navigator.clipboard.writeText(text).then(() => {
       this.textContent = "✓ Copied";
       this.classList.add("copied");
-      setTimeout(() => { this.textContent = "📋 Copy"; this.classList.remove("copied"); }, 2000);
+      setTimeout(() => { this.textContent = " Copy"; this.classList.remove("copied"); }, 2000);
     });
   });
   actions.querySelector(".regen-btn").addEventListener("click", () => {
@@ -1784,7 +1784,7 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     el.remove();
     const lastUser = [...messagesEl.querySelectorAll(".msg.user")].pop();
     if (lastUser) {
-      const content = lastUser.querySelector(".msg-text")?.textContent?.split("\n📎")[0].trim();
+      const content = lastUser.querySelector(".msg-text")?.textContent?.split("\n")[0].trim();
       if (content) { msgInput.value = content; window.sendMessage(); }
     }
   });
@@ -1820,10 +1820,10 @@ window.appendMessage = function(role, content, meta = {}) {
     const actions = document.createElement("div");
     actions.className = "msg-actions";
     actions.innerHTML = `
-      <button class="msg-action-btn copy-btn" title="Copy">📋 Copy</button>
-      <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF">📄 PDF</button>
-      <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">📝 DOCX</button>
-      <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">📊 PPT</button>
+      <button class="msg-action-btn copy-btn" title="Copy"> Copy</button>
+      <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF"> PDF</button>
+      <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word"> DOCX</button>
+      <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint"> PPT</button>
       <button class="msg-action-btn regen-btn" type="button" title="Remove this reply and retry">↺ Retry</button>`;
     body.appendChild(actions);
     const pdfBtn = actions.querySelector(".export-pdf-btn");
@@ -1843,14 +1843,14 @@ window.appendMessage = function(role, content, meta = {}) {
       navigator.clipboard.writeText(content).then(() => {
         this.textContent = "✓ Copied";
         this.classList.add("copied");
-        setTimeout(() => { this.textContent = "📋 Copy"; this.classList.remove("copied"); }, 2000);
+        setTimeout(() => { this.textContent = " Copy"; this.classList.remove("copied"); }, 2000);
       });
     });
     actions.querySelector(".regen-btn").addEventListener("click", () => {
       el.remove();
       const lastUser = [...messagesEl.querySelectorAll(".msg.user")].pop();
       if (lastUser) {
-        const c = lastUser.querySelector(".msg-text")?.textContent?.split("\n📎")[0].trim();
+        const c = lastUser.querySelector(".msg-text")?.textContent?.split("\n")[0].trim();
         if (c) { msgInput.value = c; window.sendMessage(); }
       }
     });
@@ -1868,7 +1868,7 @@ window.appendMessage = function(role, content, meta = {}) {
     // ── Track last AI response for server-side export ──────────────────────
     if (window.setLastAIResponse) {
       const convTitle = document.getElementById("conv-title-header")?.textContent?.trim()
-                        || "Claude Export";
+                        || "System Export";
       window.setLastAIResponse(content, convTitle);
     }
 
@@ -1904,7 +1904,7 @@ function renderProjectsList(projects) {
   projects.forEach(p => {
     html += `
       <div class="conv-item${p.id === currentProjectId ? " active" : ""}" data-id="${p.id}" onclick="openProject('${p.id}')">
-        <span class="conv-item-icon">🗂</span>
+        <span class="conv-item-icon"></span>
         <div class="conv-item-body">
           <div class="conv-item-title">${escHtml(p.name)}</div>
         </div>
@@ -1967,7 +1967,7 @@ window.openProject = async function(projectId) {
         chatsList.innerHTML = pConvs.map(c => `
           <div class="conv-item" style="cursor:pointer; background:var(--surface2); border:1px solid var(--border); padding:12px; border-radius:8px; display:flex; justify-content:space-between;" onclick="openConversation('${c.id}')">
             <div>
-              <div class="conv-item-title" style="color:var(--text); font-weight:500;">💬 ${escHtml(c.title)}</div>
+              <div class="conv-item-title" style="color:var(--text); font-weight:500;"> ${escHtml(c.title)}</div>
               <div class="conv-item-sub" style="margin-top:4px;">${new Date(c.updated_at).toLocaleString()}</div>
             </div>
           </div>
@@ -2096,7 +2096,7 @@ function renderProjectKb(docs) {
   }
   list.innerHTML = docs.map(d => `
     <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface2); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
-      <div style="color:var(--text)">📄 ${escHtml(d.filename)}</div>
+      <div style="color:var(--text)"> ${escHtml(d.filename)}</div>
       <button onclick="deleteProjectKb('${d.id}')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1rem;" title="Delete">✕</button>
     </div>
   `).join("");
@@ -2121,7 +2121,7 @@ window.openConversation = async function(convId) {
   return _oldOpenConversation ? _oldOpenConversation(convId) : null;
 };
 
-// ── Claude.ai Clone Features ────────────────────────────────────────────────
+// ── System.ai Clone Features ────────────────────────────────────────────────
 window.filterChats = function(query) {
   const term = query.toLowerCase();
   document.querySelectorAll(".conv-item").forEach(item => {
@@ -2193,7 +2193,7 @@ window.toggleTheme = function() {
   document.documentElement.setAttribute("data-theme", next);
   localStorage.setItem("theme", next);
   const btn = document.getElementById("theme-toggle-btn");
-  if (btn) btn.textContent = next === "dark" ? "☀️" : "🌙";
+  if (btn) btn.textContent = next === "dark" ? "☀" : "";
 };
 
 // ── Export all calls to CSV ───────────────────────────────────────────────────

@@ -44,7 +44,7 @@ def check_overdue_tasks():
     Called daily. Scans all non-approved tasks with a due_date.
     Updates risk level in task_risk table and logs alerts.
     """
-    logger.info("🕐 Running daily overdue task check...")
+    logger.info(" Running daily overdue task check...")
     today = _today_str()
     conn = get_connection()
     cur = conn.cursor()
@@ -105,7 +105,7 @@ def check_overdue_tasks():
                 "client": client_name,
                 "assignee": emp_name,
                 "days": days,
-                "message": f"🚨 CRITICAL: {emp_name}'s task '{title}' for {client_name} is {days} days overdue."
+                "message": f" CRITICAL: {emp_name}'s task '{title}' for {client_name} is {days} days overdue."
             })
 
         elif days >= RISK_THRESHOLDS["day3"] and not alerted_day3:
@@ -117,7 +117,7 @@ def check_overdue_tasks():
                 "client": client_name,
                 "assignee": emp_name,
                 "days": days,
-                "message": f"🔴 AT RISK: {emp_name}'s task '{title}' for {client_name} is {days} days overdue. Founder notified."
+                "message": f" AT RISK: {emp_name}'s task '{title}' for {client_name} is {days} days overdue. Founder notified."
             })
 
         elif days >= RISK_THRESHOLDS["day2"] and not alerted_day2:
@@ -128,7 +128,7 @@ def check_overdue_tasks():
                 "client": client_name,
                 "assignee": emp_name,
                 "days": days,
-                "message": f"⚠️ {emp_name}'s task '{title}' is {days} days overdue. Founder CC'd."
+                "message": f"⚠ {emp_name}'s task '{title}' is {days} days overdue. Founder CC'd."
             })
 
         elif days >= RISK_THRESHOLDS["day1"] and not alerted_day1:
@@ -139,7 +139,7 @@ def check_overdue_tasks():
                 "client": client_name,
                 "assignee": emp_name,
                 "days": days,
-                "message": f"📋 Reminder: {emp_name} has '{title}' due {days} day(s) ago."
+                "message": f" Reminder: {emp_name} has '{title}' due {days} day(s) ago."
             })
 
         if new_alerts:
@@ -166,7 +166,7 @@ def check_overdue_tasks():
             logger.warning(f"[TASK ALERT][{a['level']}] {a['message']}")
         _send_alert_to_dashboard(alerts_fired)
     else:
-        logger.info("✅ No new overdue alerts today.")
+        logger.info(" No new overdue alerts today.")
 
     return alerts_fired
 
@@ -258,7 +258,7 @@ def init_scheduler(app):
         scheduler.add_job(check_overdue_tasks, "cron", hour=8, minute=0,
                           id="daily_overdue_check", replace_existing=True)
         scheduler.start()
-        logger.info("✅ Task delay scheduler started (runs daily at 08:00).")
+        logger.info(" Task delay scheduler started (runs daily at 08:00).")
 
         # Run immediately on startup to catch anything already overdue
         import threading

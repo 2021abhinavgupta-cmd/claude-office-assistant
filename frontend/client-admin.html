@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Agency Admin | Claude Office</title>
+  <title>Agency Admin | Agency Portal</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
   <style>
     :root { --bg: #0c0c10; --s1: #131318; --s2: #1c1c24; --s3: #2a2a35; --bdr: rgba(255,255,255,0.07); --txt: #e8e8f0; --muted: #6b6b8a; --acc: #7c6fff; --acc-hover: #6a5ce8; --grn: #22d3a0; --red: #ff5c5c; --r: 12px; --rs: 8px; }
@@ -75,7 +75,7 @@
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sb-head">
-      <h1>⚡ Agency Admin</h1>
+      <h1> Agency Admin</h1>
     </div>
     <div class="sb-list" id="client-list">
       <div style="padding: 20px; color: var(--muted); text-align: center; font-size: 0.9rem;">Loading clients...</div>
@@ -96,7 +96,7 @@
     
     <div class="content" id="main-content">
       <div class="empty-state">
-        <div class="icon">📁</div>
+        <div class="icon"></div>
         <p>Choose a client from the sidebar to manage their tasks and account.</p>
       </div>
     </div>
@@ -245,8 +245,8 @@
                 <div class="task-title">${t.title}</div>
                 <div class="task-meta">
                   <span class="task-status ${stClass}">${stLabel}</span>
-                  <span>📅 ${t.due_date || "No date"}</span>
-                  <span>👤 ${t.assigned_to || "Unassigned"}</span>
+                  <span> ${t.due_date || "No date"}</span>
+                  <span> ${t.assigned_to || "Unassigned"}</span>
                 </div>
               </div>
               <div class="task-actions">
