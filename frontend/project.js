@@ -114,7 +114,7 @@ async function loadProject() {
     projTitle.textContent = data.name || 'Untitled Project';
     document.title = `${data.name} — Agency Portal`;
 
-    // Memory
+    //Saved Notes
     if (data.memory) {
       projMemory.textContent = data.memory;
     }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cost Dashboard | Agency Portal Assistant</title>
-  <meta name="description" content="Real-time API cost monitoring dashboard for Agency Portal Assistant — track spend, model usage, and budget alerts." />
+  <meta name="description" content="Real-time API cost monitoringDashboard for Agency Portal Assistant — track spend, model usage, and budget alerts." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -83,7 +83,7 @@
       font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: all .2s;
     }
     .logout-btn:hover { background: rgba(239,68,68,.1); border-color: var(--red); }
-    /* ── Budget top-banner (#11) ── */
+    /* ──Usage top-banner (#11) ── */
     .budget-topbanner {
       display: none; align-items: center; gap: 12px;
       padding: 12px 20px; border-radius: var(--radius-sm);
@@ -139,7 +139,7 @@
     .kpi-value { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
     .kpi-sub   { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
 
-    /* ── Budget Bar ── */
+    /* ──Usage Bar ── */
     .budget-section {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 28px; margin-bottom: 24px;
@@ -280,7 +280,7 @@
     <span id="alert-text">Budget alert</span>
   </div>
 
-  <!-- Budget top-banner: driven by /api/budget alert_level (#11) -->
+  <!--Usage top-banner: driven by /api/budget alert_level (#11) -->
   <div class="budget-topbanner" id="budget-topbanner" role="alert"></div>
 
   <!-- KPI Cards -->
@@ -307,9 +307,9 @@
     </div>
   </div>
 
-  <!-- Budget Bar -->
+  <!--Usage Bar -->
   <section class="budget-section" aria-label="Budget progress">
-    <h2> Budget Utilization</h2>
+    <h2>Usage Utilization</h2>
     <div class="budget-bar-wrap">
       <div class="budget-bar-fill" id="budget-bar-fill" style="width:0%"></div>
     </div>
@@ -592,7 +592,7 @@ function renderDashboard(d) {
   document.getElementById("kpi-alltime").textContent   = formatCost(d.total_spent_ever || 0, 4);
   document.getElementById("kpi-month").textContent     = d.month || "—";
 
-  // Budget bar (user requested tracking all-time spend instead of monthly)
+  //Usage bar (user requested tracking all-time spend instead of monthly)
   const allTimeSpent = d.total_spent_ever || 0;
   const limitVal = d.budget_limit || 20;
   const pct = Math.min((allTimeSpent / limitVal) * 100, 100);
@@ -799,7 +799,7 @@ setInterval(loadDashboard, 60000);
 const logoutBtn = document.getElementById("logout-btn");
 if (logoutBtn) logoutBtn.addEventListener("click", () => window.authLogout?.());
 
-// ── Budget top-banner from /api/budget (#11) ──
+// ──Usage top-banner from /api/budget (#11) ──
 async function loadBudgetBanner() {
   try {
     const r = await fetch(`${API}/api/budget`);

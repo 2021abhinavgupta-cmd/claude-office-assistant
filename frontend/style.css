@@ -1,5 +1,5 @@
 /* ============================================================
-   Agency Portal — Design System (System-like Multi-Chat UI)
+   Agency Portal — Design System (Multi-Chat UI)
    ============================================================ */
 
 :root {
@@ -119,7 +119,8 @@ body {
   background: linear-gradient(135deg, var(--accent), #a78bfa);
   border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 22px; box-shadow: 0 0 30px var(--accent-glow);
+  font-size: 0.85rem; font-weight: 800; color: white; letter-spacing: -0.03em;
+  box-shadow: 0 0 30px var(--accent-glow);
 }
 .modal-card h2 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 8px; }
 .modal-sub { color: var(--text-2); font-size: 0.88rem; margin-bottom: 28px; }
@@ -189,7 +190,8 @@ body {
   width: 32px; height: 32px; border-radius: 9px;
   background: linear-gradient(135deg, var(--accent), #a78bfa);
   display: flex; align-items: center; justify-content: center;
-  font-size: 15px; box-shadow: 0 0 20px var(--accent-glow);
+  font-size: 0.6rem; font-weight: 800; color: white; letter-spacing: -0.03em;
+  box-shadow: 0 0 20px var(--accent-glow);
 }
 .brand-name { font-size: 0.92rem; font-weight: 700; letter-spacing: -0.02em; }
 
@@ -398,7 +400,8 @@ body {
   width: 58px; height: 58px; border-radius: 16px;
   background: linear-gradient(135deg, var(--accent), #a78bfa);
   display: flex; align-items: center; justify-content: center;
-  font-size: 26px; box-shadow: 0 0 40px var(--accent-glow);
+  font-size: 1rem; font-weight: 800; color: white; letter-spacing: -0.04em;
+  box-shadow: 0 0 40px var(--accent-glow);
 }
 .welcome-title {
   font-size: 1.75rem; font-weight: 700;
@@ -472,13 +475,8 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-.task-chip, .model-chip {
-  font-size: 0.7rem; font-weight: 600; padding: 3px 9px;
-  border-radius: 99px; letter-spacing: 0.03em;
-}
-.task-chip  { background: var(--surface3); border: 1px solid var(--border); color: var(--text-2); }
-.model-chip { background: rgba(34,211,160,0.12); border: 1px solid rgba(34,211,160,0.25); color: var(--haiku-color); }
-.model-chip.sonnet { background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.25); color: var(--sonnet-color); }
+.task-chip { display: none; }
+.model-chip { display: none; }
 
 .conn-status {
   display: flex; align-items: center; gap: 6px;
@@ -635,13 +633,14 @@ body {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin-top: 10px;
 }
+.opt-badge { display: none; }
 .msg-chip {
   font-size: 0.68rem; padding: 2px 8px; border-radius: 99px;
   background: var(--surface2); border: 1px solid var(--border); color: var(--text-3);
 }
-.msg-chip.cost   { border-color: rgba(34,211,160,0.2); color: var(--haiku-color); }
-.msg-chip.haiku  { border-color: rgba(34,211,160,0.2); color: var(--haiku-color); }
-.msg-chip.sonnet { border-color: rgba(167,139,250,0.2); color: var(--sonnet-color); }
+.msg-chip.cost   { display: none; }
+.msg-chip.haiku  { display: none; }
+.msg-chip.sonnet { display: none; }
 
 /* Typing Indicator */
 .typing-indicator .msg-text {
@@ -813,11 +812,8 @@ body {
   .msg { padding-left: 16px; padding-right: 16px; }
 }
 
-/* ── Memory Panel ─────────────────────────────────────────── */
-.memory-panel {
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
+/* Saved Notes Panel */
+.memory-panel { display: none !important; }
 .memory-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px; cursor: pointer;

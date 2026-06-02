@@ -353,7 +353,7 @@ async function loadProjects() {
   }
 }
 
-// ── Projects Panel Toggle (called from HTML onclick) ─────────────────────────
+// ──Projects Panel Toggle (called from HTML onclick) ─────────────────────────
 window.toggleProjectsPanel = function() {
   const list    = document.getElementById('projects-list');
   const chevron = document.getElementById('projects-chevron');
@@ -716,7 +716,7 @@ function showWelcomeScreen() {
   welcomeScreen.classList.remove("hidden");
 }
 
-// Toggle Projects panel in sidebar
+// ToggleProjects panel in sidebar
 window.toggleProjectsPanel = function() {
   const list = document.getElementById("projects-list");
   const chevron = document.getElementById("projects-chevron");
@@ -746,7 +746,7 @@ function appendMessage(role, content, meta = {}) {
 
   const avatar = role === "user"
     ? `<div class="msg-avatar">${currentUser ? currentUser.user_name.charAt(0).toUpperCase() : "U"}</div>`
-    : `<div class="msg-avatar">✦</div>`;
+    : `<div class="msg-avatar">AP</div>`;
   const name = role === "user"
     ? (currentUser ? currentUser.user_name : "You")
     : "System";
@@ -800,7 +800,7 @@ function appendTyping() {
   el.className = "msg assistant typing-indicator";
   el.id = id;
   el.innerHTML = `
-    <div class="msg-avatar">✦</div>
+    <div class="msg-avatar">AP</div>
     <div class="msg-body">
       <div class="msg-name">System</div>
       <div class="msg-text">
@@ -966,7 +966,7 @@ function maybeAddSidePreviewButton(actionsEl, rawText) {
   else actionsEl.appendChild(prevBtn);
 }
 
-// ── Budget ────────────────────────────────────────────────────────────────────
+// ──Usage ────────────────────────────────────────────────────────────────────
 async function fetchBudget() {
   try {
     const res  = await fetch(`${API}/api/budget`);
@@ -1349,7 +1349,7 @@ async function saveMemory() {
       body: JSON.stringify({ content }),
     });
     if (res.ok) {
-      showToast(" Memory saved", "success");
+      showToast("Saved Notes saved", "success");
       loadMemories();
     }
   } catch (_) { showToast("Could not save memory", "error"); }
@@ -1396,7 +1396,7 @@ function userAskedForPptExport(question) {
   );
 }
 
-/** User asked for PDF export — checked before Word */
+/** User asked forPDF export — checked before Word */
 function userAskedForPdfExport(question) {
   if (!question || !question.trim()) return false;
   const q = question;
@@ -1410,7 +1410,7 @@ function userAskedForPdfExport(question) {
   );
 }
 
-/** User asked for an actual Word / DOCX file (export), not just markdown in chat */
+/** User asked for an actual Word /DOCX file (export), not just markdown in chat */
 function userAskedForWordExport(question) {
   if (!question || !question.trim()) return false;
   const q = question;
@@ -1598,7 +1598,7 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
               setTimeout(() => {
                 try {
                   exportDocument("pdf");
-                  showToast(" Downloading PDF…", "success");
+                  showToast(" DownloadingPDF…", "success");
                 } catch (_) {}
               }, 80);
             } else if (userAskedForWordExport(text)) {
@@ -1689,11 +1689,11 @@ function decorateAssistantReply(el, rawText) {
   if (looksDeck) {
     hint.innerHTML =
       '<span class="hint-label">Deliverable</span>' +
-      '<span class="hint-text">Use <strong> PPT</strong> for slides, <strong> DOCX</strong> for Word, or <strong> PDF</strong> for a print-ready file.</span>';
+      '<span class="hint-text">Use <strong>PPT</strong> for slides, <strong>DOCX</strong> for Word, or <strong>PDF</strong> for a print-ready file.</span>';
   } else {
     hint.innerHTML =
       '<span class="hint-label">Deliverable</span>' +
-      '<span class="hint-text">Use <strong> DOCX</strong> or <strong> PDF</strong> from the footer above the input.</span>';
+      '<span class="hint-text">Use <strong>DOCX</strong> or <strong>PDF</strong> from the footer above the input.</span>';
   }
   nameEl.after(hint);
 }
@@ -1703,7 +1703,7 @@ function createStreamingMessage() {
   const el  = document.createElement("div");
   el.className = "msg assistant";
   el.innerHTML = `
-    <div class="msg-avatar">✦</div>
+    <div class="msg-avatar">AP</div>
     <div class="msg-body">
       <div class="msg-name">System</div>
       <div class="msg-text stream-text"><span class="cursor-blink"></span></div>
@@ -1753,9 +1753,9 @@ function finalizeStreamingMessage(el, text, meta = {}) {
   actions.className = "msg-actions";
   actions.innerHTML = `
     <button class="msg-action-btn copy-btn" title="Copy response"> Copy</button>
-    <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF"> PDF</button>
-    <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word"> DOCX</button>
-    <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint"> PPT</button>
+    <button class="msg-action-btn export-pdf-btn" type="button" title="Download asPDF">PDF</button>
+    <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">DOCX</button>
+    <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">PPT</button>
     <button class="msg-action-btn regen-btn" title="Remove this reply and re-send your last question">↺ Retry</button>`;
   body.appendChild(actions);
 
@@ -1821,9 +1821,9 @@ window.appendMessage = function(role, content, meta = {}) {
     actions.className = "msg-actions";
     actions.innerHTML = `
       <button class="msg-action-btn copy-btn" title="Copy"> Copy</button>
-      <button class="msg-action-btn export-pdf-btn" type="button" title="Download as PDF"> PDF</button>
-      <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word"> DOCX</button>
-      <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint"> PPT</button>
+      <button class="msg-action-btn export-pdf-btn" type="button" title="Download asPDF">PDF</button>
+      <button class="msg-action-btn export-docx-btn" type="button" title="Download as Word">DOCX</button>
+      <button class="msg-action-btn export-pptx-btn" type="button" title="Download as PowerPoint">PPT</button>
       <button class="msg-action-btn regen-btn" type="button" title="Remove this reply and retry">↺ Retry</button>`;
     body.appendChild(actions);
     const pdfBtn = actions.querySelector(".export-pdf-btn");
@@ -1879,7 +1879,7 @@ window.appendMessage = function(role, content, meta = {}) {
 };
 
 
-// ── Projects Feature ────────────────────────────────────────────────────────
+// ──Projects Feature ────────────────────────────────────────────────────────
 let currentProjectId = null;
 let currentProject = null;
 

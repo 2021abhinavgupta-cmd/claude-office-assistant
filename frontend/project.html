@@ -197,7 +197,7 @@
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-top">
       <div class="brand">
-        <div class="brand-icon">✦</div>
+        <div class="brand-icon">AP</div>
         <span class="brand-name">Agency Portal</span>
       </div>
       <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
@@ -208,7 +208,7 @@
 
     <div class="projects-panel" style="margin-bottom: 16px;">
       <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600; cursor:pointer;" onclick="toggleProjectsPanel()" id="projects-panel-header">
-        <span> Projects</span>
+        <span>Projects</span>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;" onclick="event.stopPropagation()">+</button>
           <span id="projects-chevron" style="font-size:0.7rem; transition:transform 0.2s; display:inline-block; transform:rotate(-90deg);">▼</span>
@@ -220,7 +220,7 @@
     </div>
 
     <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
-      <span> Recent Chats</span>
+      <span>Recent Chats</span>
     </div>
     <div style="padding: 0 12px 12px;">
       <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
@@ -230,7 +230,7 @@
     <div class="sidebar-footer">
       <div class="budget-mini">
         <div class="budget-mini-row">
-          <span class="budget-mini-label"> Budget</span>
+          <span class="budget-mini-label">Usage</span>
           <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
         </div>
         <div class="budget-mini-track">
@@ -257,7 +257,7 @@
       
       <!-- Chat Input Card -->
       <div class="chat-card">
-        <textarea id="proj-chat-input" placeholder="How can I help you today?"></textarea>
+        <textarea id="proj-chat-input" placeholder="What are you working on?"></textarea>
         <div class="chat-card-footer">
           <button class="chat-card-btn" style="font-size: 1.5rem;" onclick="alert('Attachments coming soon!')">+</button>
           <div style="display: flex; align-items: center; gap: 12px;">
@@ -281,7 +281,7 @@
     <!-- Right Column -->
     <div class="project-sidebar">
       
-      <!-- Memory Card -->
+      <!--Saved Notes Card -->
       <div class="sidebar-card">
         <div class="sidebar-card-header">
           <h3 class="sidebar-card-title">Memory</h3>
@@ -316,7 +316,7 @@
         </div>
         <div class="drop-zone" id="file-drop-zone">
           <div style="margin-bottom: 8px;"></div>
-          Add PDFs, documents, or other text to reference in this project.
+          AddPDFs, documents, or other text to reference in this project.
           <input type="file" id="file-input" style="display:none" multiple />
         </div>
         <div id="file-list" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;"></div>

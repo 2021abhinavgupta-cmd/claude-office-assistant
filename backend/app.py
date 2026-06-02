@@ -3,7 +3,7 @@ Flask Backend — Agency Portal Assistant API
 Routes:
   GET  /api/health                        — Health check
   GET  /api/budget                        — Current month budget
-  GET  /api/usage                         — Full usage dashboard
+  GET  /api/usage                         — Full usageDashboard
   POST /api/chat                          — Single-turn chat (legacy)
   POST /api/html/generate                 — HTML generator
   POST /api/presentation                  — Slide generator
@@ -1420,7 +1420,7 @@ def call_claude_with_context(task_type: str, messages: list,
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
         return {"success": False, "error": "Internal server error"}
-# ── Projects ──────────────────────────────────────────────────────────────────
+# ──Projects ──────────────────────────────────────────────────────────────────
 @app.route("/api/projects", methods=["GET"])
 def api_get_projects():
     user_id = request.args.get("user_id")
@@ -1654,7 +1654,7 @@ def _auto_tag_bg(conv_id, message):
         Match it to ONE of our projects or clients based on the text. 
         Only return a match if you are reasonably confident.
         
-        Projects: {proj_str}
+       Projects: {proj_str}
         Clients: {client_str}
 
         Return JSON strictly in this format: {{"project_id": "ID_HERE", "client_id": "ID_HERE"}}
@@ -2072,7 +2072,7 @@ def optimize_prompt():
     """
     POST /api/optimize-prompt  body: {prompt, task_type?}
     Uses System Haiku to rewrite a rough prompt into a precise one.
-    Cost: ~$0.00008 per call (Haiku, minimal tokens).
+    Cost:  per call (Haiku, minimal tokens).
     """
     data      = request.get_json(silent=True) or {}
     prompt    = data.get("prompt", "").strip()
@@ -2141,7 +2141,7 @@ def upload_file():
     return jsonify({"success": True, **result})
 
 
-# ── Memory Routes ───────────────────────────────────────────────────────────
+# ──Saved Notes Routes ───────────────────────────────────────────────────────────
 @app.route("/api/memory/<user_id>", methods=["GET"])
 def get_memory(user_id):
     """GET /api/memory/<user_id>  — list all memories for a user"""
@@ -2170,7 +2170,7 @@ def delete_memory(user_id, memory_id):
     return jsonify({"success": True})
 
 
-# ── Projects ──────────────────────────────────────────────────────────────────
+# ──Projects ──────────────────────────────────────────────────────────────────
 @app.route("/api/projects", methods=["GET"])
 def list_projects():
     user_id = request.args.get("user_id")

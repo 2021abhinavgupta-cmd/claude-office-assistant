@@ -1123,7 +1123,7 @@ load();
 // Feature 1: AI Auto-Breakdown for Sub-Tasks
 async function aiBreakdownTask(nid, taskTitle, clientName) {
   const btn = document.getElementById(`ai-btn-${nid}`);
-  if(btn) { btn.disabled = true; btn.textContent = ' Thinking...'; }
+  if(btn) { btn.disabled = true; btn.textContent = ' Loading…'; }
   
   try {
     const r = await fetch(`${API}/api/ai/breakdown`, {

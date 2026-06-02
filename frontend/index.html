@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agency Portal | AI Workspace</title>
-  <meta name="description" content="AI office assistant — code, write, design, analyze with System. Multiple conversations per employee." />
+  <title>Agency Portal </title>
+  <meta name="description" content="office workspace — code, write, design, analyze with System. Multiple conversations per employee." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -17,14 +17,14 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]})"></script>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>AP</text></svg>">
 </head>
 <body>
 
 <!-- ── Employee Picker Modal ── -->
 <div class="modal-overlay" id="employee-modal" role="dialog" aria-modal="true">
   <div class="modal-card">
-    <div class="modal-icon">✦</div>
+    <div class="modal-icon">AP</div>
     <h2>Welcome to Agency Portal</h2>
     <p class="modal-sub">Who are you? Choose your profile to begin.</p>
     <div class="emp-grid" id="emp-grid">
@@ -43,7 +43,7 @@
   <div class="modal-card" style="max-width: 480px; text-align: left; padding: 32px;">
     <h2 style="margin-bottom:16px; font-size:1.4rem; font-family:var(--font-sans); font-weight:600;">Create a personal project</h2>
     <div style="background:var(--surface2); padding:16px; border-radius:8px; margin-bottom:24px; font-size:0.9rem; color:var(--muted); line-height:1.5;">
-      Projects help organise your work. Upload docs, code, and files to create themed collections System can reference again and again.
+     Projects help organise your work. Upload docs, code, and files to create themed collections.
     </div>
     
     <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500; color:var(--text);">What are you working on?</label>
@@ -66,7 +66,7 @@
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-top">
       <div class="brand">
-        <div class="brand-icon">✦</div>
+        <div class="brand-icon">AP</div>
         <span class="brand-name">Agency Portal</span>
       </div>
       <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
@@ -77,7 +77,7 @@
 
     <div class="projects-panel" style="margin-bottom: 16px;">
       <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600; cursor:pointer;" onclick="toggleProjectsPanel()" id="projects-panel-header">
-        <span> Projects</span>
+        <span>Projects</span>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;" onclick="event.stopPropagation()">+</button>
           <span id="projects-chevron" style="font-size:0.7rem; transition:transform 0.2s; display:inline-block; transform:rotate(-90deg);">▼</span>
@@ -89,7 +89,7 @@
     </div>
 
     <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
-      <span> Recent Chats</span>
+      <span>Recent Chats</span>
     </div>
     <div style="padding: 0 12px 12px;">
       <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
@@ -98,10 +98,10 @@
       <div class="conv-empty">No chats yet.<br>Click <strong>New Chat</strong> to begin.</div>
     </div>
 
-    <!-- Memory Panel -->
+    <!--Saved Notes Panel -->
     <div class="memory-panel" id="memory-panel">
       <div class="memory-header" id="memory-toggle">
-        <span> Memory</span>
+        <span>Saved Notes</span>
         <div class="memory-header-actions">
           <span class="memory-count" id="memory-count">0</span>
           <button class="memory-add-btn" id="memory-add-btn" title="Add memory">+</button>
@@ -122,9 +122,9 @@
     <div class="sidebar-footer">
       <div class="budget-mini">
         <div class="budget-mini-row">
-          <span class="budget-mini-label"> Budget</span>
+          <span class="budget-mini-label">Usage</span>
           <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
-          <a href="dashboard.html" class="budget-dash-link" title="Full dashboard">↗</a>
+          <a href="dashboard.html" class="budget-dash-link" title="FullDashboard">↗</a>
         </div>
         <div class="budget-mini-track">
           <div class="budget-mini-fill" id="budget-mini-fill" style="width:0%"></div>
@@ -148,9 +148,9 @@
     <!-- Welcome Screen -->
     <div class="welcome-screen" id="welcome-screen">
       <div class="welcome-inner">
-        <div class="welcome-icon">✦</div>
-        <h1 class="welcome-title">How can I help you today?</h1>
-        <p class="welcome-sub-text">Ask me anything — code, design, write, analyze, plan.</p>
+        <div class="welcome-icon">AP</div>
+        <h1 class="welcome-title">What are you working on?</h1>
+        <p class="welcome-sub-text">Use the cards below or type to get started.</p>
         <div class="qs-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
           <button class="qs-card" data-prompt="Write a professional email about ">
             <span class="qs-emoji"></span>
@@ -185,7 +185,7 @@
         </div>
         <div class="welcome-input-row">
           <textarea id="welcome-input" class="welcome-input" rows="1"
-            placeholder="Ask anything or pick a card above…" maxlength="500000"></textarea>
+            placeholder="Type here or pick a card above…" maxlength="500000"></textarea>
           <button class="send-btn" id="welcome-send" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -224,7 +224,7 @@
               <div class="thinking-dots">
                   <span></span><span></span><span></span>
               </div>
-              <span class="thinking-label">Thinking...</span>
+              <span class="thinking-label">Loading…</span>
           </div>
       </div>
 
@@ -267,7 +267,7 @@
             
           </button>
           <textarea id="msg-input" class="msg-input" rows="1"
-            placeholder="Message System… (or drop a file here)" maxlength="500000"></textarea>
+            placeholder="Type your message… (or drop a file here)" maxlength="500000"></textarea>
           <div class="input-actions">
             <span class="char-count" id="char-count"></span>
             <button class="send-btn" id="send-btn" disabled title="Send (Enter)">
@@ -283,15 +283,15 @@
             <span>Web search</span>
           </label>
           <span class="footer-dot">·</span>
-          <span id="meta-task">auto-detecting task</span>
+          <span id="meta-task"></span>
           <span> · </span>
           <select id="model-override" style="background:transparent; border:none; color:var(--text); cursor:pointer; font-size:inherit; outline:none; font-family:inherit;">
-            <option value="auto">Auto (Smart Routing)</option>
-            <option value="claude-sonnet-4-6">System 4.6 Sonnet</option>
-            <option value="claude-haiku-4-5-20251001">System 4.5 Haiku</option>
+            <option value="auto">Auto</option>
+            <option value="claude-sonnet-4-6">Standard</option>
+            <option value="claude-haiku-4-5-20251001">Fast</option>
           </select>
           <span> · </span>
-          <a href="dashboard.html" style="color:var(--accent);text-decoration:none"> dashboard</a>
+          <a href="dashboard.html" style="color:var(--accent);text-decoration:none">Dashboard</a>
         </p>
       </footer>
     </div>
@@ -318,10 +318,10 @@
       <div class="project-dashboard-content" style="padding:32px 24px; max-width:800px; margin:0 auto; width:100%; overflow-y:auto; flex:1;">
         <h2 style="margin-bottom:16px; font-size:1.25rem; font-weight:600;">Custom Instructions</h2>
         <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">These instructions will be injected into every chat created inside this project.</p>
-        <textarea id="project-custom-instructions" style="min-height:120px; margin-bottom:32px; padding:16px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; color:var(--text); width:100%; font-family:var(--font-sans); resize:vertical;" placeholder="Set specific instructions for how System should behave within this project (tone, role, formatting)..."></textarea>
+        <textarea id="project-custom-instructions" style="min-height:120px; margin-bottom:32px; padding:16px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; color:var(--text); width:100%; font-family:var(--font-sans); resize:vertical;" placeholder="Set specific instructions for this project (tone, role, formatting)..."></textarea>
         
         <h2 style="margin-bottom:16px; font-size:1.25rem; font-weight:600;">Knowledge Base</h2>
-        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">Upload documents, code, or context that System can always reference.</p>
+        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">Upload documents, code, or context for this project.</p>
         <div class="project-kb-upload" id="project-kb-upload" style="border:2px dashed var(--border); border-radius:12px; padding:32px; text-align:center; margin-bottom:24px; cursor:pointer; transition:all 0.2s; background:var(--surface2);">
           <span style="font-size:2rem; margin-bottom:12px; display:block;"></span>
           <p style="color:var(--text); font-weight:500;">Click to upload documents to the Knowledge Base</p>
@@ -347,13 +347,13 @@
           <span id="artifact-icon"></span>
           <div>
             <div id="artifact-title" class="artifacts-pane-title-text">Live preview</div>
-            <div class="artifacts-pane-sub">Upload files in chat for grounded answers. Use PDF / DOCX / PPT to download deliverables.</div>
+            <div class="artifacts-pane-sub">Upload files in chat for grounded answers. UsePDF /DOCX /PPT to download deliverables.</div>
           </div>
         </div>
         <div class="artifacts-pane-actions">
-          <button onclick="exportDocument('pdf', this)" type="button" title="Download as PDF"> PDF</button>
-          <button onclick="exportDocument('docx', this)" type="button" title="Download as DOCX"> DOCX</button>
-          <button onclick="exportDocument('pptx', this)" type="button" title="Download as PowerPoint"> PPT</button>
+          <button onclick="exportDocument('pdf', this)" type="button" title="Download asPDF">PDF</button>
+          <button onclick="exportDocument('docx', this)" type="button" title="Download asDOCX">DOCX</button>
+          <button onclick="exportDocument('pptx', this)" type="button" title="Download as PowerPoint">PPT</button>
           <button onclick="closeArtifact()" type="button" title="Close preview" class="artifacts-close" aria-label="Close preview">&times;</button>
         </div>
       </div>
@@ -372,7 +372,7 @@
   <div class="drag-overlay-inner">
     <div style="font-size:3rem"></div>
     <strong>Drop files to attach</strong>
-    <small>Images, PDF, DOCX, code, and more</small>
+    <small>Images,PDF,DOCX, code, and more</small>
   </div>
 </div>
 
@@ -387,7 +387,7 @@
     <div class="opt-title">
       <span class="opt-icon"></span>
       <span>Prompt Optimizer</span>
-      <span class="opt-badge">Powered by Haiku · ~$0.00008</span>
+      <span class="opt-badge">Quick optimizer</span>
     </div>
     <div class="opt-header-right">
       <span class="opt-cost-display" id="opt-cost-display"></span>
@@ -415,8 +415,8 @@
     <!-- Optimized (editable) -->
     <div class="opt-col">
       <div class="opt-col-header">
-        <span class="opt-col-label">AI Enhanced</span>
-        <span class="opt-edit-hint">✎ click to edit</span>
+        <span class="opt-col-label">Suggested</span>
+        <span class="opt-edit-hint">click to edit</span>
       </div>
       <textarea class="opt-optimized" id="opt-optimized" spellcheck="true"
         placeholder="Optimized prompt will appear here…"></textarea>
@@ -426,15 +426,15 @@
   <!-- Loading state -->
   <div class="opt-loading hidden" id="opt-loading">
     <div class="opt-spinner"></div>
-    <span>Optimizing with System Haiku…</span>
+    <span>Optimizing…</span>
   </div>
 
   <!-- Footer actions -->
   <div class="opt-footer">
     <div class="opt-diff-hint" id="opt-diff-hint"></div>
     <div class="opt-actions">
-      <button class="opt-btn secondary" id="opt-keep-btn">✕ Keep original</button>
-      <button class="opt-btn primary" id="opt-use-btn">✓ Use optimized →</button>
+      <button class="opt-btn secondary" id="opt-keep-btn">Keep original</button>
+      <button class="opt-btn primary" id="opt-use-btn">Use this →</button>
     </div>
   </div>
 </div>
@@ -450,7 +450,7 @@ window.setLastAIResponse = function(text, title) {
   window._lastAIResponse = { text, title: title || "System Export" };
 };
 
-// Strip chat preamble / fake labels so DOCX matches what users expect (like System artifacts)
+// Strip chat preamble / fake labels soDOCX matches what users expect (like System artifacts)
 function markdownBodyForExport(md) {
   if (!md || !String(md).trim()) return md;
   let s = String(md).trim();
@@ -469,7 +469,7 @@ function markdownBodyForExport(md) {
   return s;
 }
 
-/** Drop UI chrome before the first SLIDE N: so PPTX export gets a clean deck body. */
+/** Drop UI chrome before the first SLIDE N: soPPTX export gets a clean deck body. */
 function slideMarkdownForExport(md) {
   if (!md || !String(md).trim()) return md;
   const lines = String(md).split(/\r?\n/);
@@ -493,7 +493,7 @@ function slideMarkdownForExport(md) {
 async function exportDocument(format, triggerEl) {
   let { text, title } = window._lastAIResponse;
   if (!text) {
-    alert("No AI response found yet. Ask System something first!");
+    alert("No content to export yet.");
     return;
   }
 
@@ -535,7 +535,7 @@ async function exportDocument(format, triggerEl) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (e) {
-    alert(` Export error: ${e.message}`);
+    alert(`Export failed: ${e.message}`);
   } finally {
     if (btn) {
       btn.textContent = origLabel;

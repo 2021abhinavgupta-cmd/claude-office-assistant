@@ -680,7 +680,7 @@ def carry_over_tasks():
 
 @ops_bp.route("/api/alerts", methods=["GET"])
 def get_alerts():
-    """Return AT_RISK and CRITICAL tasks for founder dashboard."""
+    """Return AT_RISK and CRITICAL tasks for founderDashboard."""
     user_id = request.args.get("user_id", "")
     if not _is_admin(user_id):
         return jsonify({"error": "Unauthorized"}), 403
@@ -1026,7 +1026,7 @@ def sqlite_delete_client(client_id: int):
 
 @ops_bp.route("/api/export", methods=["POST"])
 def export_document():
-    """Convert AI-generated markdown to a downloadable DOCX, PDF, or PPTX file."""
+    """Convert AI-generated markdown to a downloadableDOCX,PDF, orPPTX file."""
     from document_exporter import export_docx, export_pdf, export_pptx
 
     body    = request.get_json(silent=True) or {}
@@ -1532,7 +1532,7 @@ def client_portal_tasks():
 
 
 def _shape_client_task(t: dict, source: str) -> dict:
-    """Normalise a task dict for the client dashboard frontend."""
+    """Normalise a task dict for the clientDashboard frontend."""
     status = (t.get("status") or "not_started").lower().replace(" ", "_").replace("-", "_")
     progress = int(t.get("progress") or 0)
 

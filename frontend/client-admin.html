@@ -137,7 +137,7 @@
   <script>
     const API = location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:5000" : location.origin;
     
-    let dashboardData = { clients: [] };
+    letDashboardData = { clients: [] };
     let portalAccounts = [];
     let selectedClient = null;
     let editingTaskId = null;
@@ -159,7 +159,7 @@
 
     async function fetchDashboardData() {
       const res = await fetch(`${API}/api/notion/dashboard`);
-      dashboardData = await res.json();
+     DashboardData = await res.json();
     }
 
     async function fetchPortalAccounts() {
@@ -170,12 +170,12 @@
 
     function renderSidebar() {
       const list = document.getElementById("client-list");
-      if(!dashboardData.clients || dashboardData.clients.length === 0) {
+      if(!dashboardData.clients ||DashboardData.clients.length === 0) {
         list.innerHTML = `<div style="padding: 20px; color: var(--muted); text-align: center; font-size: 0.9rem;">No clients found in Notion.</div>`;
         return;
       }
 
-      list.innerHTML = dashboardData.clients.map(c => `
+      list.innerHTML =DashboardData.clients.map(c => `
         <div class="cl-item ${selectedClient && selectedClient.notion_id === c.notion_id ? 'active' : ''}" onclick="selectClient('${c.notion_id}')">
           <span>${c.name}</span>
           <span class="badge">${c.tasks ? c.tasks.length : 0} tasks</span>
@@ -184,7 +184,7 @@
     }
 
     function selectClient(notionId) {
-      selectedClient = dashboardData.clients.find(c => c.notion_id === notionId);
+      selectedClient =DashboardData.clients.find(c => c.notion_id === notionId);
       renderSidebar();
       renderMain();
     }

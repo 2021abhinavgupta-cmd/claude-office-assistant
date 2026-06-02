@@ -408,14 +408,14 @@ async function loadPortal() {
       const dashRes = await fetch(`${API}/api/notion/dashboard?user_id=${encodeURIComponent(UID)}`, { signal: AbortSignal.timeout(15000) });
       if (dashRes.ok) {
         const dash = await dashRes.json();
-        // Notion dashboard returns clients with tasks nested
+        // NotionDashboard returns clients with tasks nested
         allClients = (dash.clients || []).map(c => ({
           ...c,
           name: c.name || c.client_name || 'Unknown',
           tasks: c.tasks || [],
         }));
       } else {
-        throw new Error('Notion dashboard failed');
+        throw new Error('NotionDashboard failed');
       }
     } else {
       // SQLite fallback

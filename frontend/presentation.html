@@ -247,7 +247,7 @@
       </div>
 
       <button class="gen-btn" id="gen-btn" onclick="generatePresentation()">
-        <span id="btn-icon">✦</span>
+        <span id="btn-icon">AP</span>
         <span id="btn-text">Generate Slides</span>
       </button>
 
@@ -295,7 +295,7 @@
       </div>
 
       <div class="usage-strip" id="usage-strip">
-        <span>✦</span>
+        <span>AP</span>
         <span id="us-model" class="usage-chip">claude-sonnet</span>
         <span id="us-tokens">— tokens</span>
         <span id="us-cost">$—</span>
@@ -457,7 +457,7 @@ function setLoading(v) {
     icon.outerHTML = '<div class="spinner" id="btn-icon"></div>';
     text.textContent = "Generating...";
   } else {
-    document.getElementById("btn-icon").outerHTML = '<span id="btn-icon">✦</span>';
+    document.getElementById("btn-icon").outerHTML = '<span id="btn-icon">AP</span>';
     text.textContent = "Generate Slides";
   }
 }

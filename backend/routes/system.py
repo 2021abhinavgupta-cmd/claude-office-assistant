@@ -110,7 +110,7 @@ def list_routes():
 
 @system_bp.route("/api/budget", methods=["GET"])
 def budget_status():
-    """Returns current month budget usage + alert level for dashboard banner."""
+    """Returns current month budget usage + alert level forDashboard banner."""
     summary = get_usage_summary()
     pct = summary.get("percent_used", 0)
     alert_level = "critical" if pct >= 90 else "warning" if pct >= 70 else "ok"
@@ -119,7 +119,7 @@ def budget_status():
 
 @system_bp.route("/api/usage", methods=["GET"])
 def usage_dashboard():
-    """Full usage dashboard data — powers the cost monitoring dashboard."""
+    """Full usageDashboard data — powers the cost monitoringDashboard."""
     all_flag = request.args.get("all", "false").lower() == "true"
     month = request.args.get("month")
     summary  = get_usage_summary(all_calls=all_flag, month_key=month)
