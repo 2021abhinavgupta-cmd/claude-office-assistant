@@ -1023,10 +1023,50 @@ def sqlite_patch_task(task_id: int):
     if not updates:
         return jsonify({"error": "Nothing to update"}), 400
     vals.append(task_id)
+    # ── Fetch old state for WhatsApp notifications ────────────────────────
     conn = _pt_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT title, assigned_to, status, client_id FROM tasks WHERE id=?", 
+        (task_id,)
+    )
+    old_row = cur.fetchone()
+    old_status = old_row[2] if old_row else None
+    
     with conn:
         conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id=?", vals)
-
+        
+    # ── Trigger WhatsApp Notification if status changed ─────────────────────
+    new_status = body.get("status")
+    if old_row and new_status and new_status != old_status:
+        try:
+            from notifications import notify_task_status_changed
+            EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
+                         "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                         "emp007":"Palak","emp008":"Happy"}
+            
+            task_title = body.get("new_title", old_row[0])
+            raw_assignee = body.get("assigned_to", old_row[1])
+            assignee_name = EMP_NAMES.get(raw_assignee, raw_assignee)
+            client_id = old_row[3]
+            client_name = "Internal"
+            
+            if client_id:
+                cur.execute("SELECT name FROM clients WHERE id=?", (client_id,))
+                c_row = cur.fetchone()
+                if c_row:
+                    client_name = c_row[0]
+                    
+            notify_task_status_changed(
+                task_title=task_title, 
+                assignee=assignee_name, 
+                client_name=client_name, 
+                old_status=old_status, 
+                new_status=new_status
+            )
+        except Exception as e:
+            logger.error(f"Failed to send WhatsApp notification: {e}")
+    # ─────────────────────────────────────────────────────────────────────────
     # ── Auto-sync assignment to standup_tasks ─────────────────────────────────
     new_assignee = body.get("assigned_to", "").strip()
     if new_assignee:
