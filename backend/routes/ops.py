@@ -291,16 +291,18 @@ def delegate_task(task_id):
     if not row:
         return jsonify({"error": "Task not found"}), 404
         
-    orig_user_id, date_str, title, blocker = row
+    orig_user_id, old_date_str, title, blocker = row
+    
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
     
     with conn:
         # 1. Mark original task as delegated
         conn.execute("UPDATE standup_tasks SET status='delegated', delegated_to=? WHERE id=?", (target_user_name, task_id))
         
-        # 2. Create new task for target user
+        # 2. Create new task for target user on TODAY's date (so it appears immediately)
         conn.execute(
             "INSERT INTO standup_tasks (user_id, date, title, status, blocker, delegated_from) VALUES (?, ?, ?, 'pending', ?, ?)",
-            (target_user_id, date_str, title, blocker, orig_user_id)
+            (target_user_id, today_str, title, blocker, orig_user_id)
         )
     conn.close()
     return jsonify({"success": True})
