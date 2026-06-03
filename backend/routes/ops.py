@@ -863,13 +863,41 @@ def notion_list_or_create_tasks():
 @ops_bp.route("/api/notion/tasks/<string:notion_id>", methods=["PATCH"])
 def notion_update_task(notion_id: str):
     body   = request.get_json(silent=True) or {}
+    
+    EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
+                 "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                 "emp007":"Palak","emp008":"Happy"}
+                 
+    raw_assigned = body.get("assigned_to", "")
+    mapped_assigned = EMP_NAMES.get(raw_assigned, raw_assigned) if raw_assigned else None
+    
     result = notion_store.update_task(
         notion_id=notion_id, status=body.get("status"),
         progress=body.get("progress"), submission_note=body.get("submission_note"),
-        assigned_to=body.get("assigned_to"), new_title=body.get("new_title"),
+        assigned_to=mapped_assigned, new_title=body.get("new_title"),
         due_date=body.get("due_date"), task_title=body.get("task_title", ""),
         assignee=body.get("assignee", ""), client_name=body.get("client_name", ""),
     )
+    
+    # ── Auto-sync assignment to standup_tasks ─────────────────────────────────
+    if raw_assigned and result:
+        task_title = body.get("new_title") or body.get("task_title") or "Untitled Task"
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        su_conn = _su_conn()
+        cur2 = su_conn.cursor()
+        cur2.execute(
+            "SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=?)",
+            (raw_assigned, today_str, notion_id, task_title)
+        )
+        if not cur2.fetchone():
+            with su_conn:
+                su_conn.execute(
+                    "INSERT INTO standup_tasks (user_id, date, title, status, notion_id) VALUES (?,?,?,'pending',?)",
+                    (raw_assigned, today_str, task_title, notion_id)
+                )
+        su_conn.close()
+    # ─────────────────────────────────────────────────────────────────────────
+
     if result:
         return jsonify({"success": True})
     return jsonify({"error": "Failed to update task in Notion"}), 500
@@ -991,6 +1019,33 @@ def sqlite_patch_task(task_id: int):
     conn = _pt_conn()
     with conn:
         conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id=?", vals)
+
+    # ── Auto-sync assignment to standup_tasks ─────────────────────────────────
+    new_assignee = body.get("assigned_to", "").strip()
+    if new_assignee:
+        # Fetch the task title for the standup entry
+        cur = conn.cursor()
+        cur.execute("SELECT title FROM tasks WHERE id=?", (task_id,))
+        row = cur.fetchone()
+        task_title = row[0] if row else f"Task #{task_id}"
+
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        su_conn = _su_conn()
+        cur2 = su_conn.cursor()
+        # Only insert if not already in today's standup for this user
+        cur2.execute(
+            "SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=?",
+            (new_assignee, today_str, task_title)
+        )
+        if not cur2.fetchone():
+            with su_conn:
+                su_conn.execute(
+                    "INSERT INTO standup_tasks (user_id, date, title, status) VALUES (?,?,?,'pending')",
+                    (new_assignee, today_str, task_title)
+                )
+        su_conn.close()
+    # ─────────────────────────────────────────────────────────────────────────
+
     conn.close()
     return jsonify({"success": True})
 
