@@ -27,11 +27,19 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 def _get_twilio_creds():
+    frm = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886").strip()
+    to = os.getenv("FOUNDER_WHATSAPP", "").strip()
+    
+    if frm and not frm.startswith("whatsapp:"):
+        frm = "whatsapp:" + frm
+    if to and not to.startswith("whatsapp:"):
+        to = "whatsapp:" + to
+        
     return {
-        "sid": os.getenv("TWILIO_ACCOUNT_SID", ""),
-        "token": os.getenv("TWILIO_AUTH_TOKEN", ""),
-        "from": os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886"),
-        "to": os.getenv("FOUNDER_WHATSAPP", ""),
+        "sid": os.getenv("TWILIO_ACCOUNT_SID", "").strip(),
+        "token": os.getenv("TWILIO_AUTH_TOKEN", "").strip(),
+        "from": frm,
+        "to": to,
     }
 
 def _is_configured(creds) -> bool:

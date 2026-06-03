@@ -84,6 +84,47 @@ def health():
     })
 
 
+@system_bp.route("/api/test-whatsapp", methods=["GET"])
+def test_whatsapp():
+    """Diagnose WhatsApp notification setup."""
+    import requests as req
+    from requests.auth import HTTPBasicAuth
+
+    sid   = os.getenv("TWILIO_ACCOUNT_SID", "")
+    token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    frm   = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+    to    = os.getenv("FOUNDER_WHATSAPP", "")
+
+    cfg = {
+        "TWILIO_ACCOUNT_SID_set": bool(sid),
+        "TWILIO_AUTH_TOKEN_set":  bool(token),
+        "TWILIO_WHATSAPP_FROM":   frm,
+        "FOUNDER_WHATSAPP":       to,
+        "to_has_prefix":          to.startswith("whatsapp:"),
+    }
+
+    if not sid or not token or not to:
+        return jsonify({"configured": False, "config": cfg, "error": "Missing env vars"}), 200
+
+    # Ensure prefix is correct
+    if not to.startswith("whatsapp:"):
+        to = "whatsapp:" + to
+
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+    payload = {"From": frm, "To": to, "Body": "✅ Test message from Claude Office Assistant! WhatsApp notifications are working."}
+    try:
+        r = req.post(url, data=payload, auth=HTTPBasicAuth(sid, token), timeout=10)
+        return jsonify({
+            "configured": True,
+            "config": cfg,
+            "twilio_status": r.status_code,
+            "twilio_response": r.json() if r.headers.get("content-type","").startswith("application/json") else r.text[:400],
+            "success": r.status_code in (200, 201),
+        })
+    except Exception as e:
+        return jsonify({"configured": True, "config": cfg, "error": str(e)}), 200
+
+
 @system_bp.route("/api/web-search", methods=["GET"])
 def web_search_api():
     """DuckDuckGo instant-answer lookup. Query param: q="""
