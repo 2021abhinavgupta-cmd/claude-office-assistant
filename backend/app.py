@@ -1745,7 +1745,7 @@ def conversation_chat(conv_id):
 
     # Broadcast user message to all huddle listeners
     if is_huddle:
-        _huddle_broadcast(conv_id, {"type": "message", "role": "user", "sender": sender_name, "content": message})
+        _huddle_broadcast(conv_id, {"type": "message", "role": "user", "sender": sender_name, "sender_id": sender_id, "content": message})
 
     # Lock in task_type if not already set
     if not conv.get("task_type"):
@@ -1789,7 +1789,7 @@ def conversation_chat(conv_id):
 
     # Broadcast assistant reply to huddle listeners
     if is_huddle:
-        _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "content": result["response"]})
+        _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "sender_id": "system", "content": result["response"]})
 
     updated_conv = conversation_store.get_conversation(conv_id)
     return jsonify({
@@ -1840,7 +1840,7 @@ def conversation_stream(conv_id):
         conversation_store.add_message(conv_id, "user", prefixed_message)
 
     if is_huddle:
-        _huddle_broadcast(conv_id, {"type": "message", "role": "user", "sender": sender_name, "content": message})
+        _huddle_broadcast(conv_id, {"type": "message", "role": "user", "sender": sender_name, "sender_id": sender_id, "content": message})
 
     if not conv.get("task_type"):
         conversation_store.update_task_type(conv_id, task_type)
@@ -2043,7 +2043,7 @@ def conversation_stream(conv_id):
         })
 
         if is_huddle:
-            _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "content": clean_response})
+            _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "sender_id": "system", "content": clean_response})
 
         updated_conv   = conversation_store.get_conversation(conv_id)
         updated_budget = check_budget_available()
@@ -2692,7 +2692,9 @@ def auto_generate_tasks(client_id):
             # Build a rich title: "[Type] Title"
             task_title = f"[{post_type}] {title}" if post_type else title
             # Pack extra detail into a description-like note via the brief
+            creation_date = post.get("creation_date", "")
             detail_parts = []
+            if creation_date: detail_parts.append(f"Creation Date: {creation_date}")
             if brief:   detail_parts.append(f"Brief: {brief}")
             if idea:    detail_parts.append(f"Idea: {idea}")
             if caption: detail_parts.append(f"Caption: {caption}")
@@ -2741,7 +2743,9 @@ def auto_generate_tasks(client_id):
             link = post.get("link", "")
             assignee = post.get("assignee", "")
             task_title = f"[{post_type}] {title}" if post_type else title
+            creation_date = post.get("creation_date", "")
             detail_parts = []
+            if creation_date: detail_parts.append(f"Creation Date: {creation_date}")
             if brief:   detail_parts.append(f"Brief: {brief}")
             if idea:    detail_parts.append(f"Idea: {idea}")
             if caption: detail_parts.append(f"Caption: {caption}")

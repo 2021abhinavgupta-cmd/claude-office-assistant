@@ -876,6 +876,7 @@
           <table class="social-table" id="social-table">
             <colgroup>
               <col style="width:40px">        <!-- # -->
+              <col style="width:140px">       <!-- Creation Date -->
               <col style="width:140px">       <!-- Post Day -->
               <col style="width:200px">       <!-- Post Title -->
               <col style="width:110px">       <!-- Type -->
@@ -890,6 +891,7 @@
             <thead>
               <tr>
                 <th>#</th>
+                <th>Creation Date</th>
                 <th>Post Day</th>
                 <th>Post Title</th>
                 <th>Type</th>
@@ -1221,7 +1223,7 @@
     function statusOptions(sel = "") {
       return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
     }
-    function addSocialRow(title = "", type = "Story", brief = "", idea = "", caption = "", assignee = "", status = "Scheduled", postDay = "", driveLink = "") {
+    function addSocialRow(title = "", type = "Story", brief = "", idea = "", caption = "", assignee = "", status = "Scheduled", postDay = "", creationDate = "", driveLink = "") {
       socialRowIdx++;
       const idx = socialRowIdx;
       const tbody = document.getElementById("social-tbody");
@@ -1232,6 +1234,7 @@
       ).join("");
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
+    <td><input class="st-input" type="date" value="${creationDate}" style="width:100%;height:36px"/></td>
     <td><input class="st-input" type="date" value="${postDay}" style="width:100%;height:36px"/></td>
     <td>
       <div class="ta-wrap">
@@ -1400,7 +1403,8 @@
           const checkedBoxes = [...r.querySelectorAll(".ms-chk:checked")];
           const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling?.textContent?.trim() || "").join(", ") : "";
 
-          const day = inputs[0]?.value || "";
+          const creationDate = inputs[0]?.value || "";
+          const day = inputs[1]?.value || "";
           const title = textareas[0]?.value?.trim() || "";
           const brief = textareas[1]?.value?.trim() || "";
           const idea = textareas[2]?.value?.trim() || "";
@@ -1410,7 +1414,7 @@
           const status = sels[1]?.value || "Scheduled";
 
           if (title || day) {
-            socialPosts.push({ title, type, brief, idea, caption, link, assignee, post_day: day, status });
+            socialPosts.push({ title, type, brief, idea, caption, link, assignee, post_day: day, creation_date: creationDate, status });
           }
         });
       }

@@ -539,7 +539,7 @@ function _connectHuddleSSE(convId) {
       const evt = JSON.parse(e.data);
       if (evt.type === "message" && evt.role && evt.content) {
         // Only append if not our own message (avoid duplicates)
-        if (evt.role === "assistant" || (evt.sender && evt.sender !== (currentUser?.user_name || ""))) {
+        if (evt.role === "assistant" || (evt.sender_id && evt.sender_id !== (currentUser?.user_id || ""))) {
           appendMessage(evt.role, evt.content, {});
           scrollToBottom();
         }

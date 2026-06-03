@@ -627,6 +627,7 @@ function renderClientSheets(clientId) {
       <thead>
         <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid var(--bdr); color: var(--txt);">
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 40px; font-weight: 600;">#</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Creation Date</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Post Day</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Post Title</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 110px; font-weight: 600;">Type</th>
@@ -654,18 +655,21 @@ function renderClientSheets(clientId) {
     // Parse description for Brief, Idea, Caption, Link
     // Format: Brief: xxx | Idea: yyy | Caption: zzz | Link: www
     const notes = t.description || "";
-    let brief = "", idea = "", caption = "", link = "";
+    let creationDate = "", brief = "", idea = "", caption = "", link = "";
     
-    const bMatch = notes.match(/Brief:\s*([\s\S]*?)(?=\s*\|\s*(?:Idea|Caption|Link):|$)/);
+    const crMatch = notes.match(/Creation Date:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Caption|Link):|$)/);
+    if (crMatch) creationDate = crMatch[1].trim();
+
+    const bMatch = notes.match(/Brief:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Caption|Link):|$)/);
     if (bMatch) brief = bMatch[1].trim();
     
-    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Caption|Link):|$)/);
+    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Caption|Link):|$)/);
     if (iMatch) idea = iMatch[1].trim();
     
-    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Link):|$)/);
+    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Link):|$)/);
     if (cMatch) caption = cMatch[1].trim();
     
-    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Caption):|$)/);
+    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Caption):|$)/);
     if (lMatch) link = lMatch[1].trim();
     
     // Status color (social media statuses)
@@ -685,6 +689,9 @@ function renderClientSheets(clientId) {
     html += `
       <tr style="border-bottom: 1px solid var(--bdr);">
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted);">${rowIndex++}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
+          <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${creationDate}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+        </td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
           <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${t.due_date || ""}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
@@ -723,17 +730,19 @@ function renderClientSheets(clientId) {
 
 async function saveSheetRow(taskId, cellElem, clientId) {
   const tr = cellElem.closest('tr');
-  const due_date = tr.cells[1].querySelector('input').value;
-  const title = tr.cells[2].innerText.trim();
-  const type = tr.cells[3].querySelector('select').value;
-  const brief = tr.cells[4].innerText.trim();
-  const idea = tr.cells[5].innerText.trim();
-  const caption = tr.cells[6].innerText.trim();
-  const assigned_to = tr.cells[7].innerText.trim();
-  const status = tr.cells[8].querySelector('select').value;
-  const link = tr.cells[9].innerText.trim();
+  const creation_date = tr.cells[1].querySelector('input').value;
+  const due_date = tr.cells[2].querySelector('input').value;
+  const title = tr.cells[3].innerText.trim();
+  const type = tr.cells[4].querySelector('select').value;
+  const brief = tr.cells[5].innerText.trim();
+  const idea = tr.cells[6].innerText.trim();
+  const caption = tr.cells[7].innerText.trim();
+  const assigned_to = tr.cells[8].innerText.trim();
+  const status = tr.cells[9].querySelector('select').value;
+  const link = tr.cells[10].innerText.trim();
   
   const detailParts = [];
+  if (creation_date) detailParts.push(`Creation Date: ${creation_date}`);
   if (brief) detailParts.push(`Brief: ${brief}`);
   if (idea) detailParts.push(`Idea: ${idea}`);
   if (caption) detailParts.push(`Caption: ${caption}`);
