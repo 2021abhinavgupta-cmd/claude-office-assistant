@@ -512,6 +512,8 @@ async function openConversation(convId) {
         model_tier: m.model_tier,
         cost_usd:   m.cost_usd,
         model_used: m.model_used,
+        sender_id:  m.sender_id,
+        sender_name: m.sender_name
       });
     });
     scrollToBottom();
@@ -540,7 +542,7 @@ function _connectHuddleSSE(convId) {
       if (evt.type === "message" && evt.role && evt.content) {
         // Only append if not our own message (avoid duplicates)
         if (evt.role === "assistant" || (evt.sender_id && evt.sender_id !== (currentUser?.user_id || ""))) {
-          appendMessage(evt.role, evt.content, {});
+          appendMessage(evt.role, evt.content, { sender_name: evt.sender, sender_id: evt.sender_id });
           scrollToBottom();
         }
       } else if (evt.type === "joined") {
@@ -744,12 +746,12 @@ function appendMessage(role, content, meta = {}) {
   const msgIndex = Array.from(messagesEl.querySelectorAll('.msg')).length;
   el.dataset.index = msgIndex;
 
+  const senderName = meta.sender_name || (role === "user" ? (currentUser ? currentUser.user_name : "You") : "System");
+  
   const avatar = role === "user"
-    ? `<div class="msg-avatar">${currentUser ? currentUser.user_name.charAt(0).toUpperCase() : "U"}</div>`
+    ? `<div class="msg-avatar">${senderName.charAt(0).toUpperCase()}</div>`
     : `<div class="msg-avatar">AP</div>`;
-  const name = role === "user"
-    ? (currentUser ? currentUser.user_name : "You")
-    : "System";
+  const name = senderName;
 
   const metaHtml = (role === "assistant" && (meta.model_tier || meta.cost_usd))
     ? `<div class="msg-meta">
@@ -1523,7 +1525,12 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
   try {
     const modelOverrideEl = document.getElementById("model-override");
     const override = modelOverrideEl ? modelOverrideEl.value : "auto";
-    const bodyPayload = { message: text, attachments: atts };
+    const bodyPayload = { 
+      message: text, 
+      attachments: atts,
+      sender_id: currentUser ? currentUser.user_id : "",
+      sender_name: currentUser ? currentUser.user_name : ""
+    };
     if (override !== "auto") bodyPayload.model_override = override;
     if (truncateFromIndex !== null) bodyPayload.truncate_from_index = truncateFromIndex;
     const webEl = document.getElementById("web-search-toggle");

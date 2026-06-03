@@ -1730,7 +1730,7 @@ def conversation_chat(conv_id):
 
     # Determine sender name for multi-participant huddles
     sender_id   = data.get("sender_id") or conv.get("user_id", "")
-    sender_name = (conv.get("participant_names") or {}).get(sender_id, "")
+    sender_name = data.get("sender_name") or (conv.get("participant_names") or {}).get(sender_id, "")
     participants = conv.get("participant_ids", [conv.get("user_id")])
     is_huddle = len(participants) > 1
     # Prefix sender name when multiple people are in the chat
@@ -1741,7 +1741,7 @@ def conversation_chat(conv_id):
         if not conversation_store.amend_last_user_content(conv_id, prefixed_message):
             return jsonify({"error": "Could not update last user message"}), 400
     else:
-        conversation_store.add_message(conv_id, "user", prefixed_message)
+        conversation_store.add_message(conv_id, "user", prefixed_message, metadata={"sender_id": sender_id, "sender_name": sender_name})
 
     # Broadcast user message to all huddle listeners
     if is_huddle:
@@ -1821,7 +1821,7 @@ def conversation_stream(conv_id):
     task_type = (data.get("task_type") or conv.get("task_type") or _detect_task(message))
     
     sender_id = data.get("sender_id") or conv.get("user_id", "")
-    sender_name = (conv.get("participant_names") or {}).get(sender_id, "")
+    sender_name = data.get("sender_name") or (conv.get("participant_names") or {}).get(sender_id, "")
     participants = conv.get("participant_ids", [conv.get("user_id")])
     is_huddle = len(participants) > 1
     prefixed_message = f"[{sender_name}]: {message}" if is_huddle and sender_name else message
@@ -1837,7 +1837,7 @@ def conversation_stream(conv_id):
         if not conversation_store.amend_last_user_content(conv_id, prefixed_message):
             return jsonify({"error": "Could not update last user message"}), 400
     else:
-        conversation_store.add_message(conv_id, "user", prefixed_message)
+        conversation_store.add_message(conv_id, "user", prefixed_message, metadata={"sender_id": sender_id, "sender_name": sender_name})
 
     if is_huddle:
         _huddle_broadcast(conv_id, {"type": "message", "role": "user", "sender": sender_name, "sender_id": sender_id, "content": message})
