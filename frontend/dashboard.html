@@ -586,15 +586,16 @@ function renderDashboard(d) {
   if (elCritChip) elCritChip.innerHTML = ` Critical at ${formatCost(critLimit, 2)} (90%)`;
 
   // KPIs
+  const allTimeSpent = d.total_spent_ever || 0;
+  const limitVal = d.budget_limit || 20;
+
   document.getElementById("kpi-spent").textContent     = formatCost(d.monthly_spend || 0, 4);
-  document.getElementById("kpi-remaining").textContent = formatCost(d.remaining || 0, 2);
+  document.getElementById("kpi-remaining").textContent = formatCost(Math.max(limitVal - allTimeSpent, 0), 2);
   document.getElementById("kpi-calls").textContent     = d.total_calls || 0;
-  document.getElementById("kpi-alltime").textContent   = formatCost(d.total_spent_ever || 0, 4);
+  document.getElementById("kpi-alltime").textContent   = formatCost(allTimeSpent, 4);
   document.getElementById("kpi-month").textContent     = d.month || "—";
 
   //Usage bar (user requested tracking all-time spend instead of monthly)
-  const allTimeSpent = d.total_spent_ever || 0;
-  const limitVal = d.budget_limit || 20;
   const pct = Math.min((allTimeSpent / limitVal) * 100, 100);
   const bar  = document.getElementById("budget-bar-fill");
   bar.style.width = pct + "%";
