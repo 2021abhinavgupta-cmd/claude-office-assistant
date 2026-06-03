@@ -816,7 +816,18 @@ function renderClientCalendar(clientId){
   const daysInPrev  = new Date(year, month, 0).getDate();
   const today = new Date(); today.setHours(0,0,0,0);
   const byDate={};
-  tasks.forEach(t=>{ if(t.due_date){ (byDate[t.due_date]=byDate[t.due_date]||[]).push(t); } });
+  tasks.forEach(t=>{ 
+    if(t.due_date){ (byDate[t.due_date]=byDate[t.due_date]||[]).push(t); }
+    if(t.description) {
+      const crMatch = t.description.match(/Creation Date:\s*([\d-]+)(?=\s*\||$)/);
+      if(crMatch && crMatch[1]) {
+        const crDate = crMatch[1].trim();
+        if(crDate !== t.due_date) {
+          (byDate[crDate]=byDate[crDate]||[]).push(t);
+        }
+      }
+    }
+  });
   // Blanks
   for(let i=0;i<firstDay;i++){
     const cell=document.createElement('div');
