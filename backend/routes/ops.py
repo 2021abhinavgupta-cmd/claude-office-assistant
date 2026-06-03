@@ -905,24 +905,7 @@ def notion_update_task(notion_id: str):
         su_conn.close()
     # ─────────────────────────────────────────────────────────────────────────
 
-    # ── WhatsApp notification on status change ────────────────────────────────
-    new_status = body.get("status")
-    if result and new_status:
-        try:
-            from notifications import notify_task_status_changed
-            task_title  = body.get("new_title") or body.get("task_title") or "Untitled Task"
-            assignee    = body.get("assignee") or mapped_assigned or ""
-            client_name = body.get("client_name") or "Internal"
-            notify_task_status_changed(
-                task_title=task_title,
-                assignee=assignee,
-                client_name=client_name,
-                old_status="",         # Notion doesn't give us old status here
-                new_status=new_status,
-            )
-        except Exception as e:
-            logger.error(f"WhatsApp notification failed: {e}")
-    # ─────────────────────────────────────────────────────────────────────────
+    # The WhatsApp notification is handled internally by notion_store.update_task
 
     if result:
         return jsonify({"success": True})
