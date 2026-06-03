@@ -823,7 +823,7 @@ function renderClientCalendar(clientId){
       if(crMatch && crMatch[1]) {
         const crDate = crMatch[1].trim();
         if(crDate !== t.due_date) {
-          (byDate[crDate]=byDate[crDate]||[]).push(t);
+          (byDate[crDate]=byDate[crDate]||[]).push({ ...t, is_creation_date: true });
         }
       }
     }
@@ -843,7 +843,11 @@ function renderClientCalendar(clientId){
     let html=`<div class="cal-date${cellDate.getTime()===today.getTime()?' today-num':''}}">${day}</div>`;
     const dayTasks=byDate[dateStr]||[];
     dayTasks.slice(0,3).forEach(t=>{
-      html+=`<span class="cal-pill" style="background:rgba(245,166,35,.2);color:#f5a623;border:1px solid rgba(245,166,35,.3)">${t.title}</span>`;
+      if (t.is_creation_date) {
+        html+=`<span class="cal-pill" style="background:rgba(74,144,226,.2);color:#4a90e2;border:1px solid rgba(74,144,226,.3)">[Start] ${t.title}</span>`;
+      } else {
+        html+=`<span class="cal-pill" style="background:rgba(245,166,35,.2);color:#f5a623;border:1px solid rgba(245,166,35,.3)">${t.title}</span>`;
+      }
     });
     if(dayTasks.length>3) html+=`<div class="cal-more">+${dayTasks.length-3} more</div>`;
     cell.innerHTML=html;
