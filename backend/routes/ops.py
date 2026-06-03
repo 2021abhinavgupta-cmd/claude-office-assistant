@@ -108,9 +108,9 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND user_id=? AND status != 'deleted' ORDER BY id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND status != 'deleted' ORDER BY id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
@@ -259,7 +259,7 @@ def get_my_tasks():
     
     tasks = []
     for r in rows:
-        if r[2] == "deleted": continue
+        if r[2] in ("deleted", "delegated"): continue
         st = []
         try:
             st = json.loads(r[7]) if r[7] else []
@@ -293,6 +293,11 @@ def delegate_task(task_id):
         
     orig_user_id, old_date_str, title, blocker = row
     
+    EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
+                 "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                 "emp007":"Palak","emp008":"Happy"}
+    orig_user_name = EMP_NAMES.get(orig_user_id, orig_user_id)
+    
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
     
     with conn:
@@ -302,7 +307,7 @@ def delegate_task(task_id):
         # 2. Create new task for target user on TODAY's date (so it appears immediately)
         conn.execute(
             "INSERT INTO standup_tasks (user_id, date, title, status, blocker, delegated_from) VALUES (?, ?, ?, 'pending', ?, ?)",
-            (target_user_id, today_str, title, blocker, orig_user_id)
+            (target_user_id, today_str, title, blocker, orig_user_name)
         )
     conn.close()
     return jsonify({"success": True})
