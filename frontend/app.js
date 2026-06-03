@@ -628,6 +628,20 @@ async function startNewChat(initialMessage = null, projectId = null) {
     updateHeaderChips("general", "haiku");
     updateInputMeta("general", "claude-haiku-4-5");
 
+    let participantBar = document.getElementById("huddle-bar");
+    if (!participantBar) {
+      participantBar = document.createElement("div");
+      participantBar.id = "huddle-bar";
+      participantBar.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 16px;background:rgba(255,255,255,0.04);border-bottom:1px solid var(--bdr);font-size:0.78rem;flex-wrap:wrap;";
+      messagesEl.parentElement.insertBefore(participantBar, messagesEl);
+    }
+    participantBar.style.display = "flex";
+    participantBar.innerHTML = `
+      <span style="color:var(--muted);margin-right:4px;"></span>
+      <span style="background:var(--surface2);border-radius:12px;padding:2px 10px;color:var(--txt);">${currentUser.user_name}</span>
+      <button onclick="openHuddleInvite('${conv.id}')" title="Invite to Huddle" style="margin-left:auto;background:var(--accent);color:#000;border:none;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem;font-weight:600;">+ Invite</button>
+    `;
+
     if (initialMessage) {
       msgInput.value = initialMessage;
       await sendMessage();
