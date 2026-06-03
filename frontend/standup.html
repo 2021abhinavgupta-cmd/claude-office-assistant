@@ -291,7 +291,7 @@ function renderTasks(){
             ${t.status==="pending" ? `
               <select class="delegate-select" onchange="delegateTask(${t.id}, this.value, this.options[this.selectedIndex].text)" style="background:transparent; border:1px dashed var(--bdr); border-radius:4px; color:var(--muted); font-size:0.7rem; outline:none; max-width: 100px;">
                 <option value="">Assign...</option>
-                ${allEmployees.filter(e=>e.user_id!==UID).map(e=>`<option value="${e.user_id}">${e.name}</option>`).join("")}
+                ${allEmployees.filter(e=>e.id!==UID).map(e=>`<option value="${e.id}">${e.name}</option>`).join("")}
               </select>
             ` : ""}
           </div>
