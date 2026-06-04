@@ -121,9 +121,16 @@ def get_standups_today():
             tasks_by_user[uid] = []
         tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker, "carried_from": carried_from})
 
-    EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                 "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
-                 "emp007":"Tanaya","emp008":"Happy"}
+    # Load employee names dynamically from employees.json
+    try:
+        _emp_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "employees.json")
+        with open(_emp_path, "r", encoding="utf-8") as _f:
+            _emp_data = json.load(_f)
+        EMP_NAMES = {e["id"]: e["name"] for e in _emp_data.get("employees", [])}
+    except Exception:
+        EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
+                     "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                     "emp007":"Palak","emp008":"Happy"}
     standups = [{"user_id":r[0],"name":EMP_NAMES.get(r[0],r[0]),"date":r[1],
                  "yesterday":r[2],"today":r[3],"blockers":r[4],"submitted_at":r[5]} for r in rows]
                  

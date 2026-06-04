@@ -151,7 +151,10 @@
       <div class="card" style="flex:1">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
            <h2 style="margin-bottom:0"> Team Standups</h2>
-           <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'" onclick="window.location.href=API+'/api/export/standup-tasks'"> Export CSV</button>
+           <div style="display:flex;gap:8px;align-items:center">
+             <button id="refresh-team-btn" onclick="loadTeamStandups()" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'"> ↻ Refresh</button>
+             <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'" onclick="window.location.href=API+'/api/export/standup-tasks'"> Export CSV</button>
+           </div>
         </div>
         <p class="card-sub">See what everyone is working on</p>
         
@@ -217,7 +220,7 @@ function esc(s){if(!s)return"";return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":
   loadTeamStandups();
   loadAlerts();
   loadVelocity();
-  setInterval(loadTeamStandups, 120000);
+  setInterval(loadTeamStandups, 30000);
 })();
 
 // ── Personal Task Tracker ─────────────────────────────────────────────────────
@@ -544,6 +547,15 @@ async function updateTaskTitle(id, newTitle) {
 // ── Team standups panel ───────────────────────────────────────────────────────
 
 async function loadTeamStandups(dateStr = ""){
+  if (!window.EMPLOYEES || window.EMPLOYEES.length === 0) {
+    await loadEmployees();
+  }
+  if (!window.EMPLOYEES || window.EMPLOYEES.length === 0) {
+    document.getElementById("team-standups").innerHTML = '<div class="empty">Could not load employee list. Please refresh.</div>';
+    return;
+  }
+  const refreshBtn = document.getElementById("refresh-team-btn");
+  if (refreshBtn) { refreshBtn.textContent = " ⏳"; refreshBtn.disabled = true; }
   const query = dateStr ? `?date=${dateStr}` : "";
   const r = await fetch(`${API}/api/standup/today${query}`);
   const data = await r.json();
@@ -627,6 +639,8 @@ async function loadTeamStandups(dateStr = ""){
         ${s && s.blockers?`<div class="sc-field blocker"><div class="fl"> Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
       </div></div>`;
   }).join("");
+  const refreshBtn = document.getElementById("refresh-team-btn");
+  if (refreshBtn) { refreshBtn.textContent = " ↻ Refresh"; refreshBtn.disabled = false; }
 }
 
 // ── Alerts (admin) ────────────────────────────────────────────────────────────
