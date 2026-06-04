@@ -94,7 +94,7 @@
     .sp-approved{background:rgba(34,211,160,.15);color:var(--grn)}
     .sp-rejected{background:rgba(255,92,92,.15);color:var(--red)}
     .prog{background:rgba(255,255,255,.07);border-radius:100px;height:5px;overflow:hidden;margin-top:10px}
-    .prog-fill{height:5px;border-radius:100px;transition:width .4s;background:linear-gradient(90deg,var(--acc),#ff8c42)}
+    .prog-fill{height:5px;border-radius:100px;transition:width .4s;background:var(--accent),#ff8c42)}
     .tc-actions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
     .btn-sm{padding:5px 12px;font-size:.73rem;border-radius:6px;border:none;cursor:pointer;font-weight:600}
     .btn-approve{background:rgba(34,211,160,.2);color:var(--grn);border:1px solid rgba(34,211,160,.3)}
@@ -146,7 +146,7 @@
     .kstar{font-size:.7rem;color:var(--bdr)}
     .kstar.lit{color:var(--acc)}
     .kbar{height:3px;background:rgba(255,255,255,.07);border-radius:100px;margin-top:8px;overflow:hidden}
-    .kbar-fill{height:3px;border-radius:100px;background:linear-gradient(90deg,var(--acc),#ff8c42)}
+    .kbar-fill{height:3px;border-radius:100px;background:var(--accent),#ff8c42)}
     .kanban-group-toggle{display:flex;gap:6px;flex-shrink:0}
     .kgroup-btn{padding:5px 14px;border-radius:var(--rs);font-size:.76rem;font-weight:600;border:1px solid var(--bdr);background:var(--s1);color:var(--muted);cursor:pointer;transition:all .2s}
     .kgroup-btn.on{background:var(--s2);color:var(--txt);border-color:var(--acc)}
@@ -238,7 +238,7 @@
     </div>
     <div class="nav">
       <a href="dashboard.html" class="nl"> Dashboard</a>
-      <button onclick="openMeetingNotesModal()" class="btn" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd"> Paste Meeting Notes</button>
+      <button onclick="openMeetingNotesModal()" class="btn" style="background:var(--accent),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd"> Paste Meeting Notes</button>
       <a href="client-onboard.html" class="btn btn-acc">+ New Client</a>
     </div>
   </div>
@@ -677,7 +677,7 @@ function renderClientSheets(clientId) {
     const stCol = s === "posted"  ? "var(--grn)" :
                   s === "final"   ? "#22d3ee" :
                   s === "scheduled" ? "var(--blue)" :
-                  s === "in_progress" ? "#a78bfa" :
+                  s === "in_progress" ? "#B38B59" :
                   s === "paused"  ? "#f5a623" : "var(--muted)";
     const stLbl = s.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
     
@@ -1745,7 +1745,7 @@ window.load = async function() {
     <div id="meeting-notes-output" style="display:none;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:12px;font-size:.85rem;margin-bottom:14px;color:var(--muted)"></div>
     
     <div style="display:flex;justify-content:flex-end">
-      <button id="meeting-notes-btn" onclick="parseMeetingNotes()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer"> Extract Tasks</button>
+      <button id="meeting-notes-btn" onclick="parseMeetingNotes()" style="background:var(--accent);border:none;color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer"> Extract Tasks</button>
     </div>
   </div>
 </div>

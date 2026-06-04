@@ -9,7 +9,7 @@
   <script src="auth.js"></script>
   <script src="shared-config.js"></script>
   <style>
-    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--pur:#a78bfa;--r:14px;--rs:8px}
+    :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--pur:#B38B59;--r:14px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden}
 
@@ -57,15 +57,15 @@
     .client-card:hover{border-color:rgba(255,255,255,.14)}
     .client-head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;cursor:pointer;gap:12px;flex-wrap:wrap}
     .client-head-left{display:flex;align-items:center;gap:14px}
-    .client-avatar{width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,var(--acc),#e07b0f);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#000;flex-shrink:0}
+    .client-avatar{width:42px;height:42px;border-radius:10px;background:var(--accent),#e07b0f);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#000;flex-shrink:0}
     .client-name{font-weight:700;font-size:1rem}
     .client-meta{font-size:.76rem;color:var(--muted);margin-top:2px}
     .client-head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .progress-wrap{display:flex;align-items:center;gap:10px}
     .prog-bar{width:110px;height:6px;background:var(--s2);border-radius:100px;overflow:hidden}
-    .prog-fill{height:100%;border-radius:100px;background:linear-gradient(90deg,var(--grn),#17a076);transition:width .6s cubic-bezier(.4,0,.2,1)}
-    .prog-fill.warn{background:linear-gradient(90deg,var(--acc),#c77a00)}
-    .prog-fill.risk{background:linear-gradient(90deg,var(--red),#c04040)}
+    .prog-fill{height:100%;border-radius:100px;background:var(--accent),#17a076);transition:width .6s cubic-bezier(.4,0,.2,1)}
+    .prog-fill.warn{background:var(--accent),#c77a00)}
+    .prog-fill.risk{background:var(--accent),#c04040)}
     .prog-pct{font-size:.78rem;font-weight:600;min-width:32px;text-align:right}
     .status-pill{padding:3px 10px;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap}
     .pill-active{background:rgba(34,211,160,.12);color:var(--grn);border:1px solid rgba(34,211,160,.2)}

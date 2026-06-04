@@ -17,7 +17,7 @@
       --border:   rgba(255,255,255,0.08);
       --text:     #e8e8f0;
       --muted:    #6b6b8a;
-      --accent:   #7c6fff;
+      --accent:   #8B5A2B;
       --green:    #22d3a0;
       --yellow:   #fbbf24;
       --radius:   14px;
@@ -80,7 +80,7 @@
 
     .gen-btn {
       width:100%;padding:14px;border-radius:var(--radius-sm);
-      background:linear-gradient(135deg,var(--green),#10b981);
+      background:var(--accent),#10b981);
       border:none;color:white;font-size:.95rem;font-weight:600;
       cursor:pointer;transition:all .25s;display:flex;align-items:center;justify-content:center;gap:8px;
     }
@@ -124,7 +124,7 @@
     /* Slide card */
     .slide-display { padding:24px; }
     .slide-card {
-      background:linear-gradient(135deg,var(--surface2),rgba(124,111,255,.05));
+      background:var(--accent),rgba(124,111,255,.05));
       border:1px solid var(--border);border-radius:var(--radius);
       padding:36px;min-height:340px;display:none;
       flex-direction:column;position:relative;overflow:hidden;
@@ -132,7 +132,7 @@
     .slide-card.active { display:flex; }
     .slide-card::before {
       content:'';position:absolute;top:0;left:0;right:0;height:3px;
-      background:linear-gradient(90deg,var(--accent),var(--green));
+      background:var(--accent),var(--green));
     }
     .slide-number { font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px; }
     .slide-title { font-size:1.6rem;font-weight:700;margin-bottom:20px;line-height:1.3; }

@@ -54,7 +54,7 @@
 
     /* Progress */
     .prog{background:rgba(255,255,255,.07);border-radius:100px;height:7px;overflow:hidden;margin-bottom:4px}
-    .prog-fill{height:7px;border-radius:100px;transition:width .4s;background:linear-gradient(90deg,var(--acc),#ff8c42)}
+    .prog-fill{height:7px;border-radius:100px;transition:width .4s;background:var(--accent),#ff8c42)}
     .prog-label{font-size:.7rem;color:var(--muted);text-align:right}
 
     /* Impact warning */
@@ -131,7 +131,7 @@
     .dash-info h3 { font-size:1.1rem; margin:0 0 4px 0; color:var(--txt); }
     .dash-info p { font-size:0.8rem; color:var(--muted); margin:0; line-height:1.4; }
     
-    .smart-suggestion { background:linear-gradient(135deg, rgba(245,166,35,0.1), rgba(245,166,35,0.02)); border:1px solid rgba(245,166,35,0.3); }
+    .smart-suggestion { background:var(--accent), rgba(245,166,35,0.02)); border:1px solid rgba(245,166,35,0.3); }
     .smart-suggestion h3 { color:var(--acc); }
 
     /* Collapsible Sections */
@@ -149,16 +149,16 @@
     .subtask-cb { cursor:pointer; accent-color:var(--acc); width:14px; height:14px; }
     .add-subtask-btn { background:transparent; border:1px dashed var(--bdr); color:var(--muted); width:100%; text-align:left; padding:6px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:4px; }
     .add-subtask-btn:hover { border-color:var(--acc); color:var(--acc); }
-    .ai-breakdown-btn { background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(59,130,246,.1)); border:1px solid rgba(139,92,246,.4); color:#a78bfa; width:100%; text-align:left; padding:7px 12px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:6px; font-weight:600; letter-spacing:.02em; transition:all .2s; }
-    .ai-breakdown-btn:hover { border-color:#a78bfa; background:rgba(139,92,246,.2); }
+    .ai-breakdown-btn { background:var(--accent),rgba(59,130,246,.1)); border:1px solid rgba(139,92,246,.4); color:#B38B59; width:100%; text-align:left; padding:7px 12px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-top:6px; font-weight:600; letter-spacing:.02em; transition:all .2s; }
+    .ai-breakdown-btn:hover { border-color:#B38B59; background:rgba(139,92,246,.2); }
     .ai-breakdown-btn:disabled { opacity:0.5; cursor:wait; }
 
     /* AI Coach Widget */
-    #ai-coach-btn { position:fixed; bottom:28px; right:28px; width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#3b82f6); border:none; color:#fff; font-size:1.4rem; cursor:pointer; box-shadow:0 4px 24px rgba(124,58,237,.5); z-index:1000; transition:transform .2s; display:flex; align-items:center; justify-content:center; }
+    #ai-coach-btn { position:fixed; bottom:28px; right:28px; width:52px; height:52px; border-radius:50%; background:var(--accent); border:none; color:#fff; font-size:1.4rem; cursor:pointer; box-shadow:0 4px 24px rgba(124,58,237,.5); z-index:1000; transition:transform .2s; display:flex; align-items:center; justify-content:center; }
     #ai-coach-btn:hover { transform:scale(1.1); }
     #ai-coach-panel { position:fixed; bottom:96px; right:28px; width:340px; background:var(--s1); border:1px solid rgba(124,58,237,.4); border-radius:16px; box-shadow:0 16px 48px rgba(0,0,0,.8); z-index:1000; display:none; flex-direction:column; overflow:hidden; }
     #ai-coach-panel.open { display:flex; }
-    .coach-header { padding:14px 16px; background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1)); border-bottom:1px solid rgba(124,58,237,.3); display:flex; justify-content:space-between; align-items:center; }
+    .coach-header { padding:14px 16px; background:var(--accent),rgba(59,130,246,.1)); border-bottom:1px solid rgba(124,58,237,.3); display:flex; justify-content:space-between; align-items:center; }
     .coach-header h4 { margin:0; font-size:.9rem; font-weight:700; color:#c4b5fd; }
     .coach-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.1rem; }
     .coach-messages { flex:1; max-height:300px; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
@@ -169,7 +169,7 @@
     .coach-input-row { padding:10px 12px; border-top:1px solid var(--bdr); display:flex; gap:8px; }
     .coach-input { flex:1; background:var(--s2); border:1px solid var(--bdr); border-radius:8px; color:var(--txt); padding:8px 10px; font-size:.83rem; outline:none; font-family:'DM Sans',sans-serif; }
     .coach-input:focus { border-color:rgba(124,58,237,.6); }
-    .coach-send { background:linear-gradient(135deg,#7c3aed,#3b82f6); border:none; color:#fff; border-radius:8px; padding:8px 14px; font-size:.83rem; cursor:pointer; font-weight:600; white-space:nowrap; }
+    .coach-send { background:var(--accent); border:none; color:#fff; border-radius:8px; padding:8px 14px; font-size:.83rem; cursor:pointer; font-weight:600; white-space:nowrap; }
     .coach-send:disabled { opacity:.5; cursor:wait; }
   </style>
 </head>
@@ -195,7 +195,7 @@
       <button class="kgroup-btn" id="btn-view-client" onclick="setViewMode('client')">By Client</button>
       <button class="kgroup-btn" id="btn-view-date" onclick="setViewMode('date')">By Date</button>
       <button class="kgroup-btn" id="btn-view-calendar" onclick="setViewMode('calendar')">Calendar</button>
-      <button class="kgroup-btn" id="btn-priority" onclick="showPriorityModal()" style="background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(59,130,246,.1));border-color:rgba(124,58,237,.4);color:#c4b5fd"> Priority</button>
+      <button class="kgroup-btn" id="btn-priority" onclick="showPriorityModal()" style="background:var(--accent),rgba(59,130,246,.1));border-color:rgba(124,58,237,.4);color:#c4b5fd"> Priority</button>
     </div>
     <div style="flex:1; min-width:260px; max-width:400px; display:flex; gap:6px;">
       <input type="text" id="task-search-input" placeholder=" Search tasks..." oninput="renderTasks()" style="flex:1; background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); color:var(--txt); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none;" />

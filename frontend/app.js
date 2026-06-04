@@ -999,8 +999,8 @@ function updateBudgetUI(b) {
   budgetMiniVal.textContent = `$${spent.toFixed(2)} (₹${(spent*83.5).toFixed(2)}) / $${limit} (₹${(limit*83.5).toFixed(2)})`;
   budgetMiniFill.style.width = pct + "%";
   if (pct >= 90) budgetMiniFill.style.background = "#ef4444";
-  else if (pct >= 80) budgetMiniFill.style.background = "linear-gradient(90deg,#f59e0b,#ef4444)";
-  else budgetMiniFill.style.background = "linear-gradient(90deg,var(--haiku-color),var(--accent))";
+  else if (pct >= 80) budgetMiniFill.style.background = "var(--accent)";
+  else budgetMiniFill.style.background = "var(--accent),var(--accent))";
 }
 
 // ── Connection Check ──────────────────────────────────────────────────────────
