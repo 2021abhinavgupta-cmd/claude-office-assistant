@@ -24,6 +24,7 @@ TASK_ROUTING = {
     "analysis":        "haiku",
     "research":        "haiku",
     "legal":           "haiku",
+    "whatsapp":        "haiku",
     # Sonnet tasks — complex & creative
     "coding":          "sonnet",
     "html_design":     "sonnet",

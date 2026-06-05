@@ -2912,6 +2912,110 @@ def restore_db():
         
     return 'Database restored successfully!', 200
 
+
+
+# ── WhatsApp Bot (Meta Cloud API) ─────────────────────────────────────────────
+
+def send_whatsapp_message(to: str, text: str):
+    """Send a WhatsApp text message via Meta Cloud API."""
+    import requests as req
+    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    token    = os.getenv("META_WHATSAPP_TOKEN")
+    if not phone_id or not token:
+        logger.warning("WhatsApp env vars not set — message not sent.")
+        return
+    url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": text[:4096]},  # WhatsApp max message length
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    try:
+        req.post(url, json=payload, headers=headers, timeout=10)
+    except Exception as exc:
+        logger.error(f"WhatsApp send failed: {exc}")
+
+
+@app.route("/whatsapp/webhook", methods=["GET"])
+def whatsapp_verify():
+    """Meta webhook verification handshake."""
+    mode      = request.args.get("hub.mode")
+    token     = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+    if mode == "subscribe" and token == os.getenv("META_VERIFY_TOKEN"):
+        logger.info("WhatsApp webhook verified successfully.")
+        return challenge, 200
+    logger.warning("WhatsApp webhook verification failed — token mismatch.")
+    return "Forbidden", 403
+
+
+@app.route("/whatsapp/webhook", methods=["POST"])
+def whatsapp_webhook():
+    """Receive an inbound WhatsApp message, call Claude, send a reply."""
+    data = request.json or {}
+    try:
+        entry   = data["entry"][0]["changes"][0]["value"]
+        message = entry["messages"][0]
+        sender  = message["from"]
+
+        # Only handle text messages — silently ignore media, audio, etc.
+        if message.get("type") != "text":
+            return "OK", 200
+        text = message["text"]["body"]
+
+        # Budget guard
+        budget = check_budget_available()
+        if not budget["allowed"]:
+            send_whatsapp_message(sender, "Sorry, the monthly AI budget limit has been reached. Please try again next month.")
+            return "OK", 200
+
+        # Route through Claude (Haiku — fast & cheap for mobile)
+        model_config   = get_model_for_task("whatsapp")
+        system_blocks, _ = _build_system_prompt("general", f"wa_{sender}", None)
+
+        response = client.messages.create(
+            model=model_config["name"],
+            max_tokens=500,
+            system=system_blocks,
+            messages=[{"role": "user", "content": text}],
+        )
+
+        reply = _anthropic_response_text(response)
+
+        # Record usage against budget
+        cost = calculate_cost(
+            model_config["tier"],
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+        )
+        record_usage(
+            task_type="whatsapp",
+            model_tier=model_config["tier"],
+            model_name=model_config["name"],
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            cost=cost,
+            user_id=f"wa_{sender}",
+        )
+
+        send_whatsapp_message(sender, reply)
+        logger.info(f"WhatsApp reply sent to {sender} ({response.usage.output_tokens} tokens)")
+
+    except (KeyError, IndexError):
+        # Status updates, read-receipts, and non-message webhooks — ignore silently
+        pass
+    except Exception as exc:
+        logger.error(f"WhatsApp webhook error: {exc}")
+
+    # Always return 200 — Meta retries if it receives anything else
+    return "OK", 200
+
+
 if __name__ == "__main__":
 
     port  = int(os.getenv("FLASK_PORT", 5000))
