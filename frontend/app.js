@@ -1127,7 +1127,8 @@ function loadUserFromStorage() {
 let pendingAttachments = [];  // [{type, filename, content|data, media_type, size}]
 
 const fileInput   = document.getElementById("file-input");
-const uploadBtn   = document.getElementById("upload-btn");
+// Fall back to the new menu-upload item if old upload-btn element no longer exists
+const uploadBtn   = document.getElementById("upload-btn") || document.getElementById("menu-upload");
 const fileChips   = document.getElementById("file-chips");
 const dragOverlay = document.getElementById("drag-overlay");
 
@@ -2303,6 +2304,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const container = plusBtn.closest(".plus-menu-container");
       if (container && container.contains(e.target)) return;  // click inside menu, do nothing
       plusMenu.classList.add("hidden");  // click outside: close menu
+    });
+  }
+
+  // File upload via menu
+  const menuUpload = document.getElementById("menu-upload");
+  if (menuUpload) {
+    menuUpload.addEventListener("click", (e) => {
+      e.stopPropagation();
+      plusMenu.classList.add("hidden");
+      document.getElementById("file-input")?.click();
     });
   }
 
