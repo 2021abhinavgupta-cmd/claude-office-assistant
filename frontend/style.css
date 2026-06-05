@@ -1317,11 +1317,14 @@ body {
 .submenu {
     position: absolute;
     left: 100%;
-    top: -6px;
+    bottom: 0;          /* anchor from bottom so it grows upward */
+    top: auto;
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 10px;
     min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     padding: 6px 0;
 }
