@@ -603,7 +603,7 @@ async function loadTeamStandups(dateStr = ""){
                 if (stList.length > 0) {
                     subtasksHtml = `<div style="margin-left:14px; margin-top:2px; display:flex; flex-direction:column; gap:2px;">`;
                     stList.forEach(st => {
-                        subtasksHtml += `<div style="font-size:0.75rem; color:var(--muted); ${st.done ? 'text-decoration:line-through;' : ''}">${st.done ? '✓' : '☐'} ${esc(st.title)}</div>`;
+                        subtasksHtml += `<div style="font-size:0.8rem; color:${st.done ? 'var(--muted)' : '#a3b1c6'}; padding:2px 0; ${st.done ? 'text-decoration:line-through;' : ''}">${st.done ? '✓' : '☐'} ${esc(st.title)}</div>`;
                     });
                     subtasksHtml += `</div>`;
                 }
@@ -636,7 +636,7 @@ async function loadTeamStandups(dateStr = ""){
                 if (stList.length > 0) {
                     subtasksHtml = `<div style="margin-left:22px; margin-top:2px; display:flex; flex-direction:column; gap:2px;">`;
                     stList.forEach(st => {
-                        subtasksHtml += `<div style="font-size:0.75rem; color:var(--muted); ${st.done ? 'text-decoration:line-through;' : ''}">${st.done ? '✓' : '☐'} ${esc(st.title)}</div>`;
+                        subtasksHtml += `<div style="font-size:0.8rem; color:${st.done ? 'var(--muted)' : '#a3b1c6'}; padding:2px 0; ${st.done ? 'text-decoration:line-through;' : ''}">${st.done ? '✓' : '☐'} ${esc(st.title)}</div>`;
                     });
                     subtasksHtml += `</div>`;
                 }
