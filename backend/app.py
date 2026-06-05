@@ -2799,30 +2799,67 @@ def auto_fill_social_media():
             messages=[{"role": "user", "content": prompt}]
         )
         
-        # Extract JSON from response robustly using regex
+        # ── Extract JSON from Claude's response robustly ─────────────────────
         text = response.content[0].text.strip()
         import re
+
+        # First try: <json>...</json> tags
         xml_match = re.search(r'<json>(.*?)</json>', text, re.DOTALL)
         if xml_match:
             text = xml_match.group(1).strip()
         else:
+            # Second try: bare JSON array
             match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
             if match:
                 text = match.group(0)
             else:
+                # Third try: strip code fences
                 if text.startswith("```json"):
-                text = text[7:]
+                    text = text[7:]
+                elif text.startswith("```"):
+                    text = text[3:]
                 if text.endswith("```"):
                     text = text[:-3]
-            elif text.startswith("```"):
-                text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-        
+                text = text.strip()
+
+        # Sanitize: escape literal newlines and tabs inside JSON string values
+        # Step 1: temporarily mark real JSON string delimiters
+        # Step 2: replace unescaped control chars inside strings
+        def escape_control_chars_in_strings(s):
+            """Replace literal newlines/tabs only inside JSON string values."""
+            result = []
+            in_string = False
+            i = 0
+            while i < len(s):
+                c = s[i]
+                if c == '\\' and in_string:
+                    result.append(c)
+                    i += 1
+                    if i < len(s):
+                        result.append(s[i])
+                    i += 1
+                    continue
+                if c == '"':
+                    in_string = not in_string
+                    result.append(c)
+                elif in_string and c == '\n':
+                    result.append('\\n')
+                elif in_string and c == '\r':
+                    result.append('\\r')
+                elif in_string and c == '\t':
+                    result.append('\\t')
+                else:
+                    result.append(c)
+                i += 1
+            return ''.join(result)
+
+        text = escape_control_chars_in_strings(text)
+
+        # Also strip trailing commas
+        text = re.sub(r',\s*([\]}])', r'\1', text)
+
         try:
-            # Fix trailing commas
-            text = re.sub(r',\s*([\]}])', r'\1', text)
-            filled_posts = json.loads(text.strip(), strict=False)
+            filled_posts = json.loads(text.strip())
         except Exception as e:
             logger.error(f"Failed to parse Claude output: {text}\nError: {str(e)}")
             return jsonify({"error": f"JSON Error: {str(e)}. Claude output was: {text[:500]}"}), 500
