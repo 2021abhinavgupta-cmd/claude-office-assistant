@@ -2795,18 +2795,22 @@ def auto_fill_social_media():
         response = client.messages.create(
             model=sonnet_model,
             max_tokens=4096,
-            system="You only output valid JSON. Return the array of posts directly.",
+            system="You only output valid JSON. Return the array of posts directly wrapped in <json> and </json> tags. No conversational text.",
             messages=[{"role": "user", "content": prompt}]
         )
         
         # Extract JSON from response robustly using regex
         text = response.content[0].text.strip()
         import re
-        match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
-        if match:
-            text = match.group(0)
+        xml_match = re.search(r'<json>(.*?)</json>', text, re.DOTALL)
+        if xml_match:
+            text = xml_match.group(1).strip()
         else:
-            if text.startswith("```json"):
+            match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
+            if match:
+                text = match.group(0)
+            else:
+                if text.startswith("```json"):
                 text = text[7:]
                 if text.endswith("```"):
                     text = text[:-3]
@@ -2816,10 +2820,12 @@ def auto_fill_social_media():
                     text = text[:-3]
         
         try:
+            # Fix trailing commas
+            text = re.sub(r',\s*([\]}])', r'\1', text)
             filled_posts = json.loads(text.strip(), strict=False)
         except Exception as e:
-            logger.error(f"Failed to parse Claude output: {text}")
-            return jsonify({"error": f"Failed to parse JSON. Claude output was: {text[:500]}"}), 500
+            logger.error(f"Failed to parse Claude output: {text}\nError: {str(e)}")
+            return jsonify({"error": f"JSON Error: {str(e)}. Claude output was: {text[:500]}"}), 500
         return jsonify({"posts": filled_posts})
 
     except Exception as e:
