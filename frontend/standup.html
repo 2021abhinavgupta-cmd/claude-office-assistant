@@ -206,21 +206,28 @@ function esc(s){if(!s)return"";return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":
   const greet = hour<12?"Good morning":hour<17?"Good afternoon":"Good evening";
   document.getElementById("greeting-line").textContent = `${greet}, ${window.EMP_DICT[UID]||UID}! Your task list is ready.`;
 
-  try {
-    const nr = await fetch(`${API}/api/notion/tasks?assigned_to=${window.EMP_DICT[UID]||UID}`);
-    const nd = await nr.json();
-    if(nd.tasks) {
-      window.notionTasks = nd.tasks.filter(t => t.status === 'not_started' || t.status === 'in_progress');
-      const dl = document.getElementById("notion-tasks-list");
-      if(dl) dl.innerHTML = window.notionTasks.map(t => `<option value="${t.title}">`).join("");
-    }
-  } catch(e){}
-
+  // Fire critical page loads immediately — don't wait for Notion
   loadMyTasks();
   loadTeamStandups();
   loadAlerts();
   loadVelocity();
   setInterval(loadTeamStandups, 30000);
+
+  // Load Notion tasks in background (non-blocking, with 5s timeout)
+  (async () => {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const nr = await fetch(`${API}/api/notion/tasks?assigned_to=${window.EMP_DICT[UID]||UID}`, {signal: ctrl.signal});
+      clearTimeout(timer);
+      const nd = await nr.json();
+      if(nd.tasks) {
+        window.notionTasks = nd.tasks.filter(t => t.status === 'not_started' || t.status === 'in_progress');
+        const dl = document.getElementById("notion-tasks-list");
+        if(dl) dl.innerHTML = window.notionTasks.map(t => `<option value="${t.title}">`).join("");
+      }
+    } catch(e){}
+  })();
 })();
 
 // ── Personal Task Tracker ─────────────────────────────────────────────────────
