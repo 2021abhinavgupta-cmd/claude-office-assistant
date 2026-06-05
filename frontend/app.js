@@ -1566,6 +1566,17 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
   const streamEl = createStreamingMessage();
   scrollToBottom();
 
+  // --- URL Fetching Indicator ---
+  let urlNoticeEl = null;
+  const urlPattern = /https?:\/\/[^\s]+/g;
+  if (urlPattern.test(text)) {
+    urlNoticeEl = document.createElement("div");
+    urlNoticeEl.className = "url-reading-notice";
+    urlNoticeEl.textContent = "Reading page content...";
+    // Append it to the stream element (so it shows under the avatar)
+    streamEl.querySelector(".msg-text").appendChild(urlNoticeEl);
+  }
+
   let fullText = "";
   let abortController = new AbortController();
 
@@ -1641,6 +1652,11 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
 
         let event;
         try { event = JSON.parse(json); } catch { continue; }
+
+        if (urlNoticeEl) {
+          urlNoticeEl.remove();
+          urlNoticeEl = null;
+        }
 
         if (event.type === "thinking_start") {
           showThinkingIndicator();

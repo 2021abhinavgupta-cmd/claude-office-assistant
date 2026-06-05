@@ -1839,6 +1839,29 @@ def delete_custom_skill(skill_id):
         return jsonify({"success": True})
     return jsonify({"error": "Skill not found or unauthorized"}), 403
 
+import web_fetcher
+
+@app.route("/api/fetch-url", methods=["POST"])
+def fetch_url_route():
+    data    = request.json or {}
+    url     = data.get("url", "").strip()
+    user_id = data.get("user_id", "anonymous")
+    
+    if not url.startswith("http"):
+        return jsonify({"error": "Invalid URL"}), 400
+        
+    budget = check_budget_available()
+    if budget["remaining"] <= 0:
+        return jsonify({"error": "Budget limit reached. Cannot fetch URL."}), 403
+    
+    result = web_fetcher.fetch_url_content(url)
+    
+    if result.get("success"):
+        # Record usage for fetch
+        record_usage(task_type="url_fetch", model_tier="haiku", model_name="web_fetcher",
+                     input_tokens=0, output_tokens=0, cost=0.0001, user_id=user_id)
+                     
+    return jsonify(result)
 
 
 # ── Streaming chat ──────────────────────────────────────────────────────────
@@ -1960,6 +1983,20 @@ def conversation_stream(conv_id):
     if skill_prompt or style_prompt:
         final_system = skill_prompt + style_prompt + final_system
 
+    # --- URL Fetching ---
+    import re
+    url_pattern = r'https?://[^\s]+'
+    urls_in_msg = re.findall(url_pattern, message)
+    if urls_in_msg:
+        url_context = ""
+        for u in urls_in_msg:
+            fetch_res = web_fetcher.fetch_url_content(u)
+            if fetch_res.get("success"):
+                url_context += f"\nThe user shared this URL: {u}\nPage title: {fetch_res['title']}\nPage content:\n{fetch_res['content']}\n---\n"
+            else:
+                url_context += f"\nCould not load {u}: {fetch_res.get('error', 'Unknown error')}\n"
+        if url_context:
+            final_system = final_system + "\n\n" + url_context
 
     project_id = conv.get("project_id")
     if project_id:
