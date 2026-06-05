@@ -379,6 +379,7 @@
           </div>
         </div>
         <div class="artifacts-pane-actions">
+          <button onclick="copyArtifactCode()" type="button" title="Copy code">Copy</button>
           <button onclick="exportDocument('pdf', this)" type="button" title="Download asPDF">PDF</button>
           <button onclick="exportDocument('docx', this)" type="button" title="Download asDOCX">DOCX</button>
           <button onclick="exportDocument('pptx', this)" type="button" title="Download as PowerPoint">PPT</button>
@@ -386,7 +387,16 @@
         </div>
       </div>
       <div id="artifact-content">
-        <iframe id="artifact-iframe" title="Artifact preview" sandbox="allow-scripts allow-same-origin"></iframe>
+        <div class="artifact-tabs">
+          <button class="artifact-tab active" id="tab-preview" onclick="switchArtifactTab('preview')">Preview</button>
+          <button class="artifact-tab" id="tab-code" onclick="switchArtifactTab('code')">Code</button>
+        </div>
+        <div id="artifact-preview-panel">
+          <iframe id="artifact-iframe" title="Artifact preview" sandbox="allow-scripts allow-same-origin"></iframe>
+        </div>
+        <div id="artifact-code-panel">
+          <pre style="margin:0"><code id="artifact-code-view" class="hljs"></code></pre>
+        </div>
       </div>
     </aside>
   </main>

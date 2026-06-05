@@ -917,6 +917,9 @@ function showArtifactSidePreview(ext, code) {
   if (!pane || !iframe || !mainEl) return;
 
   const c = String(code || "");
+  window._currentArtifactCode = c;
+  window._currentArtifactExt = ext;
+
   let doc = "";
   if (ext === "html") {
     const t = c.trim();
@@ -936,6 +939,17 @@ function showArtifactSidePreview(ext, code) {
       ext === "svg" ? "SVG preview" :
       `${ext} preview`;
   }
+
+  // Reset to Preview tab whenever a new artifact loads
+  const previewPanel = document.getElementById("artifact-preview-panel");
+  const codePanel    = document.getElementById("artifact-code-panel");
+  const tabPreview   = document.getElementById("tab-preview");
+  const tabCode      = document.getElementById("tab-code");
+  if (previewPanel) previewPanel.style.display = "flex";
+  if (codePanel)    codePanel.style.display    = "none";
+  if (tabPreview)   tabPreview.classList.add("active");
+  if (tabCode)      tabCode.classList.remove("active");
+
   mainEl.classList.add("main--artifact-open");
   pane.classList.add("artifacts-pane--open");
 }
@@ -964,6 +978,35 @@ window.closeArtifact = function() {
   if (iframe) {
     try { iframe.srcdoc = ""; } catch (_) {}
   }
+};
+
+window.switchArtifactTab = function(tab) {
+  const previewPanel = document.getElementById("artifact-preview-panel");
+  const codePanel    = document.getElementById("artifact-code-panel");
+  const codeView     = document.getElementById("artifact-code-view");
+  const tabPreview   = document.getElementById("tab-preview");
+  const tabCode      = document.getElementById("tab-code");
+  if (!previewPanel || !codePanel) return;
+  const isPreview = tab === "preview";
+  previewPanel.style.display = isPreview ? "flex" : "none";
+  codePanel.style.display    = isPreview ? "none" : "flex";
+  if (tabPreview) tabPreview.classList.toggle("active", isPreview);
+  if (tabCode)    tabCode.classList.toggle("active", !isPreview);
+  if (!isPreview && codeView && window._currentArtifactCode) {
+    const lang = window._currentArtifactExt === "svg" ? "xml" : "html";
+    try {
+      codeView.innerHTML = hljs.highlight(window._currentArtifactCode, { language: lang }).value;
+    } catch (_) {
+      codeView.textContent = window._currentArtifactCode;
+    }
+  }
+};
+
+window.copyArtifactCode = function() {
+  if (!window._currentArtifactCode) return;
+  navigator.clipboard.writeText(window._currentArtifactCode)
+    .then(() => showToast("Copied to clipboard", "success"))
+    .catch(() => showToast("Copy failed", "error"));
 };
 
 function maybeAddSidePreviewButton(actionsEl, rawText) {
@@ -1749,6 +1792,12 @@ function finalizeStreamingMessage(el, text, meta = {}) {
   const body   = el.querySelector(".msg-body");
   const textEl = el.querySelector(".msg-text");
   textEl.innerHTML = formatText(text);
+
+  // Auto-open artifact panel if response contains an HTML or SVG code block
+  (function autoArtifact() {
+    const m = text.match(/```(html|svg)\r?\n([\s\S]*?)```/i);
+    if (m) showArtifactSidePreview(m[1].toLowerCase(), m[2]);
+  })();
 
   // Keep artifact/export pane in sync (streaming bypassed appendMessage wrapper).
   if (window.setLastAIResponse) {

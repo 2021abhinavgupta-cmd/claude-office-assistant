@@ -330,6 +330,49 @@ body {
 .artifacts-pane #artifact-iframe {
   flex: 1;
   min-height: 0;
+  border: none;
+  width: 100%;
+}
+.artifact-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 12px 0;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.artifact-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.artifact-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+#artifact-preview-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#artifact-code-panel {
+  flex: 1;
+  min-height: 0;
+  display: none;
+  overflow: auto;
+  padding: 16px;
+  background: #1e1e2e;
+  font-family: JetBrains Mono, ui-monospace, monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
 }
 .artifacts-pane-header {
   display: flex;
