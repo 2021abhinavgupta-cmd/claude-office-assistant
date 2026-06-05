@@ -104,6 +104,8 @@ body {
   padding: 24px;
 }
 .modal-overlay.hidden { display: none; }
+.hidden { display: none !important; }
+
 
 .modal-card {
   background: var(--surface2);

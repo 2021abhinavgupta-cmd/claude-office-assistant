@@ -2241,16 +2241,19 @@ document.addEventListener("DOMContentLoaded", () => {
   if (plusBtn && plusMenu) {
     plusBtn.addEventListener("click", (e) => {
       e.stopPropagation();
+      const isHidden = plusMenu.classList.contains("hidden");
       plusMenu.classList.toggle("hidden");
-      if (!plusMenu.classList.contains("hidden")) {
+      if (isHidden) {
         fetchSkills();
       }
     });
 
+    // Only close the menu when clicking outside — don't block any other actions
     document.addEventListener("click", (e) => {
-      if (!plusMenu.contains(e.target) && e.target !== plusBtn) {
-        plusMenu.classList.add("hidden");
-      }
+      if (plusMenu.classList.contains("hidden")) return;  // already closed, do nothing
+      const container = plusBtn.closest(".plus-menu-container");
+      if (container && container.contains(e.target)) return;  // click inside menu, do nothing
+      plusMenu.classList.add("hidden");  // click outside: close menu
     });
   }
 
