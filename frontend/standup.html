@@ -264,24 +264,24 @@ function renderTasks(){
   document.getElementById("stat-pend").textContent = `${pend} remaining`;
 
   list.innerHTML = allTasks.map(t=>{
-    let subtasksHtml = "";
-    if (t.notion_id) {
-       const stList = t.subtasks || [];
-       subtasksHtml = `
-         <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; padding-left:24px; border-left:2px solid var(--bdr);">
-           ${stList.map((st, i) => `
-             <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem;">
-               <input type="checkbox" ${st.done?'checked':''} onchange="toggleSubtask(${t.id}, ${i}, this.checked)" style="accent-color:var(--acc)" />
-               <span style="${st.done?'text-decoration:line-through;color:var(--muted)':''}">${esc(st.title)}</span>
-               <button onclick="deleteSubtask(${t.id}, ${i})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.7rem;margin-left:auto">✕</button>
-             </div>
-           `).join("")}
-           <div style="display:flex; gap:6px; margin-top:4px;">
-             <input type="text" id="subtask-input-${t.id}" placeholder="Add subtask..." onkeydown="if(event.key==='Enter')addSubtask(${t.id})" style="background:transparent;border:1px dashed var(--bdr);border-radius:4px;color:var(--txt);padding:3px 6px;font-size:0.7rem;flex:1;outline:none;" />
-           </div>
-         </div>
-       `;
-    }
+    const stList = t.subtasks || [];
+    const subtasksHtml = `
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; padding-left:24px; border-left:2px solid var(--bdr);">
+        ${stList.map((st, i) => `
+          <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem;">
+            <input type="checkbox" ${st.done?'checked':''} onchange="toggleSubtask(${t.id}, ${i}, this.checked)" style="accent-color:var(--acc)" />
+            <span style="${st.done?'text-decoration:line-through;color:var(--muted)':''}">${esc(st.title)}</span>
+            <button onclick="deleteSubtask(${t.id}, ${i})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.7rem;margin-left:auto;padding:0 4px;">✕</button>
+          </div>
+        `).join("")}
+        <div style="display:flex; gap:6px; margin-top:4px; align-items:center;">
+          <button id="add-subtask-btn-${t.id}" onclick="document.getElementById('subtask-input-wrapper-${t.id}').style.display='flex'; this.style.display='none'; document.getElementById('subtask-input-${t.id}').focus()" style="background:transparent; border:1px solid var(--bdr); color:var(--muted); border-radius:4px; font-size:0.7rem; cursor:pointer; padding:3px 8px; transition:all 0.2s;">+ Add Subtask</button>
+          <div id="subtask-input-wrapper-${t.id}" style="display:none; flex:1;">
+             <input type="text" id="subtask-input-${t.id}" placeholder="Type subtask & press Enter..." onkeydown="if(event.key==='Enter')addSubtask(${t.id})" onblur="if(!this.value.trim()) { this.parentElement.style.display='none'; document.getElementById('add-subtask-btn-${t.id}').style.display='inline-block'; }" style="background:transparent;border:1px dashed var(--bdr);border-radius:4px;color:var(--txt);padding:3px 6px;font-size:0.7rem;width:100%;outline:none;" />
+          </div>
+        </div>
+      </div>
+    `;
 
     return `
     <div class="task-item ${t.status==="done"?"done":""} ${t.carried_from?"carried":""}" id="task-${t.id}" style="align-items:flex-start; flex-direction:column;">
