@@ -2816,10 +2816,10 @@ def auto_fill_social_media():
                     text = text[:-3]
         
         try:
-            filled_posts = json.loads(text.strip())
+            filled_posts = json.loads(text.strip(), strict=False)
         except Exception as e:
             logger.error(f"Failed to parse Claude output: {text}")
-            return jsonify({"error": "Failed to parse JSON from Claude"}), 500
+            return jsonify({"error": f"Failed to parse JSON. Claude output was: {text[:500]}"}), 500
         return jsonify({"posts": filled_posts})
 
     except Exception as e:
