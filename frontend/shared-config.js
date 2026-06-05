@@ -22,6 +22,8 @@ async function loadEmployees() {
         return window.EMPLOYEES;
     } catch (e) {
         console.error("Failed to load employees", e);
+        window.EMPLOYEES = [];
+        window.EMP_DICT = {};
         return [];
     }
 }
