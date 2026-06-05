@@ -2772,6 +2772,51 @@ SERVICE_TASK_TEMPLATES = {
     ],
 }
 
+# ── POST /api/social-media/auto-fill ──────────────────────────────────────────
+@app.route("/api/social-media/auto-fill", methods=["POST"])
+def auto_fill_social_media():
+    """Takes a list of social media posts. If idea, content, scripts, or caption are empty, use Claude to fill them based on title and type."""
+    body = request.get_json(silent=True) or {}
+    posts = body.get("posts", [])
+    if not posts:
+        return jsonify({"error": "No posts provided"}), 400
+
+    from custom_skills_store import _get_anthropic_client
+    client = _get_anthropic_client()
+    if not client:
+        return jsonify({"error": "Claude client not configured"}), 500
+
+    try:
+        # Prompt to process multiple posts in bulk to save time
+        prompt = "You are a social media manager. For each of the following posts, fill in ANY empty fields (content, idea, scripts, caption) based on the post title and type. Keep your answers extremely concise and creative. Leave fields that are already provided untouched. Output MUST be valid JSON matching the exact structure and keys of the input.\n\n"
+        prompt += json.dumps(posts)
+
+        response = client.messages.create(
+            model="claude-3-5-sonnet-latest",
+            max_tokens=4096,
+            system="You only output valid JSON. Return the array of posts directly.",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        # Extract JSON from response (in case of markdown blocks)
+        text = response.content[0].text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+            if text.endswith("```"):
+                text = text[:-3]
+        elif text.startswith("```"):
+            text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+
+        filled_posts = json.loads(text.strip())
+        return jsonify({"posts": filled_posts})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 # ── POST /api/clients/<id>/auto-tasks ─────────────────────────────────────────
 @app.route("/api/clients/<client_id>/auto-tasks", methods=["POST"])
 def auto_generate_tasks(client_id):
@@ -2810,9 +2855,9 @@ def auto_generate_tasks(client_id):
             title = post.get("title") or f"Post {idx + 1}"
             post_day = post.get("post_day") or due_date
             post_type = post.get("type", "")
-            brief = post.get("brief", "")
-            idea = post.get("idea", "")
             content = post.get("content", "")
+            idea = post.get("idea", "")
+            scripts = post.get("scripts", "")
             caption = post.get("caption", "")
             link = post.get("link", "")
             assignee = post.get("assignee", "")
@@ -2822,9 +2867,9 @@ def auto_generate_tasks(client_id):
             creation_date = post.get("creation_date", "")
             detail_parts = []
             if creation_date: detail_parts.append(f"Creation Date: {creation_date}")
-            if brief:   detail_parts.append(f"Brief: {brief}")
-            if idea:    detail_parts.append(f"Idea: {idea}")
             if content: detail_parts.append(f"Content: {content}")
+            if idea:    detail_parts.append(f"Idea: {idea}")
+            if scripts: detail_parts.append(f"Scripts: {scripts}")
             if caption: detail_parts.append(f"Caption: {caption}")
             if link:    detail_parts.append(f"Link: {link}")
             notes = " | ".join(detail_parts)
@@ -2865,9 +2910,9 @@ def auto_generate_tasks(client_id):
             title = post.get("title") or f"Post {idx + 1}"
             post_day = post.get("post_day") or due_date
             post_type = post.get("type", "")
-            brief = post.get("brief", "")
-            idea = post.get("idea", "")
             content = post.get("content", "")
+            idea = post.get("idea", "")
+            scripts = post.get("scripts", "")
             caption = post.get("caption", "")
             link = post.get("link", "")
             assignee = post.get("assignee", "")
@@ -2875,9 +2920,9 @@ def auto_generate_tasks(client_id):
             creation_date = post.get("creation_date", "")
             detail_parts = []
             if creation_date: detail_parts.append(f"Creation Date: {creation_date}")
-            if brief:   detail_parts.append(f"Brief: {brief}")
-            if idea:    detail_parts.append(f"Idea: {idea}")
             if content: detail_parts.append(f"Content: {content}")
+            if idea:    detail_parts.append(f"Idea: {idea}")
+            if scripts: detail_parts.append(f"Scripts: {scripts}")
             if caption: detail_parts.append(f"Caption: {caption}")
             if link:    detail_parts.append(f"Link: {link}")
             notes = " | ".join(detail_parts)

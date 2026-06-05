@@ -623,17 +623,23 @@ function renderClientSheets(clientId) {
   }
   
   let html = `
+    <div style="margin-bottom: 12px; display: flex; align-items: center;">
+      <button class="btn btn-sm" onclick="exportClientSocialCSV('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
+      <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
+        📥 Import CSV <input type="file" accept=".csv" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
+      </label>
+    </div>
     <table style="width:100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; background: var(--s2); border: 1px solid var(--bdr); border-radius: var(--rs);">
       <thead>
         <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid var(--bdr); color: var(--txt);">
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 40px; font-weight: 600;">#</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Creation Date</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Post Day</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Post Title</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Post</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 110px; font-weight: 600;">Type</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Brief</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Content</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Idea</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Content</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Scripts/ Copy</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Caption</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 160px; font-weight: 600;">Assigned To</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Status</th>
@@ -654,26 +660,26 @@ function renderClientSheets(clientId) {
     }
     
     // Parse description for Brief, Idea, Caption, Link
-    // Format: Brief: xxx | Idea: yyy | Content: zzz | Caption: aaa | Link: www
+    // Format: Content: xxx | Idea: yyy | Scripts: zzz | Caption: aaa | Link: www
     const notes = t.description || "";
-    let creationDate = "", brief = "", idea = "", content = "", caption = "", link = "";
+    let creationDate = "", content = "", idea = "", scripts = "", caption = "", link = "";
     
-    const crMatch = notes.match(/Creation Date:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Content|Caption|Link):|$)/);
+    const crMatch = notes.match(/Creation Date:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link):|$)/);
     if (crMatch) creationDate = crMatch[1].trim();
 
-    const bMatch = notes.match(/Brief:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Content|Caption|Link):|$)/);
-    if (bMatch) brief = bMatch[1].trim();
-    
-    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Content|Caption|Link):|$)/);
-    if (iMatch) idea = iMatch[1].trim();
-    
-    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Caption|Link):|$)/);
+    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link):|$)/);
     if (cntMatch) content = cntMatch[1].trim();
     
-    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Content|Link):|$)/);
+    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link):|$)/);
+    if (iMatch) idea = iMatch[1].trim();
+    
+    const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link):|$)/);
+    if (sMatch) scripts = sMatch[1].trim();
+    
+    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link):|$)/);
     if (cMatch) caption = cMatch[1].trim();
     
-    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Content|Caption):|$)/);
+    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption):|$)/);
     if (lMatch) link = lMatch[1].trim();
     
     // Status color (social media statuses)
@@ -709,9 +715,9 @@ function renderClientSheets(clientId) {
             <option value="Post" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
           </select>
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${brief}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${idea}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${content}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${idea}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${scripts}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${caption}</td>
         <td style="padding: 6px 10px; border-right: 1px solid var(--bdr);">
           <select style="background:var(--s1); color:var(--txt); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; width:100%; font-size:0.82rem; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
@@ -744,9 +750,9 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   const due_date = tr.cells[2].querySelector('input').value;
   const title = tr.cells[3].innerText.trim();
   const type = tr.cells[4].querySelector('select').value;
-  const brief = tr.cells[5].innerText.trim();
+  const content = tr.cells[5].innerText.trim();
   const idea = tr.cells[6].innerText.trim();
-  const content = tr.cells[7].innerText.trim();
+  const scripts = tr.cells[7].innerText.trim();
   const caption = tr.cells[8].innerText.trim();
   const assigned_to = tr.cells[9].querySelector('select')?.value || tr.cells[9].innerText.trim();
   const status = tr.cells[10].querySelector('select').value;
@@ -754,9 +760,9 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   
   const detailParts = [];
   if (creation_date) detailParts.push(`Creation Date: ${creation_date}`);
-  if (brief) detailParts.push(`Brief: ${brief}`);
-  if (idea) detailParts.push(`Idea: ${idea}`);
   if (content) detailParts.push(`Content: ${content}`);
+  if (idea) detailParts.push(`Idea: ${idea}`);
+  if (scripts) detailParts.push(`Scripts: ${scripts}`);
   if (caption) detailParts.push(`Caption: ${caption}`);
   if (link) detailParts.push(`Link: ${link}`);
   const notes = detailParts.join(" | ");
@@ -1732,6 +1738,128 @@ window.load = async function() {
     renderCalendar();
   }
 };
+function exportClientSocialCSV(clientId) {
+  const container = document.getElementById(`csheets-${clientId}`);
+  if(!container) return;
+  const rows = container.querySelectorAll("tbody tr");
+  let csvContent = "data:text/csv;charset=utf-8,";
+  csvContent += "Creation Date,Post Day,Post,Type,Content,Idea,Scripts/ Copy,Caption,Assigned To,Status,File (Drive Link)\r\n";
+  
+  rows.forEach(tr => {
+    const creation_date = tr.cells[1].querySelector('input').value;
+    const due_date = tr.cells[2].querySelector('input').value;
+    const title = tr.cells[3].innerText.trim().replace(/"/g, '""');
+    const type = tr.cells[4].querySelector('select').value;
+    const content = tr.cells[5].innerText.trim().replace(/"/g, '""');
+    const idea = tr.cells[6].innerText.trim().replace(/"/g, '""');
+    const scripts = tr.cells[7].innerText.trim().replace(/"/g, '""');
+    const caption = tr.cells[8].innerText.trim().replace(/"/g, '""');
+    const assigned_to = tr.cells[9].querySelector('select')?.value || tr.cells[9].innerText.trim().replace(/"/g, '""');
+    const status = tr.cells[10].querySelector('select').value;
+    const link = tr.cells[11].innerText.trim().replace(/"/g, '""');
+
+    const rowArray = [creation_date, due_date, `"${title}"`, `"${type}"`, `"${content}"`, `"${idea}"`, `"${scripts}"`, `"${caption}"`, `"${assigned_to}"`, `"${status}"`, `"${link}"`];
+    csvContent += rowArray.join(",") + "\r\n";
+  });
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `social_media_tasks_${clientId}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+async function importClientSocialCSV(event, clientId) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const text = e.target.result;
+    const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
+    if (rows.length < 2) return;
+    
+    const parsedRows = rows.slice(1).map(row => {
+      const regex = /(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^,]+)|)(?:,|$)/g;
+      let m;
+      let data = [];
+      while ((m = regex.exec(row)) !== null && m[0] !== "") {
+        let val = m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || "");
+        data.push(val);
+      }
+      return {
+        creationDate: data[0] || "",
+        postDay: data[1] || "",
+        post: data[2] || "",
+        type: data[3] || "Story",
+        content: data[4] || "",
+        idea: data[5] || "",
+        scripts: data[6] || "",
+        caption: data[7] || "",
+        assignee: data[8] || "",
+        status: data[9] || "Scheduled",
+        link: data[10] || ""
+      };
+    });
+
+    const btn = event.target.parentElement;
+    const oldText = btn.innerHTML;
+    btn.innerHTML = "⏳ Auto-filling with Claude...";
+
+    try {
+      const ar = await fetch(`${API}/api/social-media/auto-fill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ posts: parsedRows }),
+      });
+      const data = await ar.json();
+      if (data.posts) {
+        // Find client
+        const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
+        if (client) {
+          // Re-create the tasks to trigger an update (We will just append them or replace?
+          // Since the prompt asks to "fill in by itself completely" and "add this option" 
+          // let's send them to the backend /api/clients/<id>/auto-tasks to actually create them.
+          const res = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: UID,
+              client_name: client.name,
+              services: ["social"],
+              social_posts: data.posts.map(p => ({
+                title: p.post,
+                type: p.type,
+                content: p.content,
+                idea: p.idea,
+                scripts: p.scripts,
+                caption: p.caption,
+                link: p.link,
+                assignee: p.assignee,
+                post_day: p.postDay,
+                creation_date: p.creationDate,
+                status: p.status
+              }))
+            })
+          });
+          if (res.ok) {
+            toast("Successfully imported tasks.");
+            load(); // reload dashboard
+          }
+        }
+      }
+    } catch (err) {
+      alert("Error Auto-filling with Claude.");
+      console.error(err);
+    } finally {
+      btn.innerHTML = oldText;
+      event.target.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
 </script>
 
 <!-- Meeting Notes Modal -->

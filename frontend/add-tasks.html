@@ -476,9 +476,13 @@
       position: fixed;
       inset: 0;
       z-index: 1000;
-      background: rgba(0,0,0,.55);
+      background: rgba(0, 0, 0, .55);
     }
-    .cell-popup-overlay.open { display: block; }
+
+    .cell-popup-overlay.open {
+      display: block;
+    }
+
     .cell-popup {
       position: fixed;
       top: 50%;
@@ -492,8 +496,9 @@
       max-width: 900px;
       width: 75vw;
       z-index: 1001;
-      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
     }
+
     .cell-popup-label {
       font-size: .7rem;
       font-weight: 700;
@@ -502,6 +507,7 @@
       letter-spacing: .08em;
       margin-bottom: 8px;
     }
+
     .cell-popup-input {
       background: var(--s1);
       border: 1px solid var(--bdr);
@@ -517,7 +523,11 @@
       height: 60vh;
       line-height: 1.6;
     }
-    .cell-popup-input:focus { border-color: var(--acc); }
+
+    .cell-popup-input:focus {
+      border-color: var(--acc);
+    }
+
     .cell-popup-close {
       position: absolute;
       top: 12px;
@@ -528,7 +538,11 @@
       font-size: 1.1rem;
       cursor: pointer;
     }
-    .cell-popup-close:hover { color: var(--txt); }
+
+    .cell-popup-close:hover {
+      color: var(--txt);
+    }
+
     .popup-hint {
       font-size: .72rem;
       color: var(--muted);
@@ -540,6 +554,7 @@
       width: 100%;
       height: 100%;
     }
+
     .expand-btn {
       position: absolute;
       top: 6px;
@@ -559,9 +574,11 @@
       font-size: 1rem;
       line-height: 1;
     }
+
     .ta-wrap:hover .expand-btn {
       opacity: 1;
     }
+
     .expand-btn:hover {
       background: var(--acc);
       color: #000;
@@ -875,30 +892,30 @@
         <div class="social-table-wrap">
           <table class="social-table" id="social-table">
             <colgroup>
-              <col style="width:40px">        <!-- # -->
-              <col style="width:140px">       <!-- Creation Date -->
-              <col style="width:140px">       <!-- Post Day -->
-              <col style="width:200px">       <!-- Post Title -->
-              <col style="width:110px">       <!-- Type -->
-              <col style="width:200px">       <!-- Brief -->
-              <col style="width:220px">       <!-- Idea -->
-              <col style="width:260px">       <!-- Content -->
-              <col style="width:260px">       <!-- Caption -->
-              <col style="width:160px">       <!-- Assigned To -->
-              <col style="width:140px">       <!-- Status -->
-              <col style="width:220px">       <!-- Drive Link -->
-              <col style="width:40px">        <!-- delete -->
+              <col style="width:40px"> <!-- # -->
+              <col style="width:140px"> <!-- Creation Date -->
+              <col style="width:140px"> <!-- Post Day -->
+              <col style="width:200px"> <!-- Post Title -->
+              <col style="width:110px"> <!-- Type -->
+              <col style="width:200px"> <!-- Brief -->
+              <col style="width:220px"> <!-- Idea -->
+              <col style="width:260px"> <!-- Content -->
+              <col style="width:260px"> <!-- Caption -->
+              <col style="width:160px"> <!-- Assigned To -->
+              <col style="width:140px"> <!-- Status -->
+              <col style="width:220px"> <!-- Drive Link -->
+              <col style="width:40px"> <!-- delete -->
             </colgroup>
             <thead>
               <tr>
                 <th>#</th>
                 <th>Creation Date</th>
                 <th>Post Day</th>
-                <th>Post Title</th>
+                <th>Post</th>
                 <th>Type</th>
-                <th>Brief</th>
-                <th>Idea</th>
                 <th>Content</th>
+                <th>Idea</th>
+                <th>Scripts/ Copy</th>
                 <th>Caption</th>
                 <th>Assigned To</th>
                 <th>Status</th>
@@ -908,7 +925,13 @@
             </thead>
             <tbody id="social-tbody"></tbody>
           </table>
-          <button class="add-row-btn" onclick="addSocialRow()">＋ Add Post</button>
+          <div style="display:flex; align-items:center;">
+            <button class="add-row-btn" onclick="addSocialRow()">＋ Add Post</button>
+            <button class="btn btn-sm" onclick="exportSocialCSV()" style="margin-left: 16px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
+            <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
+              📥 Import CSV <input type="file" accept=".csv" style="display:none;" onchange="importSocialCSV(event)">
+            </label>
+          </div>
         </div>
       </div>
 
@@ -1225,7 +1248,7 @@
     function statusOptions(sel = "") {
       return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
     }
-    function addSocialRow(title = "", type = "Story", brief = "", idea = "", content = "", caption = "", assignee = "", status = "Scheduled", postDay = "", creationDate = "", driveLink = "") {
+    function addSocialRow(title = "", type = "Story", content = "", idea = "", scripts = "", caption = "", assignee = "", status = "Scheduled", postDay = "", creationDate = "", driveLink = "") {
       socialRowIdx++;
       const idx = socialRowIdx;
       const tbody = document.getElementById("social-tbody");
@@ -1247,8 +1270,8 @@
     <td><select class="st-sel" style="width:100%;margin-top:2px">${typeOptions(type)}</select></td>
     <td>
       <div class="ta-wrap">
-        <textarea class="st-input" placeholder="Brief…" style="width:100%;height:90px;resize:none;overflow-y:auto">${brief}</textarea>
-        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Brief')" title="Expand">⤢</button>
+        <textarea class="st-input" placeholder="Content details…" style="width:100%;height:90px;resize:none;overflow-y:auto">${content}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Content')" title="Expand">⤢</button>
       </div>
     </td>
     <td>
@@ -1259,8 +1282,8 @@
     </td>
     <td>
       <div class="ta-wrap">
-        <textarea class="st-input content-val" placeholder="Content details…" style="width:100%;height:90px;resize:none;overflow-y:auto">${content}</textarea>
-        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Content')" title="Expand">⤢</button>
+        <textarea class="st-input scripts-val" placeholder="Scripts/Copy details…" style="width:100%;height:90px;resize:none;overflow-y:auto">${scripts}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Scripts/ Copy')" title="Expand">⤢</button>
       </div>
     </td>
     <td>
@@ -1391,7 +1414,7 @@
 
       const clientId = document.getElementById("client_id").value;
       if (!clientId) return;
-      
+
       const clientDropdown = document.getElementById("client_id");
       const clientName = clientDropdown.options[clientDropdown.selectedIndex]?.text || "Unknown Client";
 
@@ -1414,16 +1437,16 @@
           const creationDate = inputs[0]?.value || "";
           const day = inputs[1]?.value || "";
           const title = textareas[0]?.value?.trim() || "";
-          const brief = textareas[1]?.value?.trim() || "";
+          const content = textareas[1]?.value?.trim() || "";
           const idea = textareas[2]?.value?.trim() || "";
-          const content = textareas[3]?.value?.trim() || "";
+          const scripts = textareas[3]?.value?.trim() || "";
           const caption = textareas[4]?.value?.trim() || "";
           const link = textareas[5]?.value?.trim() || "";
           const type = sels[0]?.value || "Story";
           const status = sels[1]?.value || "Scheduled";
 
           if (title || day) {
-            socialPosts.push({ title, type, brief, idea, content, caption, link, assignee, post_day: day, creation_date: creationDate, status });
+            socialPosts.push({ title, type, content, idea, scripts, caption, link, assignee, post_day: day, creation_date: creationDate, status });
           }
         });
       }
@@ -1467,6 +1490,103 @@
         }
         btn.disabled = false; btn.textContent = " Add Tasks";
       }
+    }
+    function exportSocialCSV() {
+      const rows = document.querySelectorAll("#social-tbody tr");
+      let csvContent = "data:text/csv;charset=utf-8,";
+      csvContent += "Creation Date,Post Day,Post,Type,Content,Idea,Scripts/ Copy,Caption,Assigned To,Status,File (Drive Link)\r\n";
+      
+      rows.forEach(r => {
+        const inputs = r.querySelectorAll("input[type='date']");
+        const textareas = r.querySelectorAll("textarea");
+        const sels = r.querySelectorAll("select");
+        const checkedBoxes = [...r.querySelectorAll(".ms-chk:checked")];
+        const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling?.textContent?.trim() || "").join(", ") : "";
+
+        const cDate = inputs[0]?.value || "";
+        const pDay = inputs[1]?.value || "";
+        const post = textareas[0]?.value?.trim().replace(/"/g, '""') || "";
+        const type = sels[0]?.value || "";
+        const content = textareas[1]?.value?.trim().replace(/"/g, '""') || "";
+        const idea = textareas[2]?.value?.trim().replace(/"/g, '""') || "";
+        const scripts = textareas[3]?.value?.trim().replace(/"/g, '""') || "";
+        const caption = textareas[4]?.value?.trim().replace(/"/g, '""') || "";
+        const link = textareas[5]?.value?.trim().replace(/"/g, '""') || "";
+        const status = sels[1]?.value || "";
+
+        const rowArray = [cDate, pDay, `"${post}"`, `"${type}"`, `"${content}"`, `"${idea}"`, `"${scripts}"`, `"${caption}"`, `"${assignee}"`, `"${status}"`, `"${link}"`];
+        csvContent += rowArray.join(",") + "\r\n";
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "social_media_tasks.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    async function importSocialCSV(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        const text = e.target.result;
+        const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
+        if (rows.length < 2) return;
+        
+        const parsedRows = rows.slice(1).map(row => {
+          const regex = /(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^,]+)|)(?:,|$)/g;
+          let m;
+          let data = [];
+          while ((m = regex.exec(row)) !== null && m[0] !== "") {
+            let val = m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || "");
+            data.push(val);
+          }
+          return {
+            creationDate: data[0] || "",
+            postDay: data[1] || "",
+            post: data[2] || "",
+            type: data[3] || "Story",
+            content: data[4] || "",
+            idea: data[5] || "",
+            scripts: data[6] || "",
+            caption: data[7] || "",
+            assignee: data[8] || "",
+            status: data[9] || "Scheduled",
+            link: data[10] || ""
+          };
+        });
+
+        const btn = event.target.parentElement;
+        const oldText = btn.innerHTML;
+        btn.innerHTML = "⏳ Auto-filling with Claude...";
+
+        try {
+          const ar = await fetch(`${API}/api/social-media/auto-fill`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ posts: parsedRows }),
+          });
+          const data = await ar.json();
+          if (data.posts) {
+            document.getElementById("social-tbody").innerHTML = "";
+            socialRowIdx = 0;
+            data.posts.forEach(p => {
+              addSocialRow(p.post, p.type, p.content, p.idea, p.scripts, p.caption, p.assignee, p.status, p.postDay, p.creationDate, p.link);
+            });
+          }
+        } catch (err) {
+          alert("Error Auto-filling with Claude.");
+          console.error(err);
+        } finally {
+          btn.innerHTML = oldText;
+          event.target.value = "";
+        }
+      };
+      reader.readAsText(file);
     }
   </script>
 </body>
