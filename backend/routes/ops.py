@@ -125,18 +125,24 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
     
     tasks_by_user = {}
-    for uid, title, status, blocker, carried_from in task_rows:
+    for uid, title, status, blocker, carried_from, subtasks_json in task_rows:
         if uid not in tasks_by_user:
             tasks_by_user[uid] = []
-        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker, "carried_from": carried_from})
+            
+        st = []
+        try:
+            st = json.loads(subtasks_json) if subtasks_json else []
+        except: pass
+            
+        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker, "carried_from": carried_from, "subtasks": st})
 
     # Load employee names dynamically from employees.json
     try:
