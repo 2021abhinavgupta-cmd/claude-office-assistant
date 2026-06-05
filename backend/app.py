@@ -2781,8 +2781,6 @@ def auto_fill_social_media():
     if not posts:
         return jsonify({"error": "No posts provided"}), 400
 
-    from custom_skills_store import _get_anthropic_client
-    client = _get_anthropic_client()
     if not client:
         return jsonify({"error": "Claude client not configured"}), 500
 
