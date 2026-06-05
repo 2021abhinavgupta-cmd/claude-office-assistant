@@ -52,7 +52,9 @@ claude-office-assistant/
 │   ├── file_processor.py       # PDF/CSV/Word file parsing for attachments
 │   ├── kb_retriever.py         # FTS5 knowledge base retrieval (System Projects-style)
 │   ├── document_exporter.py    # Export chats to DOCX/PDF
-│   ├── notifications.py        # WhatsApp notifications via Twilio
+│   ├── notifications.py        # WhatsApp notifications via Twilio (outbound)
+│   ├── skills.py               # Builtin skill library (8 hardcoded skills)
+│   ├── custom_skills_store.py  # CRUD for user-created custom skills (SQLite)
 │   ├── notion_store.py         # Full Notion API integration
 │   ├── task_scheduler.py       # Background task risk escalation
 │   ├── extensions.py           # Shared Flask app instance (avoids circular imports)
@@ -116,10 +118,14 @@ claude-office-assistant/
 > 3. **Missing Auth on Notion endpoint:** `POST /api/notion/clients` (`routes/ops.py`) has completely missing authentication/authorization. Anyone can create a Notion client.
 
 ### 3. AI Routing
-- Task types: `general`, `coding`, `html_design`, `presentations`, `email`, `scripts`, `captions`, `meetings`, `announcements`, `analysis`, `data_analysis`, `content`
-- `model_router.py` maps task type → model tier (haiku/sonnet)
+- Task types: `general`, `coding`, `html_design`, `presentations`, `email`, `scripts`, `captions`, `meetings`, `announcements`, `analysis`, `data_analysis`, `content`, `whatsapp`
+- `model_router.py` maps task type → model tier (haiku/sonnet). `whatsapp` maps to Haiku.
 - The streaming endpoint `POST /api/conversations/<id>/stream` is the primary chat endpoint
 - If `should_think()` returns True (complex query), the model is pinned to `claude-sonnet-4-6` with extended thinking enabled (`budget_tokens=14000`)
+- Optional request body fields for the stream endpoint:
+  - `skill_id` — builtin skill key (e.g. `"web_search"`) or custom skill ID prefixed `sk_`
+  - `style` — `"concise"`, `"detailed"`, or `"formal"`; injects a style instruction into the system prompt
+  - `webSearchEnabled` — boolean; enables web search tool (also auto-enabled when `skill_id == "web_search"`)
 
 ### 4. Conversation & Huddle System
 - Conversations are stored as JSON blobs in the `conversations` SQLite table
@@ -141,7 +147,17 @@ claude-office-assistant/
 - All `ALTER TABLE ... ADD COLUMN` are wrapped in `try/except` to be non-breaking
 - Always use `get_connection()` from `db.py` — never create `sqlite3.connect()` directly
 
-### 7. Frontend API Base URL
+### 7. Skills System
+- Two tiers: **builtin** (defined in `skills.py`) and **custom** (stored in `custom_skills` table, IDs prefixed `sk_`).
+- Builtin skills: `web_search`, `content_writer`, `email_drafter`, `video_scripter`, `meeting_summary`, `data_analyst`, `code_helper`, `social_caption`.
+- Skills inject a `"SKILL INSTRUCTION:\n"` block prepended to the system prompt during streaming.
+- If a skill specifies `"model": "sonnet"` and the user hasn't set a `model_override`, the request auto-upgrades to Sonnet.
+- `web_search` builtin skill also forces `webSearchEnabled = True`.
+- Custom skills are per-user but can be marked `is_shared=1` to appear for all users.
+- API endpoints: `GET /api/skills?user_id=` → `{builtin, custom}`, `POST /api/skills/custom` → create, `DELETE /api/skills/custom/<id>` → delete (owner only).
+- Frontend: Prompt Optimizer panel in the chat UI (`index.html` / `app.js`).
+
+### 8. Frontend API Base URL
 - Defined once at the top of `app.js`:
   ```js
   const API = location.hostname === 'localhost' ? 'http://localhost:5000' : location.origin;
@@ -157,10 +173,13 @@ claude-office-assistant/
 | `ANTHROPIC_API_KEY` | Anthropic API key (required) |
 | `MONTHLY_BUDGET_LIMIT` | Max USD spend per month (e.g., `50`) |
 | `SECRET_KEY` | Flask secret key for sessions |
-| `TWILIO_ACCOUNT_SID` | (Optional) WhatsApp notifications |
-| `TWILIO_AUTH_TOKEN` | (Optional) WhatsApp notifications |
-| `TWILIO_WHATSAPP_FROM` | (Optional) WhatsApp sender number |
+| `TWILIO_ACCOUNT_SID` | (Optional) Outbound WhatsApp notifications via Twilio |
+| `TWILIO_AUTH_TOKEN` | (Optional) Outbound WhatsApp notifications via Twilio |
+| `TWILIO_WHATSAPP_FROM` | (Optional) Twilio WhatsApp sender number |
 | `NOTION_TOKEN` | (Optional) Notion API integration |
+| `WHATSAPP_PHONE_NUMBER_ID` | (Optional) Meta Cloud API phone number ID for WhatsApp bot |
+| `WHATSAPP_ACCESS_TOKEN` | (Optional) Meta Cloud API bearer token for WhatsApp bot |
+| `META_VERIFY_TOKEN` | (Optional) Shared secret for Meta webhook verification handshake |
 
 ---
 
@@ -273,3 +292,7 @@ Edit `config/employees.json`. Fields: `id` (empXXX), `name`, `role`, `pin`, `dep
 21. **White-label UI & AI Branding Removal** — The UI has been entirely stripped of "AI", "Bot", and "System" terminology, as well as emojis, model chips, optimizer badges, and thinking indicators, in order to look like a standard human-built agency portal. The logo is now a clean, empty orange box (all text like "AP" removed). Future edits should **not** introduce new emojis, AI-related phrasing, or branding text into the logo/UI.
 
 22. **Huddle Real-Time Identity Fix** — When implementing multi-user huddle SSE, always ensure the sender explicitly includes `sender_id` and `sender_name` in the payload (e.g. `bodyPayload` in `sendMessage`). Otherwise, the backend defaults to the conversation creator's identity, resulting in broadcast events incorrectly attributing messages and causing duplication glitches on the sender's screen. The backend saves these identities in the `conversation_store.py` message metadata so `appendMessage` can correctly render historical messages.
+
+23. **WhatsApp Bot (Meta Cloud API)** — An inbound WhatsApp bot distinct from the Twilio outbound notifications in `notifications.py`. Routes: `GET /whatsapp/webhook` (Meta verification handshake) and `POST /whatsapp/webhook` (receives messages). Incoming text is processed by Claude (Haiku, task type `whatsapp`) and the reply is sent via `send_whatsapp_message()` in `app.py`. Always returns HTTP 200 to Meta — Meta retries on any non-200. Requires `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, and `META_VERIFY_TOKEN` env vars.
+
+24. **Skills — Model Auto-Upgrade** — When a skill specifies `"model": "sonnet"` in `skills.py`, the streaming handler auto-upgrades the request to Sonnet unless the user explicitly sent a `model_override`. This means selecting a skill like `content_writer` or `code_helper` silently bumps the model tier; haiku-tier requests stay haiku only if no skill is active or the skill's model is also `"haiku"`. Custom skills follow the same logic using their `model` column from `custom_skills`.
