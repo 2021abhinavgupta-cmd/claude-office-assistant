@@ -646,7 +646,6 @@ async function loadTeamStandups(dateStr = ""){
         ${s && s.blockers?`<div class="sc-field blocker"><div class="fl"> Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
       </div></div>`;
   }).join("");
-  const refreshBtn = document.getElementById("refresh-team-btn");
   if (refreshBtn) { refreshBtn.textContent = " ↻ Refresh"; refreshBtn.disabled = false; }
 }
 
