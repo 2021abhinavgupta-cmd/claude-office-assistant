@@ -258,11 +258,39 @@
 
       <footer class="input-bar">
         <div class="input-wrap" id="input-wrap">
-          <button class="upload-btn" id="upload-btn" title="Attach file">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
+          <div class="active-badges" id="active-badges"></div>
+          <div class="plus-menu-container">
+            <button class="upload-btn" id="plus-btn" title="Add items">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <div class="plus-menu hidden" id="plus-menu">
+              <div class="menu-item" id="menu-upload">Add files or photos</div>
+              <div class="menu-item has-submenu" id="menu-skills">
+                Skills <span class="arrow">›</span>
+                <div class="submenu hidden" id="submenu-skills">
+                  <div class="menu-item" id="menu-manage-skills">Manage skills</div>
+                  <div class="menu-item" id="menu-add-skill">Add skill</div>
+                  <div class="menu-divider"></div>
+                  <div id="skills-list-container">
+                    <!-- Skills populated dynamically -->
+                  </div>
+                </div>
+              </div>
+              <div class="menu-item" id="menu-web-search">Web search <span class="check hidden" id="web-search-check">✓</span></div>
+              <div class="menu-item has-submenu" id="menu-style">
+                Use style <span class="arrow">›</span>
+                <div class="submenu hidden" id="submenu-style">
+                  <div class="menu-item style-option" data-style="normal">Normal</div>
+                  <div class="menu-item style-option" data-style="concise">Concise</div>
+                  <div class="menu-item style-option" data-style="detailed">Detailed</div>
+                  <div class="menu-item style-option" data-style="formal">Formal</div>
+                </div>
+              </div>
+            </div>
+          </div>
           <button class="optimize-btn" id="optimize-btn" title="Optimize prompt with AI ( cheap)">
             
           </button>
@@ -277,7 +305,7 @@
             </button>
           </div>
         </div>
-        <p class="input-footer-meta">
+        <p class="input-footer-meta" id="old-web-search-meta" style="display:none;">
           <label class="web-search-label" title="Fetches public web snippets (DuckDuckGo) once per send — not persisted in chat history">
             <input type="checkbox" id="web-search-toggle" />
             <span>Web search</span>
@@ -435,6 +463,44 @@
     <div class="opt-actions">
       <button class="opt-btn secondary" id="opt-keep-btn">Keep original</button>
       <button class="opt-btn primary" id="opt-use-btn">Use this →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Skills Manager Modal ── -->
+<div class="modal-overlay hidden" id="skills-modal" role="dialog" aria-modal="true" style="align-items:center; justify-content:center; z-index: 10000;">
+  <div class="modal-card" style="max-width: 600px; text-align: left; padding: 32px; max-height: 90vh; overflow-y: auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <h2 style="font-size:1.4rem; font-family:var(--font-sans); font-weight:600;">Manage Skills</h2>
+      <button id="skills-modal-close" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--muted);">&times;</button>
+    </div>
+    
+    <div id="skills-manager-list" style="margin-bottom: 32px; display:flex; flex-direction:column; gap:12px;">
+      <!-- Custom skills listed here -->
+    </div>
+
+    <hr style="border:0; border-top:1px solid var(--border); margin-bottom:24px;">
+
+    <h3 style="margin-bottom:16px; font-size:1.1rem; font-weight:600;" id="new-skill-header">Create New Skill</h3>
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500;">Skill name</label>
+    <input type="text" id="new-skill-name" placeholder="e.g. Code Reviewer" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--text); margin-bottom:16px; outline:none;" />
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500;">Model</label>
+    <select id="new-skill-model" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--text); margin-bottom:16px; outline:none;">
+      <option value="haiku">Fast (Haiku)</option>
+      <option value="sonnet">Powerful (Sonnet)</option>
+    </select>
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500;">Instructions</label>
+    <textarea id="new-skill-prompt" placeholder="What should Claude do?" rows="4" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--text); resize:vertical; margin-bottom:16px; outline:none;"></textarea>
+    
+    <label style="display:flex; align-items:center; gap:8px; margin-bottom:24px; font-size:0.9rem; cursor:pointer;">
+      <input type="checkbox" id="new-skill-shared" /> Share with team
+    </label>
+    
+    <div style="display:flex; justify-content:flex-end;">
+      <button class="primary-btn" id="save-skill-btn" style="padding:10px 16px; border-radius:8px; border:none; background:#d97757; color:#fff; font-weight:500; cursor:pointer;">Save Skill</button>
     </div>
   </div>
 </div>

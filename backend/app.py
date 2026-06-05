@@ -47,6 +47,8 @@ import file_processor
 import project_store
 import task_scheduler
 import notion_store
+import skills
+import custom_skills_store
 
 from utils import now_ist, today_ist, _load_employees, _save_employees, _is_admin, IST
 from extensions import limiter
@@ -1800,6 +1802,45 @@ def conversation_chat(conv_id):
     })
 
 
+# ── Skills API ────────────────────────────────────────────────────────────────
+@app.route("/api/skills", methods=["GET"])
+def get_skills():
+    user_id = request.args.get("user_id", "anonymous")
+    builtin = skills.get_all_skills()
+    custom = custom_skills_store.get_skills_for_user(user_id)
+    return jsonify({"builtin": builtin, "custom": custom})
+
+@app.route("/api/skills/custom", methods=["POST"])
+def create_custom_skill():
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    name = data.get("name")
+    model = data.get("model", "haiku")
+    prompt = data.get("prompt")
+    is_shared = data.get("is_shared", False)
+    
+    if not all([user_id, name, prompt]):
+        return jsonify({"error": "Missing required fields"}), 400
+        
+    skill_id = custom_skills_store.create_skill(user_id, name, model, prompt, is_shared)
+    if skill_id:
+        return jsonify({"success": True, "skill_id": skill_id})
+    return jsonify({"error": "Failed to create skill"}), 500
+
+@app.route("/api/skills/custom/<skill_id>", methods=["DELETE"])
+def delete_custom_skill(skill_id):
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    if not user_id:
+        return jsonify({"error": "user_id is required"}), 400
+        
+    success = custom_skills_store.delete_skill(skill_id, user_id)
+    if success:
+        return jsonify({"success": True})
+    return jsonify({"error": "Skill not found or unauthorized"}), 403
+
+
+
 # ── Streaming chat ──────────────────────────────────────────────────────────
 @app.route("/api/conversations/<conv_id>/stream", methods=["POST"])
 def conversation_stream(conv_id):
@@ -1864,6 +1905,47 @@ def conversation_stream(conv_id):
         model_name   = model_config["name"]
         model_tier   = model_config["tier"]
 
+    # --- Skill handling ---
+    skill_id = data.get("skill_id")
+    web_search_enabled = data.get("webSearchEnabled", False)
+    skill_prompt = ""
+    
+    if skill_id:
+        if skill_id.startswith("sk_"):
+            # Load custom skill
+            custom_skills = custom_skills_store.get_skills_for_user(user_id)
+            for sk in custom_skills:
+                if sk["id"] == skill_id:
+                    skill_prompt = "SKILL INSTRUCTION:\n" + sk["prompt"] + "\n\n"
+                    # Auto upgrade model if skill requires sonnet, unless overridden
+                    if not model_override and sk.get("model") == "sonnet":
+                        model_name = get_model_for_task("coding")["name"] # using coding task as a proxy for sonnet
+                        model_tier = "sonnet"
+                    break
+        else:
+            # Load builtin skill
+            builtin_skill = skills.get_skill(skill_id)
+            if builtin_skill:
+                skill_prompt = "SKILL INSTRUCTION:\n" + builtin_skill["prompt"] + "\n\n"
+                if not model_override and builtin_skill.get("model") == "sonnet":
+                    model_name = get_model_for_task("coding")["name"]
+                    model_tier = "sonnet"
+                    
+        if skill_id == "web_search":
+            web_search_enabled = True
+
+    # --- Style handling ---
+    style = data.get("style")
+    style_prompt = ""
+    if style:
+        style_prompts = {
+            "concise": "Keep all responses under 3 sentences unless the task genuinely requires more.",
+            "detailed": "Be thorough and comprehensive. Explain your reasoning step by step.",
+            "formal": "Use formal professional language throughout. No casual phrasing or contractions."
+        }
+        if style in style_prompts:
+            style_prompt = "STYLE INSTRUCTION:\n" + style_prompts[style] + "\n\n"
+
     mem_blocks, kb_sources = _build_system_prompt(
         task_type,
         user_id,
@@ -1874,6 +1956,10 @@ def conversation_stream(conv_id):
         attachment_grounding=bool(attachments),
     )
     final_system = mem_blocks[0]["text"] if mem_blocks else MASTER_SYSTEM_PROMPT
+    
+    if skill_prompt or style_prompt:
+        final_system = skill_prompt + style_prompt + final_system
+
 
     project_id = conv.get("project_id")
     if project_id:
@@ -1982,6 +2068,9 @@ def conversation_stream(conv_id):
             stream_kwargs["extra_headers"] = _anthropic_extra_headers(
                 stream_kwargs["model"], stream_kwargs["max_tokens"]
             )
+
+            if web_search_enabled:
+                stream_kwargs["tools"] = [{"type": "web_search_20250305", "name": "web_search"}]
 
             with client.messages.stream(**stream_kwargs) as stream:
                 for event in stream:

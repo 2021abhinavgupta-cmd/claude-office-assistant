@@ -1228,3 +1228,120 @@ body {
     0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
     40%           { transform: scale(1);   opacity: 1;   }
 }
+
+/* ── Skills Popup Menu ── */
+.plus-menu-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.plus-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-width: 220px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    padding: 6px 0;
+}
+.menu-item {
+    padding: 9px 14px;
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+}
+.menu-item:hover {
+    background: var(--surface);
+}
+.menu-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+.has-submenu .arrow {
+    color: var(--muted);
+}
+.submenu {
+    position: absolute;
+    left: 100%;
+    top: -6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-width: 220px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 6px 0;
+}
+.menu-item.has-submenu:hover > .submenu {
+    display: block !important;
+}
+
+/* ── Active Badges ── */
+.active-badges {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+    position: absolute;
+    top: -24px;
+    left: 12px;
+}
+.skill-badge {
+    background: rgba(217, 119, 87, 0.15); /* var(--acc-dim) equivalent */
+    border: 1px solid rgba(217, 119, 87, 0.3); /* var(--acc-bdr) equivalent */
+    color: #d97757; /* var(--acc) equivalent */
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.skill-badge .remove-badge {
+    cursor: pointer;
+    font-weight: bold;
+    opacity: 0.7;
+}
+.skill-badge .remove-badge:hover {
+    opacity: 1;
+}
+
+#skills-manager-list .skill-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+#skills-manager-list .skill-row .skill-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+#skills-manager-list .skill-row .skill-name {
+    font-weight: 600;
+    font-size: 1rem;
+}
+#skills-manager-list .skill-row .skill-meta {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+#skills-manager-list .skill-row .skill-actions button {
+    background: none;
+    border: none;
+    color: var(--error, #ff5c5c);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+#skills-manager-list .skill-row .skill-actions button:hover {
+    text-decoration: underline;
+}
