@@ -2790,7 +2790,7 @@ def auto_fill_social_media():
         prompt += json.dumps(posts)
 
         response = client.messages.create(
-            model="claude-3-5-sonnet-latest",
+            model="claude-3-5-sonnet-20241022",
             max_tokens=4096,
             system="You only output valid JSON. Return the array of posts directly.",
             messages=[{"role": "user", "content": prompt}]
