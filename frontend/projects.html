@@ -633,6 +633,7 @@ function renderClientSheets(clientId) {
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 110px; font-weight: 600;">Type</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Brief</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Idea</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Content</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Caption</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 160px; font-weight: 600;">Assigned To</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Status</th>
@@ -653,23 +654,26 @@ function renderClientSheets(clientId) {
     }
     
     // Parse description for Brief, Idea, Caption, Link
-    // Format: Brief: xxx | Idea: yyy | Caption: zzz | Link: www
+    // Format: Brief: xxx | Idea: yyy | Content: zzz | Caption: aaa | Link: www
     const notes = t.description || "";
-    let creationDate = "", brief = "", idea = "", caption = "", link = "";
+    let creationDate = "", brief = "", idea = "", content = "", caption = "", link = "";
     
-    const crMatch = notes.match(/Creation Date:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Caption|Link):|$)/);
+    const crMatch = notes.match(/Creation Date:\s*([\s\S]*?)(?=\s*\|\s*(?:Brief|Idea|Content|Caption|Link):|$)/);
     if (crMatch) creationDate = crMatch[1].trim();
 
-    const bMatch = notes.match(/Brief:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Caption|Link):|$)/);
+    const bMatch = notes.match(/Brief:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Content|Caption|Link):|$)/);
     if (bMatch) brief = bMatch[1].trim();
     
-    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Caption|Link):|$)/);
+    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Content|Caption|Link):|$)/);
     if (iMatch) idea = iMatch[1].trim();
     
-    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Link):|$)/);
+    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Caption|Link):|$)/);
+    if (cntMatch) content = cntMatch[1].trim();
+    
+    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Content|Link):|$)/);
     if (cMatch) caption = cMatch[1].trim();
     
-    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Caption):|$)/);
+    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Brief|Idea|Content|Caption):|$)/);
     if (lMatch) link = lMatch[1].trim();
     
     // Status color (social media statuses)
@@ -707,6 +711,7 @@ function renderClientSheets(clientId) {
         </td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${brief}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${idea}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${content}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${caption}</td>
         <td style="padding: 6px 10px; border-right: 1px solid var(--bdr);">
           <select style="background:var(--s1); color:var(--txt); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; width:100%; font-size:0.82rem; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
@@ -741,15 +746,17 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   const type = tr.cells[4].querySelector('select').value;
   const brief = tr.cells[5].innerText.trim();
   const idea = tr.cells[6].innerText.trim();
-  const caption = tr.cells[7].innerText.trim();
-  const assigned_to = tr.cells[8].querySelector('select')?.value || tr.cells[8].innerText.trim();
-  const status = tr.cells[9].querySelector('select').value;
-  const link = tr.cells[10].innerText.trim();
+  const content = tr.cells[7].innerText.trim();
+  const caption = tr.cells[8].innerText.trim();
+  const assigned_to = tr.cells[9].querySelector('select')?.value || tr.cells[9].innerText.trim();
+  const status = tr.cells[10].querySelector('select').value;
+  const link = tr.cells[11].innerText.trim();
   
   const detailParts = [];
   if (creation_date) detailParts.push(`Creation Date: ${creation_date}`);
   if (brief) detailParts.push(`Brief: ${brief}`);
   if (idea) detailParts.push(`Idea: ${idea}`);
+  if (content) detailParts.push(`Content: ${content}`);
   if (caption) detailParts.push(`Caption: ${caption}`);
   if (link) detailParts.push(`Link: ${link}`);
   const notes = detailParts.join(" | ");

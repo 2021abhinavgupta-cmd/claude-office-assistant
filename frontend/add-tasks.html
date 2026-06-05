@@ -882,6 +882,7 @@
               <col style="width:110px">       <!-- Type -->
               <col style="width:200px">       <!-- Brief -->
               <col style="width:220px">       <!-- Idea -->
+              <col style="width:260px">       <!-- Content -->
               <col style="width:260px">       <!-- Caption -->
               <col style="width:160px">       <!-- Assigned To -->
               <col style="width:140px">       <!-- Status -->
@@ -897,6 +898,7 @@
                 <th>Type</th>
                 <th>Brief</th>
                 <th>Idea</th>
+                <th>Content</th>
                 <th>Caption</th>
                 <th>Assigned To</th>
                 <th>Status</th>
@@ -1223,7 +1225,7 @@
     function statusOptions(sel = "") {
       return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
     }
-    function addSocialRow(title = "", type = "Story", brief = "", idea = "", caption = "", assignee = "", status = "Scheduled", postDay = "", creationDate = "", driveLink = "") {
+    function addSocialRow(title = "", type = "Story", brief = "", idea = "", content = "", caption = "", assignee = "", status = "Scheduled", postDay = "", creationDate = "", driveLink = "") {
       socialRowIdx++;
       const idx = socialRowIdx;
       const tbody = document.getElementById("social-tbody");
@@ -1253,6 +1255,12 @@
       <div class="ta-wrap">
         <textarea class="st-input" placeholder="Content idea…" style="width:100%;height:90px;resize:none;overflow-y:auto">${idea}</textarea>
         <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Idea')" title="Expand">⤢</button>
+      </div>
+    </td>
+    <td>
+      <div class="ta-wrap">
+        <textarea class="st-input content-val" placeholder="Content details…" style="width:100%;height:90px;resize:none;overflow-y:auto">${content}</textarea>
+        <button class="expand-btn" onclick="openCellPopup(this.previousElementSibling, 'Content')" title="Expand">⤢</button>
       </div>
     </td>
     <td>
@@ -1408,13 +1416,14 @@
           const title = textareas[0]?.value?.trim() || "";
           const brief = textareas[1]?.value?.trim() || "";
           const idea = textareas[2]?.value?.trim() || "";
-          const caption = textareas[3]?.value?.trim() || "";
-          const link = textareas[4]?.value?.trim() || "";
+          const content = textareas[3]?.value?.trim() || "";
+          const caption = textareas[4]?.value?.trim() || "";
+          const link = textareas[5]?.value?.trim() || "";
           const type = sels[0]?.value || "Story";
           const status = sels[1]?.value || "Scheduled";
 
           if (title || day) {
-            socialPosts.push({ title, type, brief, idea, caption, link, assignee, post_day: day, creation_date: creationDate, status });
+            socialPosts.push({ title, type, brief, idea, content, caption, link, assignee, post_day: day, creation_date: creationDate, status });
           }
         });
       }
