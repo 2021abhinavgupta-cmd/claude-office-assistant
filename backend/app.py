@@ -2789,8 +2789,11 @@ def auto_fill_social_media():
         prompt = "You are a social media manager. For each of the following posts, fill in ANY empty fields (content, idea, scripts, caption) based on the post title and type. Keep your answers extremely concise and creative. Leave fields that are already provided untouched. Output MUST be valid JSON matching the exact structure and keys of the input.\n\n"
         prompt += json.dumps(posts)
 
+        from model_router import get_model_for_task
+        sonnet_model = get_model_for_task("coding")["name"]
+        
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model=sonnet_model,
             max_tokens=4096,
             system="You only output valid JSON. Return the array of posts directly.",
             messages=[{"role": "user", "content": prompt}]
