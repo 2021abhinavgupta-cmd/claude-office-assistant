@@ -2132,7 +2132,7 @@ def conversation_stream(conv_id):
         })
 
         if is_huddle:
-            _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "sender_id": "system", "content": clean_response})
+            _huddle_broadcast(conv_id, {"type": "message", "role": "assistant", "sender": "System", "sender_id": "system", "trigger_user_id": sender_id, "content": clean_response})
 
         updated_conv   = conversation_store.get_conversation(conv_id)
         updated_budget = check_budget_available()

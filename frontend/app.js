@@ -541,7 +541,11 @@ function _connectHuddleSSE(convId) {
       const evt = JSON.parse(e.data);
       if (evt.type === "message" && evt.role && evt.content) {
         // Only append if not our own message (avoid duplicates)
-        if (evt.role === "assistant" || (evt.sender_id && evt.sender_id !== (currentUser?.user_id || ""))) {
+        if (evt.role === "assistant") {
+          if (evt.trigger_user_id && evt.trigger_user_id === (currentUser?.user_id || "")) return;
+          appendMessage(evt.role, evt.content, { sender_name: evt.sender, sender_id: evt.sender_id });
+          scrollToBottom();
+        } else if (evt.sender_id && evt.sender_id !== (currentUser?.user_id || "")) {
           appendMessage(evt.role, evt.content, { sender_name: evt.sender, sender_id: evt.sender_id });
           scrollToBottom();
         }
