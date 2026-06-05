@@ -1556,7 +1556,7 @@
           }
           const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
           const colIdx = {
-            creationDate: headers.findIndex(h => h.includes('creation')),
+            creationDate: headers.findIndex(h => h.includes('creation') || h === 'date'),
             postDay:      headers.findIndex(h => h.includes('post day') || h.includes('day')),
             post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
             type:         headers.findIndex(h => h === 'type'),
@@ -1566,7 +1566,7 @@
             caption:      headers.findIndex(h => h === 'caption'),
             assignee:     headers.findIndex(h => h.includes('assign')),
             status:       headers.findIndex(h => h === 'status'),
-            link:         headers.findIndex(h => h.includes('link') || h.includes('drive')),
+            link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
           };
           const getCell = (row, key) => {
             const idx = colIdx[key];
@@ -1627,7 +1627,9 @@
             body: JSON.stringify({ posts: parsedRows }),
           });
           const data = await ar.json();
-          if (data.posts) {
+          if (data.error) {
+            alert("Claude Error: " + data.error);
+          } else if (data.posts) {
             document.getElementById("social-tbody").innerHTML = "";
             socialRowIdx = 0;
             data.posts.forEach(p => {

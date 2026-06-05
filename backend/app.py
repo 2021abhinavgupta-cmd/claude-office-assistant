@@ -2796,18 +2796,27 @@ def auto_fill_social_media():
             messages=[{"role": "user", "content": prompt}]
         )
         
-        # Extract JSON from response (in case of markdown blocks)
+        # Extract JSON from response robustly using regex
         text = response.content[0].text.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-            if text.endswith("```"):
-                text = text[:-3]
-        elif text.startswith("```"):
-            text = text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-
-        filled_posts = json.loads(text.strip())
+        import re
+        match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
+        if match:
+            text = match.group(0)
+        else:
+            if text.startswith("```json"):
+                text = text[7:]
+                if text.endswith("```"):
+                    text = text[:-3]
+            elif text.startswith("```"):
+                text = text[3:]
+                if text.endswith("```"):
+                    text = text[:-3]
+        
+        try:
+            filled_posts = json.loads(text.strip())
+        except Exception as e:
+            logger.error(f"Failed to parse Claude output: {text}")
+            return jsonify({"error": "Failed to parse JSON from Claude"}), 500
         return jsonify({"posts": filled_posts})
 
     except Exception as e:

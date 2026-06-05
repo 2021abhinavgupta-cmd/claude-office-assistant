@@ -1799,7 +1799,7 @@ async function importClientSocialCSV(event, clientId) {
       }
       const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
       const colIdx = {
-        creationDate: headers.findIndex(h => h.includes('creation')),
+        creationDate: headers.findIndex(h => h.includes('creation') || h === 'date'),
         postDay:      headers.findIndex(h => h.includes('post day') || h.includes('day')),
         post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
         type:         headers.findIndex(h => h === 'type'),
@@ -1809,7 +1809,7 @@ async function importClientSocialCSV(event, clientId) {
         caption:      headers.findIndex(h => h === 'caption'),
         assignee:     headers.findIndex(h => h.includes('assign')),
         status:       headers.findIndex(h => h === 'status'),
-        link:         headers.findIndex(h => h.includes('link') || h.includes('drive')),
+        link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
       };
       const getCell = (row, key) => {
         const idx = colIdx[key];
@@ -1870,7 +1870,9 @@ async function importClientSocialCSV(event, clientId) {
         body: JSON.stringify({ posts: parsedRows }),
       });
       const data = await ar.json();
-      if (data.posts) {
+      if (data.error) {
+        alert("Claude Error: " + data.error);
+      } else if (data.posts) {
         // Find client
         const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
         if (client) {
