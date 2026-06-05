@@ -10,6 +10,7 @@
     rel="stylesheet" />
   <script src="auth.js"></script>
   <script src="shared-config.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     :root {
       --bg: #0c0c10;
@@ -929,7 +930,7 @@
             <button class="add-row-btn" onclick="addSocialRow()">＋ Add Post</button>
             <button class="btn btn-sm" onclick="exportSocialCSV()" style="margin-left: 16px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
             <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
-              📥 Import CSV <input type="file" accept=".csv" style="display:none;" onchange="importSocialCSV(event)">
+              📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importSocialCSV(event)">
             </label>
           </div>
         </div>
@@ -1533,32 +1534,87 @@
 
       const reader = new FileReader();
       reader.onload = async function(e) {
-        const text = e.target.result;
-        const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
-        if (rows.length < 2) return;
+        let parsedRows = [];
         
-        const parsedRows = rows.slice(1).map(row => {
-          const regex = /(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^,]+)|)(?:,|$)/g;
-          let m;
-          let data = [];
-          while ((m = regex.exec(row)) !== null && m[0] !== "") {
-            let val = m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || "");
-            data.push(val);
+        const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+        
+        if (isExcel) {
+          // Parse Excel with SheetJS
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+          if (jsonRows.length < 2) return;
+          // Find header row — try to detect by checking for known column names
+          let headerIdx = 0;
+          for (let i = 0; i < Math.min(5, jsonRows.length); i++) {
+            const row = jsonRows[i].map(c => String(c).toLowerCase());
+            if (row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'))) {
+              headerIdx = i;
+              break;
+            }
           }
-          return {
-            creationDate: data[0] || "",
-            postDay: data[1] || "",
-            post: data[2] || "",
-            type: data[3] || "Story",
-            content: data[4] || "",
-            idea: data[5] || "",
-            scripts: data[6] || "",
-            caption: data[7] || "",
-            assignee: data[8] || "",
-            status: data[9] || "Scheduled",
-            link: data[10] || ""
+          const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
+          const colIdx = {
+            creationDate: headers.findIndex(h => h.includes('creation')),
+            postDay:      headers.findIndex(h => h.includes('post day') || h.includes('day')),
+            post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
+            type:         headers.findIndex(h => h === 'type'),
+            content:      headers.findIndex(h => h === 'content'),
+            idea:         headers.findIndex(h => h === 'idea'),
+            scripts:      headers.findIndex(h => h.includes('script') || h.includes('copy')),
+            caption:      headers.findIndex(h => h === 'caption'),
+            assignee:     headers.findIndex(h => h.includes('assign')),
+            status:       headers.findIndex(h => h === 'status'),
+            link:         headers.findIndex(h => h.includes('link') || h.includes('drive')),
           };
-        });
+          const getCell = (row, key) => {
+            const idx = colIdx[key];
+            if (idx < 0 || idx >= row.length) return "";
+            const val = row[idx];
+            if (val instanceof Date) return val.toISOString().split('T')[0];
+            return String(val || "").trim();
+          };
+          parsedRows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
+            creationDate: getCell(row, 'creationDate'),
+            postDay:      getCell(row, 'postDay'),
+            post:         getCell(row, 'post'),
+            type:         getCell(row, 'type') || "Story",
+            content:      getCell(row, 'content'),
+            idea:         getCell(row, 'idea'),
+            scripts:      getCell(row, 'scripts'),
+            caption:      getCell(row, 'caption'),
+            assignee:     getCell(row, 'assignee'),
+            status:       getCell(row, 'status') || "Scheduled",
+            link:         getCell(row, 'link'),
+          }));
+        } else {
+          // Parse CSV
+          const text = e.target.result;
+          const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
+          if (rows.length < 2) return;
+          parsedRows = rows.slice(1).map(row => {
+            const regex = /(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^,]+)|)(?:,|$)/g;
+            let m; let data = [];
+            while ((m = regex.exec(row)) !== null && m[0] !== "") {
+              let val = m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || "");
+              data.push(val);
+            }
+            return {
+              creationDate: data[0] || "",
+              postDay:      data[1] || "",
+              post:         data[2] || "",
+              type:         data[3] || "Story",
+              content:      data[4] || "",
+              idea:         data[5] || "",
+              scripts:      data[6] || "",
+              caption:      data[7] || "",
+              assignee:     data[8] || "",
+              status:       data[9] || "Scheduled",
+              link:         data[10] || ""
+            };
+          });
+        }
 
         const btn = event.target.parentElement;
         const oldText = btn.innerHTML;
@@ -1586,7 +1642,11 @@
           event.target.value = "";
         }
       };
-      reader.readAsText(file);
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.readAsText(file);
+      }
     }
   </script>
 </body>
