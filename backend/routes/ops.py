@@ -99,6 +99,23 @@ def get_standups_today():
     conn = _su_conn()
     cur = conn.cursor()
     
+    # Auto-carry-over for all users if querying today
+    if date_str == datetime.utcnow().strftime("%Y-%m-%d") and not user_id:
+        cur.execute("SELECT DISTINCT user_id FROM standup_tasks WHERE status='pending' AND date < ? AND user_id NOT IN (SELECT user_id FROM standup_tasks WHERE date=?)", (date_str, date_str))
+        missing_users = [r[0] for r in cur.fetchall()]
+        for u in missing_users:
+            cur.execute("SELECT MAX(date) FROM standup_tasks WHERE user_id=? AND date<?", (u, date_str))
+            last_date_row = cur.fetchone()
+            if last_date_row and last_date_row[0]:
+                last_date = last_date_row[0]
+                cur.execute("SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'", (u, last_date))
+                pending = cur.fetchall()
+                if pending:
+                    with conn:
+                        for title, blocker, carried_from in pending:
+                            orig_carry_from = carried_from if carried_from else last_date
+                            conn.execute("INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)", (u, date_str, title, orig_carry_from, blocker))
+
     # Fetch text standups
     if user_id:
         cur.execute("SELECT user_id,date,yesterday,today,blockers,submitted_at FROM standups WHERE date=? AND user_id=?", (date_str, user_id))
