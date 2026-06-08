@@ -631,9 +631,10 @@ function renderClientSheets(clientId) {
         📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
       </label>
     </div>
-    <table style="width:100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; background: var(--s2); border: 1px solid var(--bdr); border-radius: var(--rs);">
-      <thead>
-        <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid var(--bdr); color: var(--txt);">
+    <div style="max-height: 65vh; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
+      <table style="width:100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; background: var(--s2);">
+        <thead style="position: sticky; top: 0; z-index: 10; background: var(--s1);">
+          <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid var(--bdr); color: var(--txt);">
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 40px; font-weight: 600;">#</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Creation Date</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Post Day</th>
