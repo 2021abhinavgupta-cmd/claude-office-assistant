@@ -951,7 +951,15 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
     <div class="cp-row"> Assignee: <span>${assigneeName}</span></div>
     <div class="cp-row"> Status: <span>${statusLabel}</span></div>
     <div class="cp-row"> Due: <span>${t.due_date||'—'}</span></div>
-    ${t.description?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.5">${t.description.slice(0,100)}${t.description.length>100?'…':''}</div>`:''}
+    ${t.content?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--txt)"><b>Content:</b> ${t.content}</div>`:''}
+    ${t.idea?`<div class="cp-row" style="margin-top:2px;font-size:.75rem;color:var(--txt)"><b>Idea:</b> <a href="${t.idea}" target="_blank" style="color:var(--acc);text-decoration:underline">Link</a></div>`:''}
+    ${t.scripts_copy?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;background:var(--bg);padding:6px;border-radius:4px;max-height:80px;overflow-y:auto;border:1px solid var(--bdr)"><b>Scripts:</b><br/>${t.scripts_copy.replace(/\n/g, '<br/>')}</div>`:''}
+    ${t.feedback&&t.feedback.status?`
+      <div style="margin-top:8px;padding:6px;border-radius:4px;font-size:0.75rem;border:1px solid ${t.feedback.status==='approved'?'#22c55e40':'#f43f5e40'};background:${t.feedback.status==='approved'?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)'}">
+        <b style="color:${t.feedback.status==='approved'?'#22c55e':'#f43f5e'}">${t.feedback.status==='approved'?'Client Approved':'Client Requested Changes'}</b>
+        ${t.feedback.comments?`<div style="margin-top:4px;color:var(--muted);font-style:italic">"${t.feedback.comments}"</div>`:''}
+      </div>
+    `:''}
     <div class="cp-actions">
       <button class="cp-edit" onclick="hideCalPopup();openEditTask('${cid}','${taskId}')">✏ Edit</button>
       <button class="cp-del" onclick="hideCalPopup();deleteTask('${taskId}')"> Delete</button>

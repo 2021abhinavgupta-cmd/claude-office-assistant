@@ -367,15 +367,47 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                     "status":       _get_select(props.get("Status", {})),
                     "progress":    _get_number(props.get("Progress", {})),
                     "service":     _get_select(props.get("Task Type", {})),
-                    "description":  _get_text(props.get("Notes", {})),
+                desc = _get_text(props.get("Notes", {}))
+                brief = _get_text(props.get("Brief", {}))
+                content = _get_text(props.get("Content", {}))
+                idea = _get_text(props.get("Idea", {}))
+                scripts_copy = _get_text(props.get("Scripts/ Copy", {})) or _get_text(props.get("Script/ Copy", {}))
+                caption = _get_text(props.get("Caption", {}))
+                file_link = props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
+                
+                # Parse pipe-separated values from description/Notes if present
+                if not brief and desc and "|" in desc:
+                    parts = [pt.strip() for pt in desc.split("|")]
+                    for pt in parts:
+                        pt_lower = pt.lower()
+                        if pt_lower.startswith("brief:"): brief = pt[6:].strip()
+                        elif pt_lower.startswith("content:"): content = pt[8:].strip()
+                        elif pt_lower.startswith("idea:"): idea = pt[5:].strip()
+                        elif pt_lower.startswith("scripts:") or pt_lower.startswith("script:"): scripts_copy = pt.split(":", 1)[1].strip()
+                        elif pt_lower.startswith("scripts/copy:") or pt_lower.startswith("script/copy:"): scripts_copy = pt.split(":", 1)[1].strip()
+                        elif pt_lower.startswith("caption:"): caption = pt[8:].strip()
+                        elif pt_lower.startswith("link:"): file_link = pt[5:].strip()
+                        elif pt_lower.startswith("file:"): file_link = pt[5:].strip()
+
+                tasks.append({
+                    "notion_id":   p["id"],
+                    "title":        _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})),
+                    "client_name":  _get_text(props.get("Customer Name", {})),
+                    "client_notion_id": _get_text(props.get("Client ID", {})),
+                    "assigned_to":  _get_multi_select(props.get("Assigned To", {})),
+                    "due_date":     _get_date(props.get("Due Date", {})) or _get_date(props.get("Post Day", {})),
+                    "status":       _get_select(props.get("Status", {})),
+                    "progress":    _get_number(props.get("Progress", {})),
+                    "service":     _get_select(props.get("Task Type", {})),
+                    "description":  desc,
                     "url":         p.get("url", ""),
                     "type":         _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {})),
-                    "brief":        _get_text(props.get("Brief", {})),
-                    "content":      _get_text(props.get("Content", {})),
-                    "idea":         _get_text(props.get("Idea", {})),
-                    "scripts_copy": _get_text(props.get("Scripts/ Copy", {})) or _get_text(props.get("Script/ Copy", {})),
-                    "caption":      _get_text(props.get("Caption", {})),
-                    "file_link":    props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
+                    "brief":        brief,
+                    "content":      content,
+                    "idea":         idea,
+                    "scripts_copy": scripts_copy,
+                    "caption":      caption,
+                    "file_link":    file_link
                 })
             has_more = data.get("has_more", False)
             if has_more:
