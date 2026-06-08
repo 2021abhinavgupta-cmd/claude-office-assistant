@@ -1543,6 +1543,16 @@
         let parsedRows = [];
         
         const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+        const formatDate = (val) => {
+          if (!val) return "";
+          let d = val instanceof Date ? val : new Date(String(val).trim());
+          if (isNaN(d)) return String(val).trim();
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}`;
+        };
         
         if (isExcel) {
           // Parse Excel with SheetJS
@@ -1578,7 +1588,7 @@
             const idx = colIdx[key];
             if (idx < 0 || idx >= row.length) return "";
             const val = row[idx];
-            if (val instanceof Date) return val.toISOString().split('T')[0];
+            if (key === 'postDay' || key === 'creationDate') return formatDate(val);
             return String(val || "").trim();
           };
           parsedRows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
@@ -1607,8 +1617,8 @@
               data.push(val);
             }
             return {
-              postDay:      data[0] || "",
-              creationDate: data[1] || "",
+              postDay:      formatDate(data[0]),
+              creationDate: formatDate(data[1]),
               post:         data[2] || "",
               type:         data[3] || "Story",
               content:      data[4] || "",
