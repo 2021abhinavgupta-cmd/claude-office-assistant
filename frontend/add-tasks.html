@@ -910,8 +910,8 @@
             <thead>
               <tr>
                 <th>#</th>
-                <th>Creation Date</th>
                 <th>Post Day</th>
+                <th>Creation Date</th>
                 <th>Post</th>
                 <th>Type</th>
                 <th>Content</th>
@@ -1260,8 +1260,8 @@
       ).join("");
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
-    <td><input class="st-input" type="date" value="${creationDate}" style="width:100%;height:36px"/></td>
     <td><input class="st-input" type="date" value="${postDay}" style="width:100%;height:36px"/></td>
+    <td><input class="st-input" type="date" value="${creationDate}" style="width:100%;height:36px"/></td>
     <td>
       <div class="ta-wrap">
         <textarea class="st-input" placeholder="Post title…" style="width:100%;height:90px;resize:none;overflow-y:auto">${title}</textarea>
@@ -1435,8 +1435,8 @@
           const checkedBoxes = [...r.querySelectorAll(".ms-chk:checked")];
           const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling?.textContent?.trim() || "").join(", ") : "";
 
-          const creationDate = inputs[0]?.value || "";
-          const day = inputs[1]?.value || "";
+          const day = inputs[0]?.value || "";
+          const creationDate = inputs[1]?.value || "";
           const title = textareas[0]?.value?.trim() || "";
           const content = textareas[1]?.value?.trim() || "";
           const idea = textareas[2]?.value?.trim() || "";
@@ -1504,8 +1504,8 @@
         const checkedBoxes = [...r.querySelectorAll(".ms-chk:checked")];
         const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling?.textContent?.trim() || "").join(", ") : "";
 
-        const cDate = inputs[0]?.value || "";
-        const pDay = inputs[1]?.value || "";
+        const pDay = inputs[0]?.value || "";
+        const cDate = inputs[1]?.value || "";
         const post = textareas[0]?.value?.trim().replace(/"/g, '""') || "";
         const type = sels[0]?.value || "";
         const content = textareas[1]?.value?.trim().replace(/"/g, '""') || "";
@@ -1515,7 +1515,7 @@
         const link = textareas[5]?.value?.trim().replace(/"/g, '""') || "";
         const status = sels[1]?.value || "";
 
-        const rowArray = [cDate, pDay, `"${post}"`, `"${type}"`, `"${content}"`, `"${idea}"`, `"${scripts}"`, `"${caption}"`, `"${assignee}"`, `"${status}"`, `"${link}"`];
+        const rowArray = [pDay, cDate, `"${post}"`, `"${type}"`, `"${content}"`, `"${idea}"`, `"${scripts}"`, `"${caption}"`, `"${assignee}"`, `"${status}"`, `"${link}"`];
         csvContent += rowArray.join(",") + "\r\n";
       });
 
@@ -1556,8 +1556,8 @@
           }
           const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
           const colIdx = {
-            creationDate: headers.findIndex(h => h.includes('creation') || h === 'date'),
-            postDay:      headers.findIndex(h => h.includes('post day') || h.includes('day')),
+            postDay:      headers.findIndex(h => h.includes('post day') || h.includes('post date') || h.includes('date')),
+            creationDate: headers.findIndex(h => h.includes('creation')),
             post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
             type:         headers.findIndex(h => h === 'type'),
             content:      headers.findIndex(h => h === 'content'),
@@ -1601,8 +1601,8 @@
               data.push(val);
             }
             return {
-              creationDate: data[0] || "",
-              postDay:      data[1] || "",
+              postDay:      data[0] || "",
+              creationDate: data[1] || "",
               post:         data[2] || "",
               type:         data[3] || "Story",
               content:      data[4] || "",
