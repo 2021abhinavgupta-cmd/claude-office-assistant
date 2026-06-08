@@ -2786,53 +2786,52 @@ def auto_fill_social_media():
 
     try:
         # Prompt to process multiple posts in bulk to save time
-        prompt = "You are a social media manager. For each of the following posts, fill in ANY empty fields (content, idea, scripts, caption) based on the post title and type. Keep your answers extremely concise and creative. Leave fields that are already provided untouched. Output MUST be valid JSON matching the exact structure and keys of the input.\n\n"
-        prompt += json.dumps(posts)
+        prompt = (
+            "You are a social media manager. "
+            "For each of the following posts, fill in ANY empty fields "
+            "(content, idea, scripts, caption) based on the post title and type. "
+            "Keep scripts/copy VERY brief (max 3 lines). "
+            "Leave fields that are already filled untouched. "
+            "Return ONLY a raw JSON array — no markdown, no explanation, "
+            "no code fences, no extra text at all.\n\n"
+        )
+        prompt += json.dumps(posts, ensure_ascii=False)
 
         from model_router import get_model_for_task
         sonnet_model = get_model_for_task("coding")["name"]
-        
+
         response = client.messages.create(
             model=sonnet_model,
-            max_tokens=4096,
-            system="You only output valid JSON. Return the array of posts directly wrapped in <json> and </json> tags. No conversational text.",
+            max_tokens=8192,   # large enough for 17 rows
+            system="Output ONLY a raw JSON array. No markdown. No explanation. No code fences.",
             messages=[{"role": "user", "content": prompt}]
         )
-        
-        # ── Extract JSON from Claude's response robustly ─────────────────────
-        text = response.content[0].text.strip()
+
+        # ── Extract JSON robustly ──────────────────────────────────────────────
         import re
+        raw = response.content[0].text
 
-        # First try: <json>...</json> tags
-        xml_match = re.search(r'<json>(.*?)</json>', text, re.DOTALL)
-        if xml_match:
-            text = xml_match.group(1).strip()
-        else:
-            # Second try: bare JSON array
-            match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
-            if match:
-                text = match.group(0)
-            else:
-                # Third try: strip code fences
-                if text.startswith("```json"):
-                    text = text[7:]
-                elif text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                text = text.strip()
+        # Strip any code fences
+        raw = re.sub(r'^```(?:json)?', '', raw.strip())
+        raw = re.sub(r'```$', '', raw.strip()).strip()
 
-        # Sanitize: escape literal newlines and tabs inside JSON string values
-        # Step 1: temporarily mark real JSON string delimiters
-        # Step 2: replace unescaped control chars inside strings
-        def escape_control_chars_in_strings(s):
-            """Replace literal newlines/tabs only inside JSON string values."""
-            result = []
-            in_string = False
+        # Strip XML-style wrapper tags if present  (<json>...</json>)
+        xml_m = re.search(r'<json>(.*?)</json>', raw, re.DOTALL)
+        if xml_m:
+            raw = xml_m.group(1).strip()
+
+        # Find the outermost [ ... ] array
+        arr_m = re.search(r'\[.*\]', raw, re.DOTALL)
+        if arr_m:
+            raw = arr_m.group(0)
+
+        # Sanitize: escape literal newlines/tabs inside JSON string values
+        def _sanitize(s):
+            result, in_str = [], False
             i = 0
             while i < len(s):
                 c = s[i]
-                if c == '\\' and in_string:
+                if c == '\\' and in_str:
                     result.append(c)
                     i += 1
                     if i < len(s):
@@ -2840,30 +2839,29 @@ def auto_fill_social_media():
                     i += 1
                     continue
                 if c == '"':
-                    in_string = not in_string
+                    in_str = not in_str
                     result.append(c)
-                elif in_string and c == '\n':
+                elif in_str and c in '\n\r':
                     result.append('\\n')
-                elif in_string and c == '\r':
-                    result.append('\\r')
-                elif in_string and c == '\t':
+                elif in_str and c == '\t':
                     result.append('\\t')
                 else:
                     result.append(c)
                 i += 1
             return ''.join(result)
 
-        text = escape_control_chars_in_strings(text)
-
-        # Also strip trailing commas
-        text = re.sub(r',\s*([\]}])', r'\1', text)
+        raw = _sanitize(raw)
+        # Strip trailing commas before ] or }
+        raw = re.sub(r',\s*([\]}])', r'\1', raw)
 
         try:
-            filled_posts = json.loads(text.strip())
+            filled_posts = json.loads(raw)
         except Exception as e:
-            logger.error(f"Failed to parse Claude output: {text}\nError: {str(e)}")
-            return jsonify({"error": f"JSON Error: {str(e)}. Claude output was: {text[:500]}"}), 500
+            logger.error(f"auto-fill JSON parse failed.\nError: {e}\nRaw:\n{raw}")
+            return jsonify({"error": f"JSON parse error: {e}. Raw output: {raw[:600]}"}), 500
+
         return jsonify({"posts": filled_posts})
+
 
     except Exception as e:
         import traceback
