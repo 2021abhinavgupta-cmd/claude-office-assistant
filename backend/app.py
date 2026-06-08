@@ -2496,6 +2496,46 @@ def create_client():
     conn.close()
     return jsonify({"success": True, "client_id": client_id}), 201
 
+# ── DELETE /api/clients/<id> ──────────────────────────────────────────────────
+@app.route("/api/clients/<int:client_id>", methods=["DELETE"])
+def delete_client(client_id):
+    """Delete a client, all their tasks, and their login credentials."""
+    user_id = request.args.get("user_id", "") or (request.get_json(silent=True) or {}).get("user_id", "")
+    if not _is_admin(user_id):
+        return jsonify({"error": "Unauthorized"}), 403
+    conn = _pt_conn()
+    try:
+        with conn:
+            # Delete their login credentials
+            conn.execute("DELETE FROM client_users WHERE client_notion_id=?", (str(client_id),))
+            # Delete their tasks
+            conn.execute("DELETE FROM tasks WHERE client_id=?", (client_id,))
+            # Delete the client
+            conn.execute("DELETE FROM clients WHERE id=?", (client_id,))
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"delete_client error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# ── DELETE /api/client-users/<username> (remove orphaned credential) ───────────
+@app.route("/api/client-users/<username>", methods=["DELETE"])
+def delete_client_user(username):
+    """Remove a client portal credential by username. Admin only."""
+    user_id = request.args.get("user_id", "") or (request.get_json(silent=True) or {}).get("user_id", "")
+    if not _is_admin(user_id):
+        return jsonify({"error": "Unauthorized"}), 403
+    conn = _pt_conn()
+    try:
+        with conn:
+            conn.execute("DELETE FROM client_users WHERE username=?", (username,))
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
 # ── GET /api/clients/<id>/tasks ───────────────────────────────────────────────
 @app.route("/api/clients/<int:client_id>/tasks", methods=["GET"])
 def get_client_tasks(client_id):

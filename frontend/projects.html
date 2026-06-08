@@ -1425,22 +1425,12 @@ function openAssigneePicker(avatarEl){
 
 async function deleteClient(clientId) {
   if (!confirm("Are you sure you want to delete this client and all their tasks?")) return;
-  if (notionMode) {
-    try {
-      const res = await fetch(`${API}/api/notion/clients/${clientId}`, { method: 'DELETE' });
-      const d   = await res.json();
-      if (d.success) { toast('Client deleted!'); await load(); }
-      else toast(d.error || 'Failed to delete client', 'err');
-    } catch (e) { toast('Error: ' + e.message, 'err'); }
-  } else {
-    // SQLite fallback
-    try {
-      const res = await fetch(`${API}/api/sqlite/clients/${clientId}`, { method: 'DELETE' });
-      const d   = await res.json();
-      if (d.success) { toast('Client deleted!'); await load(); }
-      else toast(d.error || 'Failed to delete client', 'err');
-    } catch (e) { toast('Error: ' + e.message, 'err'); }
-  }
+  try {
+    const res = await fetch(`${API}/api/clients/${clientId}?user_id=${encodeURIComponent(currentUser)}`, { method: 'DELETE' });
+    const d = await res.json();
+    if (d.success) { toast('Client deleted!'); await load(); }
+    else toast(d.error || 'Failed to delete client', 'err');
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
 
 async function deleteTask(taskId) {
