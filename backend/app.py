@@ -2807,6 +2807,12 @@ def auto_fill_social_media():
             messages=[{"role": "user", "content": prompt}]
         )
 
+        in_toks = getattr(getattr(response, "usage", None), "input_tokens", 0)
+        out_toks = getattr(getattr(response, "usage", None), "output_tokens", 0)
+        
+        # Sonnet 3.5 Pricing approx: $3 / 1M input, $15 / 1M output
+        cost = (in_toks * 3.0 / 1_000_000) + (out_toks * 15.0 / 1_000_000)
+
         # ── Extract JSON robustly ──────────────────────────────────────────────
         import re
         raw = response.content[0].text
@@ -2860,8 +2866,7 @@ def auto_fill_social_media():
             logger.error(f"auto-fill JSON parse failed.\nError: {e}\nRaw:\n{raw}")
             return jsonify({"error": f"JSON parse error: {e}. Raw output: {raw[:600]}"}), 500
 
-        return jsonify({"posts": filled_posts})
-
+        return jsonify({"posts": filled_posts, "cost": cost})
 
     except Exception as e:
         import traceback

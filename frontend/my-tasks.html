@@ -587,6 +587,7 @@ function renderTask(t, today){
     
     body+=`<button class="btn btn-quick" onclick="pushToStandup('${t.notion_id}', '${t.title?.replace(/'/g, "\\'") || "Untitled"}')">➕ Add to Standup</button>`;
     body+=`<button class="btn btn-quick" onclick="deferTask('${t.notion_id}', '${t.due_date||today}')">⏰ Defer</button>`;
+    body+=`<button class="btn btn-quick" style="color:var(--red);border-color:rgba(255,92,92,0.3)" onclick="deleteTask('${t.notion_id}')">🗑 Delete</button>`;
     
     body+=`</div>`;
   }
@@ -638,6 +639,25 @@ function renderTask(t, today){
     <div class="prog-label">${pct}% complete</div>
     ${body}
   </div>`;
+}
+
+async function deleteTask(nid) {
+  if (!confirm("Are you sure you want to delete this task? This action cannot be undone.")) return;
+  try {
+    const r = await fetch(`${API}/api/notion/tasks/${nid}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" }
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast("Task deleted successfully", "ok");
+      load();
+    } else {
+      toast(d.error || "Failed to delete task", "err");
+    }
+  } catch (err) {
+    toast("Error: " + err.message, "err");
+  }
 }
 
 async function startTask(nid){

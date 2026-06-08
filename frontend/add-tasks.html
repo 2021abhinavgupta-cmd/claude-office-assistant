@@ -1635,6 +1635,11 @@
             data.posts.forEach(p => {
               addSocialRow(p.post, p.type, p.content, p.idea, p.scripts, p.caption, p.assignee, p.status, p.postDay, p.creationDate, p.link);
             });
+            if (data.cost !== undefined) {
+              toast(`Auto-fill complete. API Cost: $${data.cost.toFixed(4)}`, "ok");
+            } else {
+              toast("Auto-fill complete.", "ok");
+            }
           }
         } catch (err) {
           alert("Error Auto-filling with Claude.");
