@@ -1083,6 +1083,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
+      initColumnResizers();
       await loadEmployees();
       await loadClients();
       EMP = window.EMP_DICT || {};
@@ -1250,12 +1251,12 @@
       return Object.entries(EMP).map(([id, name]) => `<option value="${id}" ${id === selected ? "selected" : ""}>${name}</option>`).join("");
     }
     function typeOptions(sel = "") {
-      return POST_TYPES.map(t => `<option value="${t}" ${t === sel ? "selected" : ""}>${t}</option>`).join("");
+      return `<option value="" ${sel === "" ? "selected" : ""}></option>` + POST_TYPES.map(t => `<option value="${t}" ${t === sel ? "selected" : ""}>${t}</option>`).join("");
     }
     function statusOptions(sel = "") {
       return POST_STATUSES.map(s => `<option value="${s}" ${s === sel ? "selected" : ""}>${s}</option>`).join("");
     }
-    function addSocialRow(title = "", type = "Story", content = "", idea = "", scripts = "", caption = "", assignee = "", status = "Scheduled", postDay = "", creationDate = "", driveLink = "") {
+    function addSocialRow(title = "", type = "", content = "", idea = "", scripts = "", caption = "", assignee = "", status = "Scheduled", postDay = "", creationDate = "", driveLink = "") {
       socialRowIdx++;
       const idx = socialRowIdx;
       const tbody = document.getElementById("social-tbody");
@@ -1595,7 +1596,7 @@
             creationDate: getCell(row, 'creationDate'),
             postDay:      getCell(row, 'postDay'),
             post:         getCell(row, 'post'),
-            type:         getCell(row, 'type') || "Story",
+            type:         getCell(row, 'type') || "",
             content:      getCell(row, 'content'),
             idea:         getCell(row, 'idea'),
             scripts:      getCell(row, 'scripts'),
@@ -1620,7 +1621,7 @@
               postDay:      formatDate(data[0]),
               creationDate: formatDate(data[1]),
               post:         data[2] || "",
-              type:         data[3] || "Story",
+              type:         data[3] || "",
               content:      data[4] || "",
               idea:         data[5] || "",
               scripts:      data[6] || "",
@@ -1656,6 +1657,51 @@
       } else {
         reader.readAsText(file);
       }
+    }
+
+    function initColumnResizers() {
+      const table = document.getElementById('social-table');
+      if (!table) return;
+      const cols = table.querySelectorAll('colgroup col');
+      const ths = table.querySelectorAll('thead th');
+      
+      ths.forEach((th, i) => {
+        if (i === 0 || i === ths.length - 1) return;
+        const resizer = document.createElement('div');
+        resizer.style.width = '6px';
+        resizer.style.height = '100%';
+        resizer.style.position = 'absolute';
+        resizer.style.right = '0';
+        resizer.style.top = '0';
+        resizer.style.cursor = 'col-resize';
+        resizer.style.userSelect = 'none';
+        resizer.style.zIndex = '10';
+        
+        th.style.position = 'relative';
+        th.appendChild(resizer);
+        
+        let x = 0;
+        let w = 0;
+        const col = cols[i];
+        
+        const mouseDownHandler = function(e) {
+          x = e.clientX;
+          w = parseInt(col.style.width, 10) || th.offsetWidth;
+          document.addEventListener('mousemove', mouseMoveHandler);
+          document.addEventListener('mouseup', mouseUpHandler);
+          resizer.style.borderRight = '2px solid var(--acc)';
+        };
+        const mouseMoveHandler = function(e) {
+          const dx = e.clientX - x;
+          col.style.width = Math.max(50, w + dx) + 'px';
+        };
+        const mouseUpHandler = function() {
+          resizer.style.borderRight = '';
+          document.removeEventListener('mousemove', mouseMoveHandler);
+          document.removeEventListener('mouseup', mouseUpHandler);
+        };
+        resizer.addEventListener('mousedown', mouseDownHandler);
+      });
     }
 
     function toast(m, t = "ok") {
