@@ -1773,7 +1773,7 @@ def submit_task_feedback(task_id):
 
         if source == "notion":
             try:
-                notion_store.update_task(task_id, status=new_task_status, progress=100 if new_task_status == "approved" else None)
+                notion_store.update_task(task_id, status=new_task_status, progress=100 if new_task_status == "approved" else 80)
             except Exception as e:
                 logger.error(f"Failed to update Notion task: {e}")
         else:

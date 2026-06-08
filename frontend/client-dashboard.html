@@ -557,6 +557,7 @@
              currentFeedbackTask.progress = 100;
           } else if(status === 'changes_requested' || status === '') {
              currentFeedbackTask.status = 'pending_review';
+             currentFeedbackTask.progress = 80;
           }
           // if status === 'comment', we leave currentFeedbackTask.status unchanged.
           closeTaskFeedback();
