@@ -2789,9 +2789,10 @@ def auto_fill_social_media():
         prompt = (
             "You are a social media manager. "
             "For each of the following posts, fill in ANY empty fields "
-            "(content, idea, scripts, caption) based on the post title and type. "
+            "(content, scripts, caption) based on the post title and type. "
+            "IMPORTANT: Do NOT fill in the 'idea' field. Leave 'idea' exactly as it is (even if empty). "
             "Keep scripts/copy VERY brief (max 3 lines). "
-            "Leave fields that are already filled untouched. "
+            "Leave other fields that are already filled untouched. "
             "Return ONLY a raw JSON array — no markdown, no explanation, "
             "no code fences, no extra text at all.\n\n"
         )
