@@ -2470,29 +2470,14 @@ def create_client():
     conn = _pt_conn()
     
     if c_user:
-        cur = conn.cursor()
-        cur.execute("SELECT id, client_notion_id FROM client_users WHERE username=?", (c_user,))
-        existing = cur.fetchone()
-        if existing:
-            # Check if the client this credential belongs to still exists
-            existing_client_notion_id = str(existing[1]) if existing[1] else ''
-            client_still_exists = False
-            if existing_client_notion_id:
-                cur.execute("SELECT 1 FROM clients WHERE CAST(id AS TEXT)=?", (existing_client_notion_id,))
-                client_still_exists = bool(cur.fetchone())
-
-            if client_still_exists:
-                # Genuinely taken by an active client
-                conn.close()
-                return jsonify({"error": f"Username '{c_user}' is already taken. Please choose another."}), 400
-            else:
-                # Orphaned credential (client was deleted) — clean it up silently and proceed
-                try:
-                    cur.execute("DELETE FROM client_users WHERE username=?", (c_user,))
-                    conn.commit()
-                    logger.info(f"Cleaned up orphaned client_user '{c_user}'")
-                except Exception as cleanup_err:
-                    logger.error(f"Could not clean orphaned client_user: {cleanup_err}")
+        try:
+            # Admin is forcing creation: wipe any stuck or old credential with this username
+            # so the new client can claim it seamlessly.
+            cur = conn.cursor()
+            cur.execute("DELETE FROM client_users WHERE username=?", (c_user,))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error wiping old username: {e}")
     with conn:
         cur = conn.execute(
             "INSERT INTO clients (name,contact,requirements,deadline,status) VALUES (?,?,?,?,?)",
