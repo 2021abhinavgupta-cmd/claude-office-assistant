@@ -207,11 +207,25 @@ def init_db():
         # NOTE: Semantic KB retrieval (embeddings) intentionally not enabled by default
         # to avoid requiring an additional embeddings API key.
 
-        # Add category column to tasks if not already present
+        # Add task_type column to tasks if not already present
         try:
-            conn.execute("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT 'general'")
+            conn.execute("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT NULL")
         except Exception:
             pass  # Column already exists
+
+        # ── Startup cleanup: remove orphaned client_users ──────────────
+        # Removes portal credentials for clients that no longer exist in the DB.
+        # This fixes stuck "username already taken" errors after a client is deleted.
+        try:
+            conn.execute("""
+                DELETE FROM client_users
+                WHERE client_notion_id != ''
+                AND client_notion_id NOT IN (
+                    SELECT CAST(id AS TEXT) FROM clients
+                )
+            """)
+        except Exception:
+            pass  # Silently skip if schema not ready yet
 
     conn.close()
 
