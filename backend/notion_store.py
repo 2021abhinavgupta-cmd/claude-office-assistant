@@ -357,16 +357,6 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             pages = data.get("results", [])
             for p in pages:
                 props = p.get("properties", {})
-                tasks.append({
-                    "notion_id":   p["id"],
-                    "title":        _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})),
-                    "client_name":  _get_text(props.get("Customer Name", {})),
-                    "client_notion_id": _get_text(props.get("Client ID", {})),
-                    "assigned_to":  _get_multi_select(props.get("Assigned To", {})),
-                    "due_date":     _get_date(props.get("Due Date", {})) or _get_date(props.get("Post Day", {})),
-                    "status":       _get_select(props.get("Status", {})),
-                    "progress":    _get_number(props.get("Progress", {})),
-                    "service":     _get_select(props.get("Task Type", {})),
                 desc = _get_text(props.get("Notes", {}))
                 brief = _get_text(props.get("Brief", {}))
                 content = _get_text(props.get("Content", {}))
