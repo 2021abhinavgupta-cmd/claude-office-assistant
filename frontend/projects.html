@@ -875,7 +875,7 @@ function renderClientCalendar(clientId){
       else if(typeStr.toLowerCase() === "post" || typeStr.toLowerCase() === "static") { bg = "rgba(244,63,94,.15)"; textCol = "#f43f5e"; bdr = "rgba(244,63,94,.25)"; }
       
       if (t.is_creation_date) {
-        html+=`<span class="cal-pill" style="background:rgba(74,144,226,.15);color:#4a90e2;border:1px solid rgba(74,144,226,.25);text-align:center;" title="Start Date: ${t.title}">[Start] ${typeStr}</span>`;
+        html+=`<span class="cal-pill" style="background:rgba(74,144,226,.15);color:#4a90e2;border:1px solid rgba(74,144,226,.25);text-align:center;margin-top:16px;" title="Start Date: ${t.title}">[Start] ${typeStr}</span>`;
       } else {
         html+=`<span class="cal-pill" style="background:${bg};color:${textCol};border:1px solid ${bdr};text-align:center;" title="${t.title}">${typeStr}</span>`;
       }
