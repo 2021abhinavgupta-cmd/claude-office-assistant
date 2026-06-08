@@ -502,8 +502,9 @@
       };
       
       setField('ft-type', task.type);
-      setField('ft-brief', task.brief);
+      setField('ft-content', task.content || task.brief);
       setField('ft-idea', task.idea);
+      setField('ft-scripts', task.scripts_copy);
       setField('ft-caption', task.caption);
       setField('ft-link', task.file_link, true);
       
@@ -583,10 +584,11 @@
           <div>Due Date: <strong id="ft-date"></strong></div>
           <div>Current Status: <strong id="ft-status"></strong></div>
           <div id="ft-type-container" style="display:none;margin-top:8px">Type: <strong id="ft-type" style="color:var(--txt)"></strong></div>
-          <div id="ft-brief-container" style="display:none">Brief: <strong id="ft-brief" style="color:var(--txt)"></strong></div>
+          <div id="ft-content-container" style="display:none">Content: <strong id="ft-content" style="color:var(--txt)"></strong></div>
           <div id="ft-idea-container" style="display:none">Idea: <strong id="ft-idea" style="color:var(--txt)"></strong></div>
-          <div id="ft-caption-container" style="display:none">Caption: <strong id="ft-caption" style="color:var(--txt);white-space:pre-wrap"></strong></div>
-          <div id="ft-link-container" style="display:none">File: <a href="#" id="ft-link" target="_blank" style="color:var(--acc);font-weight:bold"></a></div>
+          <div id="ft-scripts-container" style="display:none;margin-top:8px">Scripts/ Copy: <strong id="ft-scripts" style="color:var(--txt);white-space:pre-wrap;display:block;margin-top:4px;padding:8px;background:var(--bg);border-radius:6px;border:1px solid var(--bdr)"></strong></div>
+          <div id="ft-caption-container" style="display:none;margin-top:8px">Caption: <strong id="ft-caption" style="color:var(--txt);white-space:pre-wrap;display:block;margin-top:4px;padding:8px;background:var(--bg);border-radius:6px;border:1px solid var(--bdr)"></strong></div>
+          <div id="ft-link-container" style="display:none;margin-top:8px">File: <a href="#" id="ft-link" target="_blank" style="color:var(--acc);font-weight:bold;text-decoration:underline"></a></div>
         </div>
         <div id="ft-banner" class="feedback-banner"></div>
         <textarea id="ft-comments" class="feedback-textarea" placeholder="Leave a comment or request specific changes..."></textarea>

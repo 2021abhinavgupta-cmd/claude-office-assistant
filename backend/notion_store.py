@@ -371,7 +371,9 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                     "url":         p.get("url", ""),
                     "type":         _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {})),
                     "brief":        _get_text(props.get("Brief", {})),
+                    "content":      _get_text(props.get("Content", {})),
                     "idea":         _get_text(props.get("Idea", {})),
+                    "scripts_copy": _get_text(props.get("Scripts/ Copy", {})) or _get_text(props.get("Script/ Copy", {})),
                     "caption":      _get_text(props.get("Caption", {})),
                     "file_link":    props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
                 })
