@@ -1698,12 +1698,15 @@ def _shape_client_task(t: dict, source: str) -> dict:
     file_link = t.get("file_link") or ""
 
     # Parse pipe-separated values from description/Notes if present
-    if not brief and desc and "|" in desc and "Brief:" in desc:
+    if not brief and desc and "|" in desc:
         parts = [p.strip() for p in desc.split("|")]
         for p in parts:
             p_lower = p.lower()
             if p_lower.startswith("brief:"): brief = p[6:].strip()
+            elif p_lower.startswith("content:"): t["content"] = p[8:].strip()
             elif p_lower.startswith("idea:"): idea = p[5:].strip()
+            elif p_lower.startswith("scripts:") or p_lower.startswith("script:"): t["scripts_copy"] = p.split(":", 1)[1].strip()
+            elif p_lower.startswith("scripts/copy:") or p_lower.startswith("script/copy:"): t["scripts_copy"] = p.split(":", 1)[1].strip()
             elif p_lower.startswith("caption:"): caption = p[8:].strip()
             elif p_lower.startswith("link:"): file_link = p[5:].strip()
             elif p_lower.startswith("file:"): file_link = p[5:].strip()
