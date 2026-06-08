@@ -1634,31 +1634,17 @@
 
         const btn = event.target.parentElement;
         const oldText = btn.innerHTML;
-        btn.innerHTML = "⏳ Auto-filling with Claude...";
+        btn.innerHTML = "⏳ Importing Data...";
 
         try {
-          const ar = await fetch(`${API}/api/social-media/auto-fill`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ posts: parsedRows }),
+          document.getElementById("social-tbody").innerHTML = "";
+          socialRowIdx = 0;
+          parsedRows.forEach(p => {
+            addSocialRow(p.post, p.type, p.content, p.idea, p.scripts, p.caption, p.assignee, p.status, p.postDay, p.creationDate, p.link);
           });
-          const data = await ar.json();
-          if (data.error) {
-            alert("Claude Error: " + data.error);
-          } else if (data.posts) {
-            document.getElementById("social-tbody").innerHTML = "";
-            socialRowIdx = 0;
-            data.posts.forEach(p => {
-              addSocialRow(p.post, p.type, p.content, p.idea, p.scripts, p.caption, p.assignee, p.status, p.postDay, p.creationDate, p.link);
-            });
-            if (data.cost !== undefined) {
-              toast(`Auto-fill complete. API Cost: $${data.cost.toFixed(4)}`, "ok");
-            } else {
-              toast("Auto-fill complete.", "ok");
-            }
-          }
+          toast("Import complete. Data loaded exactly as-is.", "ok");
         } catch (err) {
-          alert("Error Auto-filling with Claude.");
+          alert("Error importing data.");
           console.error(err);
         } finally {
           btn.innerHTML = oldText;
