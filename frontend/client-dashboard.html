@@ -329,7 +329,7 @@
             </div>
             <div class="col-body">
               ${tasks.length ? tasks.map(t => `
-                <div class="task-card">
+                <div class="task-card" onclick="openTaskFeedback('${t.id}')">
                   <div class="progress-bar"><div class="progress-fill" style="width:${t.progress||0}%"></div></div>
                   <div class="task-title">${t.title}</div>
                   <div class="task-desc">${t.description || ""}</div>
@@ -463,7 +463,7 @@
         const isDone = t.progress >= 100 || ["approved","done","posted","final"].includes(t.status);
 
         html += `
-          <div class="tl-row">
+          <div class="tl-row" style="cursor:pointer;" onclick="openTaskFeedback('${t.id}')">
             <div class="tl-info">
               <div class="tl-title">${t.title}</div>
               <div class="tl-dates">${startStr} to ${endStr}</div>
@@ -479,7 +479,6 @@
     let currentFeedbackTask = null;
 
     function openTaskFeedback(taskId) {
-      if(!isSocialMediaClient()) return; // Only for social media calendar view right now
       const task = allTasks.find(t => t.id === taskId);
       if(!task) return;
       currentFeedbackTask = task;
