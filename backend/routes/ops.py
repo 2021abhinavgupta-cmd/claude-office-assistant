@@ -770,13 +770,16 @@ def notion_create_client():
     c_user = body.get("client_username", "").strip()
     c_pass = body.get("client_password", "").strip()
     if c_user:
-        conn = _pt_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM client_users WHERE username=?", (c_user,))
-        if cur.fetchone():
+        try:
+            # Admin is forcing creation: wipe any stuck or old credential with this username
+            # so the new client can claim it seamlessly.
+            conn = _pt_conn()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM client_users WHERE username=?", (c_user,))
+            conn.commit()
             conn.close()
-            return jsonify({"error": f"Username '{c_user}' is already taken. Please choose another."}), 400
-        conn.close()
+        except Exception as e:
+            pass
 
     client = notion_store.create_client(
         name=name,
