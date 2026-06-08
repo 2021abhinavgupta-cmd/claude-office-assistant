@@ -631,8 +631,8 @@ def update_my_task(task_id: int):
             # Explicit progress override
             if progress is not None and current_status == "done":
                 notion_progress = int(progress)
-                if notion_progress == 100: notion_status = "submitted"
-                elif notion_progress > 0: notion_status = "in_progress"
+                if notion_progress == 100: notion_status = "Done"
+                elif notion_progress > 0: notion_status = "In Progress"
             
             # Auto-calculate progress from subtasks
             elif subtasks is not None:
@@ -641,8 +641,8 @@ def update_my_task(task_id: int):
                 if st:
                     done_count = sum(1 for s in st if s.get("done"))
                     notion_progress = int((done_count / len(st)) * 100)
-                    if notion_progress == 100: notion_status = "submitted"
-                    elif notion_progress > 0: notion_status = "in_progress"
+                    if notion_progress == 100: notion_status = "Done"
+                    elif notion_progress > 0: notion_status = "In Progress"
             
             if notion_progress is not None:
                 notion_store.update_task(notion_id, progress=notion_progress, status=notion_status)
