@@ -686,13 +686,14 @@ function renderClientSheets(clientId) {
     if (lMatch) link = lMatch[1].trim();
     
     // Status color (social media statuses)
-    const s = t.status || "need_to_start";
+    const rawS = t.status || "need_to_start";
+    const s = rawS.toLowerCase().replace(/ /g, '_');
     const stCol = s === "posted"  ? "var(--grn)" :
                   s === "final"   ? "#22d3ee" :
                   s === "scheduled" ? "var(--blue)" :
                   s === "in_progress" ? "#B38B59" :
                   s === "paused"  ? "#f5a623" : "var(--muted)";
-    const stLbl = s.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+    const stLbl = rawS.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
     
     const typeCol = type.toLowerCase() === "story" ? "#a855f7" : type.toLowerCase() === "reel" ? "#3b82f6" : "#f43f5e";
     const typeBadge = `<span style="background:${typeCol}20; color:${typeCol}; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">${type}</span>`;
@@ -1270,7 +1271,15 @@ function renderClientKanban(clientId){
   const isSocial = clientIsSocial(client);
   const cols     = isSocial ? SOCIAL_STAGE_COLS : DEFAULT_STAGE_COLS;
 
-  board.innerHTML = cols.map(col => buildCol(col.key, col.emoji+" "+col.label, tasks.filter(t => col.statuses.includes(t.status)))).join("");
+  board.innerHTML = cols.map(col => {
+    let colTasks = tasks.filter(t => col.statuses.includes(t.status) || col.statuses.includes((t.status||'').toLowerCase().replace(/ /g, '_')));
+    colTasks.sort((a,b) => {
+      if(!a.due_date) return 1;
+      if(!b.due_date) return -1;
+      return a.due_date.localeCompare(b.due_date);
+    });
+    return buildCol(col.key, col.emoji+" "+col.label, colTasks);
+  }).join("");
   bindDragEvents(board, isSocial);
 }
 

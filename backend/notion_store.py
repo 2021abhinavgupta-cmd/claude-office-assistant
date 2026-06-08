@@ -422,7 +422,22 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
 
     props = {}
     if status is not None:
-        props["Status"] = _select(status)
+        status_map = {
+            "approved": "Approved",
+            "blocked": "Blocked",
+            "in_review": "Pending Review",
+            "pending_review": "Pending Review",
+            "in_progress": "In Progress",
+            "done": "Done",
+            "not_started": "Not Started",
+            "need_to_start": "Not Started",
+            "posted": "Posted",
+            "final": "Final",
+            "scheduled": "Scheduled",
+            "paused": "Paused"
+        }
+        notion_status_name = status_map.get(status.lower(), status)
+        props["Status"] = _select(notion_status_name)
     if progress is not None:
         props["Progress"] = _number(progress)
     if submission_note is not None:
