@@ -208,9 +208,9 @@
     .cal-cell:hover{border-color:rgba(245,166,35,.4)}
     .cal-cell.today{border-color:var(--acc);box-shadow:0 0 0 1px rgba(245,166,35,.3)}
     .cal-cell.other-month{opacity:.35}
-    .cal-date{font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:4px}
+    .cal-date{font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:6px;display:block;width:100%}
     .cal-date.today-num{color:var(--acc)}
-    .cal-pill{display:block;font-size:.65rem;padding:2px 6px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;cursor:pointer;transition:opacity .15s}
+    .cal-pill{display:block;font-size:.65rem;padding:2px 6px;border-radius:4px;margin-bottom:4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;cursor:pointer;transition:opacity .15s}
     .cal-pill:hover{opacity:.8}
     .cal-more{font-size:.63rem;color:var(--muted);padding:1px 4px}
     /* ── Calendar Task Popup ──────────────────────────────────── */
@@ -861,7 +861,7 @@ function renderClientCalendar(clientId){
     const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const cellDate=new Date(year,month,day);
     cell.className='cal-cell'+(cellDate.getTime()===today.getTime()?' today':'');
-    let html=`<div class="cal-date${cellDate.getTime()===today.getTime()?' today-num':''}}">${day}</div>`;
+    let html=`<div class="cal-date${cellDate.getTime()===today.getTime()?' today-num':''}">${day}</div>`;
     const dayTasks=byDate[dateStr]||[];
     dayTasks.slice(0,4).forEach(t=>{
       let typeStr = "Task";

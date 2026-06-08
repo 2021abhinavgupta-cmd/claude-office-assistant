@@ -80,10 +80,10 @@
     .cal-nav-label { font-size:1.2rem; font-weight:700; text-align:center; }
     .calendar-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:1px; background:var(--bdr); border:1px solid var(--bdr); border-radius:var(--r); overflow:hidden; }
     .cal-header-day { background:var(--s1); padding:12px; text-align:center; font-weight:700; font-size:.85rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
-    .cal-day { background:var(--bg); min-height:120px; padding:10px; display:flex; flex-direction:column; transition:background .2s; }
+    .cal-day { background:var(--bg); height:115px; overflow:hidden; padding:10px; display:flex; flex-direction:column; transition:background .2s; }
     .cal-day:hover { background:var(--s1); }
     .cal-day.empty { background:var(--s2); opacity:0.5; }
-    .cal-date-num { font-size:1rem; font-weight:600; color:var(--muted); margin-bottom:8px; }
+    .cal-date-num { font-size:1rem; font-weight:600; color:var(--muted); margin-bottom:8px; display:block; width:100%; }
     .cal-day.today .cal-date-num { color:var(--acc); background:rgba(245,166,35,.15); width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
     .cal-task { background:var(--s2); border-left:3px solid var(--acc); padding:6px 8px; border-radius:4px; font-size:.8rem; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:background .2s; }
     .cal-task:hover { background:rgba(245,166,35,.15); }
@@ -388,9 +388,18 @@
         html += `<div class="cal-day ${isToday ? 'today' : ''}">
           <div class="cal-date-num">${d}</div>
           ${dayTasks.map(t => {
+            let typeStr = "Task";
+            const m = t.title.match(/^\[(.*?)\]\s*(.*)$/);
+            if (m) { typeStr = m[1]; }
+            
+            let bg = "rgba(245,166,35,.15)", textCol = "#f5a623", bdr = "rgba(245,166,35,.25)";
+            if(typeStr.toLowerCase() === "story") { bg = "rgba(168,85,247,.15)"; textCol = "#a855f7"; bdr = "rgba(168,85,247,.25)"; }
+            else if(typeStr.toLowerCase() === "reel") { bg = "rgba(59,130,246,.15)"; textCol = "#3b82f6"; bdr = "rgba(59,130,246,.25)"; }
+            else if(typeStr.toLowerCase() === "carousel") { bg = "rgba(34,197,94,.15)"; textCol = "#22c55e"; bdr = "rgba(34,197,94,.25)"; }
+            else if(typeStr.toLowerCase() === "post" || typeStr.toLowerCase() === "static") { bg = "rgba(244,63,94,.15)"; textCol = "#f43f5e"; bdr = "rgba(244,63,94,.25)"; }
+
             const st = t.status || "need_to_start";
             const isDone = t.progress >= 100 || ["approved","done","posted","final"].includes(st);
-            const statusLabel = st.replace(/_/g," ").replace(/\b\w/g, c => c.toUpperCase());
             const statusColor =
               st === "posted"      ? "#20c997" :
               st === "final"       ? "#22d3ee" :
@@ -398,9 +407,9 @@
               st === "in_progress" ? "#B38B59" :
               st === "paused"      ? "#f59e0b" :
               st === "approved"    ? "#20c997" : "#8b8b93";
-            const assignee = t.assigned_to ? ` ${t.assigned_to}` : "";
-            return `<div class="cal-task ${isDone ? 'done' : ''}" style="border-left-color:${statusColor}" onclick="openTaskFeedback('${t.id}')">
-              ${t.title}
+              
+            return `<div class="cal-task ${isDone ? 'done' : ''}" style="background:${bg};color:${textCol};border:1px solid ${bdr};border-left:3px solid ${statusColor};text-align:center;" title="${t.title}" onclick="openTaskFeedback('${t.id}')">
+              ${typeStr}
             </div>`;
           }).join('')}
         </div>`;
