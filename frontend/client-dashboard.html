@@ -529,6 +529,11 @@
       if(!currentFeedbackTask) return;
       const comments = document.getElementById('ft-comments').value;
       
+      // If toggling off the current status (e.g. clicking "Approve" when already approved)
+      if (status !== 'comment' && currentFeedbackTask.feedback && currentFeedbackTask.feedback.status === status) {
+          status = '';
+      }
+      
       try {
         const btnApp = document.querySelector('.btn-approve');
         const btnRej = document.querySelector('.btn-reject');
@@ -551,7 +556,7 @@
           if(status === 'approved') {
              currentFeedbackTask.status = 'approved';
              currentFeedbackTask.progress = 100;
-          } else if(status === 'changes_requested') {
+          } else if(status === 'changes_requested' || status === '') {
              currentFeedbackTask.status = 'pending_review';
           }
           // if status === 'comment', we leave currentFeedbackTask.status unchanged.

@@ -1712,19 +1712,7 @@ def _shape_client_task(t: dict, source: str) -> dict:
     caption = t.get("caption") or ""
     file_link = t.get("file_link") or ""
 
-    # Parse pipe-separated values from description/Notes if present
-    if not brief and desc and "|" in desc:
-        parts = [p.strip() for p in desc.split("|")]
-        for p in parts:
-            p_lower = p.lower()
-            if p_lower.startswith("brief:"): brief = p[6:].strip()
-            elif p_lower.startswith("content:"): t["content"] = p[8:].strip()
-            elif p_lower.startswith("idea:"): idea = p[5:].strip()
-            elif p_lower.startswith("scripts:") or p_lower.startswith("script:"): t["scripts_copy"] = p.split(":", 1)[1].strip()
-            elif p_lower.startswith("scripts/copy:") or p_lower.startswith("script/copy:"): t["scripts_copy"] = p.split(":", 1)[1].strip()
-            elif p_lower.startswith("caption:"): caption = p[8:].strip()
-            elif p_lower.startswith("link:"): file_link = p[5:].strip()
-            elif p_lower.startswith("file:"): file_link = p[5:].strip()
+    # Parsed pipe-separated values are now handled by notion_store.list_tasks
 
     return {
         "id":          t.get("notion_id") or t.get("id") or "",
@@ -1777,11 +1765,11 @@ def submit_task_feedback(task_id):
         return jsonify({"error": "Failed to save feedback"}), 500
 
     # Update actual task status
-    if status in ("approved", "changes_requested"):
+    if status in ("approved", "changes_requested", ""):
         if status == "approved":
             new_task_status = "approved"
         else:
-            new_task_status = "pending_review"  # changes requested
+            new_task_status = "pending_review"  # changes requested or cleared feedback
 
         if source == "notion":
             try:
