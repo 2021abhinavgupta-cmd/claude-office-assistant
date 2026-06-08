@@ -885,9 +885,6 @@ function renderClientCalendar(clientId){
            let fbText = t.feedback.status === 'approved' ? 'Approved' : (t.feedback.status === 'changes_requested' ? 'Changes Requested' : 'Commented');
            html+=`<span class="cal-pill" style="background:${fbBg};color:${fbColor};border:1px solid ${fbColor}40;text-align:center;margin-top:2px;font-size:0.6rem;" title="Feedback Status">${fbText}</span>`;
         }
-        if (t.feedback && t.feedback.comments && t.feedback.status !== 'approved') {
-           html+=`<span class="cal-pill" style="background:var(--s2);color:var(--muted);border:1px solid var(--bdr);text-align:center;margin-top:2px;font-size:0.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${t.feedback.comments}">💬 ${t.feedback.comments}</span>`;
-        }
       }
     });
     if(dayTasks.length>4) html+=`<div class="cal-more">+${dayTasks.length-4} more</div>`;
@@ -1737,9 +1734,6 @@ function renderCalendar(){
          let fbBg = t.feedback.status === 'approved' ? 'rgba(34,197,94,.15)' : (t.feedback.status === 'changes_requested' ? 'rgba(244,63,94,.15)' : 'rgba(245,166,35,.15)');
          let fbText = t.feedback.status === 'approved' ? 'Approved' : (t.feedback.status === 'changes_requested' ? 'Changes Requested' : 'Commented');
          html+=`<span class="cal-pill" style="background:${fbBg};color:${fbColor};border:1px solid ${fbColor}40;text-align:center;margin-top:2px;font-size:0.6rem;" title="Feedback Status">${fbText}</span>`;
-      }
-      if (t.feedback && t.feedback.comments && t.feedback.status !== 'approved') {
-         html+=`<span class="cal-pill" style="background:var(--s2);color:var(--muted);border:1px solid var(--bdr);text-align:center;margin-top:2px;font-size:0.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${t.feedback.comments}">💬 ${t.feedback.comments}</span>`;
       }
     });
     
