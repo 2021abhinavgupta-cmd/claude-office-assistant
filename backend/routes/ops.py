@@ -984,8 +984,23 @@ def notion_dashboard():
                     if nid in users:
                         c["client_username"] = users[nid]["username"]
                         c["client_password"] = users[nid]["password"]
+        
+        # Attach task feedback
+        conn = _pt_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT task_id, status, comments, updated_at FROM client_task_feedback")
+        feedback_map = {r[0]: {"status": r[1], "comments": r[2], "updated_at": r[3]} for r in cur.fetchall()}
+        conn.close()
+        
+        if "clients" in data:
+            for c in data["clients"]:
+                for t in c.get("tasks", []):
+                    t_id = t.get("notion_id") or t.get("id")
+                    if t_id and t_id in feedback_map:
+                        t["feedback"] = feedback_map[t_id]
+                        
     except Exception as e:
-        logger.error(f"Error attaching client credentials: {e}")
+        logger.error(f"Error attaching dashboard metadata: {e}")
         
     return jsonify(data)
 

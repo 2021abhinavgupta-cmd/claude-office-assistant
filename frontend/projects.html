@@ -878,6 +878,16 @@ function renderClientCalendar(clientId){
         html+=`<span class="cal-pill" style="background:rgba(74,144,226,.15);color:#4a90e2;border:1px solid rgba(74,144,226,.25);text-align:center;margin-top:16px;" title="Start Date: ${t.title}">[Start] ${typeStr}</span>`;
       } else {
         html+=`<span class="cal-pill" style="background:${bg};color:${textCol};border:1px solid ${bdr};text-align:center;" title="${t.title}">${typeStr}</span>`;
+        
+        if (t.feedback && t.feedback.status) {
+           let fbColor = t.feedback.status === 'approved' ? '#22c55e' : (t.feedback.status === 'changes_requested' ? '#f43f5e' : '#f5a623');
+           let fbBg = t.feedback.status === 'approved' ? 'rgba(34,197,94,.15)' : (t.feedback.status === 'changes_requested' ? 'rgba(244,63,94,.15)' : 'rgba(245,166,35,.15)');
+           let fbText = t.feedback.status === 'approved' ? 'Approved' : (t.feedback.status === 'changes_requested' ? 'Changes Requested' : 'Commented');
+           html+=`<span class="cal-pill" style="background:${fbBg};color:${fbColor};border:1px solid ${fbColor}40;text-align:center;margin-top:2px;font-size:0.6rem;" title="Feedback Status">${fbText}</span>`;
+        }
+        if (t.feedback && t.feedback.comments && t.feedback.status !== 'approved') {
+           html+=`<span class="cal-pill" style="background:var(--s2);color:var(--muted);border:1px solid var(--bdr);text-align:center;margin-top:2px;font-size:0.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${t.feedback.comments}">💬 ${t.feedback.comments}</span>`;
+        }
       }
     });
     if(dayTasks.length>4) html+=`<div class="cal-more">+${dayTasks.length-4} more</div>`;
@@ -1713,6 +1723,16 @@ function renderCalendar(){
     visible.forEach(t => {
       const bg = getColor(t.clientName);
       html += `<span class="cal-pill" style="background:${bg};color:#fff" title="${t.title} (${t.clientName})">${t.clientName}: ${t.title}</span>`;
+      
+      if (t.feedback && t.feedback.status) {
+         let fbColor = t.feedback.status === 'approved' ? '#22c55e' : (t.feedback.status === 'changes_requested' ? '#f43f5e' : '#f5a623');
+         let fbBg = t.feedback.status === 'approved' ? 'rgba(34,197,94,.15)' : (t.feedback.status === 'changes_requested' ? 'rgba(244,63,94,.15)' : 'rgba(245,166,35,.15)');
+         let fbText = t.feedback.status === 'approved' ? 'Approved' : (t.feedback.status === 'changes_requested' ? 'Changes Requested' : 'Commented');
+         html+=`<span class="cal-pill" style="background:${fbBg};color:${fbColor};border:1px solid ${fbColor}40;text-align:center;margin-top:2px;font-size:0.6rem;" title="Feedback Status">${fbText}</span>`;
+      }
+      if (t.feedback && t.feedback.comments && t.feedback.status !== 'approved') {
+         html+=`<span class="cal-pill" style="background:var(--s2);color:var(--muted);border:1px solid var(--bdr);text-align:center;margin-top:2px;font-size:0.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${t.feedback.comments}">💬 ${t.feedback.comments}</span>`;
+      }
     });
     
     if(dayTasks.length > 3) {
