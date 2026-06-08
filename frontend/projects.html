@@ -228,6 +228,7 @@
     .gtab{padding:8px 20px;font-size:.9rem;font-weight:600;color:var(--muted);background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .2s;font-family:'Syne',sans-serif}
     .gtab:hover{color:var(--acc)}
     .gtab.on{color:var(--acc);border-bottom-color:var(--acc)}
+    select option { background: var(--s1); color: var(--txt); }
   </style>
 </head>
 <body>
@@ -709,6 +710,7 @@ function renderClientSheets(clientId) {
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${title}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr);">
           <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+            <option value="" ${type===''?'selected':''}></option>
             <option value="Story" ${type.toLowerCase()==='story'?'selected':''}>Story</option>
             <option value="Reel" ${type.toLowerCase()==='reel'?'selected':''}>Reel</option>
             <option value="Static" ${type.toLowerCase()==='static'?'selected':''}>Static</option>
