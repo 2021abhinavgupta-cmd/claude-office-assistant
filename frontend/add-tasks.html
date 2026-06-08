@@ -22,9 +22,14 @@
       --acc: #f5a623;
       --grn: #22d3a0;
       --red: #ff5c5c;
-      --r: 14px;
+      --blu: #5c9eff;
+      --r: 12px;
       --rs: 8px
     }
+
+    #toast { position: fixed; bottom: 20px; right: 20px; background: var(--s1); border: 1px solid var(--bdr); padding: 11px 18px; border-radius: var(--rs); font-size: .84rem; display: none; z-index: 2000; }
+    #toast.ok { border-color: var(--grn); color: var(--grn); }
+    #toast.err { border-color: var(--red); color: var(--red); }
 
     * {
       margin: 0;
@@ -868,9 +873,10 @@
             </div>
           </div>
         </div>
-      </div>
-      <p class="err" id="err1">Please select a client and at least one workflow.</p>
-      <div class="btn-row"><button class="btn btn-acc" onclick="goToAddTasks()">Next: Add Tasks →</button></div>
+      <div id="err1" class="err-box" style="display:none;margin-top:10px">⚠ Please select a client and at least one
+        service.</div>
+    </div>
+    <div class="btn-row"><button class="btn btn-acc" onclick="goToAddTasks()">Next: Add Tasks →</button></div>
     </div>
 
     <!-- Step 2 -->
@@ -1655,7 +1661,17 @@
         reader.readAsText(file);
       }
     }
+
+    function toast(m, t = "ok") {
+      const e = document.getElementById("toast");
+      if (!e) return;
+      e.textContent = m;
+      e.className = t;
+      e.style.display = "block";
+      setTimeout(() => e.style.display = "none", 3500);
+    }
   </script>
+  <div id="toast"></div>
 </body>
 
 </html>
