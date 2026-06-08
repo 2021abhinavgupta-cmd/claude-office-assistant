@@ -204,7 +204,7 @@
     .cal-nav-btn:hover{border-color:var(--acc);color:var(--acc)}
     .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
     .cal-day-name{text-align:center;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 0}
-    .cal-cell{min-height:80px;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:6px;cursor:default;transition:border-color .2s;position:relative}
+    .cal-cell{height:95px;overflow:hidden;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:6px;cursor:default;transition:border-color .2s;position:relative}
     .cal-cell:hover{border-color:rgba(245,166,35,.4)}
     .cal-cell.today{border-color:var(--acc);box-shadow:0 0 0 1px rgba(245,166,35,.3)}
     .cal-cell.other-month{opacity:.35}
@@ -861,14 +861,24 @@ function renderClientCalendar(clientId){
     cell.className='cal-cell'+(cellDate.getTime()===today.getTime()?' today':'');
     let html=`<div class="cal-date${cellDate.getTime()===today.getTime()?' today-num':''}}">${day}</div>`;
     const dayTasks=byDate[dateStr]||[];
-    dayTasks.slice(0,3).forEach(t=>{
+    dayTasks.slice(0,4).forEach(t=>{
+      let typeStr = "Task";
+      const m = t.title.match(/^\[(.*?)\]\s*(.*)$/);
+      if (m) { typeStr = m[1]; }
+      
+      let bg = "rgba(245,166,35,.15)", textCol = "#f5a623", bdr = "rgba(245,166,35,.25)";
+      if(typeStr.toLowerCase() === "story") { bg = "rgba(168,85,247,.15)"; textCol = "#a855f7"; bdr = "rgba(168,85,247,.25)"; }
+      else if(typeStr.toLowerCase() === "reel") { bg = "rgba(59,130,246,.15)"; textCol = "#3b82f6"; bdr = "rgba(59,130,246,.25)"; }
+      else if(typeStr.toLowerCase() === "carousel") { bg = "rgba(34,197,94,.15)"; textCol = "#22c55e"; bdr = "rgba(34,197,94,.25)"; }
+      else if(typeStr.toLowerCase() === "post" || typeStr.toLowerCase() === "static") { bg = "rgba(244,63,94,.15)"; textCol = "#f43f5e"; bdr = "rgba(244,63,94,.25)"; }
+      
       if (t.is_creation_date) {
-        html+=`<span class="cal-pill" style="background:rgba(74,144,226,.2);color:#4a90e2;border:1px solid rgba(74,144,226,.3)">[Start] ${t.title}</span>`;
+        html+=`<span class="cal-pill" style="background:rgba(74,144,226,.15);color:#4a90e2;border:1px solid rgba(74,144,226,.25)" title="Start Date: ${t.title}">[Start] ${typeStr}</span>`;
       } else {
-        html+=`<span class="cal-pill" style="background:rgba(245,166,35,.2);color:#f5a623;border:1px solid rgba(245,166,35,.3)">${t.title}</span>`;
+        html+=`<span class="cal-pill" style="background:${bg};color:${textCol};border:1px solid ${bdr};text-align:center;" title="${t.title}">${typeStr}</span>`;
       }
     });
-    if(dayTasks.length>3) html+=`<div class="cal-more">+${dayTasks.length-3} more</div>`;
+    if(dayTasks.length>4) html+=`<div class="cal-more">+${dayTasks.length-4} more</div>`;
     cell.innerHTML=html;
     if(dayTasks.length>0){
       cell.style.cursor='pointer';
