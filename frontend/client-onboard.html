@@ -104,18 +104,18 @@
   <!-- Step 1 -->
   <div id="step1">
     <div class="two">
-      <div class="fg"><label>Client Name *</label><input type="text" id="name" placeholder="Acme Corp"/></div>
-      <div class="fg"><label>Contact (Email / Phone)</label><input type="text" id="contact" placeholder="raj@acme.com"/></div>
+      <div class="fg"><label>Client Name *</label><input type="text" id="name" placeholder="Acme Corp" autocomplete="off"/></div>
+      <div class="fg"><label>Contact (Email / Phone)</label><input type="text" id="contact" placeholder="raj@acme.com" autocomplete="off"/></div>
     </div>
-    <div class="fg"><label>Brief Description</label><textarea id="requirements" placeholder="High-level project overview..."></textarea></div>
-    <div class="fg"><label>Docs & File Available (Drive Link)</label><input type="text" id="drive_link" placeholder="https://drive.google.com/..."/></div>
-    <div class="fg"><label>Special Notes</label><input type="text" id="notes" placeholder="Any special requirements, restrictions, or context..."/></div>
+    <div class="fg"><label>Brief Description</label><textarea id="requirements" placeholder="High-level project overview..." autocomplete="off"></textarea></div>
+    <div class="fg"><label>Docs & File Available (Drive Link)</label><input type="text" id="drive_link" placeholder="https://drive.google.com/..." autocomplete="off"/></div>
+    <div class="fg"><label>Special Notes</label><input type="text" id="notes" placeholder="Any special requirements, restrictions, or context..." autocomplete="off"/></div>
     
     <div style="margin-top:24px; margin-bottom:12px; padding-top:20px; border-top:1px solid var(--bdr);">
       <label style="color:var(--acc); font-size:0.8rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:12px;">Client Portal Access</label>
       <div class="two">
         <div class="fg"><label>Username</label><input type="text" id="client_username" placeholder="Leave blank to skip" autocomplete="off"/></div>
-        <div class="fg"><label>Password</label><input type="text" id="client_password" placeholder="Leave blank to skip" autocomplete="new-password"/></div>
+        <div class="fg"><label>Password</label><input type="text" id="client_password" placeholder="Leave blank to skip" autocomplete="off"/></div>
       </div>
     </div>
     
@@ -154,20 +154,20 @@
       <div id="sf-social" style="display:none;" class="fg">
         <label style="color:var(--acc)"> Social Media Details</label>
         <div class="two">
-           <div><input type="text" id="social_creds" placeholder="Social Credentials"/></div>
-           <div><input type="text" id="social_kpi" placeholder="KPI (e.g. 10k followers)"/></div>
+           <div><input type="text" id="social_creds" placeholder="Social Credentials" autocomplete="off"/></div>
+           <div><input type="text" id="social_kpi" placeholder="KPI (e.g. 10k followers)" autocomplete="off"/></div>
         </div>
       </div>
       <div id="sf-website" style="display:none;" class="fg">
         <label style="color:var(--acc)"> Website Details</label>
         <div class="two">
-           <div><input type="text" id="web_creds" placeholder="Hosting / CMS Credentials"/></div>
-           <div><input type="text" id="web_kpi" placeholder="KPI (e.g. >90 PageSpeed)"/></div>
+           <div><input type="text" id="web_creds" placeholder="Hosting / CMS Credentials" autocomplete="off"/></div>
+           <div><input type="text" id="web_kpi" placeholder="KPI (e.g. >90 PageSpeed)" autocomplete="off"/></div>
         </div>
       </div>
       <div id="sf-shoot" style="display:none;" class="fg">
         <label style="color:var(--acc)"> Shoot Requirements</label>
-        <textarea id="shoot_reqs" placeholder="Location, dates, actors, equipment needed..."></textarea>
+        <textarea id="shoot_reqs" placeholder="Location, dates, actors, equipment needed..." autocomplete="off"></textarea>
       </div>
     </div>
     <p class="err" id="err2">Please select at least one service.</p>
