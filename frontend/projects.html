@@ -728,7 +728,10 @@ function renderClientSheets(clientId) {
         <td style="padding: 6px 10px; border-right: 1px solid var(--bdr);">
           <select style="background:var(--s1); color:var(--txt); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; width:100%; font-size:0.82rem; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
             <option value="">— Assign —</option>
-            ${(window.EMPLOYEES||[]).map(e => `<option value="${e.id}" ${t.assigned_to===String(e.id)?'selected':''}>${e.name}</option>`).join('')}
+            ${(window.EMPLOYEES||[]).map(e => {
+               const isSelected = (t.assigned_to||"").split(',').map(s=>s.trim()).some(a => a===String(e.id) || a===e.name);
+               return `<option value="${e.id}" ${isSelected ? 'selected' : ''}>${e.name}</option>`;
+            }).join('')}
           </select>
         </td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">
