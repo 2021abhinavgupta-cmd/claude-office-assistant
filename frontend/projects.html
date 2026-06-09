@@ -763,7 +763,8 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   const idea = tr.cells[6].innerText.trim();
   const scripts = tr.cells[7].innerText.trim();
   const caption = tr.cells[8].innerText.trim();
-  const assigned_to = tr.cells[9].querySelector('select')?.value || tr.cells[9].innerText.trim();
+  const assignSelect = tr.cells[9].querySelector('select');
+  const assigned_to = assignSelect ? assignSelect.value : tr.cells[9].innerText.trim();
   const status = tr.cells[10].querySelector('select').value;
   const link = tr.cells[11].innerText.trim();
   
