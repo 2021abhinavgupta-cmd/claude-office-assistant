@@ -817,6 +817,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     if (clientId) {
       renderClientCalendar(clientId);
       if (typeof renderCalendar === 'function') renderCalendar();
+      renderClientSheets(clientId);
     }
   } catch(e) {
     toast("Error saving row", "error");
@@ -838,7 +839,9 @@ function renderClientCalendar(clientId){
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const daysInPrev  = new Date(year, month, 0).getDate();
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = new Date();
+  const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  
   const byDate={};
   tasks.forEach(t=>{
     // Plot on Post Day (due_date)
@@ -849,10 +852,16 @@ function renderClientCalendar(clientId){
       const crMatch = t.description.match(/Creation Date:\s*([\d-]+)(?=\s*\||$)/);
       if(crMatch && crMatch[1]) {
         const crDate = crMatch[1].trim();
-        if(crDate !== t.due_date) {
-           const crDt = new Date(crDate);
-           if (!isNaN(crDt) && crDt <= today) {
-             (byDate[crDate]=byDate[crDate]||[]).push({ ...t, is_creation_date: true });
+        let isoDate = crDate;
+        // Convert DD-MM-YYYY to YYYY-MM-DD if needed
+        if (/^\d{2}-\d{2}-\d{4}$/.test(crDate)) {
+           const parts = crDate.split('-');
+           isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        
+        if(isoDate !== t.due_date) {
+           if (isoDate <= todayStr) {
+             (byDate[isoDate]=byDate[isoDate]||[]).push({ ...t, is_creation_date: true });
            }
         }
       }
