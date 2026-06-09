@@ -840,18 +840,11 @@ function renderClientCalendar(clientId){
   const daysInPrev  = new Date(year, month, 0).getDate();
   const today = new Date(); today.setHours(0,0,0,0);
   const byDate={};
-  tasks.forEach(t=>{ 
+  tasks.forEach(t=>{
+    // Only plot on Post Day (due_date). Creation date is NOT shown on the calendar.
     if(t.due_date){ (byDate[t.due_date]=byDate[t.due_date]||[]).push(t); }
-    if(t.description) {
-      const crMatch = t.description.match(/Creation Date:\s*([\d-]+)(?=\s*\||$)/);
-      if(crMatch && crMatch[1]) {
-        const crDate = crMatch[1].trim();
-        if(crDate !== t.due_date) {
-          (byDate[crDate]=byDate[crDate]||[]).push({ ...t, is_creation_date: true });
-        }
-      }
-    }
   });
+
   // Blanks
   for(let i=0;i<firstDay;i++){
     const cell=document.createElement('div');
@@ -877,18 +870,16 @@ function renderClientCalendar(clientId){
       else if(typeStr.toLowerCase() === "carousel") { bg = "rgba(34,197,94,.15)"; textCol = "#22c55e"; bdr = "rgba(34,197,94,.25)"; }
       else if(typeStr.toLowerCase() === "post" || typeStr.toLowerCase() === "static") { bg = "rgba(244,63,94,.15)"; textCol = "#f43f5e"; bdr = "rgba(244,63,94,.25)"; }
       
-      if (t.is_creation_date) {
-        html+=`<span class="cal-pill" style="background:rgba(74,144,226,.15);color:#4a90e2;border:1px solid rgba(74,144,226,.25);text-align:center;margin-top:16px;" title="Start Date: ${t.title}">[Start] ${typeStr}</span>`;
-      } else {
-        html+=`<span class="cal-pill" style="background:${bg};color:${textCol};border:1px solid ${bdr};text-align:center;" title="${t.title}">${typeStr}</span>`;
-        
-        if (t.feedback && t.feedback.status) {
-           let fbColor = t.feedback.status === 'approved' ? '#22c55e' : (t.feedback.status === 'changes_requested' ? '#f43f5e' : '#f5a623');
-           let fbBg = t.feedback.status === 'approved' ? 'rgba(34,197,94,.15)' : (t.feedback.status === 'changes_requested' ? 'rgba(244,63,94,.15)' : 'rgba(245,166,35,.15)');
-           let fbText = t.feedback.status === 'approved' ? 'Approved' : (t.feedback.status === 'changes_requested' ? 'Changes Requested' : 'Commented');
-           html+=`<span class="cal-pill" style="background:${fbBg};color:${fbColor};border:1px solid ${fbColor}40;text-align:center;margin-top:2px;font-size:0.6rem;" title="Feedback Status">${fbText}</span>`;
-        }
+      // Always render on Post Day only - no creation date pills
+      html+=`<span class="cal-pill" style="background:${bg};color:${textCol};border:1px solid ${bdr};text-align:center;" title="${t.title}">${typeStr}</span>`;
+      
+      if (t.feedback && t.feedback.status) {
+         let fbColor = t.feedback.status === 'approved' ? '#22c55e' : (t.feedback.status === 'changes_requested' ? '#f43f5e' : '#f5a623');
+         let fbBg = t.feedback.status === 'approved' ? 'rgba(34,197,94,.15)' : (t.feedback.status === 'changes_requested' ? 'rgba(244,63,94,.15)' : 'rgba(245,166,35,.15)');
+         let fbText = t.feedback.status === 'approved' ? 'Approved' : (t.feedback.status === 'changes_requested' ? 'Changes Requested' : 'Commented');
+         html+=`<span class="cal-pill" style="background:${fbBg};color:${fbColor};border:1px solid ${fbColor}40;text-align:center;margin-top:2px;font-size:0.6rem;" title="Feedback Status">${fbText}</span>`;
       }
+
     });
     if(dayTasks.length>4) html+=`<div class="cal-more">+${dayTasks.length-4} more</div>`;
     cell.innerHTML=html;

@@ -373,6 +373,8 @@ def auto_fill_standup():
     """
     Fetch tasks from Notion that are active (in_progress) or due today, 
     and add them to today's standup list (avoiding duplicates).
+    Also includes social media tasks whose Creation Date is today
+    (i.e. work starts today — the assignee sees it for the first time).
     Body: { user_id, assigned_name }
     """
     body = request.get_json(silent=True) or {}
@@ -426,10 +428,24 @@ def auto_fill_standup():
                     is_upcoming = True
             except: pass
 
+        # Check if this is a social media task whose Creation Date == today
+        # (work starts today — assign to standup for the first time)
+        is_creation_today = False
+        desc = t.get("description", "") or t.get("notes", "") or ""
+        if desc and s == "not_started":
+            import re as _re
+            cr_match = _re.search(r'Creation Date:\s*([\d-]+)', desc)
+            if cr_match:
+                try:
+                    cr_date = cr_match.group(1).strip()
+                    if cr_date == today_str:
+                        is_creation_today = True
+                except: pass
+
         # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
         pull_all_upcoming = body.get("pull_upcoming", False)
         
-        if is_active or is_due or is_upcoming or (pull_all_upcoming and s == "not_started"):
+        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started"):
             valid_tasks.append(t)
 
     if not valid_tasks:
@@ -460,6 +476,8 @@ def auto_fill_standup():
     conn.close()
     
     return jsonify({"success": True, "added": added_count})
+
+
 
 
 @ops_bp.route("/api/standup/smart-add", methods=["POST"])
