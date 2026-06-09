@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cost Dashboard | Agency Portal Assistant</title>
+  <title>Agency Dashboard | Agency Portal Assistant</title>
   <meta name="description" content="Real-time API cost monitoringDashboard for Agency Portal Assistant — track spend, model usage, and budget alerts." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -259,17 +259,14 @@
   <!-- Header -->
   <header class="dash-header">
     <div>
-      <h1>Cost <span>Dashboard</span></h1>
-      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Real-time System API spend monitoring</p>
+      <h1>Agency <span>Dashboard</span></h1>
+      <p style="color:var(--muted);font-size:.85rem;margin-top:4px">Overview of agency activities and attendance</p>
     </div>
     <div class="header-meta">
-      <select class="currency-toggle" id="month-select" onchange="changeMonth(this.value)" style="display:none;"></select>
-      <select class="currency-toggle" id="currency-select" onchange="toggleCurrency(this.value)">
-        <option value="USD">USD ($)</option>
-        <option value="INR">INR (₹)</option>
-      </select>
+      
+      
       <a href="index.html" class="back-link">← Chat</a>
-      <button class="refresh-btn" id="refresh-btn" onclick="loadDashboard()">↻ Refresh</button>
+      <button class="refresh-btn" id="refresh-btn" onclick="loadAttendance()">↻ Refresh</button>
       <button class="logout-btn" id="logout-btn" title="Sign out">⏏ Sign Out</button>
     </div>
   </header>
@@ -282,100 +279,6 @@
 
   <!--Usage top-banner: driven by /api/budget alert_level (#11) -->
   <div class="budget-topbanner" id="budget-topbanner" role="alert"></div>
-
-  <!-- KPI Cards -->
-  <div class="kpi-grid" id="kpi-grid">
-    <div class="kpi-card" style="--accent-color:var(--green)">
-      <div class="kpi-label">Monthly Spend</div>
-      <div class="kpi-value" id="kpi-spent">—</div>
-      <div class="kpi-sub" id="kpi-budget-sub">of $... budget</div>
-    </div>
-    <div class="kpi-card" style="--accent-color:var(--accent)">
-      <div class="kpi-label">Remaining</div>
-      <div class="kpi-value" id="kpi-remaining">—</div>
-      <div class="kpi-sub" id="kpi-month">This month</div>
-    </div>
-    <div class="kpi-card" style="--accent-color:var(--yellow)">
-      <div class="kpi-label">Total API Calls</div>
-      <div class="kpi-value" id="kpi-calls">—</div>
-      <div class="kpi-sub">This month</div>
-    </div>
-    <div class="kpi-card" style="--accent-color:var(--accent2)">
-      <div class="kpi-label">All-Time Spend</div>
-      <div class="kpi-value" id="kpi-alltime">—</div>
-      <div class="kpi-sub">Since day one</div>
-    </div>
-  </div>
-
-  <!--Usage Bar -->
-  <section class="budget-section" aria-label="Budget progress">
-    <h2>Usage Utilization</h2>
-    <div class="budget-bar-wrap">
-      <div class="budget-bar-fill" id="budget-bar-fill" style="width:0%"></div>
-    </div>
-    <div class="budget-row">
-      <span>Spent: <strong id="bb-spent">$0.00</strong></span>
-      <span id="bb-pct" style="color:var(--accent);font-weight:600">0%</span>
-      <span>Limit: <strong id="bb-limit">$...</strong></span>
-    </div>
-    <div class="threshold-row">
-      <span class="threshold-chip warn" id="warn-chip">⚠ Warning at ...</span>
-      <span class="threshold-chip crit" id="crit-chip"> Critical at ...</span>
-      <span class="threshold-chip ok"> Current status: <strong id="status-chip">OK</strong></span>
-    </div>
-  </section>
-
-  <!-- Two column row -->
-  <div class="two-col">
-
-    <!-- Model split -->
-    <div class="panel">
-      <h2> Model Usage</h2>
-      <div class="model-split">
-        <div class="model-stat haiku">
-          <div class="count" id="haiku-count">—</div>
-          <div class="name">Haiku calls</div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Fast & cheap</div>
-        </div>
-        <div class="model-stat sonnet">
-          <div class="count" id="sonnet-count">—</div>
-          <div class="name">Sonnet calls</div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Powerful</div>
-        </div>
-      </div>
-      <p style="margin-top:16px;font-size:.75rem;color:var(--muted)">
-        Smart routing saves ~60–70% on API costs by using Haiku for simple tasks.
-      </p>
-    </div>
-
-    <!-- Task breakdown -->
-    <div class="panel">
-      <h2> Task Breakdown</h2>
-      <div id="task-breakdown">
-        <div class="empty-state">No data yet</div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Top Users by Spend -->
-  <div class="panel" style="margin-bottom:24px">
-    <h2> Top Users by Spend (This Month)</h2>
-    <div id="top-users-wrap">
-      <div class="empty-state">No data yet</div>
-    </div>
-  </div>
-
-  <!-- Recent Calls -->
-  <div class="panel" style="margin-bottom:24px">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h2 style="margin-bottom:0"> All API Calls This Month</h2>
-      <a href="/api/usage/export" target="_blank" style="display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇ Export Full CSV</a>
-    </div>
-    <div id="recent-calls-wrap" style="overflow-x:auto; max-height: 450px; overflow-y: auto;">
-      <div class="empty-state">No calls recorded yet</div>
-    </div>
-  </div>
 
   <!-- Admin Attendance Panel -->
   <div class="panel" style="margin-bottom:24px" id="admin-attendance-panel">
@@ -413,6 +316,9 @@
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
         <a href="index.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span>⌨</span> Open Chat Assistant
+        </a>
+        <a href="api-costing.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span>💰</span> API Costing
         </a>
         <a href="html-generator.html" style="display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.875rem;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span></span> HTML Generator
@@ -460,7 +366,7 @@
   </div>
 
   <footer class="dash-footer">
-    <p>Agency Portal Assistant · Cost Dashboard · Auto-refreshes every 60s</p>
+    <p>Agency Portal Assistant · Agency Dashboard · Auto-refreshes every 60s</p>
   </footer>
 
 </div>
@@ -473,227 +379,8 @@ const API = (window.location.protocol === "file:" || !window.location.hostname)
       ? "http://localhost:5000"
       : window.location.origin);
 
-const TASK_ICONS = {
-  coding: "⌨", html_design: "", presentations: "",
-  captions: "✍", scripts: "", general: "",
-};
 
 let employeesMap = {};
-let currentDashboardData = null;
-let currencyMode = 'USD';
-let currentMonthFilter = null;
-
-function changeMonth(m) {
-  currentMonthFilter = m;
-  loadDashboard();
-}
-
-function toggleCurrency(val) {
-  currencyMode = val;
-  if (currentDashboardData) {
-    renderDashboard(currentDashboardData);
-  }
-}
-
-function formatCost(usdAmount, decimals = 4) {
-  if (currencyMode === 'INR') {
-    return `₹${(usdAmount * 83.5).toFixed(decimals === 4 ? 2 : decimals)}`;
-  }
-  return `$${usdAmount.toFixed(decimals)}`;
-}
-
-function formatUser(userId) {
-  if (employeesMap[userId]) return employeesMap[userId];
-  // If it's an unknown phone number, mask it
-  if (/^\+?\d{10,15}$/.test(userId)) {
-    return "WhatsApp (" + userId.slice(-4) + ")";
-  }
-  return userId;
-}
-
-async function loadDashboard() {
-  const offlineIds = ["kpi-spent", "kpi-remaining", "kpi-calls", "kpi-alltime"];
-  try {
-    let url = `${API}/api/usage`;
-    if (currentMonthFilter) url += `?month=${currentMonthFilter}`;
-    
-    const [usageRes, empRes] = await Promise.all([
-      fetch(url),
-      fetch(`${API}/api/employees`).catch(() => null)
-    ]);
-    
-    if (!usageRes.ok) throw new Error(`HTTP ${usageRes.status}`);
-    
-    if (empRes && empRes.ok) {
-      const empData = await empRes.json();
-      (empData.employees || []).forEach(emp => {
-        employeesMap[emp.id] = emp.name;
-        if (emp.whatsapp) {
-          employeesMap[emp.whatsapp] = emp.name;
-          employeesMap[emp.whatsapp.replace('+', '')] = emp.name; // For Twilio (no +)
-        }
-      });
-    }
-
-    const data = await usageRes.json();
-    currentDashboardData = data;
-    renderDashboard(data);
-    loadAttendance();
-  } catch (e) {
-    offlineIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = "—";
-    });
-    const spent = document.getElementById("kpi-spent");
-    if (spent) spent.textContent = "Offline";
-    console.error("Could not reach API:", e);
-  }
-}
-
-function renderDashboard(d) {
-  const mSelect = document.getElementById("month-select");
-  if (mSelect && d.available_months && d.available_months.length > 0) {
-    mSelect.style.display = "inline-block";
-    if (mSelect.options.length === 0) {
-      d.available_months.forEach(m => {
-        const opt = document.createElement("option");
-        opt.value = m;
-        opt.textContent = m;
-        mSelect.appendChild(opt);
-      });
-    }
-    // Update value without triggering onchange
-    if (mSelect.value !== d.month) {
-        mSelect.value = d.month;
-    }
-  }
-
-  // Dynamic Limits
-  const limit = d.budget_limit || 20;
-  const warnLimit = limit * 0.8;
-  const critLimit = limit * 0.9;
-  
-  const elBudgetSub = document.getElementById("kpi-budget-sub");
-  if (elBudgetSub) elBudgetSub.textContent = `of ${formatCost(limit, 2)} budget`;
-  
-  const elBbLimit = document.getElementById("bb-limit");
-  if (elBbLimit) elBbLimit.textContent = formatCost(limit, 2);
-  
-  const elWarnChip = document.getElementById("warn-chip");
-  if (elWarnChip) elWarnChip.innerHTML = `⚠ Warning at ${formatCost(warnLimit, 2)} (80%)`;
-  
-  const elCritChip = document.getElementById("crit-chip");
-  if (elCritChip) elCritChip.innerHTML = ` Critical at ${formatCost(critLimit, 2)} (90%)`;
-
-  // KPIs
-  const allTimeSpent = d.total_spent_ever || 0;
-  const limitVal = d.budget_limit || 20;
-
-  document.getElementById("kpi-spent").textContent     = formatCost(d.monthly_spend || 0, 4);
-  document.getElementById("kpi-remaining").textContent = formatCost(Math.max(limitVal - allTimeSpent, 0), 2);
-  document.getElementById("kpi-calls").textContent     = d.total_calls || 0;
-  document.getElementById("kpi-alltime").textContent   = formatCost(allTimeSpent, 4);
-  document.getElementById("kpi-month").textContent     = d.month || "—";
-
-  //Usage bar (user requested tracking all-time spend instead of monthly)
-  const pct = Math.min((allTimeSpent / limitVal) * 100, 100);
-  const bar  = document.getElementById("budget-bar-fill");
-  bar.style.width = pct + "%";
-  bar.className = "budget-bar-fill" + (pct >= 90 ? " limit" : pct >= 80 ? " warn" : "");
-  document.getElementById("bb-spent").textContent = formatCost(allTimeSpent, 4);
-  document.getElementById("bb-pct").textContent   = pct.toFixed(1) + "%";
-
-  // Alert
-  const alerts = d.budget_alerts || {};
-  const level  = alerts.alert_level || "OK";
-  const banner = document.getElementById("alert-banner");
-  document.getElementById("status-chip").textContent = level;
-  if (level === "CRITICAL") {
-    banner.className = "alert-banner visible critical";
-    document.getElementById("alert-icon").textContent = "";
-    document.getElementById("alert-text").textContent =
-      `CRITICAL: You have spent ${pct.toFixed(1)}% of your monthly budget ($${(d.monthly_spend||0).toFixed(2)} of $${d.budget_limit}). Non-critical tasks pausing soon.`;
-  } else if (level === "WARNING") {
-    banner.className = "alert-banner visible warning";
-    document.getElementById("alert-icon").textContent = "⚠";
-    document.getElementById("alert-text").textContent =
-      `WARNING: You have used ${pct.toFixed(1)}% of your monthly budget. Consider switching more tasks to Haiku.`;
-  } else {
-    banner.className = "alert-banner";
-  }
-
-  // Model split
-  document.getElementById("haiku-count").textContent  = d.haiku_calls  || 0;
-  document.getElementById("sonnet-count").textContent = d.sonnet_calls || 0;
-
-  // Task breakdown
-  const tb   = d.task_breakdown || {};
-  const tbEl = document.getElementById("task-breakdown");
-  const tasks = Object.entries(tb);
-  if (tasks.length === 0) {
-    tbEl.innerHTML = '<div class="empty-state">No calls yet</div>';
-  } else {
-    tbEl.innerHTML = tasks.sort((a,b) => b[1].cost - a[1].cost).map(([task, stat]) => `
-      <div class="task-row">
-        <div class="task-name">
-          <span class="task-emoji">${TASK_ICONS[task] || ""}</span>
-          <span>${task.replace(/_/g," ")}</span>
-          <span class="task-calls">(${stat.calls} calls)</span>
-        </div>
-        <span class="task-cost">${formatCost(stat.cost, 5)}</span>
-      </div>`).join("");
-  }
-
-  // Top Users
-  const topUsers = d.top_users || [];
-  const tuEl = document.getElementById("top-users-wrap");
-  if (tuEl) {
-    if (!topUsers.length) {
-      tuEl.innerHTML = '<div class="empty-state">No user data yet</div>';
-    } else {
-      tuEl.innerHTML = `<table class="calls-table"><thead><tr><th>Rank</th><th>User</th><th>Calls</th><th>Cost</th></tr></thead><tbody>
-        ${topUsers.map((u, i) => `<tr>
-          <td style="color:var(--muted)">#${i+1}</td>
-          <td>${formatUser(u.user_id)}</td>
-          <td style="font-family:JetBrains Mono,monospace">${u.calls}</td>
-          <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">${formatCost(u.cost_usd, 4)}</td>
-        </tr>`).join("")}
-      </tbody></table>`;
-    }
-  }
-
-  // Recent calls
-  const calls  = d.recent_calls || [];
-  const callEl = document.getElementById("recent-calls-wrap");
-  if (calls.length === 0) {
-    callEl.innerHTML = '<div class="empty-state">No API calls recorded yet. Start chatting!</div>';
-  } else {
-    callEl.innerHTML = `
-      <table class="calls-table">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Task</th>
-            <th>Model</th>
-            <th>Tokens</th>
-            <th>Cost</th>
-            <th>User</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${calls.map(c => `
-            <tr>
-              <td style="color:var(--muted);font-size:.75rem;font-family:JetBrains Mono,monospace">${c.timestamp ? new Date(c.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : "—"}</td>
-              <td>${TASK_ICONS[c.task_type]||""} ${c.task_type||"—"}</td>
-              <td><span class="tier-badge ${c.model_tier}">${c.model_tier}</span></td>
-              <td style="font-family:JetBrains Mono,monospace">${((c.input_tokens||0)+(c.output_tokens||0)).toLocaleString()}</td>
-              <td style="font-family:JetBrains Mono,monospace;color:var(--accent)">${formatCost(c.cost_usd || 0, 5)}</td>
-              <td style="color:var(--muted)">${formatUser(c.user_id || "—")}</td>
-            </tr>`).join("")}
-        </tbody>
-      </table>`;
-  }
-}
 
 async function loadAttendance() {
   const wrap  = document.getElementById("attendance-wrap");
@@ -793,8 +480,8 @@ async function loadAttendance() {
 }
 
 // Auto-refresh every 60 seconds
-loadDashboard();
-setInterval(loadDashboard, 60000);
+loadAttendance();
+setInterval(loadAttendance, 60000);
 
 // ── Logout button ──
 const logoutBtn = document.getElementById("logout-btn");

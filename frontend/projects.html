@@ -228,6 +228,7 @@
     .gtab{padding:8px 20px;font-size:.9rem;font-weight:600;color:var(--muted);background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .2s;font-family:'Syne',sans-serif}
     .gtab:hover{color:var(--acc)}
     .gtab.on{color:var(--acc);border-bottom-color:var(--acc)}
+    .c-sheets th { position: sticky; top: 0; background: var(--s1); z-index: 10; border-bottom: 1px solid var(--bdr); box-shadow: inset 0 -1px 0 var(--bdr); }
     select option { background: var(--s1); color: var(--txt); }
   </style>
 </head>
@@ -632,11 +633,11 @@ function renderClientSheets(clientId) {
       </label>
     </div>
     <div style="max-height: 65vh; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
-      <table style="width:100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; background: var(--s2);">
-        <thead style="position: sticky; top: 0; z-index: 10; background: var(--s1);">
-          <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid var(--bdr); color: var(--txt);">
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 40px; font-weight: 600;">#</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Creation Date</th>
+      <table class="c-sheets" style="width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
+        <thead>
+          <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); border-left: none; border-top: none; width: 40px; font-weight: 600;">#</th>
+          <th style="padding: 10px; border-right: 1px solid var(--bdr); border-top: none; width: 140px; font-weight: 600;">Creation Date</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Post Day</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Post</th>
           <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 110px; font-weight: 600;">Type</th>
@@ -1276,7 +1277,7 @@ function renderClientKanban(clientId){
     colTasks.sort((a,b) => {
       if(!a.due_date) return 1;
       if(!b.due_date) return -1;
-      return a.due_date.localeCompare(b.due_date);
+      return b.due_date.localeCompare(a.due_date);
     });
     return buildCol(col.key, col.emoji+" "+col.label, colTasks);
   }).join("");
