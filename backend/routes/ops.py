@@ -419,28 +419,31 @@ def auto_fill_standup():
                     is_due = True
             except: pass
             
+        # Check if this is a social media task with a specific Creation Date
+        # (work starts today — assign to standup for the first time)
+        is_creation_today = False
+        has_creation_date = False
+        desc = t.get("description", "") or t.get("notes", "") or ""
+        if desc:
+            import re as _re
+            cr_match = _re.search(r'Creation Date:\s*([\d-]+)', desc)
+            if cr_match:
+                has_creation_date = True
+                try:
+                    cr_date = cr_match.group(1).strip()
+                    if cr_date == today_str and s == "not_started":
+                        is_creation_today = True
+                except: pass
+
         # If the user has "not started" tasks, pull them in if they are due within 7 days
+        # BUT skip this for tasks that have a specific Creation Date (they should only appear on their exact Creation Date)
         is_upcoming = False
-        if d and s == "not_started":
+        if d and s == "not_started" and not has_creation_date:
             try:
                 due_dt = datetime.strptime(d.split("T")[0], "%Y-%m-%d")
                 if (due_dt - today).days <= 7:
                     is_upcoming = True
             except: pass
-
-        # Check if this is a social media task whose Creation Date == today
-        # (work starts today — assign to standup for the first time)
-        is_creation_today = False
-        desc = t.get("description", "") or t.get("notes", "") or ""
-        if desc and s == "not_started":
-            import re as _re
-            cr_match = _re.search(r'Creation Date:\s*([\d-]+)', desc)
-            if cr_match:
-                try:
-                    cr_date = cr_match.group(1).strip()
-                    if cr_date == today_str:
-                        is_creation_today = True
-                except: pass
 
         # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
         pull_all_upcoming = body.get("pull_upcoming", False)
