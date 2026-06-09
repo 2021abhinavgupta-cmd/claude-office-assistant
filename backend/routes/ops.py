@@ -930,7 +930,7 @@ def notion_update_task(notion_id: str):
                  "emp007":"Palak","emp008":"Happy"}
                  
     raw_assigned = body.get("assigned_to", "")
-    mapped_assigned = EMP_NAMES.get(raw_assigned, raw_assigned) if raw_assigned else None
+    mapped_assigned = EMP_NAMES.get(raw_assigned, raw_assigned)
     
     result = notion_store.update_task(
         notion_id=notion_id, status=body.get("status"),
