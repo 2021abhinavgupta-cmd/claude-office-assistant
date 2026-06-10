@@ -153,6 +153,7 @@
            <h2 style="margin-bottom:0"> Team Standups</h2>
            <div style="display:flex;gap:8px;align-items:center">
              <button id="refresh-team-btn" onclick="loadTeamStandups()" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'"> ↻ Refresh</button>
+             <button id="sync-all-btn" onclick="autoFillStandup(false, true)" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'"> 🔄 Sync All Tasks</button>
              <button style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);padding:6px 12px;border-radius:var(--rs);font-size:0.75rem;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.color='var(--txt)';this.style.borderColor='var(--acc)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--bdr)'" onclick="window.location.href=API+'/api/export/standup-tasks'"> Export CSV</button>
            </div>
         </div>
@@ -432,7 +433,7 @@ async function pushToBoard(id, btn){
 }
 
 async function autoFillStandup(pull_upcoming = false, sync_all = false) {
-  const btn = sync_all ? null : document.getElementById("autofill-btn");
+  const btn = sync_all ? document.getElementById("sync-all-btn") : document.getElementById("autofill-btn");
   if (btn) {
     btn.disabled = true;
     btn.textContent = "⏳ Fetching...";
@@ -481,7 +482,7 @@ async function autoFillStandup(pull_upcoming = false, sync_all = false) {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = "✨ Auto-Fill";
+      btn.textContent = sync_all ? "🔄 Sync All Tasks" : "✨ Auto-Fill";
     }
     if (sync_all) {
         document.body.style.cursor = "default";
@@ -579,12 +580,6 @@ async function loadTeamStandups(dateStr = ""){
     document.getElementById("team-standups").innerHTML = '<div class="empty">Could not load employee list. Please refresh.</div>';
     return;
   }
-  document.getElementById("team-standups-container").innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
-        <h3 style="margin:0; color:var(--acc); font-weight:600; font-size:1.1rem; letter-spacing:0.5px">Team Standups</h3>
-        <button onclick="autoFillStandup(false, true)" style="background:var(--s2); border:1px solid var(--bdr); color:var(--txt); padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.8rem;">🔄 Sync All Tasks</button>
-    </div>
-  `;
   const refreshBtn = document.getElementById("refresh-team-btn");
   if (refreshBtn) { refreshBtn.textContent = " ⏳"; refreshBtn.disabled = true; }
   const query = dateStr ? `?date=${dateStr}` : "";
