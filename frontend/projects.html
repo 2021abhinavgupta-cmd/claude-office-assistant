@@ -1058,11 +1058,26 @@ function renderTaskCard(t){
   const statusLabel = {not_started:"Not Started","Not Started":"Not Started",unlocked:"Unlocked",in_progress:"In Progress","In Progress":"In Progress",pending_review:"⏳ Review","In Review":"⏳ Review",approved:" Approved","Done":" Done",rejected:"↩ Changes"}[t.status]||t.status;
   const statusKey = t.status?.toLowerCase().replace(/ /g,"_").replace(/-/g,"_") || "not_started";
 
+  let dateBadgeHtml = "";
+  if (t.due_date) {
+    const d = new Date(t.due_date);
+    if (!isNaN(d)) {
+      const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+      const dayNum = d.toLocaleDateString("en-US", { day: "2-digit" });
+      const monthStr = d.toLocaleDateString("en-US", { month: "short" });
+      const yearStr = d.getFullYear();
+      dateBadgeHtml = `<span style="font-size:0.75rem; color:var(--muted); margin-left:8px; font-weight:500;">${dayName}, ${dayNum}-${monthStr}-${yearStr}</span>`;
+    }
+  }
+
   return`<div class="tc" id="tc-${taskId}">
     <div class="tc-top">
       <div><div class="tc-title">${t.title}</div>
-        <div class="tc-who"> ${assigneeName}${t.due_date?" · Due: "+t.due_date:""}</div></div>
-      <span class="sp sp-${statusKey}">${statusLabel}</span>
+        <div class="tc-who"> ${assigneeName}</div></div>
+      <div style="display:flex; align-items:center;">
+        <span class="sp sp-${statusKey}">${statusLabel}</span>
+        ${dateBadgeHtml}
+      </div>
     </div>
     <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
     ${t.submission_note?`<div class="sub-box"><div class="sub-label">Submission</div>${t.submission_note}</div>`:""}

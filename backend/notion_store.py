@@ -337,7 +337,10 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
     if status_filter:
         filters.append({"property": "Status", "select": {"equals": status_filter}})
 
-    payload: dict = {"page_size": 200}
+    payload: dict = {
+        "page_size": 200,
+        "sorts": [{"timestamp": "created_time", "direction": "ascending"}]
+    }
     if len(filters) == 1:
         payload["filter"] = filters[0]
     elif len(filters) > 1:

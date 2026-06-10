@@ -1459,6 +1459,28 @@
         });
       }
 
+      // Collect custom tasks for other services
+      let customTasks = {};
+      servicesToSend.forEach(svc => {
+        if (svc === 'social') return;
+        const container = document.querySelector(`.task-list-${svc}`);
+        if (!container) return;
+        
+        const tasks = [];
+        container.querySelectorAll(".task-row").forEach(row => {
+          const title = row.querySelector(".tp-title-input")?.value?.trim() || "";
+          const dueDate = row.querySelector(".tp-date-input")?.value || "";
+          const checkedBoxes = [...row.querySelectorAll(".ms-chk:checked")];
+          const assignee = checkedBoxes.length ? checkedBoxes.map(c => c.nextSibling?.textContent?.trim() || "").join(", ") : "";
+          if (title) {
+            tasks.push({ title, assignee, due_date: dueDate });
+          }
+        });
+        if (tasks.length > 0) {
+          customTasks[svc] = tasks;
+        }
+      });
+
       try {
         const ar = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
           method: "POST",
@@ -1468,7 +1490,8 @@
             client_name: clientName,
             services: servicesToSend,
             deadline: document.getElementById("deadline")?.value || "",
-            social_posts: socialPosts
+            social_posts: socialPosts,
+            custom_tasks: customTasks
           }),
           signal: AbortSignal.timeout(15000),
         });

@@ -2934,19 +2934,36 @@ def auto_generate_tasks(client_id):
     if not services:
         return jsonify({"error": "No services selected"}), 400
 
+    custom_tasks = body.get("custom_tasks", {})
     created_ids = []
     ordered_tasks = []
 
     # For social: if custom posts were provided, use them directly as tasks
-    # instead of the generic templates. For other services, always use templates.
+    # instead of the generic templates. For other services, use custom_tasks if present, else templates.
     for svc in services:
         if svc == "social" and social_posts:
             continue  # handled separately below
-        templates = SERVICE_TASK_TEMPLATES.get(svc, [])
-        ordered_tasks.extend(templates)
+            
+        if svc in custom_tasks and custom_tasks[svc]:
+            # Use custom tasks from the UI
+            for idx, ct in enumerate(custom_tasks[svc]):
+                ordered_tasks.append({
+                    "title": ct.get("title"),
+                    "assigned_to": ct.get("assignee"),
+                    "due_date": ct.get("due_date"),
+                    "order": idx,
+                    "service": svc
+                })
+        else:
+            # Fall back to templates
+            templates = SERVICE_TASK_TEMPLATES.get(svc, [])
+            for tmpl in templates:
+                new_tmpl = dict(tmpl)
+                new_tmpl["service"] = svc
+                ordered_tasks.append(new_tmpl)
 
     # Sort by order field so dependencies chain correctly
-    ordered_tasks.sort(key=lambda x: x["order"])
+    ordered_tasks.sort(key=lambda x: x.get("order", 0))
 
     # Notion Mode
     if not str(client_id).isdigit():
@@ -2993,8 +3010,8 @@ def auto_generate_tasks(client_id):
                 title=tmpl["title"],
                 client_name=client_name,
                 client_notion_id=client_id,
-                assigned_to=tmpl["assigned_to"],
-                due_date=due_date,
+                assigned_to=tmpl.get("assigned_to", ""),
+                due_date=tmpl.get("due_date") or due_date,
                 status="not_started",
                 progress=0
             )
@@ -3038,16 +3055,16 @@ def auto_generate_tasks(client_id):
             cur = conn.execute(
                 """INSERT INTO tasks (client_id,title,assigned_to,due_date,status,progress)
                    VALUES (?,?,?,?,'not_started',0)""",
-                (client_id, tmpl["title"], tmpl["assigned_to"], due_date)
+                (client_id, tmpl["title"], tmpl.get("assigned_to", ""), tmpl.get("due_date") or due_date)
             )
             created_ids.append(cur.lastrowid)
 
         # Wire sequential dependencies (each task depends on the one before it within service)
         for svc in services:
-            svc_tasks = [t for t in ordered_tasks if t in SERVICE_TASK_TEMPLATES.get(svc, [])]
+            svc_tasks = [t for t in ordered_tasks if t.get("service") == svc]
             svc_ids = []
-            for tmpl in SERVICE_TASK_TEMPLATES.get(svc, []):
-                idx = ordered_tasks.index(tmpl) if tmpl in ordered_tasks else -1
+            for tmpl in svc_tasks:
+                idx = ordered_tasks.index(tmpl)
                 if idx >= 0:
                     svc_ids.append(created_ids[idx])
             for i in range(1, len(svc_ids)):
