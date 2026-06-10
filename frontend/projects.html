@@ -764,22 +764,22 @@ function renderClientSheets(clientId) {
     
     if (s === "posted" || s === "done" || s === "approved") {
       stCol = "var(--grn)";
-      rowBg = "rgba(34, 211, 160, 0.08)";
+      rowBg = "rgba(34, 211, 160, 0.18)";
     } else if (s === "final") {
       stCol = "#a855f7"; // Purple
-      rowBg = "rgba(168, 85, 247, 0.08)";
+      rowBg = "rgba(168, 85, 247, 0.18)";
     } else if (s === "scheduled") {
       stCol = "var(--blu)"; // Blue
-      rowBg = "rgba(92, 158, 255, 0.08)";
+      rowBg = "rgba(92, 158, 255, 0.18)";
     } else if (s === "in_progress") {
       stCol = "var(--acc)"; // Orange
-      rowBg = "rgba(245, 166, 35, 0.08)";
+      rowBg = "rgba(245, 166, 35, 0.18)";
     } else if (s === "paused") {
       stCol = "var(--red)"; // Red
-      rowBg = "rgba(255, 92, 92, 0.08)";
+      rowBg = "rgba(255, 92, 92, 0.18)";
     } else {
       stCol = "var(--muted)"; // Gray
-      rowBg = "rgba(107, 107, 138, 0.05)";
+      rowBg = "rgba(107, 107, 138, 0.12)";
     }
     
     const stLbl = rawS.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
@@ -790,7 +790,7 @@ function renderClientSheets(clientId) {
     const assigneeName = (t.assigned_to||'').split(',').map(s=> (typeof EMP !== 'undefined' ? EMP[s.trim()] : s.trim()) || s.trim() || '-').join(', ') || '-';
     
     html += `
-      <tr style="background-color: ${rowBg};">
+      <tr style="background-color: ${rowBg}; transition: background-color 0.3s;">
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted);">${rowIndex++}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
           <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${creationDate}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
