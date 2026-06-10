@@ -380,20 +380,37 @@ def auto_fill_standup():
     body = request.get_json(silent=True) or {}
     user_id = body.get("user_id", "").strip()
     assigned_name = body.get("assigned_name", "").strip()
+    sync_all = body.get("sync_all", False)
     
-    if not user_id or not assigned_name:
-        return jsonify({"error": "user_id and assigned_name required"}), 400
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
 
     try:
         import notion_store
-        # Only works if Notion is configured
         if not notion_store.is_configured():
             return jsonify({"error": "Notion is not configured"}), 400
             
-        all_tasks = notion_store.list_tasks(assigned_to=assigned_name)
+        if sync_all:
+            all_tasks = notion_store.list_tasks()
+        else:
+            if not assigned_name:
+                return jsonify({"error": "assigned_name required"}), 400
+            all_tasks = notion_store.list_tasks(assigned_to=assigned_name)
     except Exception as e:
         logger.error(f"Failed to fetch Notion tasks for auto-fill: {e}")
         return jsonify({"error": str(e)}), 500
+
+    # Load employee name-to-id mapping for sync_all
+    emp_name_to_id = {}
+    try:
+        _emp_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "employees.json")
+        with open(_emp_path, "r", encoding="utf-8") as _f:
+            _emp_data = json.load(_f)
+        emp_name_to_id = {e["name"]: e["id"] for e in _emp_data.get("employees", [])}
+    except Exception:
+        emp_name_to_id = {"Vidit":"emp001","Nupur":"emp002","Abhinav":"emp003",
+                          "Kshitij":"emp004","Raj":"emp005","Mohit":"emp006",
+                          "Palak":"emp007","Happy":"emp008"}
 
     today = datetime.utcnow()
     today_str = today.strftime("%Y-%m-%d")
@@ -419,8 +436,7 @@ def auto_fill_standup():
                     is_due = True
             except: pass
             
-        # Check if this is a social media task with a specific Creation Date
-        # (work starts today — assign to standup for the first time)
+        # Check if this is a task with a specific Creation Date
         is_creation_today = False
         has_creation_date = False
         desc = t.get("description", "") or t.get("notes", "") or ""
@@ -472,28 +488,37 @@ def auto_fill_standup():
                 # Append a short preview of the content
                 preview = content[:40] + "..." if len(content) > 40 else content
                 title = f"{title} ({preview})"
-            
-            # Check if this task is already in today's standup (by notion_id or title)
-            if nid:
-                cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=?)", 
-                            (user_id, today_str, nid, title))
+                
+            # If sync_all is true, we update tasks for ALL assignees
+            if sync_all:
+                assignees = vt.get("assigned_to", "")
+                names = [n.strip() for n in assignees.split(",") if n.strip()]
+                target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
+                if not target_uids:
+                    continue # No matching user in the system
             else:
-                cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
-                            (user_id, today_str, title))
-                            
-            row = cur.fetchone()
-            if not row:
-                cur.execute(
-                    "INSERT INTO standup_tasks (user_id, date, title, notion_id) VALUES (?, ?, ?, ?)",
-                    (user_id, today_str, title, nid)
-                )
-                added_count += 1
-            else:
-                # Update title in case formatting changed (e.g., adding social context)
-                cur.execute(
-                    "UPDATE standup_tasks SET title=? WHERE id=?",
-                    (title, row[0])
-                )
+                target_uids = [user_id]
+                
+            for target_user_id in target_uids:
+                if nid:
+                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=?)", 
+                                (target_user_id, today_str, nid, title))
+                else:
+                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
+                                (target_user_id, today_str, title))
+                                
+                row = cur.fetchone()
+                if not row:
+                    cur.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, notion_id) VALUES (?, ?, ?, ?)",
+                        (target_user_id, today_str, title, nid)
+                    )
+                    added_count += 1
+                else:
+                    cur.execute(
+                        "UPDATE standup_tasks SET title=? WHERE id=?",
+                        (title, row[0])
+                    )
     conn.commit()
     conn.close()
     
