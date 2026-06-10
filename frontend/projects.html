@@ -229,6 +229,17 @@
     .gtab:hover{color:var(--acc)}
     .gtab.on{color:var(--acc);border-bottom-color:var(--acc)}
     .c-sheets th { position: sticky; top: 0; background: var(--s1); z-index: 10; border-bottom: 1px solid var(--bdr); box-shadow: inset 0 -1px 0 var(--bdr); }
+    .c-sheets td { border-bottom: 1px solid var(--bdr); }
+    .fullscreen-sheets {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      z-index: 9999 !important; background: var(--s1) !important;
+      padding: 24px !important; overflow: hidden !important;
+    }
+    .fullscreen-sheets > div:nth-child(2) {
+      max-height: calc(100vh - 80px) !important;
+    }
     select option { background: var(--s1); color: var(--txt); }
   </style>
 </head>
@@ -638,6 +649,20 @@ function _clientCalDate(id){
 function clientCalPrev(id){ const d=_clientCalDate(id); d.setMonth(d.getMonth()-1); renderClientCalendar(id); }
 function clientCalNext(id){ const d=_clientCalDate(id); d.setMonth(d.getMonth()+1); renderClientCalendar(id); }
 
+function toggleFullscreenSheets(clientId) {
+  const container = document.getElementById(`sheets-container-${clientId}`);
+  if (!container) return;
+  if (container.classList.contains('fullscreen-sheets')) {
+    container.classList.remove('fullscreen-sheets');
+    const btn = container.querySelector('.fs-toggle-btn');
+    if (btn) btn.textContent = '⛶ Fullscreen';
+  } else {
+    container.classList.add('fullscreen-sheets');
+    const btn = container.querySelector('.fs-toggle-btn');
+    if (btn) btn.textContent = '✕ Exit Fullscreen';
+  }
+}
+
 function renderClientSheets(clientId) {
   const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
   if(!client) return;
@@ -655,31 +680,35 @@ function renderClientSheets(clientId) {
   }
   
   let html = `
-    <div style="margin-bottom: 12px; display: flex; align-items: center;">
-      <button class="btn btn-sm" onclick="exportClientSocialCSV('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
-      <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
-        📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
-      </label>
-    </div>
-    <div style="max-height: 65vh; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
-      <table class="c-sheets" style="width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
-        <thead>
-          <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); border-left: none; border-top: none; width: 40px; font-weight: 600;">#</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); border-top: none; width: 140px; font-weight: 600;">Creation Date</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Post Day</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Post</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 110px; font-weight: 600;">Type</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Content</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Idea</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Scripts/ Copy</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Caption</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 160px; font-weight: 600;">Assigned To</th>
-          <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Status</th>
-          <th style="padding: 10px; width: 220px; font-weight: 600;">File (Drive Link)</th>
-        </tr>
-      </thead>
-      <tbody>
+    <div id="sheets-container-${clientId}" style="transition: all 0.2s;">
+      <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center;">
+          <button class="btn btn-sm" onclick="exportClientSocialCSV('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
+          <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
+            📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
+          </label>
+        </div>
+        <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">⛶ Fullscreen</button>
+      </div>
+      <div style="max-height: 65vh; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
+        <table class="c-sheets" style="width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
+          <thead>
+            <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-left: none; border-top: none; width: 40px; font-weight: 600;">#</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-top: none; width: 140px; font-weight: 600;">Creation Date</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Post Day</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Post</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 110px; font-weight: 600;">Type</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Content</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Idea</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Scripts/ Copy</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Caption</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 160px; font-weight: 600;">Assigned To</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Status</th>
+            <th style="padding: 10px; width: 220px; font-weight: 600;">File (Drive Link)</th>
+          </tr>
+        </thead>
+        <tbody>
   `;
   
   let rowIndex = 1;
@@ -731,7 +760,7 @@ function renderClientSheets(clientId) {
     const assigneeName = (t.assigned_to||'').split(',').map(s=> (typeof EMP !== 'undefined' ? EMP[s.trim()] : s.trim()) || s.trim() || '-').join(', ') || '-';
     
     html += `
-      <tr style="border-bottom: 1px solid var(--bdr);">
+      <tr>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted);">${rowIndex++}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
           <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${creationDate}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
@@ -778,7 +807,7 @@ function renderClientSheets(clientId) {
     `;
   });
   
-  html += `</tbody></table>`;
+  html += `</tbody></table></div></div>`;
   container.innerHTML = html;
 }
 
