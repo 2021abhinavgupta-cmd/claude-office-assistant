@@ -142,7 +142,7 @@ def get_standups_today():
             st = json.loads(subtasks_json) if subtasks_json else []
         except: pass
             
-        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker, "carried_from": carried_from, "subtasks": st})
+        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker, "carried_from": carried_from, "subtasks": st, "notion_id": notion_id})
 
     # Load employee names dynamically from employees.json
     try:
@@ -462,16 +462,16 @@ def auto_fill_standup():
             nid = vt.get("notion_id")
             title = vt.get("title", "Untitled").strip()
             
-            # Add context for social media tasks
-            if vt.get("task_type", "").lower() == "social":
-                client = vt.get("client_name", "").strip()
-                notes = vt.get("notes", "").strip()
-                if client and not title.startswith(client):
-                    title = f"{client} — {title}"
-                if notes:
-                    # Append a short preview of the content/notes
-                    preview = notes[:40] + "..." if len(notes) > 40 else notes
-                    title = f"{title} ({preview})"
+            # Add context for tasks (especially from social sheet)
+            client = vt.get("client_name", "").strip()
+            content = vt.get("content", "").strip() or vt.get("description", "").strip() or vt.get("brief", "").strip()
+            
+            if client and not title.startswith(client):
+                title = f"{client} — {title}"
+            if content:
+                # Append a short preview of the content
+                preview = content[:40] + "..." if len(content) > 40 else content
+                title = f"{title} ({preview})"
             
             # Check if this task is already in today's standup (by notion_id or title)
             if nid:
