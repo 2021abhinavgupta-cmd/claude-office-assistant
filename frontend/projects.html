@@ -8,6 +8,7 @@
   <script src="auth.js"></script>
   <script src="shared-config.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <style>
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:12px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
@@ -735,7 +736,17 @@ function renderClientSheets(clientId) {
   `;
   
   let rowIndex = 1;
-  socialTasks.sort((a,b) => (a.due_date||"").localeCompare(b.due_date||"")).forEach(t => {
+  let customOrder = [];
+  try { customOrder = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch(e){}
+
+  socialTasks.sort((a,b) => {
+    const idxA = customOrder.indexOf(a.id);
+    const idxB = customOrder.indexOf(b.id);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return (a.due_date||"").localeCompare(b.due_date||"");
+  }).forEach(t => {
     let type = "Post";
     let title = t.title;
     const match = t.title.match(/^\[(.*?)\]\s*(.*)$/);
@@ -802,8 +813,8 @@ function renderClientSheets(clientId) {
     const assigneeName = (t.assigned_to||'').split(',').map(s=> (typeof EMP !== 'undefined' ? EMP[s.trim()] : s.trim()) || s.trim() || '-').join(', ') || '-';
     
     html += `
-      <tr style="background-color: ${rowBg}; transition: background-color 0.3s;">
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted);">${rowIndex++}</td>
+      <tr class="sheet-row" style="background-color: ${rowBg}; transition: background-color 0.3s;" data-task-id="${t.id}">
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); cursor: grab;">${rowIndex++}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
           <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${creationDate}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
@@ -855,6 +866,22 @@ function renderClientSheets(clientId) {
   
   html += `</tbody></table></div></div>`;
   container.innerHTML = html;
+  
+  const tbody = container.querySelector('.c-sheets tbody');
+  if (tbody && typeof Sortable !== 'undefined') {
+    new Sortable(tbody, {
+      animation: 150,
+      handle: '.sheet-row td:first-child',
+      onEnd: function (evt) {
+        const newOrder = [];
+        tbody.querySelectorAll('.sheet-row').forEach(tr => {
+          if (tr.dataset.taskId) newOrder.push(tr.dataset.taskId);
+        });
+        localStorage.setItem(`sheetsOrder_${clientId}`, JSON.stringify(newOrder));
+        renderClientSheets(clientId);
+      }
+    });
+  }
 }
 
 async function saveSheetRow(taskId, cellElem, clientId) {
