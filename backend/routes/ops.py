@@ -436,12 +436,13 @@ def auto_fill_standup():
         # Add if status is active
         is_active = (s == "in_progress")
         
-        # Add if due date is today or in the past (overdue)
+        # Add if due date is today EXACTLY. Overdue tasks should not be indiscriminately added 
+        # unless they are carried over via the app's wrap-up feature.
         is_due = False
         if d:
             try:
-                due_dt = datetime.strptime(d.split("T")[0], "%Y-%m-%d")
-                if due_dt <= today:
+                due_dt = d.split("T")[0]
+                if due_dt == today_str:
                     is_due = True
             except: pass
             
