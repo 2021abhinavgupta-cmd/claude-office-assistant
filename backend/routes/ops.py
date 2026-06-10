@@ -526,10 +526,47 @@ def auto_fill_standup():
                     )
     conn.commit()
     conn.close()
-    
     return jsonify({"success": True, "added": added_count})
 
 
+@ops_bp.route("/api/debug/tasks", methods=["GET"])
+def debug_tasks():
+    user_id = request.args.get("user_id", "emp008")
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id, title, notion_id, date, status FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id DESC", (user_id, date_str))
+    db_tasks = [{"id": r[0], "title": r[1], "notion_id": r[2], "date": r[3], "status": r[4]} for r in cur.fetchall()]
+    conn.close()
+    
+    import notion_store
+    notion_tasks = notion_store.list_tasks(assigned_to="Happy")
+    
+    processed_notion = []
+    for vt in notion_tasks:
+        title = vt.get("title", "Untitled").strip()
+        client = vt.get("client_name", "").strip()
+        content = vt.get("content", "").strip() or vt.get("description", "").strip() or vt.get("brief", "").strip()
+        
+        if client and not title.startswith(client):
+            title = f"{client} — {title}"
+        if content:
+            preview = content[:40] + "..." if len(content) > 40 else content
+            title = f"{title} ({preview})"
+            
+        processed_notion.append({
+            "notion_id": vt.get("notion_id"),
+            "original_title": vt.get("title"),
+            "computed_title": title,
+            "client_name": client,
+            "content": content
+        })
+        
+    return jsonify({
+        "db_tasks": db_tasks,
+        "notion_tasks": processed_notion
+    })
 
 
 @ops_bp.route("/api/standup/smart-add", methods=["POST"])
