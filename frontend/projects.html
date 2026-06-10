@@ -715,22 +715,22 @@ function renderClientSheets(clientId) {
         </div>
         <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
       </div>
-      <div style="max-height: 65vh; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
-        <table class="c-sheets" style="width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
+      <div style="max-height: 65vh; overflow-y: auto; overflow-x: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
+        <table class="c-sheets" style="min-width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
           <thead>
             <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-left: none; border-top: none; width: 40px; font-weight: 600;">#</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-top: none; width: 140px; font-weight: 600;">Creation Date</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Post Day</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Post</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 110px; font-weight: 600;">Type</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 200px; font-weight: 600;">Content</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 220px; font-weight: 600;">Idea</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Scripts/ Copy</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 260px; font-weight: 600;">Caption</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 160px; font-weight: 600;">Assigned To</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); width: 140px; font-weight: 600;">Status</th>
-            <th style="padding: 10px; width: 220px; font-weight: 600;">File (Drive Link)</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-left: none; border-top: none; min-width: 40px; font-weight: 600;">#</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-top: none; min-width: 140px; font-weight: 600;">Creation Date</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 140px; font-weight: 600;">Post Day</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 200px; font-weight: 600;">Post</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 110px; font-weight: 600;">Type</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 200px; font-weight: 600;">Content</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 220px; font-weight: 600;">Idea</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 260px; font-weight: 600;">Scripts/ Copy</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 260px; font-weight: 600;">Caption</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 160px; font-weight: 600;">Assigned To</th>
+            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 140px; font-weight: 600;">Status</th>
+            <th style="padding: 10px; min-width: 220px; font-weight: 600;">File (Drive Link)</th>
           </tr>
         </thead>
         <tbody>
