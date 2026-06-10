@@ -491,6 +491,11 @@ def auto_fill_standup():
                 
             # If sync_all is true, we update tasks for ALL assignees
             if sync_all:
+                emp_name_to_id = {
+                    "Vidit":"emp001","Nupur":"emp002","Abhinav":"emp003",
+                    "Kshitij":"emp004","Raj":"emp005","Mohit":"emp006",
+                    "Palak":"emp007","Happy":"emp008", "Prathmesh":"emp009", "Om":"emp010"
+                }
                 assignees = vt.get("assigned_to", "")
                 names = [n.strip() for n in assignees.split(",") if n.strip()]
                 target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
