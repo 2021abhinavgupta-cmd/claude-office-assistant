@@ -577,6 +577,18 @@ def debug_tasks():
         "notion_tasks": processed_notion
     })
 
+@ops_bp.route("/api/debug/cleanup-today", methods=["GET"])
+def cleanup_today():
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    conn = _su_conn()
+    cur = conn.cursor()
+    # Delete all auto-synced tasks for today (that were not carried over from yesterday)
+    cur.execute("DELETE FROM standup_tasks WHERE date=? AND carried_from IS NULL AND notion_id IS NOT NULL", (today_str,))
+    deleted_count = cur.rowcount
+    conn.commit()
+    conn.close()
+    return f"Successfully cleaned up {deleted_count} mistakenly synced tasks for today! You can close this tab and click 'Sync All Tasks' again."
+
 
 @ops_bp.route("/api/standup/smart-add", methods=["POST"])
 def standup_smart_add():
