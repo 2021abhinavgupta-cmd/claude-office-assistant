@@ -143,6 +143,26 @@ def _get_multi_select(prop: dict) -> str:
     return ", ".join(item.get("name", "") for item in items)
 
 
+_page_title_cache = {}
+
+def _fetch_page_title(page_id: str) -> str:
+    if page_id in _page_title_cache:
+        return _page_title_cache[page_id]
+    try:
+        r = _notion_request("GET", f"https://api.notion.com/v1/pages/{page_id}", headers=_headers())
+        if r.status_code == 200:
+            data = r.json()
+            props = data.get("properties", {})
+            # Find the title property
+            for k, v in props.items():
+                if v.get("type") == "title":
+                    title = _get_text(v)
+                    _page_title_cache[page_id] = title
+                    return title
+    except: pass
+    _page_title_cache[page_id] = ""
+    return ""
+
 def _get_string_val(prop: dict) -> str:
     if not prop: return ""
     if "rich_text" in prop or "title" in prop: return _get_text(prop)
@@ -156,6 +176,9 @@ def _get_string_val(prop: dict) -> str:
         if r.get("type") == "array":
             arr = r.get("array", [])
             if arr: return _get_string_val(arr[0])
+    if "relation" in prop:
+        rels = prop.get("relation", [])
+        if rels: return _fetch_page_title(rels[0]["id"])
     return ""
 
 
