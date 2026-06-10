@@ -143,6 +143,22 @@ def _get_multi_select(prop: dict) -> str:
     return ", ".join(item.get("name", "") for item in items)
 
 
+def _get_string_val(prop: dict) -> str:
+    if not prop: return ""
+    if "rich_text" in prop or "title" in prop: return _get_text(prop)
+    if "select" in prop: return _get_select(prop)
+    if "multi_select" in prop: return _get_multi_select(prop)
+    if "formula" in prop:
+        f = prop["formula"]
+        if f.get("type") == "string": return f.get("string", "") or ""
+    if "rollup" in prop:
+        r = prop["rollup"]
+        if r.get("type") == "array":
+            arr = r.get("array", [])
+            if arr: return _get_string_val(arr[0])
+    return ""
+
+
 def _get_date(prop: dict) -> str:
     d = prop.get("date") or {}
     return d.get("start", "")
@@ -360,12 +376,12 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             pages = data.get("results", [])
             for p in pages:
                 props = p.get("properties", {})
-                desc = _get_text(props.get("Notes", {}))
-                brief = _get_text(props.get("Brief", {}))
-                content = _get_text(props.get("Content", {}))
-                idea = _get_text(props.get("Idea", {}))
-                scripts_copy = _get_text(props.get("Scripts/ Copy", {})) or _get_text(props.get("Script/ Copy", {}))
-                caption = _get_text(props.get("Caption", {}))
+                desc = _get_string_val(props.get("Notes", {}))
+                brief = _get_string_val(props.get("Brief", {}))
+                content = _get_string_val(props.get("Content", {}))
+                idea = _get_string_val(props.get("Idea", {}))
+                scripts_copy = _get_string_val(props.get("Scripts/ Copy", {})) or _get_string_val(props.get("Script/ Copy", {}))
+                caption = _get_string_val(props.get("Caption", {}))
                 file_link = props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
                 
                 # Parse pipe-separated values from description/Notes if present
@@ -382,10 +398,12 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                         elif pt_lower.startswith("link:"): file_link = pt[5:].strip()
                         elif pt_lower.startswith("file:"): file_link = pt[5:].strip()
 
+                client_name_val = _get_string_val(props.get("Customer Name")) or _get_string_val(props.get("Client Name")) or _get_string_val(props.get("Client")) or _get_string_val(props.get("Brand")) or _get_string_val(props.get("Customer")) or _get_string_val(props.get("Account"))
+                
                 tasks.append({
                     "notion_id":   p["id"],
                     "title":        _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})),
-                    "client_name":  _get_text(props.get("Customer Name", {})),
+                    "client_name":  client_name_val,
                     "client_notion_id": _get_text(props.get("Client ID", {})),
                     "assigned_to":  _get_multi_select(props.get("Assigned To", {})),
                     "due_date":     _get_date(props.get("Due Date", {})) or _get_date(props.get("Post Day", {})),
