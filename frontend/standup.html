@@ -310,9 +310,8 @@ function renderTasks(){
                    value="${esc(t.blocker)}" onchange="updateBlocker(${t.id}, this.value)"
                    style="background:rgba(255,92,92,0.1); border:1px solid rgba(255,92,92,0.3); border-radius:4px; color:var(--txt); padding:4px 8px; font-size:0.75rem; width:100%; outline:none; font-family:'DM Sans',sans-serif;" />
           ` : (t.blocker ? `<div style="font-size:0.75rem;color:var(--red);"> Blocker: ${esc(t.blocker)}</div>` : "")}
-        </div>
         <div style="display:flex; align-items:center; gap:4px">
-          ${!t.notion_id ? `<button onclick="pushToBoard(${t.id}, this)" title="Push to Notion Board" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:1.1rem;padding:2px;transition:opacity 0.2s;">↗</button>` : ''}
+          ${t.notion_id ? `<a href="https://notion.so/${t.notion_id.replace(/-/g, '')}" target="_blank" title="Open in Notion" style="text-decoration:none;color:var(--acc);font-size:1.1rem;padding:2px;transition:opacity 0.2s;margin-right:2px;">↗</a>` : `<button onclick="pushToBoard(${t.id}, this)" title="Push to Notion Board" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:1.1rem;padding:2px;transition:opacity 0.2s;margin-right:2px;">↗</button>`}
           <button class="task-del" onclick="deleteTask(${t.id})" title="Remove">✕</button>
         </div>
       </div>
@@ -609,6 +608,7 @@ async function loadTeamStandups(dateStr = ""){
                 }
                 taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px'}">
                     ${isDone ? '✓' : '•'} ${esc(task.title)}
+                    ${task.notion_id ? `<a href="https://notion.so/${task.notion_id.replace(/-/g, '')}" target="_blank" title="Open in Notion" style="text-decoration:none;color:var(--acc);font-size:0.9rem;padding:0 4px;">↗</a>` : ''}
                     ${subtasksHtml}
                     ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
                 </li>`;
@@ -643,6 +643,7 @@ async function loadTeamStandups(dateStr = ""){
 
                 taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}">
                     ${isDone ? '✓' : '⚠'} ${esc(task.title)} ${overdueBadge}
+                    ${task.notion_id ? `<a href="https://notion.so/${task.notion_id.replace(/-/g, '')}" target="_blank" title="Open in Notion" style="text-decoration:none;color:var(--acc);font-size:0.9rem;padding:0 4px;">↗</a>` : ''}
                     ${subtasksHtml}
                     ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
                 </li>`;

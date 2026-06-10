@@ -125,15 +125,15 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
     
     tasks_by_user = {}
-    for uid, title, status, blocker, carried_from, subtasks_json in task_rows:
+    for uid, title, status, blocker, carried_from, subtasks_json, notion_id in task_rows:
         if uid not in tasks_by_user:
             tasks_by_user[uid] = []
             
@@ -461,6 +461,17 @@ def auto_fill_standup():
         for vt in valid_tasks:
             nid = vt.get("notion_id")
             title = vt.get("title", "Untitled").strip()
+            
+            # Add context for social media tasks
+            if vt.get("task_type", "").lower() == "social":
+                client = vt.get("client_name", "").strip()
+                notes = vt.get("notes", "").strip()
+                if client and not title.startswith(client):
+                    title = f"{client} — {title}"
+                if notes:
+                    # Append a short preview of the content/notes
+                    preview = notes[:40] + "..." if len(notes) > 40 else notes
+                    title = f"{title} ({preview})"
             
             # Check if this task is already in today's standup (by notion_id or title)
             if nid:

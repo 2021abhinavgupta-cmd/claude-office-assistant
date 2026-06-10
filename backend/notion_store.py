@@ -339,7 +339,7 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
 
     payload: dict = {
         "page_size": 200,
-        "sorts": [{"timestamp": "created_time", "direction": "ascending"}]
+        "sorts": [{"timestamp": "created_time", "direction": "descending"}]
     }
     if len(filters) == 1:
         payload["filter"] = filters[0]
@@ -406,12 +406,6 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             has_more = data.get("has_more", False)
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
-                
-        # Notion often returns newer items first, and truncates timestamps to the nearest minute.
-        # This causes items created in the same batch to have identical created_time and be in LIFO order.
-        # By reversing the list first, we make it FIFO. Python's sort is stable, so it preserves FIFO for ties!
-        tasks.reverse()
-        tasks.sort(key=lambda t: t["created_time"])
         return tasks
     except Exception:
         logger.exception("Notion list_tasks failed")
