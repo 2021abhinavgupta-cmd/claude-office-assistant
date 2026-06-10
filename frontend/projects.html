@@ -690,8 +690,11 @@ function renderClientSheets(clientId) {
     return;
   }
   
+  const existingWrapper = document.getElementById(`sheets-container-${clientId}`);
+  const isFullscreen = existingWrapper && existingWrapper.classList.contains('fullscreen-sheets');
+  
   let html = `
-    <div id="sheets-container-${clientId}" style="transition: all 0.2s;">
+    <div id="sheets-container-${clientId}" class="${isFullscreen ? 'fullscreen-sheets' : ''}" style="transition: all 0.2s;">
       <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center;">
           <button class="btn btn-sm" onclick="exportClientSocialCSV('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
@@ -699,7 +702,7 @@ function renderClientSheets(clientId) {
             📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
           </label>
         </div>
-        <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">⛶ Fullscreen</button>
+        <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
       </div>
       <div style="max-height: 65vh; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
         <table class="c-sheets" style="width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
