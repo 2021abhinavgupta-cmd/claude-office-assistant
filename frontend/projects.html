@@ -478,6 +478,35 @@ async function load(){
   }
   // Load shared quick tasks from backend (task 3)
   await loadQuickTasks();
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetNotionId = urlParams.get('notion_id');
+  if (targetNotionId && allData && allData.clients) {
+    for (const c of allData.clients) {
+      const task = c.tasks.find(t => t.notion_id === targetNotionId || t.id === targetNotionId || String(t.id) === targetNotionId);
+      if (task) {
+        setTimeout(() => {
+          switchGlobalTab('clients');
+          const cb = document.getElementById(`cb-${c.id}`);
+          if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
+          const body = document.getElementById("dbody-"+c.id);
+          if (body && body.style.display === "none") {
+            toggleDetail(c.id);
+          }
+          // Try to open sheets tab if it's social media, otherwise Kanban
+          const sheetsBtn = document.getElementById(`ctab-btn-${c.id}-sheets`);
+          if (sheetsBtn) {
+            switchClientTab(c.id, 'sheets', sheetsBtn);
+          } else {
+            // fallback to kanban
+            const kanbanBtn = body ? body.querySelector(".client-tabs button:nth-child(2)") : null;
+            if (kanbanBtn) switchClientTab(c.id, 'kanban', kanbanBtn);
+          }
+        }, 300);
+        break;
+      }
+    }
+  }
 }
 
 async function loadNotion(){
