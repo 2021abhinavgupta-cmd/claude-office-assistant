@@ -46,9 +46,7 @@
       border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
     }
     .c-sheets th {
-      resize: horizontal;
-      overflow: hidden;
-      position: relative;
+      padding: 0 !important;
     }
 
     /* Status cells */
@@ -719,18 +717,18 @@ function renderClientSheets(clientId) {
         <table class="c-sheets" style="min-width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
           <thead>
             <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-left: none; border-top: none; min-width: 40px; font-weight: 600;">#</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); border-top: none; min-width: 140px; font-weight: 600;">Creation Date</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 140px; font-weight: 600;">Post Day</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 200px; font-weight: 600;">Post</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 110px; font-weight: 600;">Type</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 200px; font-weight: 600;">Content</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 220px; font-weight: 600;">Idea</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 260px; font-weight: 600;">Scripts/ Copy</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 260px; font-weight: 600;">Caption</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 160px; font-weight: 600;">Assigned To</th>
-            <th style="padding: 10px; border-right: 1px solid var(--bdr); min-width: 140px; font-weight: 600;">Status</th>
-            <th style="padding: 10px; min-width: 220px; font-weight: 600;">File (Drive Link)</th>
+            <th style="border-right: 1px solid var(--bdr); border-left: none; border-top: none; font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 40px; min-width: 40px;">#</div></th>
+            <th style="border-right: 1px solid var(--bdr); border-top: none; font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;">Creation Date</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;">Post Day</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;">Post</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 110px; min-width: 110px;">Type</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;">Content</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;">Idea</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;">Scripts/ Copy</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;">Caption</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 160px; min-width: 160px;">Assigned To</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;">Status</div></th>
+            <th style="font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;">File (Drive Link)</div></th>
           </tr>
         </thead>
         <tbody>
