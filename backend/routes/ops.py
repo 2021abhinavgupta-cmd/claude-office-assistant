@@ -473,7 +473,7 @@ def auto_fill_standup():
         # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
         pull_all_upcoming = body.get("pull_upcoming", False)
         
-        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
+        if is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
             valid_tasks.append(t)
 
     if not valid_tasks:
