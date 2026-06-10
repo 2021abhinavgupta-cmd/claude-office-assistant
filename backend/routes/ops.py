@@ -415,6 +415,15 @@ def auto_fill_standup():
     today = datetime.utcnow()
     today_str = today.strftime("%Y-%m-%d")
     
+    # Pre-fetch existing notion_ids for today to ensure we update them even if they are future tasks
+    existing_notion_ids = set()
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT notion_id FROM standup_tasks WHERE date=?", (today_str,))
+    for r in cur.fetchall():
+        if r[0]: existing_notion_ids.add(r[0])
+    conn.close()
+    
     valid_tasks = []
     for t in all_tasks:
         s = t.get("status", "").lower().replace(" ", "_").replace("-", "_")
@@ -464,7 +473,7 @@ def auto_fill_standup():
         # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
         pull_all_upcoming = body.get("pull_upcoming", False)
         
-        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started"):
+        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
             valid_tasks.append(t)
 
     if not valid_tasks:
