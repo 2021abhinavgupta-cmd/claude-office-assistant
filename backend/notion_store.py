@@ -400,11 +400,15 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                     "idea":         idea,
                     "scripts_copy": scripts_copy,
                     "caption":      caption,
-                    "file_link":    file_link
+                    "file_link":    file_link,
+                    "created_time": p.get("created_time", "")
                 })
             has_more = data.get("has_more", False)
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
+                
+        # Sort tasks by created_time ascending (oldest first) to ensure sequential order
+        tasks.sort(key=lambda t: t["created_time"])
         return tasks
     except Exception:
         logger.exception("Notion list_tasks failed")
