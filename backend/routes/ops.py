@@ -481,12 +481,20 @@ def auto_fill_standup():
                 cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
                             (user_id, today_str, title))
                             
-            if not cur.fetchone():
+            row = cur.fetchone()
+            if not row:
                 cur.execute(
                     "INSERT INTO standup_tasks (user_id, date, title, notion_id) VALUES (?, ?, ?, ?)",
                     (user_id, today_str, title, nid)
                 )
                 added_count += 1
+            else:
+                # Update title in case formatting changed (e.g., adding social context)
+                cur.execute(
+                    "UPDATE standup_tasks SET title=? WHERE id=?",
+                    (title, row[0])
+                )
+    conn.commit()
     conn.close()
     
     return jsonify({"success": True, "added": added_count})
