@@ -2752,7 +2752,7 @@ def founder_dashboard():
         cur.execute("""SELECT id,client_id,title,description,assigned_to,status,progress,
                        due_date,submission_note,submission_file,rejection_note,
                        submission_count,opened_at,created_at
-                       FROM tasks WHERE client_id=?""", (c["id"],))
+                       FROM tasks WHERE client_id=? ORDER BY id ASC""", (c["id"],))
         tasks = [_task_row_to_dict(r) for r in cur.fetchall()]
         for t in tasks:
             t["progress"] = _calc_progress(t)

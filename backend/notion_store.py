@@ -407,7 +407,10 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
                 
-        # Sort tasks by created_time ascending (oldest first) to ensure sequential order
+        # Notion often returns newer items first, and truncates timestamps to the nearest minute.
+        # This causes items created in the same batch to have identical created_time and be in LIFO order.
+        # By reversing the list first, we make it FIFO. Python's sort is stable, so it preserves FIFO for ties!
+        tasks.reverse()
         tasks.sort(key=lambda t: t["created_time"])
         return tasks
     except Exception:
