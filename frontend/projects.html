@@ -720,6 +720,7 @@ function renderClientSheets(clientId) {
           <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
             📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
           </label>
+          <button class="btn btn-sm" onclick="addSocialSheetRow('${clientId}')" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 12px; font-weight: 600;">➕ Add Row</button>
         </div>
         <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
       </div>
@@ -890,6 +891,46 @@ function renderClientSheets(clientId) {
         renderClientSheets(clientId);
       }
     });
+  }
+}
+
+async function addSocialSheetRow(clientId) {
+  let client = allData.clients.find(c => String(c.id) === String(clientId));
+  if (!client) return;
+
+  const isNotionClient = notionMode && !!client.notion_id;
+  const endpoint = isNotionClient ? `${API}/api/notion/tasks` : `${API}/api/tasks`;
+
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: UID,
+        client_id: isNotionClient ? client.notion_id : clientId,
+        client_name: client.name,
+        title: "[Post] New Idea",
+        assigned_to: "",
+        due_date: "",
+        service: "Social Media",
+        status: "not_started"
+      })
+    });
+    const d = await res.json();
+    if (d.success) {
+      toast("Row added successfully!");
+      if (isNotionClient) {
+        toast("Syncing with Notion...");
+        setTimeout(load, 1500);
+      } else {
+        load();
+      }
+    } else {
+      toast(d.error || "Failed to add row", "err");
+    }
+  } catch (err) {
+    console.error(err);
+    toast("Error adding row", "err");
   }
 }
 
