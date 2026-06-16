@@ -183,7 +183,37 @@
             <small>Insights & spreadsheets</small>
           </button>
         </div>
-        <div class="welcome-input-row">
+        <div class="welcome-input-row" id="welcome-input-wrap">
+          <div class="plus-menu-container">
+            <button class="upload-btn" id="welcome-plus-btn" title="Add items">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <div class="plus-menu hidden" id="welcome-plus-menu">
+              <div class="menu-item" id="welcome-menu-upload">Add files or photos</div>
+              <div class="menu-item has-submenu" id="welcome-menu-skills">
+                Skills <span class="arrow">›</span>
+                <div class="submenu hidden" id="welcome-submenu-skills">
+                  <div class="menu-item" id="welcome-menu-manage-skills">Manage skills</div>
+                  <div class="menu-item" id="welcome-menu-add-skill">Add skill</div>
+                  <div class="menu-divider"></div>
+                  <div id="welcome-skills-list-container"></div>
+                </div>
+              </div>
+              <div class="menu-item" id="welcome-menu-web-search">Web search <span class="check hidden" id="welcome-web-search-check">✓</span></div>
+              <div class="menu-item has-submenu" id="welcome-menu-style">
+                Use style <span class="arrow">›</span>
+                <div class="submenu hidden" id="welcome-submenu-style">
+                  <div class="menu-item" id="welcome-menu-manage-styles">Manage styles</div>
+                  <div class="menu-item" id="welcome-menu-add-style">Add style</div>
+                  <div class="menu-divider"></div>
+                  <div id="welcome-styles-list-container"></div>
+                </div>
+              </div>
+            </div>
+          </div>
           <textarea id="welcome-input" class="welcome-input" rows="1"
             placeholder="Type here or pick a card above…" maxlength="500000"></textarea>
           <button class="send-btn" id="welcome-send" disabled>

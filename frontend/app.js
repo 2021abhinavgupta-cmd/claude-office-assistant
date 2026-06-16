@@ -727,6 +727,13 @@ function showChatView() {
   if (projView) projView.classList.add("hidden");
   welcomeScreen.classList.add("hidden");
   chatView.classList.remove("hidden");
+  
+  // Move file-chips to chat view
+  const fileChips = document.getElementById("file-chips");
+  const outputContractBar = document.getElementById("output-contract-bar");
+  if (fileChips && outputContractBar) {
+    outputContractBar.parentElement.insertBefore(fileChips, outputContractBar);
+  }
 }
 function showWelcomeScreen() {
   // Always hide project view when going to welcome
@@ -734,6 +741,13 @@ function showWelcomeScreen() {
   if (projView) projView.classList.add("hidden");
   chatView.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
+  
+  // Move file-chips to welcome screen
+  const fileChips = document.getElementById("file-chips");
+  const welcomeInputWrap = document.getElementById("welcome-input-wrap");
+  if (fileChips && welcomeInputWrap) {
+    welcomeInputWrap.parentElement.insertBefore(fileChips, welcomeInputWrap);
+  }
 }
 
 // ToggleProjects panel in sidebar
@@ -2342,10 +2356,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Only close the menu when clicking outside — don't block any other actions
     document.addEventListener("click", (e) => {
-      if (plusMenu.classList.contains("hidden")) return;  // already closed, do nothing
-      const container = plusBtn.closest(".plus-menu-container");
-      if (container && container.contains(e.target)) return;  // click inside menu, do nothing
-      plusMenu.classList.add("hidden");  // click outside: close menu
+      if (!plusMenu.classList.contains("hidden")) {
+        const container = plusBtn.closest(".plus-menu-container");
+        if (!container || !container.contains(e.target)) {
+          plusMenu.classList.add("hidden");
+        }
+      }
+    });
+  }
+
+  // Same logic for welcome plus menu
+  const welcomePlusBtn = document.getElementById("welcome-plus-btn");
+  const welcomePlusMenu = document.getElementById("welcome-plus-menu");
+  
+  if (welcomePlusBtn && welcomePlusMenu) {
+    welcomePlusBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isHidden = welcomePlusMenu.classList.contains("hidden");
+      welcomePlusMenu.classList.toggle("hidden");
+      if (isHidden) {
+        fetchSkills();
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!welcomePlusMenu.classList.contains("hidden")) {
+        const container = welcomePlusBtn.closest(".plus-menu-container");
+        if (!container || !container.contains(e.target)) {
+          welcomePlusMenu.classList.add("hidden");
+        }
+      }
     });
   }
 
@@ -2354,7 +2394,16 @@ document.addEventListener("DOMContentLoaded", () => {
   if (menuUpload) {
     menuUpload.addEventListener("click", (e) => {
       e.stopPropagation();
-      plusMenu.classList.add("hidden");
+      if(plusMenu) plusMenu.classList.add("hidden");
+      document.getElementById("file-input")?.click();
+    });
+  }
+  
+  const welcomeMenuUpload = document.getElementById("welcome-menu-upload");
+  if (welcomeMenuUpload) {
+    welcomeMenuUpload.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if(welcomePlusMenu) welcomePlusMenu.classList.add("hidden");
       document.getElementById("file-input")?.click();
     });
   }
