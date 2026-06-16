@@ -1658,34 +1658,55 @@ function buildCard(t, today){
 }
 
 async function updateTaskStatus(taskId, notionId, newStatus, taskTitle='', assignee='', clientName=''){
+  // Optimistic UI update: instantly update local memory
+  let foundClient = null;
+  for(const c of allData.clients || []){
+    let t = (c.tasks||[]).find(x => String(x.id) === String(taskId) || String(x.notion_id) === String(notionId));
+    if(t) {
+      t.status = newStatus;
+      foundClient = c.id;
+      break;
+    }
+  }
+  
+  if (foundClient) {
+    renderClientKanban(foundClient);
+    renderClientCalendar(foundClient);
+    // Don't re-render sheets if we are just dropping in kanban, but doing it ensures consistency.
+    // However, sheets shouldn't be active if we are in kanban view.
+  }
+
+  let qt = quickTasks.find(x => String(x.id) === String(taskId) || String(x.notion_id) === String(notionId));
+  if(qt){
+    qt.status = newStatus;
+    const filterBtn = document.querySelector(".client-filter-btn[onclick*='__quick__']");
+    if(filterBtn && selectedClient === "__quick__") filterByClient("__quick__", filterBtn);
+  }
+
+  // Background network update
   if(notionMode && notionId){
-    try{
-      const r = await fetch(`${API}/api/notion/tasks/${notionId}`,{
-        method:"PATCH",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          status:      newStatus,
-          task_title:  taskTitle,
-          assignee:    assignee,
-          client_name: clientName,
-        }),
-        signal:AbortSignal.timeout(10000)
-      });
-      const d = await r.json();
-      if(d.success){toast(" Status updated in Notion!");await load();}
+    fetch(`${API}/api/notion/tasks/${notionId}`,{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        status:      newStatus,
+        task_title:  taskTitle,
+        assignee:    assignee,
+        client_name: clientName,
+      })
+    }).then(r => r.json()).then(d => {
+      if(d.success) toast("Status updated!");
       else toast(d.error||"Update failed","err");
-    }catch(e){toast("Error: "+e.message,"err");}
+    }).catch(e => toast("Error: "+e.message,"err"));
   } else if(taskId){
-    try{
-      const r = await fetch(`${API}/api/sqlite/tasks/${taskId}`,{
-        method:"PATCH",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({status:newStatus})
-      });
-      const d = await r.json();
-      if(d.success){toast(" Status updated!");await load();}
+    fetch(`${API}/api/sqlite/tasks/${taskId}`,{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({status:newStatus})
+    }).then(r => r.json()).then(d => {
+      if(d.success) toast("Status updated!");
       else toast(d.error||"Update failed","err");
-    }catch(e){toast("Error: "+e.message,"err");}
+    }).catch(e => toast("Error: "+e.message,"err"));
   }
 }
 </script>
