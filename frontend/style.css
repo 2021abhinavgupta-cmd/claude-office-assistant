@@ -118,7 +118,7 @@ body {
 }
 .modal-icon {
   width: 52px; height: 52px; margin: 0 auto 20px;
-  background: var(--accent), #B38B59);
+  background: var(--accent, #B38B59);
   border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
   font-size: 0.85rem; font-weight: 800; color: white; letter-spacing: -0.03em;
@@ -137,7 +137,7 @@ body {
 .emp-btn:hover { border-color: var(--accent); background: rgba(139,90,43,0.1); }
 .emp-avatar {
   width: 36px; height: 36px; border-radius: 50%;
-  background: var(--accent), #B38B59);
+  background: var(--accent, #B38B59);
   display: flex; align-items: center; justify-content: center;
   font-size: 0.9rem; font-weight: 700; color: white;
 }
@@ -190,7 +190,7 @@ body {
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px; }
 .brand-icon {
   width: 32px; height: 32px; border-radius: 9px;
-  background: var(--accent), #B38B59);
+  background: var(--accent, #B38B59);
   display: flex; align-items: center; justify-content: center;
   font-size: 0.6rem; font-weight: 800; color: white; letter-spacing: -0.03em;
   box-shadow: 0 0 20px var(--accent-glow);
@@ -285,7 +285,7 @@ body {
 .user-pill:hover { border-color: var(--border-hover); background: var(--surface3); }
 .user-avatar {
   width: 28px; height: 28px; border-radius: 50%;
-  background: var(--accent), #B38B59);
+  background: var(--accent, #B38B59);
   display: flex; align-items: center; justify-content: center;
   font-size: 0.75rem; font-weight: 700; color: white; flex-shrink: 0;
 }
@@ -443,7 +443,7 @@ body {
 }
 .welcome-icon {
   width: 58px; height: 58px; border-radius: 16px;
-  background: var(--accent), #B38B59);
+  background: var(--accent, #B38B59);
   display: flex; align-items: center; justify-content: center;
   font-size: 1rem; font-weight: 800; color: white; letter-spacing: -0.04em;
   box-shadow: 0 0 40px var(--accent-glow);
@@ -565,7 +565,7 @@ body {
   font-size: 0.85rem; flex-shrink: 0; margin-top: 2px; margin-right: 14px;
 }
 .msg.assistant .msg-avatar {
-  background: var(--accent), #B38B59);
+  background: var(--accent, #B38B59);
   box-shadow: 0 0 14px var(--accent-glow);
 }
 .msg.user .msg-avatar {
@@ -813,7 +813,7 @@ body {
 /* Send Button (shared) */
 .send-btn {
   width: 36px; height: 36px; border-radius: var(--radius-sm);
-  background: var(--accent), #B38B59);
+  background: var(--accent, #B38B59);
   border: none; cursor: pointer; color: white;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s; box-shadow: 0 4px 14px var(--accent-glow);
