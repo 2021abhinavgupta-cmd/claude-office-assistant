@@ -518,6 +518,15 @@ async function load(){
           const sheetsBtn = document.getElementById(`ctab-btn-${c.id}-sheets`);
           if (sheetsBtn) {
             switchClientTab(c.id, 'sheets', sheetsBtn);
+            setTimeout(() => {
+              const tr = document.querySelector(`tr[data-task-id="${task.id}"]`);
+              if (tr) {
+                tr.scrollIntoView({behavior: "smooth", block: "center"});
+                const oldBg = tr.style.backgroundColor;
+                tr.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
+                setTimeout(() => { tr.style.backgroundColor = oldBg; }, 2000);
+              }
+            }, 100);
           } else {
             // fallback to kanban
             const kanbanBtn = body ? body.querySelector(".client-tabs button:nth-child(2)") : null;
