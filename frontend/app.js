@@ -1154,6 +1154,28 @@ document.addEventListener("drop", e => {
   [...e.dataTransfer.files].forEach(uploadFile);
 });
 
+// Paste handling for images/files
+document.addEventListener("paste", e => {
+  const items = (e.clipboardData || window.clipboardData).items;
+  if (!items) return;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind === 'file') {
+      const blob = item.getAsFile();
+      if (blob) {
+        let name = "pasted_image_" + Math.random().toString(36).slice(2, 8);
+        if (blob.type === "image/png") name += ".png";
+        else if (blob.type === "image/jpeg") name += ".jpg";
+        else if (blob.type === "image/webp") name += ".webp";
+        else if (blob.type === "image/gif") name += ".gif";
+        else name = "pasted_file_" + Math.random().toString(36).slice(2, 8);
+        const file = new File([blob], name, { type: blob.type });
+        uploadFile(file);
+      }
+    }
+  }
+});
+
 async function compressImage(file, maxSizeMB = 4.5) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
