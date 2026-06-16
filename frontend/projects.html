@@ -880,7 +880,18 @@ function renderClientSheets(clientId) {
   });
   
   html += `</tbody></table></div></div>`;
+  
+  const scrollWrapper = container.querySelector('div[style*="overflow-y: auto"]');
+  const scrollTop = scrollWrapper ? scrollWrapper.scrollTop : 0;
+  const scrollLeft = scrollWrapper ? scrollWrapper.scrollLeft : 0;
+  
   container.innerHTML = html;
+  
+  const newScrollWrapper = container.querySelector('div[style*="overflow-y: auto"]');
+  if (newScrollWrapper) {
+    newScrollWrapper.scrollTop = scrollTop;
+    newScrollWrapper.scrollLeft = scrollLeft;
+  }
   
   const tbody = container.querySelector('.c-sheets tbody');
   if (tbody && typeof Sortable !== 'undefined') {
@@ -1042,13 +1053,24 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     });
     if (!res.ok) throw new Error("Network error");
     
+    // Dynamically update row background based on status without re-rendering the whole table
+    const s = status.toLowerCase().replace(/ /g, '_');
+    let rowBg = "transparent";
+    if (s === "posted" || s === "done" || s === "approved") rowBg = "rgba(34, 211, 160, 0.18)";
+    else if (s === "final") rowBg = "rgba(168, 85, 247, 0.18)";
+    else if (s === "scheduled") rowBg = "rgba(92, 158, 255, 0.18)";
+    else if (s === "in_progress") rowBg = "rgba(245, 166, 35, 0.18)";
+    else if (s === "paused") rowBg = "rgba(255, 92, 92, 0.18)";
+    else rowBg = "rgba(107, 107, 138, 0.12)";
+    tr.style.backgroundColor = rowBg;
+    
     if (clientId) {
       renderClientCalendar(clientId);
       if (typeof renderCalendar === 'function') renderCalendar();
-      renderClientSheets(clientId);
+      // intentionally NOT calling renderClientSheets(clientId) to prevent focus loss and scroll jumping
     }
   } catch(e) {
-    toast("Error saving row", "error");
+    toast("Error saving row", "err");
   } finally {
     cellElem.style.opacity = "1";
   }
