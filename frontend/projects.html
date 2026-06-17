@@ -2285,5 +2285,60 @@ async function importClientSocialCSV(event, clientId) {
     </div>
   </div>
 </div>
+<div id="link-hover-popup" style="display:none; position:absolute; z-index:9999; background:var(--s1); border:1px solid var(--bdr); border-radius:6px; padding:6px 12px; box-shadow:0 4px 12px rgba(0,0,0,0.5); font-size:0.85rem; pointer-events:auto; transition: opacity 0.2s;">
+  <a id="link-hover-a" href="#" target="_blank" style="color:var(--acc); text-decoration:none; display:flex; align-items:center; gap:6px;">
+    <span>🌍</span> <span id="link-hover-text">Open Link</span>
+  </a>
+</div>
+
+<script>
+const linkPopup = document.getElementById('link-hover-popup');
+const linkA = document.getElementById('link-hover-a');
+const linkText = document.getElementById('link-hover-text');
+let popupTimeout;
+
+document.addEventListener('mouseover', e => {
+  const cell = e.target.closest('td[contenteditable="true"]');
+  if (cell) {
+    const text = cell.innerText.trim();
+    const urlMatch = text.match(/(https?:\/\/[^\s]+)/i);
+    
+    // Only show if the cell contains a valid URL
+    if (urlMatch) {
+      const url = urlMatch[1];
+      linkA.href = url;
+      linkText.textContent = url.length > 40 ? url.substring(0, 40) + '...' : url;
+      
+      const rect = cell.getBoundingClientRect();
+      linkPopup.style.display = 'block';
+      linkPopup.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+      
+      // Keep it within screen bounds horizontally
+      let leftPos = rect.left + window.scrollX;
+      if (leftPos + 300 > window.innerWidth) leftPos = window.innerWidth - 320;
+      linkPopup.style.left = leftPos + 'px';
+      
+      clearTimeout(popupTimeout);
+    } else {
+      hidePopup();
+    }
+  } else if (!e.target.closest('#link-hover-popup')) {
+    hidePopup();
+  }
+});
+
+function hidePopup() {
+  clearTimeout(popupTimeout);
+  popupTimeout = setTimeout(() => {
+    linkPopup.style.display = 'none';
+  }, 200);
+}
+
+linkPopup.addEventListener('mouseover', () => clearTimeout(popupTimeout));
+linkPopup.addEventListener('mouseleave', hidePopup);
+
+// Also hide on scroll to prevent popup floating randomly
+window.addEventListener('scroll', hidePopup, true);
+</script>
 </body>
 </html>
