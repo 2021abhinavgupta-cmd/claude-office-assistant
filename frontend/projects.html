@@ -2311,7 +2311,7 @@ document.addEventListener('mouseover', e => {
       
       const rect = cell.getBoundingClientRect();
       linkPopup.style.display = 'block';
-      linkPopup.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+      linkPopup.style.top = (rect.bottom + window.scrollY - 2) + 'px';
       
       // Keep it within screen bounds horizontally
       let leftPos = rect.left + window.scrollX;
@@ -2331,7 +2331,7 @@ function hidePopup() {
   clearTimeout(popupTimeout);
   popupTimeout = setTimeout(() => {
     linkPopup.style.display = 'none';
-  }, 200);
+  }, 600);
 }
 
 linkPopup.addEventListener('mouseover', () => clearTimeout(popupTimeout));
