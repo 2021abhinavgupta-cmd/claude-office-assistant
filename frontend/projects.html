@@ -712,6 +712,12 @@ function renderClientSheets(clientId) {
   const existingWrapper = document.getElementById(`sheets-container-${clientId}`);
   const isFullscreen = existingWrapper && existingWrapper.classList.contains('fullscreen-sheets');
   
+  let customHeaders = {};
+  let globalHeaders = {};
+  try { globalHeaders = JSON.parse(localStorage.getItem(`sheetsCols_global`)) || {}; } catch(e){}
+  try { customHeaders = JSON.parse(localStorage.getItem(`sheetsCols_${clientId}`)) || {}; } catch(e){}
+  const getColName = (def) => customHeaders[def] || globalHeaders[def] || def;
+
   let html = `
     <div id="sheets-container-${clientId}" class="${isFullscreen ? 'fullscreen-sheets' : ''}" style="transition: all 0.2s;">
       <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
@@ -729,17 +735,17 @@ function renderClientSheets(clientId) {
           <thead>
             <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
             <th style="border-right: 1px solid var(--bdr); border-left: none; border-top: none; font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 40px; min-width: 40px;">#</div></th>
-            <th style="border-right: 1px solid var(--bdr); border-top: none; font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;">Creation Date</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;">Post Day</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;">Post</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 110px; min-width: 110px;">Type</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;">Content</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;">Idea</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;">Scripts/ Copy</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;">Caption</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 160px; min-width: 160px;">Assigned To</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;">Status</div></th>
-            <th style="font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;">File (Drive Link)</div></th>
+            <th style="border-right: 1px solid var(--bdr); border-top: none; font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;" contenteditable="true" onblur="saveColName('${clientId}', 'Creation Date', this.innerText)">${getColName('Creation Date')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;" contenteditable="true" onblur="saveColName('${clientId}', 'Post Day', this.innerText)">${getColName('Post Day')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;" contenteditable="true" onblur="saveColName('${clientId}', 'Post', this.innerText)">${getColName('Post')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 110px; min-width: 110px;" contenteditable="true" onblur="saveColName('${clientId}', 'Type', this.innerText)">${getColName('Type')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;" contenteditable="true" onblur="saveColName('${clientId}', 'Content', this.innerText)">${getColName('Content')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;" contenteditable="true" onblur="saveColName('${clientId}', 'Idea', this.innerText)">${getColName('Idea')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;" contenteditable="true" onblur="saveColName('${clientId}', 'Scripts/ Copy', this.innerText)">${getColName('Scripts/ Copy')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;" contenteditable="true" onblur="saveColName('${clientId}', 'Caption', this.innerText)">${getColName('Caption')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 160px; min-width: 160px;" contenteditable="true" onblur="saveColName('${clientId}', 'Assigned To', this.innerText)">${getColName('Assigned To')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;" contenteditable="true" onblur="saveColName('${clientId}', 'Status', this.innerText)">${getColName('Status')}</div></th>
+            <th style="font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;" contenteditable="true" onblur="saveColName('${clientId}', 'File (Drive Link)', this.innerText)">${getColName('File (Drive Link)')}</div></th>
           </tr>
         </thead>
         <tbody>
@@ -980,6 +986,29 @@ async function deleteSocialSheetRow(taskId, clientId) {
     console.error(err);
     toast("Error deleting row", "err");
   }
+}
+
+function saveColName(clientId, defaultName, newName) {
+  newName = newName.trim();
+  let customHeaders = {};
+  try { customHeaders = JSON.parse(localStorage.getItem(`sheetsCols_${clientId}`)) || {}; } catch(e){}
+  
+  // Also save it to a global fallback just in case they want it to apply to new clients too
+  let globalHeaders = {};
+  try { globalHeaders = JSON.parse(localStorage.getItem(`sheetsCols_global`)) || {}; } catch(e){}
+  
+  if (newName === defaultName || newName === "") {
+    delete customHeaders[defaultName];
+    delete globalHeaders[defaultName];
+  } else {
+    customHeaders[defaultName] = newName;
+    globalHeaders[defaultName] = newName;
+  }
+  
+  localStorage.setItem(`sheetsCols_${clientId}`, JSON.stringify(customHeaders));
+  localStorage.setItem(`sheetsCols_global`, JSON.stringify(globalHeaders));
+  
+  toast("Column name updated");
 }
 
 async function saveSheetRow(taskId, cellElem, clientId) {
