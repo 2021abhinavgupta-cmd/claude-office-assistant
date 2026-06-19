@@ -780,9 +780,7 @@ function appendMessage(role, content, meta = {}) {
 
   const senderName = meta.sender_name || (role === "user" ? (currentUser ? currentUser.user_name : "You") : "System");
   
-  const avatar = role === "user"
-    ? `<div class="msg-avatar">${senderName.charAt(0).toUpperCase()}</div>`
-    : ``;
+  const avatar = ``;
   const name = senderName;
 
   const metaHtml = (role === "assistant" && (meta.model_tier || meta.cost_usd))
@@ -801,7 +799,7 @@ function appendMessage(role, content, meta = {}) {
          <button class="msg-action-btn edit-btn" onclick="editMessage(this)" title="Edit Message">✏ Edit</button>
        </div>`;
 
-  const nameHtml = role === "user" ? `<div class="msg-name">${escHtml(name)}</div>` : ``;
+  const nameHtml = ``;
 
   el.innerHTML = `
     ${avatar}

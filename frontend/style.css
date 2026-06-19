@@ -620,8 +620,19 @@ body {
   background: var(--accent, #B38B59);
   box-shadow: 0 0 14px var(--accent-glow);
 }
-.msg.user .msg-avatar {
-  background: var(--haiku-color);
+.msg.user {
+  justify-content: flex-end;
+}
+.msg.user .msg-body {
+  flex: none; /* Do not stretch fully */
+  max-width: 80%; /* Limit width of user bubble */
+}
+.msg.user .msg-text-container {
+  background: var(--surface2);
+  padding: 12px 18px;
+  border-radius: 20px;
+  border-bottom-right-radius: 4px; /* classic chat bubble look */
+  color: var(--text);
 }
 .msg-body { flex: 1; min-width: 0; }
 .msg-name {
@@ -1021,6 +1032,9 @@ body {
 .msg-actions {
   display: flex; gap: 4px; margin-top: 10px; opacity: 0;
   transition: opacity 0.2s;
+}
+.msg.user .msg-actions {
+  justify-content: flex-end;
 }
 .msg:hover .msg-actions { opacity: 1; }
 .msg-action-btn {
