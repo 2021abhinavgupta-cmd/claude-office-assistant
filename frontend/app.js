@@ -782,7 +782,7 @@ function appendMessage(role, content, meta = {}) {
   
   const avatar = role === "user"
     ? `<div class="msg-avatar">${senderName.charAt(0).toUpperCase()}</div>`
-    : `<div class="msg-avatar">AP</div>`;
+    : ``;
   const name = senderName;
 
   const metaHtml = (role === "assistant" && (meta.model_tier || meta.cost_usd))
@@ -801,10 +801,12 @@ function appendMessage(role, content, meta = {}) {
          <button class="msg-action-btn edit-btn" onclick="editMessage(this)" title="Edit Message">✏ Edit</button>
        </div>`;
 
+  const nameHtml = role === "user" ? `<div class="msg-name">${escHtml(name)}</div>` : ``;
+
   el.innerHTML = `
     ${avatar}
     <div class="msg-body">
-      <div class="msg-name">${escHtml(name)}</div>
+      ${nameHtml}
       <div class="msg-text-container">
         <div class="msg-text" data-raw="${escHtml(content).replace(/"/g,'&quot;')}">${formatText(content)}</div>
       </div>
@@ -1793,10 +1795,10 @@ msgInput.addEventListener("keydown", e => {
  */
 function decorateAssistantReply(el, rawText) {
   if (!el || !el.classList.contains("assistant") || el.classList.contains("typing-indicator")) return;
-  el.classList.add("assistant-reply-framed");
+  // el.classList.add("assistant-reply-framed");
   const body = el.querySelector(".msg-body");
   if (!body) return;
-  body.classList.add("assistant-reply-frame");
+  // body.classList.add("assistant-reply-frame");
 
   const text = rawText || "";
   const looksDeck = /\b(?:slide\s+\d+|##\s*slide\s+\d+)/i.test(text);
@@ -1830,9 +1832,7 @@ function createStreamingMessage() {
   const el  = document.createElement("div");
   el.className = "msg assistant";
   el.innerHTML = `
-    <div class="msg-avatar">AP</div>
     <div class="msg-body">
-      <div class="msg-name">System</div>
       <div class="msg-text stream-text"><span class="cursor-blink"></span></div>
     </div>`;
   messagesEl.appendChild(el);
