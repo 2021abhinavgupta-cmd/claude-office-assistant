@@ -150,80 +150,72 @@
 
     <!-- Welcome Screen -->
     <div class="welcome-screen" id="welcome-screen">
-      <div class="welcome-inner">
-        <div class="welcome-icon"></div>
-        <h1 class="welcome-title">What are you working on?</h1>
-        <p class="welcome-sub-text">Use the cards below or type to get started.</p>
-        <div class="qs-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
-          <button class="qs-card" data-prompt="Write a professional email about ">
-            <span class="qs-emoji"></span>
-            <strong>Write an Email</strong>
-            <small>Professional, quick drafts</small>
-          </button>
-          <button class="qs-card" data-prompt="Summarize the following document: \n\n">
-            <span class="qs-emoji"></span>
-            <strong>Summarize</strong>
-            <small>Documents & long texts</small>
-          </button>
-          <button class="qs-card" data-prompt="Please write an official office announcement regarding: ">
-            <span class="qs-emoji"></span>
-            <strong>Announcement</strong>
-            <small>Formal office notices</small>
-          </button>
-          <button class="qs-card" data-prompt="Draft a meeting agenda for ">
-            <span class="qs-emoji"></span>
-            <strong>Meeting Agenda</strong>
-            <small>Structure your next sync</small>
-          </button>
-          <button class="qs-card" data-prompt="I need help with this code: \n\n">
-            <span class="qs-emoji"></span>
-            <strong>Help with Code</strong>
-            <small>Debug, review, build</small>
-          </button>
-          <button class="qs-card" data-prompt="Please analyze the following data: \n\n">
-            <span class="qs-emoji"></span>
-            <strong>Analyze Data</strong>
-            <small>Insights & spreadsheets</small>
-          </button>
-        </div>
-        <div class="welcome-input-row" id="welcome-input-wrap">
-          <div class="plus-menu-container">
-            <button class="upload-btn" id="welcome-plus-btn" title="Add items">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-            </button>
-            <div class="plus-menu hidden" id="welcome-plus-menu">
-              <div class="menu-item" id="welcome-menu-upload">Add files or photos</div>
-              <div class="menu-item has-submenu" id="welcome-menu-skills">
-                Skills <span class="arrow">›</span>
-                <div class="submenu hidden" id="welcome-submenu-skills">
-                  <div class="menu-item" id="welcome-menu-manage-skills">Manage skills</div>
-                  <div class="menu-item" id="welcome-menu-add-skill">Add skill</div>
-                  <div class="menu-divider"></div>
-                  <div id="welcome-skills-list-container"></div>
+      <div class="welcome-inner" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+        <h1 class="welcome-title" id="welcome-title" style="display: flex; align-items: center; gap: 12px; font-weight: 400; font-family: 'Times New Roman', Times, serif; font-size: 2.2rem; color: var(--text);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color: #d97757;">
+             <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+          </svg>
+          <span id="welcome-greeting-text">Good afternoon, User</span>
+        </h1>
+        <div class="input-wrap" id="welcome-input-wrap" style="width: 100%; max-width: 760px; margin-top: 24px;">
+          <div class="active-badges" id="welcome-active-badges"></div>
+          
+          <div class="input-top-row" style="display: flex; width: 100%;">
+            <textarea id="welcome-input" class="msg-input" rows="1"
+              placeholder="Paste a doc, an email, or a question to get started" maxlength="500000" style="padding-bottom: 0px; margin-top: 0px;"></textarea>
+          </div>
+          
+          <div class="input-bottom-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding-top: 8px;">
+            <div class="plus-menu-container" style="display: flex; align-items: center; gap: 4px; position: relative;">
+              <button class="upload-btn" id="welcome-plus-btn" title="Add items" style="margin: 0; background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-2); display: flex; align-items: center; justify-content: center; border-radius: 6px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+              <button class="optimize-btn" id="welcome-optimize-btn" title="Optimize prompt with AI ( cheap)" style="margin: 0; background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-2); border-radius: 6px; display: flex; align-items: center;">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                   <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+                 </svg>
+              </button>
+              <div class="plus-menu hidden" id="welcome-plus-menu">
+                <div class="menu-item" id="welcome-menu-upload">Add files or photos</div>
+                <div class="menu-item has-submenu" id="welcome-menu-skills">
+                  Skills <span class="arrow">›</span>
+                  <div class="submenu hidden" id="welcome-submenu-skills">
+                    <div class="menu-item" id="welcome-menu-manage-skills">Manage skills</div>
+                    <div class="menu-item" id="welcome-menu-add-skill">Add skill</div>
+                    <div class="menu-divider"></div>
+                    <div id="welcome-skills-list-container"></div>
+                  </div>
                 </div>
-              </div>
-              <div class="menu-item" id="welcome-menu-web-search">Web search <span class="check hidden" id="welcome-web-search-check">✓</span></div>
-              <div class="menu-item has-submenu" id="welcome-menu-style">
-                Use style <span class="arrow">›</span>
-                <div class="submenu hidden" id="welcome-submenu-style">
-                  <div class="menu-item" id="welcome-menu-manage-styles">Manage styles</div>
-                  <div class="menu-item" id="welcome-menu-add-style">Add style</div>
-                  <div class="menu-divider"></div>
-                  <div id="welcome-styles-list-container"></div>
+                <div class="menu-item" id="welcome-menu-web-search">Web search <span class="check hidden" id="welcome-web-search-check">✓</span></div>
+                <div class="menu-item has-submenu" id="welcome-menu-style">
+                  Use style <span class="arrow">›</span>
+                  <div class="submenu hidden" id="welcome-submenu-style">
+                    <div class="menu-item" id="welcome-menu-manage-styles">Manage styles</div>
+                    <div class="menu-item" id="welcome-menu-add-style">Add style</div>
+                    <div class="menu-divider"></div>
+                    <div id="welcome-styles-list-container"></div>
+                  </div>
                 </div>
               </div>
             </div>
+
+            <div class="input-actions" style="display: flex; align-items: center; gap: 8px;">
+              <select id="welcome-model-override" style="background:transparent; border:none; color:var(--text-2); cursor:pointer; font-size:13px; outline:none; font-family:inherit; padding: 4px; appearance: none; -webkit-appearance: none;">
+                <option value="auto" style="background: #2b2b2b; color: #fff;">Auto</option>
+                <option value="claude-sonnet-4-6" style="background: #2b2b2b; color: #fff;">Sonnet 4.6 Medium</option>
+                <option value="claude-haiku-4-5-20251001" style="background: #2b2b2b; color: #fff;">Haiku 4.5 Fast</option>
+              </select>
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-2); margin-left:-4px; pointer-events:none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              <button class="send-btn" id="welcome-send" disabled title="Send (Enter)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
           </div>
-          <textarea id="welcome-input" class="welcome-input" rows="1"
-            placeholder="Type here or pick a card above…" maxlength="500000"></textarea>
-          <button class="send-btn" id="welcome-send" disabled>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
         </div>
       </div>
     </div>

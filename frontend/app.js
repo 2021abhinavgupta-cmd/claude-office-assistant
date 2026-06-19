@@ -225,13 +225,18 @@ function selectUser(userId, userName) {
 }
 
 function applyUser(user) {
-  // Normalize: login.html stores 'name', app.js legacy uses 'user_name'
   const displayName = user.user_name || user.name || "?";
   userAvatar.textContent   = displayName.charAt(0).toUpperCase();
   userNameText.textContent = displayName;
   
-
-}
+  const greetingEl = document.getElementById("welcome-greeting-text");
+  if (greetingEl) {
+    const hour = new Date().getHours();
+    let greeting = "Good evening";
+    if (hour < 12) greeting = "Good morning";
+    else if (hour < 17) greeting = "Good afternoon";
+    greetingEl.textContent = `${greeting}, ${displayName}`;
+  }}
 
 // ── PIN Login Logic ─────────────────────────────────────────────────────────
 async function promptPin(userId, userName) {
@@ -711,14 +716,7 @@ function toggleWelcomeSend() {
   welcomeSend.disabled = !welcomeInput.value.trim();
 }
 
-// Quick-start cards
-document.querySelectorAll(".qs-card").forEach(card => {
-  card.addEventListener("click", () => {
-    welcomeInput.value = card.dataset.prompt;
-    toggleWelcomeSend();
-    welcomeInput.focus();
-  });
-});
+// Removed Quick-start cards
 
 // ── UI Helpers ────────────────────────────────────────────────────────────────
 function showChatView() {
@@ -742,6 +740,16 @@ function showWelcomeScreen() {
   chatView.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
   
+  const greetingEl = document.getElementById("welcome-greeting-text");
+  if (greetingEl && currentUser) {
+    const hour = new Date().getHours();
+    let greeting = "Good evening";
+    if (hour < 12) greeting = "Good morning";
+    else if (hour < 17) greeting = "Good afternoon";
+    const name = currentUser.user_name || currentUser.name || "User";
+    greetingEl.textContent = `${greeting}, ${name}`;
+  }
+
   // Move file-chips to welcome screen
   const fileChips = document.getElementById("file-chips");
   const welcomeInputWrap = document.getElementById("welcome-input-wrap");
