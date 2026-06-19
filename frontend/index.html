@@ -265,7 +265,7 @@
       <!-- File Chips (shown when files are attached) -->
       <div class="file-chips" id="file-chips"></div>
 
-      <div class="output-contract-bar" id="output-contract-bar" title="Optional — applied only to the next reply">
+      <div class="output-contract-bar" id="output-contract-bar" title="Optional — applied only to the next reply" style="display: none !important;">
         <span class="occ-label">Next reply</span>
         <select id="oc-format" class="occ-select" aria-label="Format">
           <option value="">Format…</option>
@@ -295,12 +295,17 @@
           <div class="active-badges" id="active-badges"></div>
           
           <div class="input-top-row" style="display: flex; width: 100%; align-items: flex-end; gap: 12px;">
-            <div class="plus-menu-container">
+            <div class="plus-menu-container" style="display: flex; align-items: center; gap: 4px;">
               <button class="upload-btn" id="plus-btn" title="Add items">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
+              </button>
+              <button class="optimize-btn" id="optimize-btn" title="Optimize prompt with AI ( cheap)" style="margin: 0; background: none; border: none; padding: 4px; cursor: pointer; color: var(--text-2); border-radius: 6px;">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                   <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+                 </svg>
               </button>
               <div class="plus-menu hidden" id="plus-menu">
                 <div class="menu-item" id="menu-upload">Add files or photos</div>
@@ -332,14 +337,7 @@
               placeholder="Write a message..." maxlength="500000" style="padding-bottom: 4px;"></textarea>
           </div>
           
-          <div class="input-bottom-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding-top: 8px;">
-            <div class="input-left-actions">
-               <button class="optimize-btn" id="optimize-btn" title="Optimize prompt with AI ( cheap)" style="margin: 0;">
-                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                   <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
-                 </svg>
-               </button>
-            </div>
+          <div class="input-bottom-row" style="display: flex; justify-content: flex-end; align-items: center; width: 100%; padding-top: 8px;">
             <div class="input-actions" style="display: flex; align-items: center; gap: 8px;">
               <span class="char-count" id="char-count"></span>
               <button class="send-btn" id="send-btn" disabled title="Send (Enter)">
