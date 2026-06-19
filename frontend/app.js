@@ -807,8 +807,9 @@ function appendMessage(role, content, meta = {}) {
          <button class="msg-action-btn edit-btn" onclick="editMessage(this)" title="Edit Message">✏ Edit</button>
        </div>`;
 
-  const nameHtml = ``;
-
+  const nameHtml = role === "user" 
+    ? `<div class="msg-name" style="text-align: right; font-size: 0.8rem; color: var(--text-2); margin-bottom: 4px; margin-right: 4px;">${name}</div>`
+    : ``;
   el.innerHTML = `
     ${avatar}
     <div class="msg-body">

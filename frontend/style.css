@@ -606,7 +606,7 @@ body {
 .msg {
   display: flex; gap: 0; padding: 12px 0;
   animation: msg-fade 0.3s ease;
-  max-width: 760px; margin: 0 auto; width: 100%;
+  max-width: 880px; margin: 0 auto; width: 100%;
   padding-left: 24px; padding-right: 24px;
 }
 @keyframes msg-fade {
@@ -774,7 +774,7 @@ body {
   flex-shrink: 0; padding: 10px 24px 20px;
   background: var(--bg);
   display: flex; flex-direction: column; gap: 6px;
-  max-width: 760px; margin: 0 auto; width: 100%;
+  max-width: 880px; margin: 0 auto; width: 100%;
 }
 .input-wrap {
   display: flex; flex-direction: column;
@@ -972,7 +972,7 @@ body {
 .file-chips {
   display: flex; flex-wrap: wrap; gap: 8px;
   padding: 0 24px 8px;
-  max-width: 760px; margin: 0 auto; width: 100%;
+  max-width: 880px; margin: 0 auto; width: 100%;
 }
 .file-chips:empty { display: none; }
 .file-chip {
