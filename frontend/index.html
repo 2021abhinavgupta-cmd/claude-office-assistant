@@ -339,7 +339,13 @@
           
           <div class="input-bottom-row" style="display: flex; justify-content: flex-end; align-items: center; width: 100%; padding-top: 8px;">
             <div class="input-actions" style="display: flex; align-items: center; gap: 8px;">
-              <span class="char-count" id="char-count"></span>
+              <select id="model-override" style="background:transparent; border:none; color:var(--text-2); cursor:pointer; font-size:13px; outline:none; font-family:inherit; padding: 4px; appearance: none; -webkit-appearance: none;">
+                <option value="auto">Sonnet 4.6 Auto</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6 Medium</option>
+                <option value="claude-haiku-4-5-20251001">Haiku 4.5 Fast</option>
+              </select>
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-2); margin-left:-4px; pointer-events:none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              <span class="char-count" id="char-count" style="margin-left: 8px;"></span>
               <button class="send-btn" id="send-btn" disabled title="Send (Enter)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -349,22 +355,9 @@
           </div>
         </div>
         <p class="input-footer-meta" id="old-web-search-meta" style="display:flex; justify-content: center; align-items: center; gap: 8px;">
-          <label class="web-search-label" title="Fetches public web snippets (DuckDuckGo) once per send — not persisted in chat history">
-            <input type="checkbox" id="web-search-toggle" />
-            <span>Web search</span>
-          </label>
-          <span class="footer-dot">·</span>
+          <input type="checkbox" id="web-search-toggle" checked style="display: none;" />
           <span id="meta-task"></span>
-          <span> · </span>
-          <select id="model-override" style="background:transparent; border:none; color:var(--text); cursor:pointer; font-size:inherit; outline:none; font-family:inherit;">
-            <option value="auto">Auto</option>
-            <option value="claude-sonnet-4-6">Standard</option>
-            <option value="claude-haiku-4-5-20251001">Fast</option>
-          </select>
-          <span class="footer-dot" style="margin: 0 4px;">|</span>
-          <span style="opacity: 0.8;">Claude is AI and can make mistakes. Please double-check responses.</span>
-          <span> · </span>
-          <a href="dashboard.html" style="color:var(--accent);text-decoration:none">Dashboard</a>
+          <a href="dashboard.html" style="color:var(--text-2);text-decoration:none; font-size: 12px;">Dashboard</a>
         </p>
       </footer>
     </div>
