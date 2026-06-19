@@ -1922,15 +1922,6 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     }
   });
 
-  const regenWrap = document.createElement("div");
-  regenWrap.className = "regenerate-wrap";
-  regenWrap.innerHTML = `<input type="text" class="regenerate-input" placeholder="Regenerate with instruction (e.g. shorter, more formal)…" aria-label="Regeneration instruction" />
-    <button type="button" class="msg-action-btn regenerate-submit-btn">↻ Regenerate</button>`;
-  body.appendChild(regenWrap);
-  regenWrap.querySelector(".regenerate-submit-btn").addEventListener("click", () => {
-    const note = regenWrap.querySelector(".regenerate-input").value.trim();
-    window.regenerateWithNote(el, note);
-  });
 
   maybeAddSidePreviewButton(actions, text);
 
@@ -1988,15 +1979,7 @@ window.appendMessage = function(role, content, meta = {}) {
       }
     });
 
-    const regenWrap = document.createElement("div");
-    regenWrap.className = "regenerate-wrap";
-    regenWrap.innerHTML = `<input type="text" class="regenerate-input" placeholder="Regenerate with instruction…" aria-label="Regeneration instruction" />
-      <button type="button" class="msg-action-btn regenerate-submit-btn">↻ Regenerate</button>`;
-    body.appendChild(regenWrap);
-    regenWrap.querySelector(".regenerate-submit-btn").addEventListener("click", () => {
-      const note = regenWrap.querySelector(".regenerate-input").value.trim();
-      window.regenerateWithNote(el, note);
-    });
+
 
     // ── Track last AI response for server-side export ──────────────────────
     if (window.setLastAIResponse) {

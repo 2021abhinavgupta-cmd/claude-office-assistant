@@ -816,25 +816,7 @@ body {
   padding: 4px 8px;
   font-size: 0.72rem;
 }
-.regenerate-wrap {
-  width: 100%;
-  margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-.regenerate-input {
-  flex: 1;
-  min-width: 160px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 0.8rem;
-  font-family: inherit;
-}
+
 .msg-kb-sources {
   font-size: 0.7rem;
   color: var(--text-3);
