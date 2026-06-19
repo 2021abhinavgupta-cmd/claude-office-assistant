@@ -1063,7 +1063,7 @@ async function fetchBudget() {
 
 function updateBudgetUI(b) {
   if (!b) return;
-  const spent = b.spent ?? b.monthly_spend ?? 0;
+  const spent = b.total_spent_ever ?? b.spent ?? b.monthly_spend ?? 0;
   const limit = b.limit ?? b.budget_limit  ?? 150;
   const pct   = Math.min((spent / limit) * 100, 100);
   budgetMiniVal.textContent = `$${spent.toFixed(2)} (₹${(spent*83.5).toFixed(2)}) / $${limit} (₹${(limit*83.5).toFixed(2)})`;
