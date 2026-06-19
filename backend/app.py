@@ -2047,29 +2047,13 @@ def conversation_stream(conv_id):
             yield f"data: {json.dumps({'type':'error','error':'Monthly budget limit reached'})}\n\n"
         return Response(stream_with_context(_budget_err()), mimetype="text/event-stream")
 
-    def should_think(prompt: str, t_type: str) -> bool:
-        THINKING_TASKS = [
-            "coding", "data_analysis", "html_design", "presentations", "analysis",
-            "scripts", "content", "meetings", "announcements", "email",
-        ]
-        THINKING_KEYWORDS = [
-            "why", "how", "explain", "analyse", "analyze", "compare", "difference",
-            "best way", "should i", "help me think", "strategy", "plan", "review",
-            "feedback", "debug", "fix", "report", "whitepaper", "document", "proposal",
-            "trade-off", "tradeoff", "risk", "architecture", "implications", "thoroughly",
-            "in depth", "deep dive", "evaluate", "critique", "assess", "recommendation",
-            "unclear", "uncertain", "what should i", "which option", "outline", "brainstorm",
-        ]
-        low = prompt.lower()
-        if t_type in THINKING_TASKS:
-            return True
-        if len(prompt) > 900:
-            return True
-        if len(prompt.split()) > 18:
-            return True
-        if any(k in low for k in THINKING_KEYWORDS):
-            return True
-        return False
+    def should_think(override_val) -> bool:
+        # Thinking is currently only available on Sonnet models.
+        # If user explicitly selected Haiku, disable thinking.
+        if override_val == "claude-haiku-4-5-20251001":
+            return False
+        # For 'auto' or 'sonnet', always turn thinking on.
+        return True
 
     def generate():
         full_response  = ""
@@ -2083,7 +2067,7 @@ def conversation_stream(conv_id):
         logger.info(f"Stream | task={task_type} | model={model_tier} | user={user_id}")
 
         try:
-            use_thinking = should_think(message, task_type)
+            use_thinking = should_think(model_override)
             stream_max = _conversation_max_tokens(task_type, model_tier)
             stream_kwargs = {
                 "system": system_prompt,
