@@ -66,77 +66,60 @@
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-top">
       <div class="brand">
-        <div class="brand-icon"></div>
-        <span class="brand-name">OPs</span>
+        <span class="brand-name" style="font-family: 'Times New Roman', serif; font-size: 1.3rem; letter-spacing: -0.02em;">OPs</span>
+        <div class="brand-actions">
+           <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+           <button class="icon-btn" id="sidebar-toggle-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
+        </div>
       </div>
       <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New Chat
+        New chat
       </button>
     </div>
 
-    <div class="projects-panel" style="margin-bottom: 16px;">
-      <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600; cursor:pointer;" onclick="toggleProjectsPanel()" id="projects-panel-header">
-        <span>Projects</span>
-        <div style="display:flex; gap:6px; align-items:center;">
-          <button id="new-project-btn" title="New Project" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:0 4px;" onclick="event.stopPropagation()">+</button>
-          <span id="projects-chevron" style="font-size:0.7rem; transition:transform 0.2s; display:inline-block; transform:rotate(-90deg);">▼</span>
-        </div>
+    <div class="sidebar-nav-group">
+      <div class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Chats
       </div>
-      <div class="projects-list" id="projects-list" style="display:none;">
-        <div class="conv-empty">No projects yet</div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><rect x="7" y="7" width="3" height="9"/><rect x="14" y="7" width="3" height="5"/></svg> Projects
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Artifacts
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Customize
       </div>
     </div>
 
-    <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
-      <span>Recent Chats</span>
-    </div>
-    <div style="padding: 0 12px 12px;">
-      <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
-    </div>
-    <div class="conv-list" id="conv-list">
-      <div class="conv-empty">No chats yet.<br>Click <strong>New Chat</strong> to begin.</div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-header">Products</div>
+      <div class="sidebar-nav-group">
+        <div class="nav-item"><span>&lt;/&gt;</span> Code</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Cowork</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12a10 10 0 1 0 20 0 10 10 0 0 0-20 0zm0 0h20m-10-10v20"/></svg> Design</div>
+      </div>
     </div>
 
-    <!--Saved Notes Panel -->
-    <div class="memory-panel" id="memory-panel">
-      <div class="memory-header" id="memory-toggle">
-        <span>Saved Notes</span>
-        <div class="memory-header-actions">
-          <span class="memory-count" id="memory-count">0</span>
-          <button class="memory-add-btn" id="memory-add-btn" title="Add memory">+</button>
-          <span class="memory-chevron" id="memory-chevron">▾</span>
-        </div>
+    <div class="sidebar-section recents-section" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+      <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center;">
+        Recents
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </div>
-      <div class="memory-body hidden" id="memory-body">
-        <div class="memory-input-row">
-          <input id="memory-input" class="memory-input" placeholder="e.g. I prefer Python over JS" />
-          <button id="memory-save-btn" class="memory-save-btn">Save</button>
-        </div>
-        <div class="memory-list" id="memory-list">
-          <div class="memory-empty">No memories yet</div>
-        </div>
+      <div class="conv-list" id="conv-list">
+        <div class="conv-empty">No chats yet.</div>
       </div>
     </div>
 
     <div class="sidebar-footer">
-      <div class="budget-mini">
-        <div class="budget-mini-row">
-          <span class="budget-mini-label">Usage</span>
-          <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
-          <a href="dashboard.html" class="budget-dash-link" title="FullDashboard">↗</a>
+      <div class="user-profile-pill">
+        <div class="user-avatar-circle" id="user-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="user-name-text">Select profile</div>
+          <div class="user-plan">Pro plan</div>
         </div>
-        <div class="budget-mini-track">
-          <div class="budget-mini-fill" id="budget-mini-fill" style="width:0%"></div>
-        </div>
-      </div>
-      <div style="display:flex; align-items:center; gap:8px; padding:8px 4px;">
-        <button class="user-pill" id="user-pill" title="Switch user" style="flex:1">
-          <span class="user-avatar" id="user-avatar">?</span>
-          <span class="user-name-text" id="user-name-text">Select profile</span>
-          <span class="pill-switch">⇅</span>
-        </button>
-        <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark mode" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:8px; cursor:pointer; font-size:1rem; flex-shrink:0;">☀</button>
+        <button class="profile-action-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
       </div>
     </div>
   </aside>
@@ -228,18 +211,13 @@
     <!-- Chat View -->
     <div class="chat-view hidden" id="chat-view">
       <header class="chat-header" id="chat-header">
-        <div class="ch-left">
-          <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-            </svg>
-          </button>
-          <h1 class="conv-title-header" id="conv-title-header">New conversation</h1>
+        <div class="ch-left" style="gap: 8px;">
+          <h1 class="conv-title-header" id="conv-title-header" style="font-size: 1rem; font-weight: 500;">New conversation</h1>
+          <span style="color: var(--muted); font-size: 0.8rem; cursor: pointer;">&#x25BE;</span>
         </div>
         <div class="ch-right">
-          <span class="task-chip" id="task-chip">general</span>
-          <span class="model-chip" id="model-chip">haiku</span>
-          <div class="conn-status" id="conn-status">
+          <button class="icon-btn" style="color: var(--text);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg></button>
+          <div class="conn-status hidden" id="conn-status">
             <span class="conn-dot ok"></span>
             <span>Connected</span>
           </div>
@@ -261,97 +239,63 @@
       <!-- File Chips (shown when files are attached) -->
       <div class="file-chips" id="file-chips"></div>
 
-      <div class="output-contract-bar" id="output-contract-bar" title="Optional — applied only to the next reply">
-        <span class="occ-label">Next reply</span>
-        <select id="oc-format" class="occ-select" aria-label="Format">
-          <option value="">Format…</option>
-          <option value="Short prose paragraphs">Prose</option>
-          <option value="Bullet list">Bullets</option>
-          <option value="Markdown table when comparing">Table</option>
-          <option value="Email (subject + body)">Email</option>
-        </select>
-        <select id="oc-length" class="occ-select" aria-label="Length">
-          <option value="">Length…</option>
-          <option value="Very brief (under ~120 words)">Very brief</option>
-          <option value="Medium (~250–400 words)">Medium</option>
-          <option value="Detailed (up to ~800 words)">Detailed</option>
-        </select>
-        <select id="oc-tone" class="occ-select" aria-label="Tone">
-          <option value="">Tone…</option>
-          <option value="Neutral professional">Professional</option>
-          <option value="Warm and conversational">Warm</option>
-          <option value="Direct and blunt">Direct</option>
-          <option value="Formal / legal-adjacent careful">Formal</option>
-        </select>
-        <input type="text" id="oc-audience" class="occ-audience" placeholder="Audience (optional)" maxlength="120" />
-      </div>
-
       <footer class="input-bar">
         <div class="input-wrap" id="input-wrap">
           <div class="active-badges" id="active-badges"></div>
-          <div class="plus-menu-container">
-            <button class="upload-btn" id="plus-btn" title="Add items">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-            </button>
-            <div class="plus-menu hidden" id="plus-menu">
-              <div class="menu-item" id="menu-upload">Add files or photos</div>
-              <div class="menu-item has-submenu" id="menu-skills">
-                Skills <span class="arrow">›</span>
-                <div class="submenu hidden" id="submenu-skills">
-                  <div class="menu-item" id="menu-manage-skills">Manage skills</div>
-                  <div class="menu-item" id="menu-add-skill">Add skill</div>
-                  <div class="menu-divider"></div>
-                  <div id="skills-list-container">
-                    <!-- Skills populated dynamically -->
+          
+          <div class="input-top-row" style="display: flex; width: 100%; align-items: flex-end; gap: 12px;">
+            <div class="plus-menu-container">
+              <button class="upload-btn" id="plus-btn" title="Add items">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+              <div class="plus-menu hidden" id="plus-menu">
+                <div class="menu-item" id="menu-upload">Add files or photos</div>
+                <div class="menu-item has-submenu" id="menu-skills">
+                  Skills <span class="arrow">›</span>
+                  <div class="submenu hidden" id="submenu-skills">
+                    <div class="menu-item" id="menu-manage-skills">Manage skills</div>
+                    <div class="menu-item" id="menu-add-skill">Add skill</div>
+                    <div class="menu-divider"></div>
+                    <div id="skills-list-container">
+                      <!-- Skills populated dynamically -->
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="menu-item" id="menu-web-search">Web search <span class="check hidden" id="web-search-check">✓</span></div>
-              <div class="menu-item has-submenu" id="menu-style">
-                Use style <span class="arrow">›</span>
-                <div class="submenu hidden" id="submenu-style">
-                  <div class="menu-item style-option" data-style="normal">Normal</div>
-                  <div class="menu-item style-option" data-style="concise">Concise</div>
-                  <div class="menu-item style-option" data-style="detailed">Detailed</div>
-                  <div class="menu-item style-option" data-style="formal">Formal</div>
-                </div>
+                <div class="menu-item" id="menu-web-search">Web search <span class="check hidden" id="web-search-check">✓</span></div>
               </div>
             </div>
+            
+            <textarea id="msg-input" class="msg-input" rows="1"
+              placeholder="Write a message..." maxlength="500000" style="padding-bottom: 4px;"></textarea>
           </div>
-          <button class="optimize-btn" id="optimize-btn" title="Optimize prompt with AI ( cheap)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-              <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
-            </svg>
-          </button>
-          <textarea id="msg-input" class="msg-input" rows="1"
-            placeholder="Type your message… (or drop a file here)" maxlength="500000"></textarea>
-          <div class="input-actions">
-            <span class="char-count" id="char-count"></span>
-            <button class="send-btn" id="send-btn" disabled title="Send (Enter)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-            </button>
+          
+          <div class="input-bottom-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding-top: 8px;">
+            <div class="input-left-actions">
+              <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+            </div>
+            <div class="input-right-actions" style="display: flex; align-items: center; gap: 8px;">
+              <select id="model-override" class="model-select-dropdown" style="background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:0.85rem; outline:none;">
+                <option value="auto">Sonnet 4.6 Medium</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+                <option value="claude-haiku-4-6">Haiku 4.6</option>
+                <option value="gpt-4o">GPT-4o</option>
+              </select>
+              <button class="icon-btn" title="Voice Input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg></button>
+              <button class="icon-btn" title="Audio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></button>
+              
+              <button class="send-btn hidden" id="send-btn" disabled title="Send (Enter)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
-        <p class="input-footer-meta" id="old-web-search-meta" style="display:none;">
-          <label class="web-search-label" title="Fetches public web snippets (DuckDuckGo) once per send — not persisted in chat history">
-            <input type="checkbox" id="web-search-toggle" />
-            <span>Web search</span>
-          </label>
-          <span class="footer-dot">·</span>
-          <span id="meta-task"></span>
-          <span> · </span>
-          <select id="model-override" style="background:transparent; border:none; color:var(--text); cursor:pointer; font-size:inherit; outline:none; font-family:inherit;">
-            <option value="auto">Auto</option>
-            <option value="claude-sonnet-4-6">Standard</option>
-            <option value="claude-haiku-4-5-20251001">Fast</option>
-          </select>
-          <span> · </span>
-          <a href="dashboard.html" style="color:var(--accent);text-decoration:none">Dashboard</a>
+        <p class="input-footer-meta" style="margin-top: 8px;">
+          Claude is AI and can make mistakes. Please double-check responses.
         </p>
       </footer>
     </div>
