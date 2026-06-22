@@ -361,26 +361,7 @@
         <button class="btn-back" onclick="goBack()">← Choose different person</button>
       </div>
 
-      <!-- Step 3: Preferences -->
-      <div class="prefs-section" id="step-prefs">
-        <div class="prefs-q">Have you used our portal before? </div>
-        <div class="prefs-sub">This helps us personalise your experience.</div>
-        <div class="toggle-row">
-          <div class="tog" id="tog-yes" onclick="setSystemUse(true)">Yes </div>
-          <div class="tog" id="tog-no" onclick="setSystemUse(false)">Not yet </div>
-        </div>
-        <div class="prefs-q" style="margin-top:4px">Which tasks do you care about? </div>
-        <div class="prefs-sub">Select all that apply — filters your task board.</div>
-        <div class="task-chips">
-          <div class="chip on" data-cat="content" onclick="toggleChip(this)"> Content</div>
-          <div class="chip on" data-cat="video" onclick="toggleChip(this)"> Video</div>
-          <div class="chip on" data-cat="design" onclick="toggleChip(this)"> Design</div>
-          <div class="chip on" data-cat="website" onclick="toggleChip(this)"> Website</div>
-          <div class="chip on" data-cat="accounts" onclick="toggleChip(this)"> Accounts</div>
-          <div class="chip on" data-cat="review" onclick="toggleChip(this)"> Review</div>
-        </div>
-        <button class="btn-go" onclick="savePrefsAndGo()">Continue →</button>
-      </div>
+
     </div>
 
 
@@ -400,7 +381,7 @@
       if (r && r.ok) {
         const d = await r.json();
         if (d.valid) {
-          redirect(d, false);  // existing session — skip preferences, go straight toDashboard
+          redirect(d);  // existing session — straight to Dashboard
           return;
         }
       }
@@ -488,45 +469,20 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ user_id: selectedEmp.id })
         }).catch(() => { });
-        redirect(d.user, true);  // fresh login — show preferences first
+        redirect(d.user);  // go straight to Dashboard/Tasks
       } else {
         document.getElementById("err-msg").textContent = d.error || "Wrong PIN — try again";
         pin = ""; updateDots();
       }
     }
 
-    function redirect(userOrData, showPreferences = false) {
-      if (showPreferences) {
-        showPrefs();
-      } else {
-        // Go directly toDashboard — read is_admin from localStorage or the verify payload
-        const stored = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
-        const isAdmin = stored.is_admin || userOrData.is_admin;
-        window.location.href = isAdmin ? "dashboard.html" : "my-tasks.html";
-      }
+    function redirect(userOrData) {
+      // Go directly to Dashboard/Tasks — read is_admin from localStorage or the verify payload
+      const stored = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+      const isAdmin = stored.is_admin || userOrData.is_admin;
+      window.location.href = isAdmin ? "dashboard.html" : "my-tasks.html";
     }
 
-    function showPrefs() {
-      document.getElementById("step-pin").style.display = "none";
-      document.getElementById("step-prefs").style.display = "block";
-    }
-
-    let usesSystemVal = null;
-    function setSystemUse(val) {
-      usesSystemVal = val;
-      document.getElementById("tog-yes").classList.toggle("on", val);
-      document.getElementById("tog-no").classList.toggle("on", !val);
-    }
-    function toggleChip(el) { el.classList.toggle("on"); }
-
-    function savePrefsAndGo() {
-      const cats = [...document.querySelectorAll(".chip.on")].map(c => c.dataset.cat);
-      const prefs = { usesSystem: usesSystemVal, taskCategories: cats, setAt: new Date().toISOString() };
-      localStorage.setItem("claude_prefs", JSON.stringify(prefs));
-      const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
-      const dest = user.is_admin ? "dashboard.html" : "my-tasks.html";
-      window.location.href = dest;
-    }
     function goBack() {
       document.getElementById("step-pin").style.display = "none";
       document.getElementById("step-emp").style.display = "block";
