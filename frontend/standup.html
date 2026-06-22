@@ -264,6 +264,16 @@ function renderTasks(){
   document.getElementById("stat-done").textContent = `${done} done`;
   document.getElementById("stat-pend").textContent = `${pend} remaining`;
 
+  // Fallback: if due_date is missing, try to use Creation Date from title preview
+  allTasks.forEach(t => {
+    if (!t.due_date && t.title) {
+       const m = t.title.match(/Creation Date:\s*([\d-]+)/i);
+       if (m) {
+           t.due_date = m[1];
+       }
+    }
+  });
+
   // Sort tasks chronologically by due_date right before rendering
   allTasks.sort((a,b) => {
     const parseD = (d) => {
@@ -608,6 +618,16 @@ async function loadTeamStandups(dateStr = ""){
   
   // Sort tasks chronologically by due_date for each user
   Object.keys(tasksByUser).forEach(uid => {
+    // Fallback: extract Creation Date from title preview if due_date is empty
+    tasksByUser[uid].forEach(t => {
+      if (!t.due_date && t.title) {
+         const m = t.title.match(/Creation Date:\s*([\d-]+)/i);
+         if (m) {
+             t.due_date = m[1];
+         }
+      }
+    });
+
     tasksByUser[uid].sort((a,b) => {
       const parseD = (d) => {
         if(!d) return "9999-12-31";
