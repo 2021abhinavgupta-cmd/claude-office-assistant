@@ -125,15 +125,15 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id, due_date FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id, due_date FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
     
     tasks_by_user = {}
-    for uid, title, status, blocker, carried_from, subtasks_json, notion_id in task_rows:
+    for uid, title, status, blocker, carried_from, subtasks_json, notion_id, due_date in task_rows:
         if uid not in tasks_by_user:
             tasks_by_user[uid] = []
             
@@ -142,7 +142,21 @@ def get_standups_today():
             st = json.loads(subtasks_json) if subtasks_json else []
         except: pass
             
-        tasks_by_user[uid].append({"title": title, "status": status, "blocker": blocker, "carried_from": carried_from, "subtasks": st, "notion_id": notion_id})
+        tasks_by_user[uid].append({"id": len(tasks_by_user[uid]), "title": title, "status": status, "blocker": blocker, "carried_from": carried_from, "subtasks": st, "notion_id": notion_id, "due_date": due_date})
+
+    # Sort each user's tasks chronologically
+    import re
+    def parse_date_for_sort(d):
+        if not d:
+            return "9999-12-31"
+        if re.match(r"^\d{2}-\d{2}-\d{4}$", d.strip()):
+            return f"{d[6:10]}-{d[3:5]}-{d[0:2]}"
+        if re.match(r"^\d{2}/\d{2}/\d{4}$", d.strip()):
+            return f"{d[6:10]}-{d[3:5]}-{d[0:2]}"
+        return d.strip()
+
+    for uid in tasks_by_user:
+        tasks_by_user[uid].sort(key=lambda x: (parse_date_for_sort(x["due_date"]), x["id"]))
 
     # Load employee names dynamically from employees.json
     try:
@@ -280,8 +294,21 @@ def get_my_tasks():
                         )
 
     import json
+    import re
+
+    def parse_date_for_sort(d):
+        if not d:
+            return "9999-12-31"
+        # If DD-MM-YYYY, convert to YYYY-MM-DD
+        if re.match(r"^\d{2}-\d{2}-\d{4}$", d.strip()):
+            return f"{d[6:10]}-{d[3:5]}-{d[0:2]}"
+        # If DD/MM/YYYY, convert to YYYY-MM-DD
+        if re.match(r"^\d{2}/\d{2}/\d{4}$", d.strip()):
+            return f"{d[6:10]}-{d[3:5]}-{d[0:2]}"
+        return d.strip()
+
     cur.execute(
-        "SELECT id, title, status, carried_from, created_at, blocker, notion_id, subtasks, delegated_to, delegated_from FROM standup_tasks WHERE user_id=? AND date=? ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC",
+        "SELECT id, title, status, carried_from, created_at, blocker, notion_id, subtasks, delegated_to, delegated_from, due_date FROM standup_tasks WHERE user_id=? AND date=?",
         (user_id, date_str),
     )
     rows = cur.fetchall()
@@ -299,8 +326,10 @@ def get_my_tasks():
             "id": r[0], "title": r[1], "status": r[2],
             "carried_from": r[3], "created_at": r[4], 
             "blocker": r[5], "notion_id": r[6], "subtasks": st,
-            "delegated_to": r[8], "delegated_from": r[9]
+            "delegated_to": r[8], "delegated_from": r[9], "due_date": r[10]
         })
+
+    tasks.sort(key=lambda x: (parse_date_for_sort(x["due_date"]), x["id"]))
 
     return jsonify({"tasks": tasks, "date": date_str})
 
