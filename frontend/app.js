@@ -728,9 +728,10 @@ function showChatView() {
   
   // Move file-chips to chat view
   const fileChips = document.getElementById("file-chips");
-  const outputContractBar = document.getElementById("output-contract-bar");
-  if (fileChips && outputContractBar) {
-    outputContractBar.parentElement.insertBefore(fileChips, outputContractBar);
+  const inputWrap = document.getElementById("input-wrap");
+  if (fileChips && inputWrap) {
+    const topRow = inputWrap.querySelector(".input-top-row");
+    if (topRow) inputWrap.insertBefore(fileChips, topRow);
   }
 }
 function showWelcomeScreen() {
@@ -754,7 +755,8 @@ function showWelcomeScreen() {
   const fileChips = document.getElementById("file-chips");
   const welcomeInputWrap = document.getElementById("welcome-input-wrap");
   if (fileChips && welcomeInputWrap) {
-    welcomeInputWrap.parentElement.insertBefore(fileChips, welcomeInputWrap);
+    const topRow = welcomeInputWrap.querySelector(".input-top-row");
+    if (topRow) welcomeInputWrap.insertBefore(fileChips, topRow);
   }
 }
 
@@ -1257,7 +1259,7 @@ async function uploadFile(originalFile) {
   }
 
   const chipId = "chip_" + Date.now() + Math.random().toString(36).slice(2);
-  addFileChip(chipId, file.name, formatBytes(file.size), "uploading");
+  addFileChip(chipId, file.name, formatBytes(file.size), "uploading", file);
 
   const form = new FormData();
   form.append("file", file);
@@ -1294,27 +1296,54 @@ async function uploadFile(originalFile) {
   }
 }
 
-function addFileChip(id, name, size, state) {
+function addFileChip(id, name, size, state, fileObj = null) {
   const el = document.createElement("div");
   el.className = `file-chip ${state}`;
   el.id = id;
-  el.innerHTML = `
-    <span class="file-chip-icon">⏳</span>
-    <span class="file-chip-name">${escHtml(name)}</span>
-    <span class="file-chip-size">${size}</span>`;
+  
+  if (fileObj && fileObj.type && fileObj.type.startsWith("image/")) {
+    const url = URL.createObjectURL(fileObj);
+    el.classList.add("is-image-chip");
+    el.innerHTML = `
+      <div class="file-chip-img-wrap" style="position: relative; width: 64px; height: 64px;">
+        <img src="${url}" style="width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border);" />
+        <button class="file-chip-remove" data-id="${id}" title="Remove" style="position: absolute; top: -6px; left: -6px; background: var(--surface2); color: var(--text-2); border: 1px solid var(--border); border-radius: 50%; width: 20px; height: 20px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;">✕</button>
+      </div>`;
+    el.style.padding = "0";
+    el.style.border = "none";
+    el.style.background = "none";
+  } else {
+    el.innerHTML = `
+      <span class="file-chip-icon">⏳</span>
+      <span class="file-chip-name">${escHtml(name)}</span>
+      <span class="file-chip-size">${size}</span>`;
+  }
   fileChips.appendChild(el);
+  const rmBtn = el.querySelector(".file-chip-remove");
+  if (rmBtn) rmBtn.addEventListener("click", () => el.remove());
 }
 
 function updateChipReady(id, att, icon) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.className = `file-chip ${att.type}`;
-  el.innerHTML = `
-    <span class="file-chip-icon">${icon}</span>
-    <span class="file-chip-name">${escHtml(att.filename)}</span>
-    <span class="file-chip-size">${formatBytes(att.size_bytes || 0)}</span>
-    <button class="file-chip-remove" data-id="${id}" title="Remove">✕</button>`;
-  el.querySelector(".file-chip-remove").addEventListener("click", () => removeChip(id, att));
+  
+  if (el.classList.contains("is-image-chip")) {
+    el.className = `file-chip is-image-chip ${att.type}`;
+    const rmBtn = el.querySelector(".file-chip-remove");
+    if (rmBtn) {
+      const newBtn = rmBtn.cloneNode(true);
+      rmBtn.replaceWith(newBtn);
+      newBtn.addEventListener("click", () => removeChip(id, att));
+    }
+  } else {
+    el.className = `file-chip ${att.type}`;
+    el.innerHTML = `
+      <span class="file-chip-icon">${icon}</span>
+      <span class="file-chip-name">${escHtml(att.filename)}</span>
+      <span class="file-chip-size">${formatBytes(att.size_bytes || 0)}</span>
+      <button class="file-chip-remove" data-id="${id}" title="Remove">✕</button>`;
+    el.querySelector(".file-chip-remove").addEventListener("click", () => removeChip(id, att));
+  }
 }
 
 function updateChipError(id, msg) {
