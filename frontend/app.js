@@ -792,7 +792,7 @@ function appendMessage(role, content, meta = {}) {
 
   const senderName = meta.sender_name || (role === "user" ? (currentUser ? currentUser.user_name : "You") : "System");
   
-  const avatar = ``;
+  const avatar = role === "assistant" ? `<div class="msg-avatar" style="font-size: 0.8rem; font-weight: bold; background: var(--surface2); border: 1px solid var(--border);">OPs</div>` : ``;
   const name = senderName;
 
   const metaHtml = (role === "assistant" && (meta.model_tier || meta.cost_usd))
@@ -847,7 +847,7 @@ function appendTyping() {
   el.className = "msg assistant typing-indicator";
   el.id = id;
   el.innerHTML = `
-    <div class="msg-avatar">AP</div>
+    <div class="msg-avatar" style="font-size: 0.8rem; font-weight: bold; background: var(--surface2); border: 1px solid var(--border);">OPs</div>
     <div class="msg-body">
       <div class="msg-name">System</div>
       <div class="msg-text">
@@ -1068,13 +1068,8 @@ async function fetchBudget() {
 function updateBudgetUI(b) {
   if (!b) return;
   const spent = b.total_spent_ever ?? b.spent ?? b.monthly_spend ?? 0;
-  const limit = b.limit ?? b.budget_limit  ?? 150;
-  const pct   = Math.min((spent / limit) * 100, 100);
-  budgetMiniVal.textContent = `$${spent.toFixed(2)} (₹${(spent*83.5).toFixed(2)}) / $${limit} (₹${(limit*83.5).toFixed(2)})`;
-  budgetMiniFill.style.width = pct + "%";
-  if (pct >= 90) budgetMiniFill.style.background = "#ef4444";
-  else if (pct >= 80) budgetMiniFill.style.background = "var(--accent)";
-  else budgetMiniFill.style.background = "var(--accent),var(--accent))";
+  budgetMiniVal.textContent = `$${spent.toFixed(2)} (₹${(spent*83.5).toFixed(2)})`;
+  budgetMiniFill.style.display = "none";
 }
 
 // ── Connection Check ──────────────────────────────────────────────────────────
