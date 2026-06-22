@@ -299,6 +299,7 @@ function renderTasks(){
             ${t.carried_from?`<span class="carried-badge">↩ from ${t.carried_from}</span>`:""}
             ${t.delegated_from?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated from ${t.delegated_from}</span>`:""}
             ${t.status==="delegated"?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated to ${t.delegated_to}</span>`:""}
+            ${t.due_date?`<span class="carried-badge" style="background:rgba(92,158,255,0.15);color:var(--blu);border:none;padding:2px 6px">📅 Post: ${t.due_date}</span>`:""}
             ${t.status==="pending" ? `
               <select class="delegate-select" onchange="delegateTask(${t.id}, this.value, this.options[this.selectedIndex].text)" style="background:transparent; border:1px dashed var(--bdr); border-radius:4px; color:var(--muted); font-size:0.7rem; outline:none; max-width: 100px;">
                 <option value="">Assign...</option>
@@ -631,6 +632,7 @@ async function loadTeamStandups(dateStr = ""){
                     <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
                       ${esc(task.title)}
                     </a>
+                    ${task.due_date ? `<span style="font-size:10px; color:var(--blu); margin-left:6px; background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">📅 Post: ${task.due_date}</span>` : ''}
                     ${task.notion_id ? `<a href="https://notion.so/${task.notion_id.replace(/-/g, '')}" target="_blank" title="Open in Notion" style="text-decoration:none;background:var(--s1);border:1px solid var(--bdr);border-radius:4px;color:var(--acc);font-size:0.7rem;padding:2px 6px;margin-left:6px;vertical-align:middle;">↗ Notion</a>` : ''}
                     ${subtasksHtml}
                     ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
@@ -669,6 +671,7 @@ async function loadTeamStandups(dateStr = ""){
                     <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
                       ${esc(task.title)}
                     </a>
+                    ${task.due_date ? `<span style="font-size:10px; color:var(--blu); margin-left:6px; background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">📅 Post: ${task.due_date}</span>` : ''}
                     ${overdueBadge}
                     ${task.notion_id ? `<a href="https://notion.so/${task.notion_id.replace(/-/g, '')}" target="_blank" title="Open in Notion" style="text-decoration:none;background:var(--s1);border:1px solid var(--bdr);border-radius:4px;color:var(--acc);font-size:0.7rem;padding:2px 6px;margin-left:6px;vertical-align:middle;">↗ Notion</a>` : ''}
                     ${subtasksHtml}
