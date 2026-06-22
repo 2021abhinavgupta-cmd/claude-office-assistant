@@ -745,7 +745,8 @@ function renderClientSheets(clientId) {
             <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;" contenteditable="true" onblur="saveColName('${clientId}', 'Caption', this.innerText)">${getColName('Caption')}</div></th>
             <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 160px; min-width: 160px;" contenteditable="true" onblur="saveColName('${clientId}', 'Assigned To', this.innerText)">${getColName('Assigned To')}</div></th>
             <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;" contenteditable="true" onblur="saveColName('${clientId}', 'Status', this.innerText)">${getColName('Status')}</div></th>
-            <th style="font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;" contenteditable="true" onblur="saveColName('${clientId}', 'File (Drive Link)', this.innerText)">${getColName('File (Drive Link)')}</div></th>
+            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;" contenteditable="true" onblur="saveColName('${clientId}', 'File (Drive Link)', this.innerText)">${getColName('File (Drive Link)')}</div></th>
+            <th style="font-weight: 600; background: rgba(217, 119, 87, 0.15);"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px; color: var(--acc);" contenteditable="true" onblur="saveColName('${clientId}', 'Notes', this.innerText)">${getColName('Notes')}</div></th>
           </tr>
         </thead>
         <tbody>
@@ -791,8 +792,12 @@ function renderClientSheets(clientId) {
     const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link):|$)/);
     if (cMatch) caption = cMatch[1].trim();
     
-    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption):|$)/);
+    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes):|$)/);
     if (lMatch) link = lMatch[1].trim();
+    
+    let myNotes = "";
+    const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link):|$)/);
+    if (nMatch) myNotes = nMatch[1].trim();
     
     // Status color (social media statuses)
     const rawS = t.status || "need_to_start";
@@ -880,7 +885,8 @@ function renderClientSheets(clientId) {
             <option value="final"          ${s==='final'        ?'selected':''}>Final</option>
           </select>
         </td>
-        <td style="padding: 10px; color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${link}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${link}</td>
+        <td style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${myNotes}</td>
       </tr>
     `;
   });
@@ -1031,6 +1037,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   }
   const status = tr.cells[10].querySelector('select').value;
   const link = tr.cells[11].innerText.trim();
+  const myNotes = tr.cells[12].innerText.trim();
   
   const detailParts = [];
   if (creation_date) detailParts.push(`Creation Date: ${creation_date}`);
@@ -1039,6 +1046,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   if (scripts) detailParts.push(`Scripts: ${scripts}`);
   if (caption) detailParts.push(`Caption: ${caption}`);
   if (link) detailParts.push(`Link: ${link}`);
+  if (myNotes) detailParts.push(`Notes: ${myNotes}`);
   const notes = detailParts.join(" | ");
   
   let taskObj = null;
