@@ -280,17 +280,17 @@ def get_my_tasks():
         if last_date_row and last_date_row[0]:
             last_date = last_date_row[0]
             cur.execute(
-                "SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+                "SELECT title, blocker, carried_from, notion_id, due_date, subtasks, delegated_to, delegated_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
                 (user_id, last_date),
             )
             pending = cur.fetchall()
             if pending:
                 with conn:
-                    for title, blocker, carried_from in pending:
+                    for title, blocker, carried_from, nid, dd, sub, d_to, d_from in pending:
                         orig_carry_from = carried_from if carried_from else last_date
                         conn.execute(
-                            "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
-                            (user_id, date_str, title, orig_carry_from, blocker),
+                            "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker, notion_id, due_date, subtasks, delegated_to, delegated_from) VALUES (?,?,?,'pending',?,?,?,?,?,?,?)",
+                            (user_id, date_str, title, orig_carry_from, blocker, nid, dd, sub, d_to, d_from),
                         )
 
     import json
@@ -672,8 +672,8 @@ Respond ONLY in valid JSON format:
     with conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO standup_tasks (user_id, title, status, date, notion_id) VALUES (?, ?, 'pending', date('now'), ?)",
-            (user_id, title, notion_id)
+            "INSERT INTO standup_tasks (user_id, title, status, date, notion_id, due_date) VALUES (?, ?, 'pending', date('now'), ?, ?)",
+            (user_id, title, notion_id, due_date if 'due_date' in locals() else '')
         )
         task_id = cur.lastrowid
         

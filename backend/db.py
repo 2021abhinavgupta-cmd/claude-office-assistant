@@ -254,7 +254,7 @@ def migrate_from_json():
         except Exception as e:
             print("Migration error conversations:", e)
             
-    # Migrate Memory
+    # Migrate Memory mem_file prep
     mem_file = os.path.join(logs_dir, "memory.json")
     if os.path.exists(mem_file):
         try:
