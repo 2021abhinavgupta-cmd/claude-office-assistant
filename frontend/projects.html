@@ -922,6 +922,19 @@ function renderClientSheets(clientId) {
   }
 }
 
+async function refreshClientData(clientId, isNotionClient) {
+  if (isNotionClient) {
+    const res = await fetch(`${API}/api/notion/dashboard`);
+    const data = await res.json();
+    allData = data;
+    if(allData.clients) allData.clients.forEach(c => { c.id = c.notion_id; c.tasks.forEach(t => { t.id = t.notion_id; }); });
+  } else {
+    const res = await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
+    allData = await res.json();
+  }
+  renderClientSheets(clientId);
+}
+
 async function addSocialSheetRow(clientId) {
   let client = allData.clients.find(c => String(c.id) === String(clientId));
   if (!client) return;
@@ -949,9 +962,9 @@ async function addSocialSheetRow(clientId) {
       toast("Row added successfully!");
       if (isNotionClient) {
         toast("Syncing with Notion...");
-        setTimeout(load, 1500);
+        setTimeout(() => refreshClientData(clientId, isNotionClient), 1500);
       } else {
-        load();
+        refreshClientData(clientId, isNotionClient);
       }
     } else {
       toast(d.error || "Failed to add row", "err");
@@ -981,9 +994,9 @@ async function deleteSocialSheetRow(taskId, clientId) {
       toast("Row deleted successfully!");
       if (isNotionClient) {
         toast("Syncing with Notion...");
-        setTimeout(load, 1500);
+        setTimeout(() => refreshClientData(clientId, isNotionClient), 1500);
       } else {
-        load();
+        refreshClientData(clientId, isNotionClient);
       }
     } else {
       toast(d.error || "Failed to delete row", "err");
@@ -2339,7 +2352,7 @@ function hidePopup() {
   clearTimeout(popupTimeout);
   popupTimeout = setTimeout(() => {
     linkPopup.style.display = 'none';
-  }, 600);
+  }, 50);
 }
 
 linkPopup.addEventListener('mouseover', () => clearTimeout(popupTimeout));
