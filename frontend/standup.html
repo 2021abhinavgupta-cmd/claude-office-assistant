@@ -651,7 +651,13 @@ async function loadTeamStandups(dateStr = ""){
   const wrap=document.getElementById("team-standups");
   const t=iso=>iso?new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"";
   
-  wrap.innerHTML=window.EMPLOYEES.map(e=>{
+  const sortedEmployees = [...window.EMPLOYEES].sort((a, b) => {
+    if (a.id === UID) return -1;
+    if (b.id === UID) return 1;
+    return 0;
+  });
+  
+  wrap.innerHTML=sortedEmployees.map(e=>{
     const s=submitted.get(e.id);
     const tasks = tasksByUser[e.id] || [];
     const name=window.EMP_DICT[e.id]||e.id;
