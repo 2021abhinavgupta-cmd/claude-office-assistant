@@ -7,7 +7,7 @@ This document outlines the hidden superpowers built into the app and how to sque
 ---
 
 ##  1. The Auto-Memory & Team Cross-Talk System
-This is one of the most powerful features of the app. System is actively maintaining a persistent memory bank for every single employee (Vidit, Nupur, Abhinav, Kshitij, Raj, Mohit, Tanaya, Happy).
+This is one of the most powerful features of the app. System is actively maintaining a persistent memory bank for every single employee (Vidit, Nupur, Abhinav, Kshitij, Mohit, Tanaya, Happy).
 
 * **Auto-Extraction:** You don't have to tell System to remember things. If you say *"I'm working on a dark-mode UI today,"* System will secretly execute an invisible XML command to save that to your profile. The next time you open the app, it already knows.
 * **Cross-Assigning Memories:** Because System knows your entire roster, you can give it instructions for *other* people!

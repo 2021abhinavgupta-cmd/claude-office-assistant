@@ -152,7 +152,7 @@ def get_standups_today():
         EMP_NAMES = {e["id"]: e["name"] for e in _emp_data.get("employees", [])}
     except Exception:
         EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                     "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                     "emp004":"Kshitij","emp006":"Mohit",
                      "emp007":"Palak","emp008":"Happy"}
     standups = [{"user_id":r[0],"name":EMP_NAMES.get(r[0],r[0]),"date":r[1],
                  "yesterday":r[2],"today":r[3],"blockers":r[4],"submitted_at":r[5]} for r in rows]
@@ -324,7 +324,7 @@ def delegate_task(task_id):
     orig_user_id, old_date_str, title, blocker = row
     
     EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                 "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                 "emp004":"Kshitij","emp006":"Mohit",
                  "emp007":"Palak","emp008":"Happy"}
     orig_user_name = EMP_NAMES.get(orig_user_id, orig_user_id)
     
@@ -409,7 +409,7 @@ def auto_fill_standup():
         emp_name_to_id = {e["name"]: e["id"] for e in _emp_data.get("employees", [])}
     except Exception:
         emp_name_to_id = {"Vidit":"emp001","Nupur":"emp002","Abhinav":"emp003",
-                          "Kshitij":"emp004","Raj":"emp005","Mohit":"emp006",
+                          "Kshitij":"emp004","Mohit":"emp006",
                           "Palak":"emp007","Happy":"emp008"}
 
     today = datetime.utcnow()
@@ -503,7 +503,7 @@ def auto_fill_standup():
             if sync_all:
                 emp_name_to_id = {
                     "Vidit":"emp001","Nupur":"emp002","Abhinav":"emp003",
-                    "Kshitij":"emp004","Raj":"emp005","Mohit":"emp006",
+                    "Kshitij":"emp004","Mohit":"emp006",
                     "Palak":"emp007","Happy":"emp008", "Prathmesh":"emp009", "Om":"emp010"
                 }
                 assignees = vt.get("assigned_to", "")
@@ -938,7 +938,7 @@ def notion_create_client():
 
     EMP_NAMES = {
         "emp001": "Vidit", "emp002": "Nupur", "emp003": "Abhinav",
-        "emp004": "Kshitij", "emp005": "Raj", "emp006": "Mohit",
+        "emp004": "Kshitij", "emp006": "Mohit",
         "emp007": "Tanaya", "emp008": "Happy",
     }
     SVC_TASKS = {
@@ -1034,7 +1034,7 @@ def notion_update_task(notion_id: str):
     body   = request.get_json(silent=True) or {}
     
     EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                 "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                 "emp004":"Kshitij","emp006":"Mohit",
                  "emp007":"Palak","emp008":"Happy"}
                  
     raw_assigned = body.get("assigned_to", "")
@@ -1221,7 +1221,7 @@ def sqlite_patch_task(task_id: int):
         try:
             from notifications import notify_task_status_changed
             EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                         "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                         "emp004":"Kshitij","emp006":"Mohit",
                          "emp007":"Palak","emp008":"Happy"}
             
             task_title = body.get("new_title", old_row[0])
@@ -1564,7 +1564,7 @@ def meeting_to_tasks():
 
     system = f"""You are an expert project manager assistant for a creative agency.
 The user has pasted raw meeting notes. Extract every clear action item or task from the notes.
-For each task, guess the best assignee from this team list: Vidit (Design/Website), Nupur (Design), Abhinav (Website/Dev), Kshitij (Review), Raj (Video), Mohit (Content), Tanaya (Accounts), Happy (Video).
+For each task, guess the best assignee from this team list: Vidit (Design/Website), Nupur (Design), Abhinav (Website/Dev), Kshitij (Review), Mohit (Content), Tanaya (Accounts), Happy (Video).
 If no one is obvious, use "{assigned_to or 'Unassigned'}".
 Also guess a due date (within 7 days of today {today} unless notes specify otherwise, format YYYY-MM-DD).
 Respond ONLY with a valid JSON array:

@@ -3088,7 +3088,7 @@ def get_blockers():
     conn.close()
 
     EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                 "emp004":"Kshitij","emp005":"Raj","emp006":"Mohit",
+                 "emp004":"Kshitij","emp006":"Mohit",
                  "emp007":"Tanaya","emp008":"Happy"}
 
     blockers = []
