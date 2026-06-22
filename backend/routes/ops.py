@@ -516,6 +516,7 @@ def auto_fill_standup():
         for vt in valid_tasks:
             nid = vt.get("notion_id")
             title = vt.get("title", "Untitled").strip()
+            d = vt.get("due_date", "")
             
             # Add context for tasks (especially from social sheet)
             client = vt.get("client_name", "").strip()
