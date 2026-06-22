@@ -671,15 +671,18 @@ async function loadTeamStandups(dateStr = ""){
                     });
                     subtasksHtml += `</div>`;
                 }
-                taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px'}">
-                    ${isDone ? '✓' : '•'} 
-                    <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
-                      ${esc(task.title)}
-                    </a>
-                    ${task.due_date ? `<span style="font-size:10px; color:var(--blu); margin-left:6px; background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">📅 Post: ${task.due_date}</span>` : ''}
-                    ${task.notion_id ? `<a href="https://notion.so/${task.notion_id.replace(/-/g, '')}" target="_blank" title="Open in Notion" style="text-decoration:none;background:var(--s1);border:1px solid var(--bdr);border-radius:4px;color:var(--acc);font-size:0.7rem;padding:2px 6px;margin-left:6px;vertical-align:middle;">↗ Notion</a>` : ''}
-                    ${subtasksHtml}
-                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
+                taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px;'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div style="flex: 1; min-width: 0;">
+                      ${isDone ? '✓' : '•'} 
+                      <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
+                        ${esc(task.title)}
+                      </a>
+                      ${subtasksHtml}
+                      ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px;">
+                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${task.due_date}</span>` : ''}
+                    </div>
                 </li>`;
             });
             taskHtml += `</ul>`;
@@ -710,16 +713,19 @@ async function loadTeamStandups(dateStr = ""){
                     subtasksHtml += `</div>`;
                 }
 
-                taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}">
-                    ${isDone ? '✓' : '⚠'} 
-                    <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
-                      ${esc(task.title)}
-                    </a>
-                    ${task.due_date ? `<span style="font-size:10px; color:var(--blu); margin-left:6px; background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">📅 Post: ${task.due_date}</span>` : ''}
-                    ${overdueBadge}
-                    ${task.notion_id ? `<a href="https://notion.so/${task.notion_id.replace(/-/g, '')}" target="_blank" title="Open in Notion" style="text-decoration:none;background:var(--s1);border:1px solid var(--bdr);border-radius:4px;color:var(--acc);font-size:0.7rem;padding:2px 6px;margin-left:6px;vertical-align:middle;">↗ Notion</a>` : ''}
-                    ${subtasksHtml}
-                    ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
+                taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div style="flex: 1; min-width: 0;">
+                      ${isDone ? '✓' : '⚠'} 
+                      <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
+                        ${esc(task.title)}
+                      </a>
+                      ${subtasksHtml}
+                      ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px;">
+                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${task.due_date}</span>` : ''}
+                      ${overdueBadge}
+                    </div>
                 </li>`;
             });
             taskHtml += `</ul>`;
