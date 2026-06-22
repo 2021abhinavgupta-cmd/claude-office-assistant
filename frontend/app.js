@@ -168,6 +168,8 @@ document.addEventListener("DOMContentLoaded", () => {
           sendMessage(draftParam);
         }
       });
+    } else {
+      showWelcomeScreen();
     }
   } else {
     loadEmployeeList();
