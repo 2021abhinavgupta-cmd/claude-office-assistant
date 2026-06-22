@@ -29,10 +29,7 @@ const TASK_MODELS = {
 const MSG_MAX_CHARS = 500000;
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
-const employeeModal  = document.getElementById("employee-modal");
-const empGrid        = document.getElementById("emp-grid");
-const customNameInput = document.getElementById("custom-name");
-const customNameBtn  = document.getElementById("custom-name-btn");
+
 const newChatBtn     = document.getElementById("new-chat-btn");
 const convList       = document.getElementById("conv-list");
 const userPill       = document.getElementById("user-pill");
@@ -147,8 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const saved = loadUserFromStorage();
   if (saved) {
-    // Hide modal immediately — before anything that might throw
-    employeeModal.classList.add("hidden");
+
     currentUser = saved;
     applyUser(saved);
     loadConversations();
@@ -171,8 +167,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       showWelcomeScreen();
     }
-  } else {
-    loadEmployeeList();
   }
 
   setupInputs();
@@ -187,41 +181,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// ── Employee Selection ────────────────────────────────────────────────────────
-async function loadEmployeeList() {
-  try {
-    const res  = await fetch(`${API}/api/employees`);
-    const data = await res.json();
-    const emps = data.employees || [];
-
-    if (emps.length === 0) {
-      empGrid.innerHTML = "<div class='emp-loading'>No employees found.</div>";
-      return;
-    }
-
-    empGrid.innerHTML = emps.map(e => `
-      <button class="emp-btn" data-id="${e.id}" data-name="${e.name}" data-role="${e.role || ''}">
-        <div class="emp-avatar">${e.name.charAt(0)}</div>
-        <strong>${e.name}</strong>
-        <small>${e.role || e.department || ''}</small>
-      </button>
-    `).join("");
-
-    empGrid.querySelectorAll(".emp-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        promptPin(btn.dataset.id, btn.dataset.name);
-      });
-    });
-  } catch (_) {
-    empGrid.innerHTML = "<div class='emp-loading'>Could not load employees.</div>";
-  }
-}
 
 function selectUser(userId, userName) {
   currentUser = { user_id: userId, user_name: userName };
   saveUserToStorage(currentUser);
   applyUser(currentUser);
-  employeeModal.classList.add("hidden");
   loadConversations();
   if (typeof loadProjects === "function") loadProjects();
 }
@@ -240,42 +204,9 @@ function applyUser(user) {
     greetingEl.textContent = `${greeting}, ${displayName}`;
   }}
 
-// ── PIN Login Logic ─────────────────────────────────────────────────────────
-async function promptPin(userId, userName) {
-  const pin = prompt(`Enter 4-digit PIN for ${userName}:`);
-  if (!pin) return;
-  
-  try {
-    const res = await fetch(`${API}/api/auth/login`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({user_id: userId, pin: pin})
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || "Invalid PIN");
-      return;
-    }
-    selectUser(userId, userName);
-  } catch (err) {
-    alert("Login failed. Check server connection.");
-  }
-}
-
-customNameBtn.addEventListener("click", () => {
-  const name = customNameInput.value.trim();
-  if (!name) { customNameInput.focus(); return; }
-  // Use name as both ID (slugified) and display name
-  const uid = name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-  selectUser(uid || "user_" + Date.now(), name);
-});
-customNameInput.addEventListener("keydown", e => {
-  if (e.key === "Enter") customNameBtn.click();
-});
 
 userPill.addEventListener("click", () => {
-  employeeModal.classList.remove("hidden");
-  loadEmployeeList();
+  window.location.href = "login.html";
 });
 
 // ── Project Management ────────────────────────────────────────────────────────
