@@ -249,6 +249,16 @@ async function loadMyTasks(){
   renderTasks();
 }
 
+function formatShortDate(dStr) {
+  if (!dStr) return "";
+  const parts = dStr.split('-');
+  if (parts.length === 3) {
+    const y = parts[0].slice(2);
+    return `${parts[2]}/${parts[1]}/${y}`;
+  }
+  return dStr;
+}
+
 function renderTasks(){
   const list = document.getElementById("task-list");
   const stats = document.getElementById("task-stats");
@@ -339,7 +349,7 @@ function renderTasks(){
         </div>
       </div>
       ${subtasksHtml}
-      ${t.due_date ? `<div style="text-align: right; width: 100%; margin-top: 6px;"><span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap;">Post: ${t.due_date}</span></div>` : ""}
+      ${t.due_date ? `<div style="text-align: right; width: 100%; margin-top: 6px;"><span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap;">Post: ${formatShortDate(t.due_date)}</span></div>` : ""}
     </div>`
   }).join("");
 }
@@ -681,7 +691,7 @@ async function loadTeamStandups(dateStr = ""){
                       ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px;">
-                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${task.due_date}</span>` : ''}
+                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${formatShortDate(task.due_date)}</span>` : ''}
                     </div>
                 </li>`;
             });
@@ -723,7 +733,7 @@ async function loadTeamStandups(dateStr = ""){
                       ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px;">
-                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${task.due_date}</span>` : ''}
+                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${formatShortDate(task.due_date)}</span>` : ''}
                       ${overdueBadge}
                     </div>
                 </li>`;
