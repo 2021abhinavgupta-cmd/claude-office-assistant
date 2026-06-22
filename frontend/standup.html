@@ -298,7 +298,7 @@ function renderTasks(){
   list.innerHTML = allTasks.map(t=>{
     const stList = t.subtasks || [];
     const subtasksHtml = `
-      <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; padding-left:24px; border-left:2px solid var(--bdr);">
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; padding-left:24px; border-left:2px solid var(--bdr); width: 100%; box-sizing: border-box;">
         ${stList.map((st, i) => `
           <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem;">
             <input type="checkbox" ${st.done?'checked':''} onchange="toggleSubtask(${t.id}, ${i}, this.checked)" style="accent-color:var(--acc)" />
