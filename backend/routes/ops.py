@@ -125,9 +125,9 @@ def get_standups_today():
     
     # Fetch task lists
     if user_id:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str, user_id))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND user_id=? AND status NOT IN ('deleted', 'delegated') ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC", (date_str, user_id))
     else:
-        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY id ASC", (date_str,))
+        cur.execute("SELECT user_id, title, status, blocker, carried_from, subtasks, notion_id FROM standup_tasks WHERE date=? AND status NOT IN ('deleted', 'delegated') ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC", (date_str,))
     task_rows = cur.fetchall()
     
     conn.close()
@@ -281,7 +281,7 @@ def get_my_tasks():
 
     import json
     cur.execute(
-        "SELECT id, title, status, carried_from, created_at, blocker, notion_id, subtasks, delegated_to, delegated_from FROM standup_tasks WHERE user_id=? AND date=? ORDER BY id ASC",
+        "SELECT id, title, status, carried_from, created_at, blocker, notion_id, subtasks, delegated_to, delegated_from FROM standup_tasks WHERE user_id=? AND date=? ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN '9999-12-31' ELSE due_date END ASC, id ASC",
         (user_id, date_str),
     )
     rows = cur.fetchall()
@@ -525,14 +525,14 @@ def auto_fill_standup():
                 row = cur.fetchone()
                 if not row:
                     cur.execute(
-                        "INSERT INTO standup_tasks (user_id, date, title, notion_id) VALUES (?, ?, ?, ?)",
-                        (target_user_id, today_str, title, nid)
+                        "INSERT INTO standup_tasks (user_id, date, title, notion_id, due_date) VALUES (?, ?, ?, ?, ?)",
+                        (target_user_id, today_str, title, nid, d)
                     )
                     added_count += 1
                 else:
                     cur.execute(
-                        "UPDATE standup_tasks SET title=? WHERE id=?",
-                        (title, row[0])
+                        "UPDATE standup_tasks SET title=?, due_date=? WHERE id=?",
+                        (title, d, row[0])
                     )
     conn.commit()
     conn.close()
