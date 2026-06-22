@@ -264,6 +264,17 @@ function renderTasks(){
   document.getElementById("stat-done").textContent = `${done} done`;
   document.getElementById("stat-pend").textContent = `${pend} remaining`;
 
+  // Sort tasks chronologically by due_date right before rendering
+  allTasks.sort((a,b) => {
+    const parseD = (d) => {
+      if(!d) return "9999-12-31";
+      if(d.match(/^\d{2}-\d{2}-\d{4}$/)) return `${d.slice(6,10)}-${d.slice(3,5)}-${d.slice(0,2)}`;
+      if(d.match(/^\d{2}\/\d{2}\/\d{4}$/)) return `${d.slice(6,10)}-${d.slice(3,5)}-${d.slice(0,2)}`;
+      return d;
+    };
+    return parseD(a.due_date||"").localeCompare(parseD(b.due_date||""));
+  });
+
   list.innerHTML = allTasks.map(t=>{
     const stList = t.subtasks || [];
     const subtasksHtml = `
@@ -594,6 +605,19 @@ async function loadTeamStandups(dateStr = ""){
   
   const submitted=new Map(data.standups.map(s=>[s.user_id,s]));
   const tasksByUser = data.tasks_by_user || {};
+  
+  // Sort tasks chronologically by due_date for each user
+  Object.keys(tasksByUser).forEach(uid => {
+    tasksByUser[uid].sort((a,b) => {
+      const parseD = (d) => {
+        if(!d) return "9999-12-31";
+        if(d.match(/^\d{2}-\d{2}-\d{4}$/)) return `${d.slice(6,10)}-${d.slice(3,5)}-${d.slice(0,2)}`;
+        if(d.match(/^\d{2}\/\d{2}\/\d{4}$/)) return `${d.slice(6,10)}-${d.slice(3,5)}-${d.slice(0,2)}`;
+        return d;
+      };
+      return parseD(a.due_date||"").localeCompare(parseD(b.due_date||""));
+    });
+  });
   const wrap=document.getElementById("team-standups");
   const t=iso=>iso?new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"";
   
