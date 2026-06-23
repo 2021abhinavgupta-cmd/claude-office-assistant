@@ -522,22 +522,40 @@ async function load(){
             setTimeout(() => {
               const tr = document.querySelector(`tr[data-task-id="${task.id}"]`);
               if (tr) {
-                // By using block:"center", it will scroll both the table container and the main window
-                tr.scrollIntoView({behavior: "auto", block: "center"});
+                const container = tr.closest('div[style*="overflow-y: auto"]');
+                if (container) {
+                   container.scrollTop = tr.offsetTop - (container.clientHeight / 2) + (tr.clientHeight / 2);
+                }
+                tr.scrollIntoView({behavior: "smooth", block: "center"});
+                
                 const oldBg = tr.style.backgroundColor;
-                tr.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
-                // Add a border highlight too for better visibility
-                tr.style.outline = "2px solid var(--acc)";
+                tr.style.backgroundColor = "rgba(245, 166, 35, 0.3)";
+                const tds = tr.querySelectorAll('td');
+                tds.forEach(td => {
+                    td.style.borderTop = "2px solid var(--acc)";
+                    td.style.borderBottom = "2px solid var(--acc)";
+                });
+                if(tds.length > 0) {
+                    tds[0].style.borderLeft = "2px solid var(--acc)";
+                    tds[tds.length - 1].style.borderRight = "2px solid var(--acc)";
+                }
                 setTimeout(() => { 
                     tr.style.backgroundColor = oldBg; 
-                    tr.style.outline = "none";
-                }, 2500);
+                    tds.forEach(td => {
+                        td.style.borderTop = "";
+                        td.style.borderBottom = "";
+                    });
+                    if(tds.length > 0) {
+                        tds[0].style.borderLeft = "";
+                        tds[tds.length - 1].style.borderRight = "";
+                    }
+                }, 4000);
               } else {
                 // Fallback to client block if task row isn't found
                 const cb = document.getElementById(`cb-${c.id}`);
                 if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
               }
-            }, 300);
+            }, 600);
           } else {
             // fallback to kanban
             const kanbanBtn = body ? body.querySelector(".client-tabs button:nth-child(2)") : null;
@@ -559,7 +577,7 @@ async function load(){
                 const cb = document.getElementById(`cb-${c.id}`);
                 if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
               }
-            }, 300);
+            }, 600);
           }
         }, 300);
         break;
