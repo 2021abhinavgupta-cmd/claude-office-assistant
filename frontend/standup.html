@@ -751,13 +751,19 @@ async function loadTeamStandups(dateStr = ""){
     }
 
     const timeStr = s ? `Submitted ${t(s.submitted_at)}` : `Started updating task list`;
+    const isMe = e.id === UID;
+    const bodyDisplay = isMe ? "block" : "none";
+    const chevronIcon = isMe ? "▼" : "▶";
 
     return`<div class="standup-card">
-      <div class="sc-header">
-        <div class="sc-avatar">${name[0].toUpperCase()}</div>
-        <div><div class="sc-name">${name}</div><div class="sc-time">${timeStr}</div></div>
+      <div class="sc-header" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="const b=this.nextElementSibling; const c=this.querySelector('.sc-chevron'); if(b.style.display==='none'){b.style.display='block';c.textContent='▼';}else{b.style.display='none';c.textContent='▶';}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="sc-avatar">${name[0].toUpperCase()}</div>
+          <div><div class="sc-name">${name}</div><div class="sc-time">${timeStr}</div></div>
+        </div>
+        <div class="sc-chevron" style="color:var(--muted); font-size:0.8rem; padding-right:10px;">${chevronIcon}</div>
       </div>
-      <div class="sc-body">
+      <div class="sc-body" style="display:${bodyDisplay}">
         ${s && s.yesterday?`<div class="sc-field"><div class="fl"> Done Yesterday</div><div class="fv">${esc(s.yesterday)}</div></div>`:""}
         ${s && s.today?`<div class="sc-field"><div class="fl"> Today's Plan</div><div class="fv">${esc(s.today)}</div></div>`:""}
         ${taskHtml}
