@@ -108,13 +108,13 @@ def get_standups_today():
             last_date_row = cur.fetchone()
             if last_date_row and last_date_row[0]:
                 last_date = last_date_row[0]
-                cur.execute("SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'", (u, last_date))
+                cur.execute("SELECT title, blocker, carried_from, notion_id, due_date, subtasks, delegated_to, delegated_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'", (u, last_date))
                 pending = cur.fetchall()
                 if pending:
                     with conn:
-                        for title, blocker, carried_from in pending:
+                        for title, blocker, carried_from, nid, dd, sub, d_to, d_from in pending:
                             orig_carry_from = carried_from if carried_from else last_date
-                            conn.execute("INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)", (u, date_str, title, orig_carry_from, blocker))
+                            conn.execute("INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker, notion_id, due_date, subtasks, delegated_to, delegated_from) VALUES (?,?,?,'pending',?,?,?,?,?,?,?)", (u, date_str, title, orig_carry_from, blocker, nid, dd, sub, d_to, d_from))
 
     # Fetch text standups
     if user_id:
@@ -841,7 +841,7 @@ def carry_over_tasks():
     conn = _su_conn()
     cur  = conn.cursor()
     cur.execute(
-        "SELECT title, blocker, carried_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
+        "SELECT title, blocker, carried_from, notion_id, due_date, subtasks, delegated_to, delegated_from FROM standup_tasks WHERE user_id=? AND date=? AND status='pending'",
         (user_id, today),
     )
     pending = cur.fetchall()
@@ -849,7 +849,7 @@ def carry_over_tasks():
     carried = 0
     if pending:
         with conn:
-            for title, blocker, carried_from in pending:
+            for title, blocker, carried_from, nid, dd, sub, d_to, d_from in pending:
                 orig_carry_from = carried_from if carried_from else today
                 # Avoid duplicating if already carried (idempotent)
                 cur2 = conn.cursor()
@@ -859,8 +859,8 @@ def carry_over_tasks():
                 )
                 if not cur2.fetchone():
                     conn.execute(
-                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker) VALUES (?,?,?,'pending',?,?)",
-                        (user_id, tomorrow, title, orig_carry_from, blocker),
+                        "INSERT INTO standup_tasks (user_id, date, title, status, carried_from, blocker, notion_id, due_date, subtasks, delegated_to, delegated_from) VALUES (?,?,?,'pending',?,?,?,?,?,?,?)",
+                        (user_id, tomorrow, title, orig_carry_from, blocker, nid, dd, sub, d_to, d_from),
                     )
                     carried += 1
     conn.close()
