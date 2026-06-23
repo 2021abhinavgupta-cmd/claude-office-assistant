@@ -558,10 +558,22 @@ def get_dashboard_data() -> dict:
     clients = list_clients()
     all_tasks = list_tasks()  # fetch all tasks once
 
+    assigned_task_ids = set()
     for client in clients:
         client["tasks"] = [
             t for t in all_tasks
             if t.get("client_notion_id") == client["notion_id"]
         ]
+        assigned_task_ids.update(t["notion_id"] for t in client["tasks"])
+        
+    unassigned_tasks = [t for t in all_tasks if t["notion_id"] not in assigned_task_ids]
+    if unassigned_tasks:
+        clients.append({
+            "notion_id": "unassigned",
+            "name": "Unassigned Tasks",
+            "url": "",
+            "tasks": unassigned_tasks,
+            "deadline": "",
+        })
 
     return {"configured": True, "clients": clients}

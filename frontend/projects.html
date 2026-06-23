@@ -503,9 +503,11 @@ async function load(){
   const urlParams = new URLSearchParams(window.location.search);
   const targetNotionId = urlParams.get('notion_id');
   if (targetNotionId && allData && allData.clients) {
+    let taskFound = false;
     for (const c of allData.clients) {
       const task = c.tasks.find(t => t.notion_id === targetNotionId || t.id === targetNotionId || String(t.id) === targetNotionId);
       if (task) {
+        taskFound = true;
         setTimeout(() => {
           switchGlobalTab('clients');
           const body = document.getElementById("dbody-"+c.id);
@@ -541,15 +543,47 @@ async function load(){
             const kanbanBtn = body ? body.querySelector(".client-tabs button:nth-child(2)") : null;
             if (kanbanBtn) switchClientTab(c.id, 'kanban', kanbanBtn);
             
-            // For kanban, scroll to client block
+            // For kanban, scroll to task card
             setTimeout(() => {
-              const cb = document.getElementById(`cb-${c.id}`);
-              if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
-            }, 100);
+              const tc = document.getElementById(`tc-${task.id}`);
+              if (tc) {
+                tc.scrollIntoView({behavior: "auto", block: "center"});
+                const oldBg = tc.style.backgroundColor;
+                tc.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
+                tc.style.outline = "2px solid var(--acc)";
+                setTimeout(() => {
+                    tc.style.backgroundColor = oldBg;
+                    tc.style.outline = "none";
+                }, 2500);
+              } else {
+                const cb = document.getElementById(`cb-${c.id}`);
+                if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
+              }
+            }, 300);
           }
         }, 300);
         break;
       }
+    }
+    
+    // Also check quick tasks if not found in clients
+    if (!taskFound && typeof quickTasksData !== 'undefined') {
+       const qTask = quickTasksData.find(t => t.id === targetNotionId || String(t.id) === targetNotionId);
+       if (qTask) {
+           taskFound = true;
+           setTimeout(() => {
+               const el = document.getElementById(`qtask-${qTask.id}`);
+               if (el) {
+                   el.scrollIntoView({behavior: "auto", block: "center"});
+                   el.style.outline = "2px solid var(--acc)";
+                   setTimeout(() => el.style.outline = "none", 2500);
+               }
+           }, 300);
+       }
+    }
+
+    if (!taskFound) {
+      setTimeout(() => toast("Task not found in Project Board. It may be unassigned or deleted.", "err"), 500);
     }
   }
 }
