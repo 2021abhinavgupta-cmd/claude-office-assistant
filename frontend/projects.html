@@ -502,10 +502,16 @@ async function load(){
 
   const urlParams = new URLSearchParams(window.location.search);
   const targetNotionId = urlParams.get('notion_id');
+  const targetTitle = urlParams.get('title');
   if (targetNotionId && allData && allData.clients) {
     let taskFound = false;
     for (const c of allData.clients) {
-      const task = c.tasks.find(t => t.notion_id === targetNotionId || t.id === targetNotionId || String(t.id) === targetNotionId);
+      const task = c.tasks.find(t => 
+        t.notion_id === targetNotionId || 
+        t.id === targetNotionId || 
+        String(t.id) === targetNotionId ||
+        (targetTitle && t.title && t.title.toLowerCase() === targetTitle.toLowerCase())
+      );
       if (task) {
         taskFound = true;
         setTimeout(() => {
@@ -586,7 +592,11 @@ async function load(){
     
     // Also check quick tasks if not found in clients
     if (!taskFound && typeof quickTasksData !== 'undefined') {
-       const qTask = quickTasksData.find(t => t.id === targetNotionId || String(t.id) === targetNotionId);
+       const qTask = quickTasksData.find(t => 
+          t.id === targetNotionId || 
+          String(t.id) === targetNotionId || 
+          (targetTitle && t.title && t.title.toLowerCase() === targetTitle.toLowerCase())
+       );
        if (qTask) {
            taskFound = true;
            setTimeout(() => {

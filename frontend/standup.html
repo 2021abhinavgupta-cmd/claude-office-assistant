@@ -732,7 +732,7 @@ async function loadTeamStandups(dateStr = ""){
                 taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                     <div style="flex: 1; min-width: 0;">
                       ${isDone ? '✓' : '•'} 
-                      <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
+                      <a href="projects.html?notion_id=${task.notion_id || task.id}&title=${encodeURIComponent(task.title)}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
                         ${esc(task.title)}
                       </a>
                       ${subtasksHtml}
