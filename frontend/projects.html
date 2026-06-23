@@ -508,8 +508,6 @@ async function load(){
       if (task) {
         setTimeout(() => {
           switchGlobalTab('clients');
-          const cb = document.getElementById(`cb-${c.id}`);
-          if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
           const body = document.getElementById("dbody-"+c.id);
           if (body && body.style.display === "none") {
             toggleDetail(c.id);
@@ -518,19 +516,36 @@ async function load(){
           const sheetsBtn = document.getElementById(`ctab-btn-${c.id}-sheets`);
           if (sheetsBtn) {
             switchClientTab(c.id, 'sheets', sheetsBtn);
+            // Wait slightly longer for DOM to settle, then scroll to the specific row
             setTimeout(() => {
               const tr = document.querySelector(`tr[data-task-id="${task.id}"]`);
               if (tr) {
+                // By using block:"center", it will scroll both the table container and the main window
                 tr.scrollIntoView({behavior: "smooth", block: "center"});
                 const oldBg = tr.style.backgroundColor;
                 tr.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
-                setTimeout(() => { tr.style.backgroundColor = oldBg; }, 2000);
+                // Add a border highlight too for better visibility
+                tr.style.outline = "2px solid var(--acc)";
+                setTimeout(() => { 
+                    tr.style.backgroundColor = oldBg; 
+                    tr.style.outline = "none";
+                }, 2500);
+              } else {
+                // Fallback to client block if task row isn't found
+                const cb = document.getElementById(`cb-${c.id}`);
+                if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
               }
-            }, 100);
+            }, 300);
           } else {
             // fallback to kanban
             const kanbanBtn = body ? body.querySelector(".client-tabs button:nth-child(2)") : null;
             if (kanbanBtn) switchClientTab(c.id, 'kanban', kanbanBtn);
+            
+            // For kanban, scroll to client block
+            setTimeout(() => {
+              const cb = document.getElementById(`cb-${c.id}`);
+              if (cb) cb.scrollIntoView({behavior: "smooth", block: "center"});
+            }, 100);
           }
         }, 300);
         break;
@@ -1298,10 +1313,23 @@ function openEditTask(clientId, taskId){
     const sheetsBtn = document.getElementById(`ctab-btn-${clientId}-sheets`);
     if (sheetsBtn) {
       switchClientTab(clientId, 'sheets', sheetsBtn);
-      // Scroll to the sheets section
+      // Scroll to the specific row in the sheets section
       setTimeout(() => {
-        const sheetsEl = document.getElementById(`ctab-${clientId}-sheets`);
-        if (sheetsEl) sheetsEl.scrollIntoView({behavior:'smooth', block:'nearest'});
+        const tr = document.querySelector(`tr[data-task-id="${task.id}"]`);
+        if (tr) {
+          tr.scrollIntoView({behavior: "smooth", block: "center"});
+          const oldBg = tr.style.backgroundColor;
+          tr.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
+          tr.style.outline = "2px solid var(--acc)";
+          setTimeout(() => { 
+              tr.style.backgroundColor = oldBg; 
+              tr.style.outline = "none";
+          }, 2500);
+        } else {
+          // Fallback to the sheets container if row not found
+          const sheetsEl = document.getElementById(`ctab-${clientId}-sheets`);
+          if (sheetsEl) sheetsEl.scrollIntoView({behavior:'smooth', block:'nearest'});
+        }
       }, 150);
     }
   } else {
