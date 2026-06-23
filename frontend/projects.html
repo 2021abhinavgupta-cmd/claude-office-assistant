@@ -587,7 +587,7 @@ function renderDetail(clients){
     const approved=c.tasks.filter(t=>t.status==="approved").length;
     const notionLink = c.url ? `<a href="${c.url}" target="_blank" style="font-size:.72rem;color:var(--acc);text-decoration:none;margin-left:8px">↗ Notion</a>` : "";
     // Detect social media client: has tasks with [Type] prefix or service=Social Media
-    const isSocial = (c.tasks||[]).some(t => t.service === "Social Media" || /^\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
+    const isSocial = (c.tasks||[]).some(t => t.service === "Social Media" || /\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
     return`<div class="cb" id="cb-${c.id}" data-social="${isSocial}">
       <div class="cb-head" onclick="toggleDetail('${c.id}')">
         <div><div class="cb-name"> ${c.name}${notionLink}</div>
@@ -714,7 +714,7 @@ function renderClientSheets(clientId) {
   const tasks = client.tasks||[];
   
   // Find social media tasks (either labeled service='Social Media' or start with [Type])
-  const socialTasks = tasks.filter(t => t.service === "Social Media" || /^\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
+  const socialTasks = tasks.filter(t => t.service === "Social Media" || /\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
   
   const container = document.getElementById(`csheets-${clientId}`);
   if(!container) return;
@@ -1303,7 +1303,7 @@ function openEditTask(clientId, taskId){
   if(!task) return;
 
   // For social media clients, go directly to Sheets tab
-  const isSocial = (client.tasks||[]).some(t => t.service === "Social Media" || /^\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
+  const isSocial = (client.tasks||[]).some(t => t.service === "Social Media" || /\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
   
   if (isSocial) {
     // Make sure client card is open
