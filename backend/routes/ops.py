@@ -459,9 +459,19 @@ def auto_fill_standup():
         title = t.get("title", "").strip()
         nid = t.get("id")
 
+        client = t.get("client_name", "").strip()
+        content = t.get("content", "").strip() or t.get("description", "").strip() or t.get("brief", "").strip()
+        
+        search_title = title
+        if client and not search_title.startswith(client):
+            search_title = f"{client} — {search_title}"
+        if content:
+            preview = content[:40] + "..." if len(content) > 40 else content
+            search_title = f"{search_title} ({preview})"
+
         # AUTO-REPAIR: If a task already exists locally but lost its due_date/notion_id 
         # (e.g. from a past carry-over bug), restore it now regardless of status.
-        if title:
+        if search_title:
             # First figure out target_user_id for this task
             target_uids = []
             assignees = t.get("assigned_to", "")
@@ -473,7 +483,7 @@ def auto_fill_standup():
                 
             for target_user_id in target_uids:
                 cur.execute("SELECT id, due_date, notion_id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
-                            (target_user_id, today_str, title))
+                            (target_user_id, today_str, search_title))
                 row = cur.fetchone()
                 if row:
                     # Update local task with accurate Notion data
