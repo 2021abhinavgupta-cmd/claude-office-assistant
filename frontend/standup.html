@@ -750,22 +750,22 @@ async function loadTeamStandups(dateStr = ""){
         taskHtml += `</div>`;
     }
 
-    const timeStr = s ? `Submitted ${t(s.submitted_at)}` : `Started updating task list`;
     const isMe = e.id === UID;
-    const bodyDisplay = isMe ? "block" : "none";
-    const chevronIcon = isMe ? "▼" : "▶";
     const detailsDisplay = isMe ? 'block' : 'none';
     const chevron = isMe ? '▼' : '▶';
-    
+    const timeStr = s ? t(s.created_at) : "";
+
     return `
     <div class="standup-card">
-      <div class="fl" style="align-items:center; cursor:pointer; padding-bottom: ${isMe ? '12px' : '0'}; border-bottom: ${isMe ? '1px solid var(--bdr)' : 'none'};" onclick="const t = document.getElementById('team-tasks-${e.id}'); const i = document.getElementById('team-icon-${e.id}'); if(t.style.display==='none'){t.style.display='block';i.textContent='▼';this.style.paddingBottom='12px';this.style.borderBottom='1px solid var(--bdr)';}else{t.style.display='none';i.textContent='▶';this.style.paddingBottom='0';this.style.borderBottom='none';}">
-        <div class="avatar" style="width:28px;height:28px;background:${e.color||'var(--acc)'}">${name.charAt(0)}</div>
-        <div style="flex:1; margin-left:12px;">
-          <div style="font-weight:600;font-size:.9rem">${name}</div>
-          <div style="font-size:.75rem;color:var(--muted)">${s ? 'Submitted today\'s standup' : (tasks.length > 0 ? 'Updating task list' : 'No tasks yet')}</div>
+      <div class="sc-header" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding-bottom: ${isMe ? '12px' : '0'}; border-bottom: ${isMe ? '1px solid var(--bdr)' : 'none'};" onclick="const t = document.getElementById('team-tasks-${e.id}'); const i = document.getElementById('team-icon-${e.id}'); if(t.style.display==='none'){t.style.display='block';i.textContent='▼';this.style.paddingBottom='12px';this.style.borderBottom='1px solid var(--bdr)';}else{t.style.display='none';i.textContent='▶';this.style.paddingBottom='0';this.style.borderBottom='none';}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="sc-avatar" style="background:${e.color||'var(--acc)'}; color:#000;">${name.charAt(0).toUpperCase()}</div>
+          <div>
+            <div class="sc-name" style="font-weight:600;font-size:.9rem">${name}</div>
+            <div class="sc-time" style="font-size:.75rem;color:var(--muted)">${s ? 'Submitted at ' + timeStr : (tasks.length > 0 ? 'Updating task list' : 'No tasks yet')}</div>
+          </div>
         </div>
-        <div id="team-icon-${e.id}" style="font-size:.8rem;color:var(--muted); font-family: monospace;">${chevron}</div>
+        <div class="sc-chevron" id="team-icon-${e.id}" style="color:var(--muted); font-size:0.8rem; padding-right:10px; font-family: monospace;">${chevron}</div>
       </div>
       <div id="team-tasks-${e.id}" style="display:${detailsDisplay}; margin-top: 12px;">
         ${s?`<div class="sc-field" style="margin-top:8px"><div class="sc-lbl">Yesterday</div><div class="sc-val">${s.yesterday.replace(/\n/g,"<br>")}</div></div>
