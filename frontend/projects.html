@@ -411,7 +411,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("qt-assign-dropdown").innerHTML = options;
   document.getElementById("et-assign-dropdown").innerHTML = options;
 });
-function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",3000)}
+function toast(m,t="ok"){const e=document.getElementById("toast");e.textContent=m;e.className=t;e.style.display="block";setTimeout(()=>e.style.display="none",1000)}
 
 function switchTab(name,btn){
   ["matrix","blockers","review","detail","kanban"].forEach(n=>{
@@ -521,7 +521,7 @@ async function load(){
               const tr = document.querySelector(`tr[data-task-id="${task.id}"]`);
               if (tr) {
                 // By using block:"center", it will scroll both the table container and the main window
-                tr.scrollIntoView({behavior: "smooth", block: "center"});
+                tr.scrollIntoView({behavior: "auto", block: "center"});
                 const oldBg = tr.style.backgroundColor;
                 tr.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
                 // Add a border highlight too for better visibility
@@ -976,10 +976,18 @@ async function addSocialSheetRow(clientId) {
     if (d.success) {
       toast("Row added successfully!");
       if (isNotionClient) {
-        toast("Syncing with Notion...");
-        setTimeout(() => refreshClientData(clientId, isNotionClient), 1500);
+        toast("Saved! Synced with Notion");
+        client.tasks = client.tasks || [];
+        client.tasks.unshift({
+          id: d.notion_id || Date.now(),
+          notion_id: d.notion_id,
+          title: "[Post] New Idea",
+          service: "Social Media",
+          status: "not_started"
+        });
+        renderClientSheets(clientId);
       } else {
-        refreshClientData(clientId, isNotionClient);
+        renderClientSheets(clientId);
       }
     } else {
       toast(d.error || "Failed to add row", "err");
@@ -2380,7 +2388,7 @@ function hidePopup() {
   clearTimeout(popupTimeout);
   popupTimeout = setTimeout(() => {
     linkPopup.style.display = 'none';
-  }, 50);
+  }, 200);
 }
 
 linkPopup.addEventListener('mouseover', () => clearTimeout(popupTimeout));

@@ -731,7 +731,7 @@ async function loadTeamStandups(dateStr = ""){
 
                 taskHtml += `<li style="${isDone ? 'text-decoration:line-through;color:var(--muted);' : 'margin-bottom:6px; color:var(--acc);'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                     <div style="flex: 1; min-width: 0;">
-                      ${isDone ? '✓' : '⚠'} 
+                      ${isDone ? '✓' : '•'} 
                       <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
                         ${esc(task.title)}
                       </a>
@@ -739,7 +739,7 @@ async function loadTeamStandups(dateStr = ""){
                       ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px;">
-                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${formatShortDate(task.due_date)}</span>` : ''}
+                      ${task.due_date ? `<span style="font-size:10px; color:var(--blu); background:rgba(92,158,255,0.15); padding:2px 5px; border-radius:4px; white-space:nowrap">Post: ${formatShortDate(task.due_date)}</span>` : (task.carried_from ? `<span style="font-size:10px; color:var(--muted); background:rgba(255,255,255,0.05); padding:2px 5px; border-radius:4px; white-space:nowrap">Started: ${formatShortDate(task.carried_from)}</span>` : '')}
                       ${overdueBadge}
                     </div>
                 </li>`;
@@ -754,21 +754,26 @@ async function loadTeamStandups(dateStr = ""){
     const isMe = e.id === UID;
     const bodyDisplay = isMe ? "block" : "none";
     const chevronIcon = isMe ? "▼" : "▶";
-
-    return`<div class="standup-card">
-      <div class="sc-header" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="const b=this.nextElementSibling; const c=this.querySelector('.sc-chevron'); if(b.style.display==='none'){b.style.display='block';c.textContent='▼';}else{b.style.display='none';c.textContent='▶';}">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div class="sc-avatar">${name[0].toUpperCase()}</div>
-          <div><div class="sc-name">${name}</div><div class="sc-time">${timeStr}</div></div>
+    const detailsDisplay = isMe ? 'block' : 'none';
+    const chevron = isMe ? '▼' : '▶';
+    
+    return `
+    <div class="standup-card">
+      <div class="fl" style="align-items:center; cursor:pointer; padding-bottom: ${isMe ? '12px' : '0'}; border-bottom: ${isMe ? '1px solid var(--bdr)' : 'none'};" onclick="const t = document.getElementById('team-tasks-${e.id}'); const i = document.getElementById('team-icon-${e.id}'); if(t.style.display==='none'){t.style.display='block';i.textContent='▼';this.style.paddingBottom='12px';this.style.borderBottom='1px solid var(--bdr)';}else{t.style.display='none';i.textContent='▶';this.style.paddingBottom='0';this.style.borderBottom='none';}">
+        <div class="avatar" style="width:28px;height:28px;background:${e.color||'var(--acc)'}">${name.charAt(0)}</div>
+        <div style="flex:1; margin-left:12px;">
+          <div style="font-weight:600;font-size:.9rem">${name}</div>
+          <div style="font-size:.75rem;color:var(--muted)">${s ? 'Submitted today\'s standup' : (tasks.length > 0 ? 'Updating task list' : 'No tasks yet')}</div>
         </div>
-        <div class="sc-chevron" style="color:var(--muted); font-size:0.8rem; padding-right:10px;">${chevronIcon}</div>
+        <div id="team-icon-${e.id}" style="font-size:.8rem;color:var(--muted); font-family: monospace;">${chevron}</div>
       </div>
-      <div class="sc-body" style="display:${bodyDisplay}">
-        ${s && s.yesterday?`<div class="sc-field"><div class="fl"> Done Yesterday</div><div class="fv">${esc(s.yesterday)}</div></div>`:""}
-        ${s && s.today?`<div class="sc-field"><div class="fl"> Today's Plan</div><div class="fv">${esc(s.today)}</div></div>`:""}
+      <div id="team-tasks-${e.id}" style="display:${detailsDisplay}; margin-top: 12px;">
+        ${s?`<div class="sc-field" style="margin-top:8px"><div class="sc-lbl">Yesterday</div><div class="sc-val">${s.yesterday.replace(/\n/g,"<br>")}</div></div>
+             <div class="sc-field"><div class="sc-lbl">Today's Priority</div><div class="sc-val">${s.today.replace(/\n/g,"<br>")}</div></div>
+             <div class="sc-field"><div class="sc-lbl">Blockers</div><div class="sc-val" style="color:${s.blockers.toLowerCase()==='none'?'var(--muted)':'var(--red)'}">${s.blockers.replace(/\n/g,"<br>")}</div></div>` : ""}
         ${taskHtml}
-        ${s && s.blockers?`<div class="sc-field blocker"><div class="fl"> Blockers</div><div class="fv">${esc(s.blockers)}</div></div>`:""}
-      </div></div>`;
+      </div>
+    </div>`;
   }).join("");
   if (refreshBtn) { refreshBtn.textContent = " ↻ Refresh"; refreshBtn.disabled = false; }
 }
