@@ -527,6 +527,9 @@ def auto_fill_standup():
         if is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
             valid_tasks.append(t)
 
+    conn.commit()
+    conn.close()
+
     if not valid_tasks:
         return jsonify({"success": True, "added": 0})
 
