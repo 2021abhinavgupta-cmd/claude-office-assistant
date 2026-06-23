@@ -451,13 +451,34 @@ def auto_fill_standup():
     cur.execute("SELECT notion_id FROM standup_tasks WHERE date=?", (today_str,))
     for r in cur.fetchall():
         if r[0]: existing_notion_ids.add(r[0])
-    conn.close()
     
     valid_tasks = []
     for t in all_tasks:
         s = t.get("status", "").lower().replace(" ", "_").replace("-", "_")
         d = t.get("due_date", "")
-        
+        title = t.get("title", "").strip()
+        nid = t.get("id")
+
+        # AUTO-REPAIR: If a task already exists locally but lost its due_date/notion_id 
+        # (e.g. from a past carry-over bug), restore it now regardless of status.
+        if title:
+            # First figure out target_user_id for this task
+            target_uids = []
+            assignees = t.get("assigned_to", "")
+            if not sync_all and assigned_name:
+                target_uids = [user_id]
+            elif assignees:
+                names = [n.strip() for n in assignees.split(",") if n.strip()]
+                target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
+                
+            for target_user_id in target_uids:
+                cur.execute("SELECT id, due_date, notion_id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
+                            (target_user_id, today_str, title))
+                row = cur.fetchone()
+                if row:
+                    # Update local task with accurate Notion data
+                    cur.execute("UPDATE standup_tasks SET due_date=?, notion_id=? WHERE id=?", (d, nid, row[0]))
+
         # Don't pull finished tasks
         if s in ("approved", "done", "submitted", "in_review", "pending_review"):
             continue
