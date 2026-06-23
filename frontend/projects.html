@@ -506,12 +506,23 @@ async function load(){
   if (targetNotionId && allData && allData.clients) {
     let taskFound = false;
     for (const c of allData.clients) {
-      const task = c.tasks.find(t => 
-        t.notion_id === targetNotionId || 
-        t.id === targetNotionId || 
-        String(t.id) === targetNotionId ||
-        (targetTitle && t.title && t.title.toLowerCase() === targetTitle.toLowerCase())
-      );
+      const task = c.tasks.find(t => {
+        if (t.notion_id === targetNotionId || t.id === targetNotionId || String(t.id) === targetNotionId) return true;
+        if (!targetTitle || !t.title) return false;
+        const tt = targetTitle.toLowerCase();
+        const nt = t.title.toLowerCase();
+        const cn = c.name ? c.name.toLowerCase() : "";
+        if (nt === tt) return true;
+        // If Standup title was augmented with client name and metadata:
+        if (nt.length > 2 && tt.includes(nt)) {
+            // Prioritize match if the augmented title also includes this client's name
+            if (cn && tt.includes(cn)) return true;
+            // Otherwise still accept it as a fallback
+            return true;
+        }
+        if (nt.length > 2 && nt.includes(tt)) return true;
+        return false;
+      });
       if (task) {
         taskFound = true;
         setTimeout(() => {
@@ -592,11 +603,16 @@ async function load(){
     
     // Also check quick tasks if not found in clients
     if (!taskFound && typeof quickTasksData !== 'undefined') {
-       const qTask = quickTasksData.find(t => 
-          t.id === targetNotionId || 
-          String(t.id) === targetNotionId || 
-          (targetTitle && t.title && t.title.toLowerCase() === targetTitle.toLowerCase())
-       );
+       const qTask = quickTasksData.find(t => {
+          if (t.id === targetNotionId || String(t.id) === targetNotionId) return true;
+          if (!targetTitle || !t.title) return false;
+          const tt = targetTitle.toLowerCase();
+          const nt = t.title.toLowerCase();
+          if (nt === tt) return true;
+          if (nt.length > 2 && tt.includes(nt)) return true;
+          if (nt.length > 2 && nt.includes(tt)) return true;
+          return false;
+       });
        if (qTask) {
            taskFound = true;
            setTimeout(() => {
