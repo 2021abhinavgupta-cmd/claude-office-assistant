@@ -1000,7 +1000,13 @@ function updateBudgetUI(b) {
   if (!b) return;
   const spent = b.total_spent_ever ?? b.spent ?? b.monthly_spend ?? 0;
   budgetMiniVal.textContent = `$${spent.toFixed(2)} (₹${(spent*83.5).toFixed(2)})`;
-  budgetMiniFill.style.display = "none";
+  
+  const limit = b.budget_limit || 150;
+  const pct = Math.min(100, Math.max(0, (spent / limit) * 100));
+  
+  budgetMiniFill.style.display = "block";
+  budgetMiniFill.style.width = `${pct}%`;
+  budgetMiniFill.style.background = pct >= 90 ? "var(--red, #ef4444)" : pct >= 75 ? "var(--accent, #f97316)" : "var(--accent, #d97757)";
 }
 
 // ── Connection Check ──────────────────────────────────────────────────────────
