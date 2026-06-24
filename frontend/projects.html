@@ -2474,6 +2474,17 @@ linkPopup.addEventListener('mouseleave', hidePopup);
 
 // Also hide on scroll to prevent popup floating randomly
 window.addEventListener('scroll', hidePopup, true);
+
+// Force plain text paste in contenteditable cells to prevent Excel/Word formatting issues
+document.addEventListener('paste', function(e) {
+  const target = e.target;
+  // Use closest just in case the paste targets a child node of the contenteditable element
+  if (target && target.closest('[contenteditable="true"]')) {
+    e.preventDefault();
+    const text = (e.originalEvent || e).clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+  }
+});
 </script>
 </body>
 </html>
