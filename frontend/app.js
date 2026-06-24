@@ -192,8 +192,8 @@ function selectUser(userId, userName) {
 
 function applyUser(user) {
   const displayName = user.user_name || user.name || "?";
-  userAvatar.textContent   = displayName.charAt(0).toUpperCase();
-  userNameText.textContent = displayName;
+  if (userAvatar) userAvatar.textContent = displayName.charAt(0).toUpperCase();
+  if (userNameText) userNameText.textContent = displayName;
   
   const greetingEl = document.getElementById("welcome-greeting-text");
   if (greetingEl) {
@@ -204,10 +204,11 @@ function applyUser(user) {
     greetingEl.textContent = `${greeting}, ${displayName}`;
   }}
 
-
-userPill.addEventListener("click", () => {
-  window.location.href = "login.html";
-});
+if (userPill) {
+  userPill.addEventListener("click", () => {
+    window.location.href = "login.html";
+  });
+}
 
 // ── Project Management ────────────────────────────────────────────────────────
 const projectModal = document.getElementById("project-modal");
