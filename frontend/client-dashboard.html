@@ -121,7 +121,23 @@
     
     .tl-track { width:60%; height:32px; background:var(--s2); border-radius:16px; position:relative; overflow:hidden; border:1px solid var(--bdr); }
     .tl-bar { position:absolute; height:100%; background:var(--acc); opacity:0.8; border-radius:16px; display:flex; align-items:center; padding:0 12px; font-size:.75rem; font-weight:700; color:#000; box-shadow:0 2px 8px rgba(245,166,35,.3); }
+    .tl-bar { position:absolute; height:100%; background:var(--acc); opacity:0.8; border-radius:16px; display:flex; align-items:center; padding:0 12px; font-size:.75rem; font-weight:700; color:#000; box-shadow:0 2px 8px rgba(245,166,35,.3); }
     .tl-bar.done { background:var(--green); box-shadow:none; opacity:0.6; }
+
+    /* DEPENDENCIES VIEW */
+    .dep-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:20px; }
+    .dep-card { background:var(--s1); border:1px solid var(--bdr); border-radius:var(--r); padding:24px; display:flex; flex-direction:column; gap:12px; transition:transform 0.2s; }
+    .dep-card:hover { transform:translateY(-2px); border-color:var(--acc); }
+    .dep-icon { font-size:2rem; margin-bottom:4px; background:var(--s2); width:56px; height:56px; display:flex; align-items:center; justify-content:center; border-radius:14px; border:1px solid var(--bdr); }
+    .dep-card h3 { font-family:'Syne',sans-serif; font-size:1.15rem; color:var(--txt); margin:0; }
+    .dep-card p { font-size:.85rem; color:var(--muted); margin-bottom:12px; line-height:1.4; flex:1; }
+    .dep-upload-btn { background:var(--bg); border:1px solid var(--bdr); color:var(--txt); padding:10px; border-radius:var(--rs); font-family:'DM Sans',sans-serif; font-weight:600; font-size: .9rem; cursor:pointer; transition:all 0.2s; text-align:center; }
+    .dep-upload-btn:hover { background:var(--acc); color:#000; border-color:var(--acc); }
+    .dep-list { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+    .dep-item { background:var(--s2); border:1px solid var(--bdr); padding:10px 12px; border-radius:8px; font-size:.85rem; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .dep-item span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+    .dep-item a { color:var(--blue); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+    .dep-item a:hover { text-decoration:underline; }
 
     /* MODAL */
     .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.7); z-index:9999; display:none; align-items:center; justify-content:center; }
@@ -173,6 +189,7 @@
         <button class="view-btn active" onclick="switchView('kanban')" id="btn-kanban">Kanban</button>
         <button class="view-btn" onclick="switchView('calendar')" id="btn-calendar">Calendar</button>
         <button class="view-btn" onclick="switchView('timeline')" id="btn-timeline">Timeline</button>
+        <button class="view-btn" onclick="switchView('dependencies')" id="btn-dependencies">Dependencies</button>
       </div>
     </div>
 
@@ -193,6 +210,50 @@
     <!-- TIMELINE -->
     <div id="view-timeline" class="view-container">
       <div class="timeline-container" id="tl-root"></div>
+    </div>
+
+    <!-- DEPENDENCIES -->
+    <div id="view-dependencies" class="view-container">
+      <div class="dep-grid">
+        <div class="dep-card">
+          <div class="dep-icon">🎤</div>
+          <h3>Voice Notes</h3>
+          <p>Upload audio briefs, context, or verbal feedback</p>
+          <button class="dep-upload-btn" onclick="document.getElementById('dep-voice').click()">Upload Voice Note</button>
+          <input type="file" id="dep-voice" accept="audio/*" style="display:none" onchange="handleDepUpload(this, 'voice')"/>
+          <div class="dep-list" id="list-voice"></div>
+        </div>
+        <div class="dep-card">
+          <div class="dep-icon">🖼️</div>
+          <h3>Images</h3>
+          <p>Share brand assets, logos, or inspiration</p>
+          <button class="dep-upload-btn" onclick="document.getElementById('dep-images').click()">Upload Images</button>
+          <input type="file" id="dep-images" accept="image/*" multiple style="display:none" onchange="handleDepUpload(this, 'images')"/>
+          <div class="dep-list" id="list-images"></div>
+        </div>
+        <div class="dep-card">
+          <div class="dep-icon">🎥</div>
+          <h3>Videos</h3>
+          <p>Upload raw footage, screencasts, or references</p>
+          <button class="dep-upload-btn" onclick="document.getElementById('dep-videos').click()">Upload Videos</button>
+          <input type="file" id="dep-videos" accept="video/*" multiple style="display:none" onchange="handleDepUpload(this, 'videos')"/>
+          <div class="dep-list" id="list-videos"></div>
+        </div>
+        <div class="dep-card">
+          <div class="dep-icon">🔗</div>
+          <h3>Drive Links</h3>
+          <p>Link to Google Drive, Dropbox, or Figma</p>
+          <button class="dep-upload-btn" onclick="promptAddLink()">Add Link</button>
+          <div class="dep-list" id="list-links"></div>
+        </div>
+        <div class="dep-card">
+          <div class="dep-icon">📝</div>
+          <h3>Notes</h3>
+          <p>Add text notes, passwords, or simple instructions</p>
+          <button class="dep-upload-btn" onclick="promptAddNote()">Add Note</button>
+          <div class="dep-list" id="list-notes"></div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -235,6 +296,7 @@
     function renderViews() {
       const isSocial = isSocialMediaClient();
       
+      // We always show Dependencies view btn
       if (isSocial) {
         document.getElementById('btn-kanban').style.display = 'none';
         document.getElementById('btn-timeline').style.display = 'none';
@@ -475,6 +537,47 @@
 
       root.innerHTML = html;
     }
+
+    // ── DEPENDENCIES LOGIC ───────────────────────────────────────────────────
+    function handleDepUpload(input, type) {
+      if(!input.files || input.files.length === 0) return;
+      const list = document.getElementById(`list-${type}`);
+      Array.from(input.files).forEach(file => {
+        const item = document.createElement('div');
+        item.className = 'dep-item';
+        item.innerHTML = `<span>${file.name}</span> <button style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
+        list.appendChild(item);
+      });
+      // Clear input so same file can be selected again if removed
+      input.value = "";
+    }
+    
+    function promptAddLink() {
+      const link = prompt("Enter a link (e.g. Google Drive, Dropbox, Figma):");
+      if(link) {
+        // basic URL validation / fixing
+        let href = link.trim();
+        if(!href.startsWith('http://') && !href.startsWith('https://')) href = 'https://' + href;
+        
+        const list = document.getElementById('list-links');
+        const item = document.createElement('div');
+        item.className = 'dep-item';
+        item.innerHTML = `<a href="${href}" target="_blank" title="${href}">${link}</a> <button style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
+        list.appendChild(item);
+      }
+    }
+    
+    function promptAddNote() {
+      const note = prompt("Enter your note:");
+      if(note && note.trim()) {
+        const list = document.getElementById('list-notes');
+        const item = document.createElement('div');
+        item.className = 'dep-item';
+        item.innerHTML = `<span title="${note.trim().replace(/"/g, '&quot;')}">${note.trim()}</span> <button style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
+        list.appendChild(item);
+      }
+    }
+
     let currentFeedbackTask = null;
 
     function openTaskFeedback(taskId) {
