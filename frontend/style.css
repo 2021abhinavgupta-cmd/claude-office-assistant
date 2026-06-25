@@ -84,7 +84,10 @@
   }
 
   .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .mobile-only { display: block !important; }
 }
+
+.mobile-only { display: none !important; }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 15px; }

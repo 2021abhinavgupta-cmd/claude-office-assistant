@@ -240,6 +240,12 @@
     }
 
     /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .pill-nav-container { flex-direction: column; gap: 16px; align-items: stretch; }
+      .pill-navbar { flex-wrap: wrap; justify-content: center; }
+      .nav-right-actions { justify-content: center; }
+      .two-col { grid-template-columns: 1fr; }
+    }
     @media (max-width: 500px) {
       .kpi-value { font-size: 1.5rem; }
       .model-split { flex-direction: column; }

@@ -33,7 +33,14 @@
     .fg input:focus,.fg textarea:focus,.fg select:focus{border-color:var(--acc)}
     .fg select option{background:var(--s2)}
     .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    @media(max-width:500px){.two{grid-template-columns:1fr}}
+    @media(max-width:500px){
+      .two{grid-template-columns:1fr}
+      .card { padding: 24px; }
+      h1 { font-size: 1.4rem; }
+      .steps { flex-direction: column; }
+      .step { border-right: none; border-bottom: 1px solid var(--bdr); }
+      .step:last-child { border-bottom: none; }
+    }
 
     /* Service checkboxes */
     .services-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}

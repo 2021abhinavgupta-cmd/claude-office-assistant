@@ -250,7 +250,18 @@
     .fullscreen-sheets > div:nth-child(2) {
       max-height: calc(100vh - 80px) !important;
     }
-    select option { background: var(--s1); color: var(--txt); }
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      .wrap { padding: 12px 16px; }
+      .hdr { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .nav { width: 100%; overflow-x: auto; padding-bottom: 4px; }
+      .kanban-toolbar { flex-direction: column; align-items: stretch; }
+      .kanban-group-toggle { overflow-x: auto; padding-bottom: 4px; width: 100%; justify-content: flex-start; }
+      .quick-task-btn { margin-left: 0; width: 100%; text-align: center; }
+      #clients-filter-bar { padding: 12px 16px 0 16px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+      .global-tabs { padding: 0 16px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+      .qt-modal { width: 95%; padding: 20px; }
+    }
   </style>
 </head>
 <body>

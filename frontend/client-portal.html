@@ -116,9 +116,12 @@
     .deadline-badge.overdue{border-color:rgba(255,92,92,.3);color:var(--red)}
 
     @media(max-width:600px){
-      .hdr{flex-direction:column;align-items:flex-start}
+      .wrap{padding:16px 12px;}
+      .hdr{flex-direction:column;align-items:flex-start;gap:12px;}
       .prog-bar{width:70px}
-      .client-head-right{gap:6px}
+      .client-head-right{gap:6px;width:100%;justify-content:space-between;margin-top:12px;}
+      .client-head-left{width:100%;}
+      .task-item{flex-wrap:wrap;}
     }
   </style>
 </head>

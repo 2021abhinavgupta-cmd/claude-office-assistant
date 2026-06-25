@@ -1026,9 +1026,19 @@ async function checkConnection() {
 
 // ── Sidebar Toggle ────────────────────────────────────────────────────────────
 function setupSidebar() {
-  sidebarToggle.addEventListener("click", () => {
-    const isMobile = window.innerWidth <= 640;
-    sidebar.classList.toggle(isMobile ? "open" : "closed");
+  const toggles = [
+    document.getElementById("sidebar-toggle"),
+    document.getElementById("sidebar-toggle-btn"),
+    document.getElementById("welcome-sidebar-toggle")
+  ];
+  
+  toggles.forEach(btn => {
+    if (btn) {
+      btn.addEventListener("click", () => {
+        const isMobile = window.innerWidth <= 768;
+        sidebar.classList.toggle(isMobile ? "open" : "closed");
+      });
+    }
   });
 }
 
