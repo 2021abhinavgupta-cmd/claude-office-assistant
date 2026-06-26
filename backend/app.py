@@ -678,7 +678,7 @@ Valid USER_IDs you can assign memories to:
         sections.append("## Shared team memories\n" + team_mem_ctx)
 
     if project_id:
-        project = project_store.get_project(project_id, user_id)
+        project = project_store.get_project(project_id)
         if project:
             if project.get("custom_instructions"):
                 sections.append(f"## Custom Instructions\n{project['custom_instructions']}")
@@ -2310,7 +2310,7 @@ def create_project():
 @app.route("/api/projects/<project_id>", methods=["GET"])
 def get_project(project_id):
     user_id = request.args.get("user_id")
-    p = project_store.get_project(project_id, user_id)
+    p = project_store.get_project(project_id)
     if not p: return jsonify({"error": "Not found"}), 404
     return jsonify(p)
 
