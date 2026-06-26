@@ -985,7 +985,12 @@ async function recalcSubtasks(nid, subtasks) {
   
   try {
     const payload = { progress: newProgress };
-    if (newProgress > 0) payload.status = "in_progress"; // Auto-start if progressing
+    if (newProgress === 100) {
+      payload.status = "approved"; // Automatically approve when 100%
+    } else if (newProgress > 0) {
+      payload.status = "in_progress"; // Auto-start if progressing
+    }
+    
     await fetch(`${API}/api/notion/tasks/${nid}`, {
       method: "PATCH",
       headers: {"Content-Type":"application/json"},
@@ -995,7 +1000,8 @@ async function recalcSubtasks(nid, subtasks) {
     const t = window.allTasks.find(x => x.notion_id === nid);
     if(t) {
       t.progress = newProgress;
-      if(newProgress > 0) t.status = "in_progress";
+      if(newProgress === 100) t.status = "approved";
+      else if(newProgress > 0) t.status = "in_progress";
     }
   } catch(e) {
     console.error("Failed to sync subtask progress to Notion", e);
