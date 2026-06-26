@@ -149,6 +149,16 @@ def init_db():
             created_at    TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
 
+        # Client portal dependencies (files, notes, links)
+        conn.execute("""CREATE TABLE IF NOT EXISTS client_dependencies (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id     TEXT NOT NULL,
+            type          TEXT NOT NULL,
+            content       TEXT NOT NULL,
+            original_name TEXT,
+            created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+
         # Client portal sessions (separate from employee sessions)
         conn.execute("""CREATE TABLE IF NOT EXISTS client_sessions (
             token       TEXT PRIMARY KEY,

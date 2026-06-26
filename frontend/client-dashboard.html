@@ -232,7 +232,10 @@
           </div>
           <h3>Voice Notes</h3>
           <p>Upload audio briefs, context, or verbal feedback</p>
-          <button class="dep-upload-btn" onclick="document.getElementById('dep-voice').click()">Upload Voice Note</button>
+          <div style="display:flex;gap:8px">
+            <button class="dep-upload-btn" style="flex:1" onclick="document.getElementById('dep-voice').click()">Upload File</button>
+            <button class="dep-upload-btn" style="flex:1;background:var(--acc);color:#000;border-color:var(--acc);" id="btn-record-voice" onclick="toggleVoiceRecord()">Record</button>
+          </div>
           <input type="file" id="dep-voice" accept="audio/*" style="display:none" onchange="handleDepUpload(this, 'voice')"/>
           <div class="dep-list" id="list-voice"></div>
         </div>
@@ -299,6 +302,7 @@
       clientInfo = client;
       document.getElementById("client-greeting").innerHTML = `Welcome back, <span>${client.client_name}</span>`;
       fetchTasks();
+      fetchDependencies();
     };
 
     async function fetchTasks() {
@@ -570,31 +574,113 @@
     }
 
     // ── DEPENDENCIES LOGIC ───────────────────────────────────────────────────
-    function handleDepUpload(input, type) {
-      if(!input.files || input.files.length === 0) return;
-      const list = document.getElementById(`list-${type}`);
-      Array.from(input.files).forEach(file => {
-        const item = document.createElement('div');
-        item.className = 'dep-item';
-        item.innerHTML = `<span>${file.name}</span> <button style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
-        list.appendChild(item);
-      });
-      // Clear input so same file can be selected again if removed
-      input.value = "";
+    async function fetchDependencies() {
+      try {
+        const res = await fetch(`${API}/api/client-portal/dependencies`, {
+          headers: { 'X-Client-Token': localStorage.getItem("client_token") || "" }
+        });
+        const data = await res.json();
+        if(data.dependencies) {
+          ['voice', 'images', 'videos', 'links', 'docs', 'notes'].forEach(t => {
+            const list = document.getElementById(`list-${t}`);
+            if(list) list.innerHTML = '';
+          });
+          data.dependencies.forEach(renderDependencyItem);
+        }
+      } catch(e) {
+        console.error("Failed to load dependencies:", e);
+      }
     }
-    
+
+    function renderDependencyItem(dep) {
+      const list = document.getElementById(`list-${dep.type}`);
+      if(!list) return;
+      const item = document.createElement('div');
+      item.className = 'dep-item';
+      
+      let innerHTML = '';
+      if(dep.type === 'links') {
+        innerHTML = `<a href="${dep.content}" target="_blank" title="${dep.content}">${dep.content}</a>`;
+      } else if(dep.type === 'notes') {
+        innerHTML = `<span title="${dep.content.replace(/"/g, '&quot;')}">${dep.content}</span>`;
+      } else if(dep.type === 'voice') {
+        innerHTML = `<div style="display:flex;flex-direction:column;gap:4px;width:100%;"><a href="${API}${dep.content}" target="_blank">${dep.original_name}</a><audio controls src="${API}${dep.content}" style="height:30px;width:100%;"></audio></div>`;
+      } else {
+        innerHTML = `<a href="${API}${dep.content}" target="_blank">${dep.original_name}</a>`;
+      }
+      
+      item.innerHTML = `${innerHTML} <button style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;margin-left:8px;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" onclick="deleteDependency(${dep.id}, this.parentElement)" title="Remove">✕</button>`;
+      list.appendChild(item);
+    }
+
+    async function deleteDependency(id, el) {
+      if(!confirm("Are you sure you want to delete this?")) return;
+      try {
+        await fetch(`${API}/api/client-portal/dependencies/${id}`, {
+          method: "DELETE",
+          headers: { 'X-Client-Token': localStorage.getItem("client_token") || "" }
+        });
+        el.remove();
+      } catch(e) {
+        alert("Failed to delete.");
+      }
+    }
+
+    async function handleDepUpload(input, type) {
+      if(!input.files || input.files.length === 0) return;
+      const files = Array.from(input.files);
+      input.value = ""; // clear input so same file can be selected again
+      
+      for(const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', type);
+        
+        try {
+          const res = await fetch(`${API}/api/client-portal/dependencies/upload`, {
+            method: 'POST',
+            headers: { 'X-Client-Token': localStorage.getItem("client_token") || "" },
+            body: formData
+          });
+          const data = await res.json();
+          if(data.success) {
+            renderDependencyItem({ id: data.id, type: type, content: data.url, original_name: data.original_name });
+          } else {
+            alert(data.error || "Upload failed");
+          }
+        } catch(e) {
+          console.error("Upload failed", e);
+        }
+      }
+    }
+
+    async function saveTextDependency(type, content) {
+      try {
+        const res = await fetch(`${API}/api/client-portal/dependencies/text`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Client-Token': localStorage.getItem("client_token") || ""
+          },
+          body: JSON.stringify({ type, content })
+        });
+        const data = await res.json();
+        if(data.success) {
+          renderDependencyItem({ id: data.id, type: type, content: content });
+        } else {
+          alert(data.error || "Save failed");
+        }
+      } catch(e) {
+        console.error("Failed to save", e);
+      }
+    }
+
     function promptAddLink() {
       const link = prompt("Enter a link (e.g. Google Drive, Dropbox, Figma):");
-      if(link) {
-        // basic URL validation / fixing
+      if(link && link.trim()) {
         let href = link.trim();
         if(!href.startsWith('http://') && !href.startsWith('https://')) href = 'https://' + href;
-        
-        const list = document.getElementById('list-links');
-        const item = document.createElement('div');
-        item.className = 'dep-item';
-        item.innerHTML = `<a href="${href}" target="_blank" title="${href}">${link}</a> <button style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
-        list.appendChild(item);
+        saveTextDependency('links', href);
       }
     }
     
@@ -609,13 +695,53 @@
     function submitNoteModal() {
       const note = document.getElementById('nm-text').value;
       if(note && note.trim()) {
-        const list = document.getElementById('list-notes');
-        const item = document.createElement('div');
-        item.className = 'dep-item';
-        item.innerHTML = `<span title="${note.trim().replace(/"/g, '&quot;')}">${note.trim()}</span> <button style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
-        list.appendChild(item);
+        saveTextDependency('notes', note.trim());
       }
       closeNoteModal();
+    }
+
+    // ── VOICE RECORDER ──
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    async function toggleVoiceRecord() {
+      const btn = document.getElementById("btn-record-voice");
+      if(!isRecording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+          mediaRecorder.ondataavailable = e => { if(e.data.size > 0) audioChunks.push(e.data); };
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const file = new File([audioBlob], `Voice_Note_${new Date().getTime()}.webm`, { type: 'audio/webm' });
+            
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            const dummyInput = document.createElement('input');
+            dummyInput.type = 'file';
+            dummyInput.files = dt.files;
+            
+            btn.innerHTML = "Saving...";
+            await handleDepUpload(dummyInput, 'voice');
+            btn.innerHTML = "Record";
+            
+            stream.getTracks().forEach(track => track.stop());
+          };
+          
+          mediaRecorder.start();
+          isRecording = true;
+          btn.innerHTML = "🔴 Stop Recording";
+          btn.style.animation = "shimmer 1.5s infinite"; // reuse existing animation
+        } catch(e) {
+          alert("Microphone access denied or unavailable.");
+        }
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        btn.style.animation = "none";
+      }
     }
 
     let currentFeedbackTask = null;

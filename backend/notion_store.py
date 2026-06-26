@@ -570,7 +570,7 @@ def get_dashboard_data() -> dict:
     if unassigned_tasks:
         clients.append({
             "notion_id": "unassigned",
-            "name": "Unassigned Tasks",
+            "name": "Daily Standup Tasks",
             "url": "",
             "tasks": unassigned_tasks,
             "deadline": "",

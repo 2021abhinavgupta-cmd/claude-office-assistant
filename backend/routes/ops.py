@@ -1184,13 +1184,39 @@ def notion_dashboard():
         cur.execute("SELECT task_id, status, comments, updated_at FROM client_task_feedback")
         feedback_map = {r[0]: {"status": r[1], "comments": r[2], "updated_at": r[3]} for r in cur.fetchall()}
         conn.close()
+
+        # Attach standup subtasks & filter out tasks done in standup
+        su_conn = _su_conn()
+        su_cur = su_conn.cursor()
+        su_cur.execute("SELECT notion_id, status, subtasks FROM standup_tasks WHERE notion_id IS NOT NULL ORDER BY date ASC, id ASC")
+        standup_map = {r[0]: {"status": r[1], "subtasks": r[2]} for r in su_cur.fetchall()}
+        su_conn.close()
         
         if "clients" in data:
             for c in data["clients"]:
+                filtered_tasks = []
                 for t in c.get("tasks", []):
                     t_id = t.get("notion_id") or t.get("id")
+                    
+                    # Filter out if marked done in standup
+                    if t_id and t_id in standup_map:
+                        if standup_map[t_id]["status"] == "done":
+                            continue  # Skip adding this task to the list
+                            
+                        # Attach subtasks
+                        su_subtasks = standup_map[t_id]["subtasks"]
+                        if su_subtasks and su_subtasks != '[]':
+                            try:
+                                import json
+                                t["subtasks"] = json.loads(su_subtasks)
+                            except:
+                                pass
+                                
                     if t_id and t_id in feedback_map:
                         t["feedback"] = feedback_map[t_id]
+                        
+                    filtered_tasks.append(t)
+                c["tasks"] = filtered_tasks
                         
     except Exception as e:
         logger.error(f"Error attaching dashboard metadata: {e}")
@@ -1980,4 +2006,158 @@ def submit_task_feedback(task_id):
                 logger.error(f"Failed to update SQLite task: {e}")
 
     return jsonify({"success": True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CLIENT PORTAL DEPENDENCIES (Files, Notes, Links)
+# ══════════════════════════════════════════════════════════════════════════════
+
+import uuid
+from werkzeug.utils import secure_filename
+
+@ops_bp.route("/api/client-portal/dependencies/upload", methods=["POST"])
+def upload_dependency():
+    from routes.auth import _verify_client_session
+    token = request.cookies.get("client_session_token", "") or request.headers.get("X-Client-Token", "")
+    client = _verify_client_session(token)
+    if not client:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files['file']
+    dep_type = request.form.get("type", "docs")
+
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    original_name = secure_filename(file.filename) or "upload.file"
+    ext = os.path.splitext(original_name)[1]
+    
+    # generate a unique filename
+    unique_filename = f"{uuid.uuid4().hex}_{original_name}"
+    
+    from app import UPLOAD_DIR
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    file.save(file_path)
+
+    content = f"/uploads/{unique_filename}"
+
+    try:
+        conn = _pt_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO client_dependencies (client_id, type, content, original_name) 
+            VALUES (?, ?, ?, ?)
+        """, (str(client["id"]), dep_type, content, original_name))
+        conn.commit()
+        dep_id = cur.lastrowid
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error saving dependency: {e}")
+        return jsonify({"error": "Database error"}), 500
+
+    return jsonify({"success": True, "id": dep_id, "url": content, "original_name": original_name})
+
+
+@ops_bp.route("/api/client-portal/dependencies/text", methods=["POST"])
+def save_text_dependency():
+    from routes.auth import _verify_client_session
+    token = request.cookies.get("client_session_token", "") or request.headers.get("X-Client-Token", "")
+    client = _verify_client_session(token)
+    if not client:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    dep_type = data.get("type")
+    content = data.get("content")
+
+    if not dep_type or not content:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        conn = _pt_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO client_dependencies (client_id, type, content) 
+            VALUES (?, ?, ?)
+        """, (str(client["id"]), dep_type, content))
+        conn.commit()
+        dep_id = cur.lastrowid
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error saving dependency: {e}")
+        return jsonify({"error": "Database error"}), 500
+
+    return jsonify({"success": True, "id": dep_id})
+
+
+@ops_bp.route("/api/client-portal/dependencies", methods=["GET"])
+def get_dependencies():
+    from routes.auth import _verify_client_session
+    token = request.cookies.get("client_session_token", "") or request.headers.get("X-Client-Token", "")
+    client = _verify_client_session(token)
+    if not client:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        conn = _pt_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id, type, content, original_name, created_at FROM client_dependencies WHERE client_id = ? ORDER BY created_at ASC", (str(client["id"]),))
+        rows = cur.fetchall()
+        conn.close()
+        
+        deps = []
+        for r in rows:
+            deps.append({
+                "id": r[0],
+                "type": r[1],
+                "content": r[2],
+                "original_name": r[3],
+                "created_at": r[4]
+            })
+        return jsonify({"dependencies": deps})
+    except Exception as e:
+        logger.error(f"Error fetching dependencies: {e}")
+        return jsonify({"error": "Database error"}), 500
+
+
+@ops_bp.route("/api/client-portal/dependencies/<int:dep_id>", methods=["DELETE"])
+def delete_dependency(dep_id):
+    from routes.auth import _verify_client_session
+    token = request.cookies.get("client_session_token", "") or request.headers.get("X-Client-Token", "")
+    client = _verify_client_session(token)
+    if not client:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        conn = _pt_conn()
+        cur = conn.cursor()
+        
+        # Optionally verify it belongs to this client and get file path
+        cur.execute("SELECT client_id, content FROM client_dependencies WHERE id = ?", (dep_id,))
+        row = cur.fetchone()
+        if not row or str(row[0]) != str(client["id"]):
+            conn.close()
+            return jsonify({"error": "Not found or unauthorized"}), 404
+            
+        content_url = row[1]
+        
+        cur.execute("DELETE FROM client_dependencies WHERE id = ?", (dep_id,))
+        conn.commit()
+        conn.close()
+        
+        # If it was an uploaded file, delete it from disk
+        if content_url and content_url.startswith("/uploads/"):
+            filename = content_url.replace("/uploads/", "")
+            from app import UPLOAD_DIR
+            file_path = os.path.join(UPLOAD_DIR, filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting dependency: {e}")
+        return jsonify({"error": "Database error"}), 500
 

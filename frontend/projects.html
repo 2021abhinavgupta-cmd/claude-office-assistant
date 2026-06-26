@@ -224,7 +224,7 @@
     .cal-pill:hover{opacity:.8}
     .cal-more{font-size:.63rem;color:var(--muted);padding:1px 4px}
     /* ── Calendar Task Popup ──────────────────────────────────── */
-    #cal-popup{position:fixed;z-index:9999;background:#1a1a2e;border:1px solid rgba(245,166,35,.35);border-radius:12px;padding:14px;min-width:240px;max-width:300px;box-shadow:0 8px 32px rgba(0,0,0,.6);display:none;pointer-events:auto}
+    #cal-popup{position:fixed;z-index:9999;background:#1a1a2e;border:1px solid rgba(245,166,35,.35);border-radius:12px;padding:14px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,.6);display:none;pointer-events:auto}
     #cal-popup .cp-title{font-family:'Syne',sans-serif;font-size:.95rem;font-weight:700;color:var(--txt);margin-bottom:8px;line-height:1.3}
     #cal-popup .cp-row{display:flex;gap:6px;align-items:center;font-size:.78rem;color:var(--muted);margin-bottom:4px}
     #cal-popup .cp-row span{color:var(--txt);font-weight:600}
@@ -335,7 +335,7 @@
     <div class="qt-field">
       <label>Assign to</label>
       <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
-        <div class="ms-display" id="qt-assign-display" onclick="this.parentElement.classList.toggle('open')">— Unassigned —</div>
+        <div class="ms-display" id="qt-assign-display" onclick="this.parentElement.classList.toggle('open')">— Daily Standup Tasks —</div>
         <div class="ms-dropdown" id="qt-assign-dropdown"></div>
       </div>
     </div>
@@ -368,7 +368,7 @@
     <div class="qt-field">
       <label>Assign to</label>
       <div class="ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
-        <div class="ms-display" id="et-assign-display" onclick="this.parentElement.classList.toggle('open')">— Unassigned —</div>
+        <div class="ms-display" id="et-assign-display" onclick="this.parentElement.classList.toggle('open')">— Daily Standup Tasks —</div>
         <div class="ms-dropdown" id="et-assign-dropdown"></div>
       </div>
     </div>
@@ -411,7 +411,7 @@ function updateMsDisplay(wrapId) {
   const wrap = document.getElementById(wrapId).closest('.ms-wrap');
   const chks = [...wrap.querySelectorAll('.ms-chk:checked')];
   const display = wrap.querySelector('.ms-display');
-  if (chks.length === 0) { display.textContent = '— Unassigned —'; display.style.color = 'var(--muted)'; }
+  if (chks.length === 0) { display.textContent = '— Daily Standup Tasks —'; display.style.color = 'var(--muted)'; }
   else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
 }
 
@@ -1347,8 +1347,8 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
   let nav = dayTasks.length>1 ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <span style="font-size:.72rem;color:var(--muted)">${idx+1} / ${dayTasks.length}</span>
     <div style="display:flex;gap:6px">
-      ${idx>0?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx-1},${clientId?`'${clientId}'`:'null'})" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">‹</button>`:'<span style="width:28px"></span>'}
-      ${idx<dayTasks.length-1?`<button onclick="_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx+1},${clientId?`'${clientId}'`:'null'})" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">›</button>`:'<span style="width:28px"></span>'}
+      ${idx>0?`<button onclick="event.stopPropagation();event.preventDefault();_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx-1},${clientId?`'${clientId}'`:'null'})" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">‹</button>`:'<span style="width:28px"></span>'}
+      ${idx<dayTasks.length-1?`<button onclick="event.stopPropagation();event.preventDefault();_renderPopupContent(document.getElementById('cal-popup'),window._popupTasks,${idx+1},${clientId?`'${clientId}'`:'null'})" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.75rem">›</button>`:'<span style="width:28px"></span>'}
     </div></div>` : '';
   window._popupTasks = dayTasks;
   popup.innerHTML = nav + `
@@ -1467,6 +1467,19 @@ function renderTaskCard(t){
     }
   }
 
+  let subtasksHtml = "";
+  if (t.subtasks && t.subtasks.length > 0) {
+    subtasksHtml = `<div style="margin-top:10px; padding:8px; background:var(--bg); border:1px solid var(--bdr); border-radius:6px; font-size:0.8rem;">
+      <div style="color:var(--muted); margin-bottom:4px; font-weight:600; font-size:0.75rem;">Subtasks:</div>
+      ${t.subtasks.map(s => `
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px; color:${s.done ? 'var(--muted)' : 'var(--txt)'}; text-decoration:${s.done ? 'line-through' : 'none'};">
+          <input type="checkbox" disabled ${s.done ? 'checked' : ''} style="margin:0; accent-color:var(--acc);">
+          <span>${s.title}</span>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
   return`<div class="tc" id="tc-${taskId}">
     <div class="tc-top">
       <div><div class="tc-title">${t.title}</div>
@@ -1478,6 +1491,7 @@ function renderTaskCard(t){
     </div>
     <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
     ${t.submission_note?`<div class="sub-box"><div class="sub-label">Submission</div>${t.submission_note}</div>`:""}
+    ${subtasksHtml}
     ${isInReview(t)&&!notionMode?`<div class="tc-actions">
       <button class="btn-sm btn-approve" onclick="approveTask(${t.id})"> Approve</button>
       <button class="btn-sm btn-reject" onclick="openModal(${t.id},null)">↩ Changes</button>
@@ -2015,7 +2029,7 @@ async function parseMeetingNotes() {
     const r = await fetch(`${API}/api/ai/meeting-to-tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes, assigned_to: USER_NAME || 'Unassigned', client_name: client })
+      body: JSON.stringify({ notes, assigned_to: USER_NAME || 'Daily Standup Tasks', client_name: client })
     });
     const d = await r.json();
     
@@ -2077,6 +2091,7 @@ function filterClients(type) {
     if (type === 'website' && reqs.includes('[website]')) isMatch = true;
     if (type === 'shoot' && reqs.includes('[shoot]')) isMatch = true;
     if (type === 'branding' && reqs.includes('[branding]')) isMatch = true;
+    if (type === 'miscellaneous' && c.name === 'Daily Standup Tasks') isMatch = true;
     
     if (!isMatch) {
        const hasServiceTask = (c.tasks||[]).some(t => {

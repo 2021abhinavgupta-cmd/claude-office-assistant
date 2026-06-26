@@ -104,6 +104,14 @@ def serve_frontend(filename):
     from flask import send_from_directory
     return send_from_directory(FRONTEND_DIR, filename)
 
+UPLOAD_DIR = Path(__file__).parent.parent / "logs" / "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.route("/uploads/<path:filename>")
+def serve_uploads(filename):
+    from flask import send_from_directory
+    return send_from_directory(UPLOAD_DIR, filename)
+
 # ── Anthropic Client ──────────────────────────────────────────────────────────
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
