@@ -374,7 +374,10 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
     if client_notion_id:
         filters.append({"property": "Client ID", "rich_text": {"equals": client_notion_id}})
     if status_filter:
-        filters.append({"property": "Status", "select": {"equals": status_filter}})
+        if status_filter == "EMPTY":
+            filters.append({"property": "Status", "select": {"is_empty": True}})
+        else:
+            filters.append({"property": "Status", "select": {"equals": status_filter}})
 
     payload: dict = {
         "page_size": 200,
