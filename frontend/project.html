@@ -175,6 +175,47 @@
       font-size: 0.8rem;
       color: var(--muted);
     }
+    
+    /* Claude Modal */
+    .claude-modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      display: none; justify-content: center; align-items: center;
+      z-index: 1000;
+    }
+    .claude-modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px; width: 600px; max-width: 90%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 16px;
+    }
+    .claude-modal-header { font-size: 1.25rem; font-weight: 500; }
+    .claude-modal-desc { font-size: 0.9rem; color: var(--muted); line-height: 1.4; }
+    .claude-modal-body textarea {
+      width: 100%; height: 250px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; color: var(--text); font-family: inherit; font-size: 0.95rem; resize: none;
+    }
+    .claude-modal-body textarea:focus { outline: 1px solid rgba(255,255,255,0.2); }
+    .claude-modal-footer { display: flex; justify-content: flex-end; gap: 12px; }
+    .btn-cancel { background: transparent; border: none; color: var(--text); padding: 8px 16px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 0.9rem; }
+    .btn-cancel:hover { background: rgba(255,255,255,0.05); }
+    .btn-save { background: var(--text); color: var(--bg); border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500; font-family: inherit; font-size: 0.9rem; }
+    .btn-save:hover { opacity: 0.9; }
+
+    /* Files Dropdown */
+    .files-dropdown-wrap { position: relative; display: inline-block; }
+    .files-dropdown {
+      position: absolute; right: 0; top: 100%; margin-top: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 8px; width: 220px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5); display: none; z-index: 100;
+    }
+    .files-dropdown.show { display: flex; flex-direction: column; }
+    .fd-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      color: var(--text); font-size: 0.9rem; text-decoration: none; border-radius: 6px; cursor: pointer;
+    }
+    .fd-item:hover { background: rgba(255,255,255,0.05); }
+    .fd-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   </style>
 </head>
 <body>
@@ -301,18 +342,25 @@
         <div class="sidebar-card-content" id="inst-display">
           Add instructions to tailor System's responses
         </div>
-        <textarea id="inst-input" style="width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; color: var(--text); font-family: inherit; resize: vertical; display: none; margin-top: 8px; font-size: 0.85rem;"></textarea>
-        <div id="inst-actions" style="display:none; justify-content:flex-end; gap:8px; margin-top:8px;">
-          <button id="inst-cancel-btn" style="background: var(--surface); border: none; padding: 4px 8px; border-radius: 4px; color: var(--text); cursor: pointer; font-size: 0.8rem;">Cancel</button>
-          <button id="inst-save-btn" style="background: var(--text); border: none; padding: 4px 8px; border-radius: 4px; color: var(--bg); cursor: pointer; font-size: 0.8rem;">Save</button>
-        </div>
       </div>
       
       <!-- Files Card -->
       <div class="sidebar-card">
         <div class="sidebar-card-header">
           <h3 class="sidebar-card-title">Files</h3>
-          <button class="chat-card-btn" onclick="document.getElementById('file-input').click()">+</button>
+          <div class="files-dropdown-wrap">
+            <button class="chat-card-btn" id="files-plus-btn">+</button>
+            <div class="files-dropdown" id="files-dropdown">
+              <div class="fd-item" id="fd-upload">
+                <svg class="fd-icon" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                Upload from device
+              </div>
+              <div class="fd-item" onclick="alert('Add text content coming soon!')">
+                <svg class="fd-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 8 8 9"></polyline></svg>
+                Add text content
+              </div>
+            </div>
+          </div>
         </div>
         <div class="drop-zone" id="file-drop-zone">
           <div style="margin-bottom: 8px;"></div>
@@ -324,6 +372,23 @@
       
     </div>
   </main>
+</div>
+
+<!-- Modal Overlay -->
+<div class="claude-modal-overlay" id="inst-modal-overlay">
+  <div class="claude-modal">
+    <div class="claude-modal-header">Set project instructions</div>
+    <div class="claude-modal-desc">
+      Provide System with relevant instructions and information for chats within this project. This will work alongside your profile instructions and the selected style in a chat.
+    </div>
+    <div class="claude-modal-body">
+      <textarea id="inst-input" placeholder="Think step by step and show reasoning for complex problems. Use specific examples."></textarea>
+    </div>
+    <div class="claude-modal-footer">
+      <button class="btn-cancel" id="inst-cancel-btn">Cancel</button>
+      <button class="btn-save" id="inst-save-btn">Save instructions</button>
+    </div>
+  </div>
 </div>
 
 <!-- Load Main App Logic for Sidebar -->

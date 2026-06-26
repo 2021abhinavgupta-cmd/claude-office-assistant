@@ -4,11 +4,7 @@
  *          memory display, conversation list, and starting new chats.
  */
 
-const API = (() => {
-  const h = window.location.hostname;
-  if (!h || h === 'localhost' || h === '127.0.0.1') return 'http://localhost:5000';
-  return window.location.origin;
-})();
+
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const params     = new URLSearchParams(window.location.search);
@@ -158,24 +154,26 @@ function openConv(convId) {
 
 // ── Instructions ──────────────────────────────────────────────────────────────
 function setupInstructions() {
+  const modalOverlay = document.getElementById('inst-modal-overlay');
+
   editInstBtn.addEventListener('click', () => {
-    instInput.value   = projectData?.instructions || '';
-    instInput.style.display   = 'block';
-    instActions.style.display = 'flex';
-    instDisplay.style.display = 'none';
+    instInput.value = projectData?.instructions || '';
+    modalOverlay.style.display = 'flex';
     instInput.focus();
   });
 
   instCancelBtn.addEventListener('click', () => {
-    instInput.style.display   = 'none';
-    instActions.style.display = 'none';
-    instDisplay.style.display = '';
+    modalOverlay.style.display = 'none';
+  });
+
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) modalOverlay.style.display = 'none';
   });
 
   instSaveBtn.addEventListener('click', async () => {
     const text = instInput.value.trim();
     instSaveBtn.textContent = 'Saving...';
-    instSaveBtn.disabled    = true;
+    instSaveBtn.disabled = true;
     try {
       const res = await fetch(`${API}/api/projects/${PROJECT_ID}/instructions`, {
         method:  'PUT',
@@ -183,11 +181,9 @@ function setupInstructions() {
         body:    JSON.stringify({ instructions: text })
       });
       if (res.ok) {
-        projectData.instructions    = text;
-        instDisplay.textContent     = text || 'Add instructions to tailor System\'s responses';
-        instInput.style.display     = 'none';
-        instActions.style.display   = 'none';
-        instDisplay.style.display   = '';
+        projectData.instructions = text;
+        instDisplay.textContent = text || 'Add instructions to tailor System\\'s responses';
+        modalOverlay.style.display = 'none';
         showToast('Instructions saved!');
       } else {
         showToast('Failed to save', 'err');
@@ -195,14 +191,38 @@ function setupInstructions() {
     } catch {
       showToast('Error saving instructions', 'err');
     } finally {
-      instSaveBtn.textContent = 'Save';
-      instSaveBtn.disabled    = false;
+      instSaveBtn.textContent = 'Save instructions';
+      instSaveBtn.disabled = false;
     }
   });
 }
 
 // ── File Upload ───────────────────────────────────────────────────────────────
 function setupFileUpload() {
+  const filesBtn = document.getElementById('files-plus-btn');
+  const filesDropdown = document.getElementById('files-dropdown');
+  const fdUpload = document.getElementById('fd-upload');
+
+  if (filesBtn) {
+    filesBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      filesDropdown.classList.toggle('show');
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (filesDropdown && filesDropdown.classList.contains('show') && !e.target.closest('.files-dropdown-wrap')) {
+      filesDropdown.classList.remove('show');
+    }
+  });
+
+  if (fdUpload) {
+    fdUpload.addEventListener('click', () => {
+      filesDropdown.classList.remove('show');
+      fileInput.click();
+    });
+  }
+
   fileDropZone.addEventListener('click', () => fileInput.click());
 
   fileDropZone.addEventListener('dragover', e => {
