@@ -11,6 +11,9 @@ from datetime import datetime, timedelta
 import notion_store
 import task_scheduler
 from flask import Blueprint, Response, jsonify, request, send_file
+from utils import _load_employees, _save_employees, now_ist, today_ist, IST
+from werkzeug.security import generate_password_hash
+from routes.auth import _verify_session
 from utils import _is_admin
 
 logger = logging.getLogger(__name__)
@@ -953,6 +956,12 @@ def notion_list_clients():
 
 @ops_bp.route("/api/notion/clients", methods=["POST"])
 def notion_create_client():
+    from utils import _is_admin
+    token = request.cookies.get("session_token", "")
+    user_id = _verify_session(token)
+    if not user_id or not _is_admin(user_id):
+        return jsonify({"error": "Unauthorized: Admin access required"}), 403
+
     body = request.get_json(silent=True) or {}
     name = body.get("name", "").strip()
     if not name:
@@ -990,11 +999,12 @@ def notion_create_client():
     c_pass = body.get("client_password", "").strip()
     if c_user and c_pass:
         try:
+            hashed_pass = generate_password_hash(c_pass)
             conn = _pt_conn()
             with conn:
                 conn.execute(
                     "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
-                    (c_user, c_pass, name, client["notion_id"])
+                    (c_user, hashed_pass, name, client["notion_id"])
                 )
             conn.close()
         except Exception as e:
@@ -1167,8 +1177,8 @@ def notion_dashboard():
         if _is_admin(user_id):
             conn = _pt_conn()
             cur = conn.cursor()
-            cur.execute("SELECT client_notion_id, username, password FROM client_users WHERE client_notion_id IS NOT NULL")
-            users = {r[0]: {"username": r[1], "password": r[2]} for r in cur.fetchall()}
+            cur.execute("SELECT client_notion_id, username FROM client_users WHERE client_notion_id IS NOT NULL")
+            users = {r[0]: {"username": r[1]} for r in cur.fetchall()}
             conn.close()
             
             if "clients" in data:
@@ -1176,7 +1186,6 @@ def notion_dashboard():
                     nid = c.get("notion_id") or c.get("id")
                     if nid in users:
                         c["client_username"] = users[nid]["username"]
-                        c["client_password"] = users[nid]["password"]
         
         # Attach task feedback
         conn = _pt_conn()

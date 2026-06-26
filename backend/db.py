@@ -1,6 +1,11 @@
 import sqlite3
 import json
 import os
+import time
+import functools
+import logging
+
+logger = logging.getLogger(__name__)
 
 # DB_PATH env var lets you point to a Railway volume (e.g. DB_PATH=/logs/app.db)
 # Falls back to the local logs/ directory for development.
@@ -9,12 +14,31 @@ DB_PATH = os.environ.get("DB_PATH", _default_db)
 
 def get_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=20.0)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     # Enable Write-Ahead Logging for high concurrency
     conn.execute("PRAGMA journal_mode=WAL")
     # NORMAL is the recommended synchronous setting for WAL
     conn.execute("PRAGMA synchronous=NORMAL")
     return conn
+
+def with_retry(max_retries=5, initial_delay=0.1):
+    """Decorator to retry SQLite operations if the database is locked."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e) and attempt < max_retries - 1:
+                        logger.warning(f"Database locked, retrying {func.__name__} in {delay}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(delay)
+                        delay *= 2  # Exponential backoff
+                    else:
+                        raise
+        return wrapper
+    return decorator
 
 def init_db():
     conn = get_connection()

@@ -2433,12 +2433,11 @@ def get_clients():
     clients = [_client_row_to_dict(r) for r in cur.fetchall()]
     
     if _is_admin(user_id):
-        cur.execute("SELECT client_name, username, password FROM client_users")
-        users = {r[0]: {"username": r[1], "password": r[2]} for r in cur.fetchall()}
+        cur.execute("SELECT client_name, username FROM client_users")
+        users = {r[0]: {"username": r[1]} for r in cur.fetchall()}
         for c in clients:
             if c.get("name") in users:
                 c["client_username"] = users[c["name"]]["username"]
-                c["client_password"] = users[c["name"]]["password"]
             
     conn.close()
     return jsonify({"clients": clients})
@@ -2448,9 +2447,10 @@ def get_clients():
 @app.route("/api/clients", methods=["POST"])
 def create_client():
     """Create a new client. Admin only."""
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id", "")
-    if not _is_admin(user_id):
+    from routes.auth import _verify_session
+    token = request.cookies.get("session_token", "")
+    user_id = _verify_session(token)
+    if not user_id or not _is_admin(user_id):
         return jsonify({"error": "Unauthorized"}), 403
     name = body.get("name", "").strip()
     if not name:
@@ -2482,9 +2482,10 @@ def create_client():
         c_pass = body.get("client_password", "").strip()
         if c_user and c_pass:
             try:
+                from werkzeug.security import generate_password_hash
                 conn.execute(
                     "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
-                    (c_user, c_pass, name, str(client_id))
+                    (c_user, generate_password_hash(c_pass), name, str(client_id))
                 )
             except Exception as e:
                 logger.error(f"Failed to create client user: {e}")
@@ -2495,8 +2496,10 @@ def create_client():
 @app.route("/api/clients/<int:client_id>", methods=["DELETE"])
 def delete_client(client_id):
     """Delete a client, all their tasks, and their login credentials."""
-    user_id = request.args.get("user_id", "") or (request.get_json(silent=True) or {}).get("user_id", "")
-    if not _is_admin(user_id):
+    from routes.auth import _verify_session
+    token = request.cookies.get("session_token", "")
+    user_id = _verify_session(token)
+    if not user_id or not _is_admin(user_id):
         return jsonify({"error": "Unauthorized"}), 403
     conn = _pt_conn()
     try:

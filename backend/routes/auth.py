@@ -6,6 +6,7 @@ from typing import Optional
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 import logging
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from utils import _load_employees, _save_employees, _is_admin, now_ist, today_ist, IST
 
@@ -252,8 +253,15 @@ def client_login():
 
     client_id, stored_password, client_name, client_notion_id = row
 
-    # Plain-text comparison for now (same pattern as employee PINs in this codebase)
-    if stored_password != password:
+    # Password check with seamless upgrade for legacy plaintext
+    if stored_password == password:
+        # Valid plaintext password. Upgrade to hash seamlessly.
+        new_hash = generate_password_hash(password)
+        conn = _sessions_conn()
+        with conn:
+            conn.execute("UPDATE client_users SET password=? WHERE id=?", (new_hash, client_id))
+        conn.close()
+    elif not check_password_hash(stored_password, password):
         return jsonify({"error": "Invalid username or password"}), 401
 
     token = _create_client_session(client_id)
@@ -335,12 +343,14 @@ def create_client_user():
     if not username or not password or not client_name:
         return jsonify({"error": "username, password, and client_name are required"}), 400
 
+    hashed_password = generate_password_hash(password)
+
     conn = _sessions_conn()
     try:
         with conn:
             cur = conn.execute(
                 "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
-                (username, password, client_name, client_notion_id)
+                (username, hashed_password, client_name, client_notion_id)
             )
             new_id = cur.lastrowid
         conn.close()
@@ -469,7 +479,7 @@ def update_client_user(client_id):
         values.append(body["username"].strip())
     if "password" in body and body["password"].strip():
         updates.append("password=?")
-        values.append(body["password"].strip())
+        values.append(generate_password_hash(body["password"].strip()))
     if "client_name" in body:
         updates.append("client_name=?")
         values.append(body["client_name"].strip())
