@@ -247,31 +247,18 @@ window.openProject = async function(projectId) {
     const titleEl = document.getElementById("project-title-header");
     if (titleEl) titleEl.textContent = p.name;
     
+    const descEl = document.getElementById("project-desc-header");
+    if (descEl) descEl.textContent = p.custom_instructions || "";
+    
     const instEl = document.getElementById("project-custom-instructions");
     if (instEl) instEl.value = p.custom_instructions || "";
     
     renderProjectKb(p.knowledge_base || []);
     
-    // Filter chats for this project
-    const convRes = await fetch(`${API}/api/conversations?user_id=${encodeURIComponent(currentUser.user_id)}`);
-    const cData = await convRes.json();
-    const pConvs = (cData.conversations || []).filter(c => c.project_id === projectId);
-    
-    const chatsList = document.getElementById("project-chats-list");
-    if (chatsList) {
-      if (!pConvs.length) {
-        chatsList.innerHTML = "<div class='conv-empty'>No chats in this project yet.</div>";
-      } else {
-        chatsList.innerHTML = pConvs.map(c => `
-          <div class="conv-item" style="cursor:pointer; background:var(--surface2); border:1px solid var(--border); padding:12px; border-radius:8px; display:flex; justify-content:space-between;" onclick="openConversation('${c.id}')">
-            <div>
-              <div class="conv-item-title" style="color:var(--text); font-weight:500;"> ${escHtml(c.title)}</div>
-              <div class="conv-item-sub" style="margin-top:4px;">${new Date(c.updated_at).toLocaleString()}</div>
-            </div>
-          </div>
-        `).join("");
-      }
-    }
+    // Focus the chat input
+    const pInput = document.getElementById("project-chat-input");
+    if (pInput) setTimeout(() => pInput.focus(), 50);
+
   } catch (e) {
     showToast("Could not load project", "error");
   }
@@ -418,4 +405,74 @@ window.openConversation = async function(convId) {
   if (projView) projView.classList.add("hidden");
   return _oldOpenConversation ? _oldOpenConversation(convId) : null;
 };
+
+// --- New SPA Logic for Project Dashboard ---
+
+// Chat Input logic
+const pChatInput = document.getElementById("project-chat-input");
+const pChatSendBtn = document.getElementById("project-chat-send-btn");
+
+if (pChatInput) {
+  pChatInput.addEventListener("input", function() {
+    this.style.height = 'auto';
+    this.style.height = (this.scrollHeight) + 'px';
+    if (pChatSendBtn) pChatSendBtn.disabled = !this.value.trim();
+  });
+
+  pChatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!pChatSendBtn.disabled) pChatSendBtn.click();
+    }
+  });
+}
+
+if (pChatSendBtn) {
+  pChatSendBtn.addEventListener("click", () => {
+    const text = pChatInput.value.trim();
+    if (!text || !currentProjectId) return;
+    
+    // Hide project view, trigger a new chat bound to this project, and pre-fill the prompt
+    document.getElementById("project-view")?.classList.add("hidden");
+    
+    // We can simulate starting a new chat
+    startNewChat(null, currentProjectId).then(() => {
+       const mainInput = document.getElementById("msg-input");
+       const mainSendBtn = document.getElementById("send-btn");
+       if (mainInput && mainSendBtn) {
+         mainInput.value = text;
+         mainSendBtn.disabled = false;
+         mainSendBtn.click();
+       }
+    });
+    
+    pChatInput.value = "";
+    pChatInput.style.height = "auto";
+  });
+}
+
+// Accordion Toggles
+const toggleInstBtn = document.getElementById("toggle-instructions-btn");
+const instExpanded = document.getElementById("project-instructions-expanded");
+const instIcon = document.getElementById("instructions-icon");
+
+if (toggleInstBtn && instExpanded && instIcon) {
+  toggleInstBtn.addEventListener("click", () => {
+    instExpanded.classList.toggle("hidden");
+    instIcon.textContent = instExpanded.classList.contains("hidden") ? "+" : "−";
+  });
+}
+
+const toggleFilesBtn = document.getElementById("toggle-files-btn");
+const filesExpanded = document.getElementById("project-files-expanded");
+const filesIcon = document.getElementById("files-icon");
+const filesSubtitle = document.getElementById("files-subtitle");
+
+if (toggleFilesBtn && filesExpanded && filesIcon) {
+  toggleFilesBtn.addEventListener("click", () => {
+    filesExpanded.classList.toggle("hidden");
+    filesIcon.textContent = filesExpanded.classList.contains("hidden") ? "+" : "−";
+    if (filesSubtitle) filesSubtitle.style.display = filesExpanded.classList.contains("hidden") ? "block" : "none";
+  });
+}
 

@@ -345,45 +345,118 @@
       </footer>
     </div>
 
-    <!-- Project View -->
-    <div class="project-view hidden" id="project-view" style="display:flex; flex-direction:column; height:100%; background:var(--surface);">
-      <header class="chat-header">
-        <div class="ch-left">
-          <button class="sidebar-toggle" id="project-sidebar-toggle" aria-label="Toggle sidebar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-            </svg>
-          </button>
-          <h1 class="conv-title-header" id="project-title-header">Project Dashboard</h1>
-        </div>
-        <div class="ch-right">
-          <button class="new-chat-btn" id="project-new-chat-btn" style="padding:6px 12px; font-size:0.85rem; display:flex; align-items:center; gap:6px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New Chat in Project
-          </button>
-        </div>
+    <!-- Project View (Claude-style Split Layout) -->
+    <div class="project-view hidden" id="project-view" style="display:flex; flex-direction:column; height:100%; background:var(--bg); overflow-y:auto;">
+      <header style="padding:24px 32px 16px;">
+        <button onclick="showAllProjectsView()" style="background:none; border:none; color:var(--text-2); cursor:pointer; display:flex; align-items:center; gap:8px; font-size:0.9rem;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          All projects
+        </button>
       </header>
 
-      <div class="project-dashboard-content" style="padding:32px 24px; max-width:800px; margin:0 auto; width:100%; overflow-y:auto; flex:1;">
-        <h2 style="margin-bottom:16px; font-size:1.25rem; font-weight:600;">Custom Instructions</h2>
-        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">These instructions will be injected into every chat created inside this project.</p>
-        <textarea id="project-custom-instructions" style="min-height:120px; margin-bottom:32px; padding:16px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; color:var(--text); width:100%; font-family:var(--font-sans); resize:vertical;" placeholder="Set specific instructions for this project (tone, role, formatting)..."></textarea>
+      <div style="display:flex; flex:1; max-width:1200px; margin:0 auto; width:100%; padding:0 32px 48px;">
         
-        <h2 style="margin-bottom:16px; font-size:1.25rem; font-weight:600;">Knowledge Base</h2>
-        <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">Upload documents, code, or context for this project.</p>
-        <div class="project-kb-upload" id="project-kb-upload" style="border:2px dashed var(--border); border-radius:12px; padding:32px; text-align:center; margin-bottom:24px; cursor:pointer; transition:all 0.2s; background:var(--surface2);">
-          <span style="font-size:2rem; margin-bottom:12px; display:block;"></span>
-          <p style="color:var(--text); font-weight:500;">Click to upload documents to the Knowledge Base</p>
-          <input type="file" id="project-file-input" hidden />
-        </div>
-        
-        <div id="project-kb-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:48px;">
-           <!-- KB Docs go here -->
+        <!-- Left Column: Title, Chat Input -->
+        <div style="flex:1; padding-right: 48px; display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 24px;">
+            <div>
+              <h1 id="project-title-header" style="font-size:2rem; font-weight:400; font-family:'Times New Roman', Times, serif; margin-bottom:8px; color:var(--text);">Project Name</h1>
+              <p id="project-desc-header" style="color:var(--text-2); font-size:0.95rem; margin-bottom:32px; white-space:pre-wrap;"></p>
+            </div>
+            <div style="display:flex; gap:8px;">
+               <button style="background:var(--surface2); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:6px 12px; color:var(--text); cursor:pointer; display:flex; align-items:center; gap:6px; font-size:0.85rem; font-weight:500;">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                 Share
+               </button>
+            </div>
+          </div>
+
+          <!-- Main Chat Input inside Project -->
+          <div class="input-wrap" id="project-chat-input-wrap" style="width: 100%; margin-top: auto; border: 1px solid rgba(255,255,255,0.05);">
+            <div class="active-badges" id="project-active-badges"></div>
+            
+            <div class="input-top-row" style="display: flex; width: 100%;">
+              <textarea id="project-chat-input" class="msg-input" rows="1"
+                placeholder="How can I help you today?" maxlength="500000" style="padding-bottom: 0px; margin-top: 0px;"></textarea>
+            </div>
+            
+            <div class="input-bottom-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding-top: 8px;">
+              <div class="plus-menu-container" style="display: flex; align-items: center; gap: 4px; position: relative;">
+                <button class="upload-btn" id="project-chat-plus-btn" title="Add items" style="margin: 0; background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-2); display: flex; align-items: center; justify-content: center; border-radius: 6px;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                    <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+              </div>
+              
+              <div class="input-actions" style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; background: transparent; padding: 2px 8px; border-radius: 8px; transition: background 0.2s;">
+                  <select id="project-model-override" style="background:transparent; border:none; color:var(--text-2); cursor:pointer; font-size:12px; font-weight: 500; outline:none; font-family:inherit; appearance: none; -webkit-appearance: none; padding-right: 4px;">
+                    <option value="auto" style="background: #2b2b2b; color: #fff;">Sonnet 4.6 Medium</option>
+                  </select>
+                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-2); pointer-events:none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+                <button class="send-btn" id="project-chat-send-btn" disabled title="Send (Enter)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div style="text-align:center; color:var(--muted); font-size:0.85rem; margin-top:24px; padding: 24px; border: 1px solid rgba(255,255,255,0.05); border-radius:12px;">
+            Start a chat to keep conversations organized and re-use project knowledge.
+          </div>
         </div>
 
-        <h2 style="margin-bottom:16px; font-size:1.25rem; font-weight:600;">Project Chats</h2>
-        <div id="project-chats-list" style="display:flex; flex-direction:column; gap:8px;">
-           <!-- Project chats go here -->
+        <!-- Right Column: Settings, Instructions, Files -->
+        <div style="width: 380px; display:flex; flex-direction:column; gap:16px; padding-left:32px;">
+          
+          <!-- Instructions Card -->
+          <div style="background:transparent; border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:16px;">
+             <div style="display:flex; justify-content:space-between; cursor:pointer;" id="toggle-instructions-btn">
+               <div style="display:flex; flex-direction:column;">
+                 <span style="font-weight:600; font-size:0.95rem; color:var(--text);">Instructions</span>
+                 <span style="color:var(--muted); font-size:0.85rem; margin-top:4px;">Add instructions to tailor Claude's responses</span>
+               </div>
+               <button style="background:none; border:none; color:var(--text-2); font-size:1.2rem; cursor:pointer;" id="instructions-icon">+</button>
+             </div>
+             
+             <div class="hidden" id="project-instructions-expanded" style="margin-top:16px;">
+               <textarea id="project-custom-instructions" style="min-height:160px; padding:12px; background:var(--surface2); border:1px solid rgba(255,255,255,0.05); border-radius:8px; color:var(--text); width:100%; font-family:var(--font-sans); resize:vertical; font-size:0.9rem; outline:none;" placeholder="Set specific instructions for this project (tone, role, formatting)..."></textarea>
+             </div>
+          </div>
+
+          <!-- Files Card -->
+          <div style="background:transparent; border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:16px;">
+             <div style="display:flex; justify-content:space-between; cursor:pointer;" id="toggle-files-btn">
+               <div style="display:flex; flex-direction:column;">
+                 <span style="font-weight:600; font-size:0.95rem; color:var(--text);">Files</span>
+                 <span style="color:var(--muted); font-size:0.85rem; margin-top:4px; display:none;" id="files-subtitle">Add PDFs, documents, or other text to reference in this project.</span>
+               </div>
+               <button style="background:none; border:none; color:var(--text-2); font-size:1.2rem; cursor:pointer;" id="files-icon">+</button>
+             </div>
+             
+             <div class="hidden" id="project-files-expanded" style="margin-top:16px;">
+                <div class="project-kb-upload" id="project-kb-upload" style="background:var(--surface2); border-radius:12px; padding:32px 16px; text-align:center; border:1px dashed rgba(255,255,255,0.1); cursor:pointer; transition:all 0.2s;">
+                  <div style="font-size:2rem; margin-bottom:8px; display:flex; justify-content:center;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="color:var(--text-2); opacity:0.5;">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="12" y1="18" x2="12" y2="12"></line>
+                      <line x1="9" y1="15" x2="15" y2="15"></line>
+                    </svg>
+                  </div>
+                  <div style="color:var(--text-2); font-size:0.85rem;">Add PDFs, documents, or other text to reference in this project.</div>
+                  <input type="file" id="project-file-input" hidden />
+                </div>
+                <div id="project-kb-list" style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">
+                   <!-- KB Docs go here -->
+                </div>
+             </div>
+          </div>
+
         </div>
       </div>
     </div>
