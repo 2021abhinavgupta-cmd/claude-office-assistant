@@ -7,33 +7,130 @@ async function loadProjects() {
   try {
     const res = await fetch(`${API}/api/projects?user_id=${encodeURIComponent(currentUser.user_id)}`);
     const data = await res.json();
-    renderProjectsList(data.projects || []);
+    window.allProjectsData = data.projects || [];
+    renderAllProjectsGrid(window.allProjectsData);
   } catch (e) {
-    const list = document.getElementById("projects-list");
-    if (list) list.innerHTML = "<div class='conv-empty'>Could not load projects.</div>";
+    const grid = document.getElementById("projects-grid");
+    if (grid) grid.innerHTML = `<div style="color:var(--red);">Could not load projects.</div>`;
   }
 }
 
-function renderProjectsList(projects) {
-  const list = document.getElementById("projects-list");
-  if (!list) return;
+function renderAllProjectsGrid(projects) {
+  const grid = document.getElementById("projects-grid");
+  if (!grid) return;
   
   if (!projects.length) {
-    list.innerHTML = "<div class='conv-empty'>No projects yet</div>";
+    grid.innerHTML = `<div style="color:var(--muted); font-size:0.95rem;">No projects yet. Create one to get started.</div>`;
     return;
   }
-  let html = "";
-  projects.forEach(p => {
-    html += `
-      <div class="conv-item${p.id === currentProjectId ? " active" : ""}" data-id="${p.id}" onclick="openProject('${p.id}')">
-        <span class="conv-item-icon"></span>
-        <div class="conv-item-body">
-          <div class="conv-item-title">${escHtml(p.name)}</div>
+  
+  grid.innerHTML = projects.map(p => {
+    const date = new Date(p.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return `
+      <a href="#" onclick="openProject('${p.id}'); return false;" style="display:flex; flex-direction:column; justify-content:space-between; background:var(--surface2); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:24px; text-decoration:none; color:var(--text); min-height:160px; transition:border-color 0.2s, background 0.2s;" onmouseover="this.style.background='var(--surface)'; this.style.borderColor='var(--border)'" onmouseout="this.style.background='var(--surface2)'; this.style.borderColor='rgba(255,255,255,0.05)'">
+        <div>
+          <h3 style="font-size:1.1rem; font-weight:600; margin-bottom:8px;">${escHtml(p.name)}</h3>
+          ${p.custom_instructions ? `<p style="font-size:0.85rem; color:var(--muted); overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;">${escHtml(p.custom_instructions)}</p>` : ''}
         </div>
-      </div>`;
-  });
-  list.innerHTML = html;
+        <div style="font-size:0.8rem; color:var(--text-2); margin-top:16px;">
+          Updated ${date}
+        </div>
+      </a>
+    `;
+  }).join("");
 }
+
+window.showAllProjectsView = function() {
+  document.getElementById("welcome-screen")?.classList.add("hidden");
+  document.getElementById("chat-view")?.classList.add("hidden");
+  document.getElementById("project-view")?.classList.add("hidden");
+  
+  const allProjView = document.getElementById("all-projects-view");
+  if (allProjView) {
+    allProjView.classList.remove("hidden");
+  }
+  loadProjects();
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  const searchInput = document.getElementById("projects-search-input");
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      const q = e.target.value.toLowerCase();
+      if (!q) {
+        renderAllProjectsGrid(window.allProjectsData || []);
+        return;
+      }
+      const filtered = (window.allProjectsData || []).filter(p => p.name.toLowerCase().includes(q) || (p.custom_instructions || "").toLowerCase().includes(q));
+      renderAllProjectsGrid(filtered);
+    });
+  }
+  
+  const mainNewProjBtn = document.getElementById("main-new-proj-btn");
+  if (mainNewProjBtn) {
+    mainNewProjBtn.addEventListener("click", () => {
+      const modal = document.getElementById("project-modal");
+      if (modal) {
+        modal.style.display = "flex";
+        modal.classList.remove("hidden");
+        const nameInput = document.getElementById("project-name-input");
+        if (nameInput) {
+          nameInput.value = "";
+          setTimeout(() => nameInput.focus(), 50);
+        }
+        const descInput = document.getElementById("project-desc-input");
+        if (descInput) descInput.value = "";
+      }
+    });
+  }
+  
+  // Wire up modal logic from index.html
+  const modal = document.getElementById("project-modal");
+  const cancelBtn = document.getElementById("project-cancel-btn");
+  const createBtn = document.getElementById("project-create-btn");
+  const nameInput = document.getElementById("project-name-input");
+  const descInput = document.getElementById("project-desc-input");
+  
+  if (cancelBtn && modal) {
+    cancelBtn.addEventListener("click", () => {
+      modal.style.display = "none";
+      modal.classList.add("hidden");
+    });
+  }
+  
+  if (createBtn) {
+    createBtn.addEventListener("click", async () => {
+      const name = nameInput.value.trim();
+      if (!name) return;
+      
+      createBtn.disabled = true;
+      createBtn.textContent = "Creating...";
+
+      try {
+        const res = await fetch(`${API}/api/projects`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            name: name,
+            custom_instructions: descInput.value.trim()
+          })
+        });
+        if (!res.ok) throw new Error("Failed to create project");
+        const p = await res.json();
+        modal.style.display = "none";
+        modal.classList.add("hidden");
+        openProject(p.id);
+      } catch (e) {
+        console.error(e);
+        showToast("Error creating project", "error");
+      } finally {
+        createBtn.disabled = false;
+        createBtn.textContent = "Create project";
+      }
+    });
+  }
+});
 
 function showCreateProjectModal() {
   return new Promise((resolve) => {
@@ -141,8 +238,9 @@ window.openProject = async function(projectId) {
     const p = await res.json();
     currentProject = p;
     
-    document.getElementById("welcome-screen").classList.add("hidden");
-    document.getElementById("chat-view").classList.add("hidden");
+    document.getElementById("welcome-screen")?.classList.add("hidden");
+    document.getElementById("chat-view")?.classList.add("hidden");
+    document.getElementById("all-projects-view")?.classList.add("hidden");
     const projView = document.getElementById("project-view");
     if (projView) projView.classList.remove("hidden");
     
