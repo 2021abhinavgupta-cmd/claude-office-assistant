@@ -9,12 +9,15 @@ async function loadProjects() {
     const data = await res.json();
     renderProjectsList(data.projects || []);
   } catch (e) {
-    document.getElementById("projects-list").innerHTML = "<div class='conv-empty'>Could not load projects.</div>";
+    const list = document.getElementById("projects-list");
+    if (list) list.innerHTML = "<div class='conv-empty'>Could not load projects.</div>";
   }
 }
 
 function renderProjectsList(projects) {
   const list = document.getElementById("projects-list");
+  if (!list) return;
+  
   if (!projects.length) {
     list.innerHTML = "<div class='conv-empty'>No projects yet</div>";
     return;

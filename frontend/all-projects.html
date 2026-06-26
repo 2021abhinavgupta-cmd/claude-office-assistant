@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Projects</title>
+  <meta name="description" content="office workspace — code, write, design, analyze with System. Multiple conversations per employee." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="auth.js?v=2"></script>
+  <link rel="stylesheet" href="style.css?v=2" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]})"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23d97757'/></svg>">
+</head>
+<body>
+
+
+<!-- ── Project Create Modal ── -->
+<div class="modal-overlay hidden" id="project-modal" role="dialog" aria-modal="true" style="display:none; align-items:center; justify-content:center;">
+  <div class="modal-card" style="max-width: 480px; text-align: left; padding: 32px;">
+    <h2 style="margin-bottom:16px; font-size:1.4rem; font-family:var(--font-sans); font-weight:600;">Create a personal project</h2>
+    <div style="background:var(--surface2); padding:16px; border-radius:8px; margin-bottom:24px; font-size:0.9rem; color:var(--muted); line-height:1.5;">
+     Projects help organise your work. Upload docs, code, and files to create themed collections.
+    </div>
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500; color:var(--text);">What are you working on?</label>
+    <input type="text" id="project-name-input" placeholder="e.g. Website Redesign" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; color:var(--text); font-family:inherit; margin-bottom:20px; font-size:0.95rem; outline:none;" />
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500; color:var(--text);">What are you trying to achieve?</label>
+    <textarea id="project-desc-input" placeholder="e.g. Redesigning the main landing page to increase conversions..." rows="3" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; color:var(--text); font-family:inherit; resize:vertical; margin-bottom:32px; font-size:0.95rem; outline:none;"></textarea>
+    
+    <div style="display:flex; justify-content:flex-end; gap:12px;">
+      <button class="secondary-btn" id="project-cancel-btn" style="padding:10px 16px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-weight:500; font-size:0.95rem;">Cancel</button>
+      <button class="primary-btn" id="project-create-btn" style="padding:10px 16px; border-radius:8px; border:none; background:#d97757; color:#fff; font-weight:500; font-size:0.95rem; cursor:pointer;">Create project</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── App Shell ── -->
+<div class="app-shell" id="app-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <span class="brand-name" style="font-family: 'Times New Roman', serif; font-size: 1.3rem; letter-spacing: -0.02em;">OPs</span>
+        <div class="brand-actions" style="display: flex; gap: 4px; margin-left: auto;">
+           <button class="icon-btn" style="background: none; border: none; color: var(--text-2); cursor: pointer; padding: 4px; border-radius: 4px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+           <button class="icon-btn" id="sidebar-toggle-btn" style="background: none; border: none; color: var(--text-2); cursor: pointer; padding: 4px; border-radius: 4px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
+        </div>
+      </div>
+      <button class="new-chat-btn" id="new-chat-btn" title="New conversation (Ctrl+K)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New chat
+      </button>
+    </div>
+
+    <div class="sidebar-section-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 16px 8px; margin-bottom: 16px;">
+      <a href="all-projects.html" style="display:flex; justify-content:space-between; align-items:center; width:100%; text-decoration:none; color:var(--text); font-size:0.95rem; font-weight:500; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:8px;">
+        <span>Projects</span>
+      </a>
+    </div>
+
+    <div class="sidebar-section-header" style="padding:0 16px 8px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:600;">
+      <span>Recent Chats</span>
+    </div>
+    <div style="padding: 0 12px 12px;">
+      <input type="text" id="chat-search" placeholder="Search chats..." style="width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.85rem;" onkeyup="filterChats(this.value)" />
+    </div>
+    <div class="conv-list" id="conv-list">
+      <div class="conv-empty">No chats yet.<br>Click <strong>New Chat</strong> to begin.</div>
+    </div>
+
+    <!--Saved Notes Panel -->
+    <div class="memory-panel" id="memory-panel">
+      <div class="memory-header" id="memory-toggle">
+        <span>Saved Notes</span>
+        <div class="memory-header-actions">
+          <span class="memory-count" id="memory-count">0</span>
+          <button class="memory-add-btn" id="memory-add-btn" title="Add memory">+</button>
+          <span class="memory-chevron" id="memory-chevron">▾</span>
+        </div>
+      </div>
+      <div class="memory-body hidden" id="memory-body">
+        <div class="memory-input-row">
+          <input id="memory-input" class="memory-input" placeholder="e.g. I prefer Python over JS" />
+          <button id="memory-save-btn" class="memory-save-btn">Save</button>
+        </div>
+        <div class="memory-list" id="memory-list">
+          <div class="memory-empty">No memories yet</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="budget-mini">
+        <div class="budget-mini-row">
+          <span class="budget-mini-label">Usage</span>
+          <span class="budget-mini-val" id="budget-mini-val">$0.00 / $150</span>
+          <a href="dashboard.html" class="budget-dash-link" title="FullDashboard">↗</a>
+        </div>
+        <div class="budget-mini-track">
+          <div class="budget-mini-fill" id="budget-mini-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; padding:8px 4px;">
+        <a href="dashboard.html" class="user-pill" id="dashboard-pill" title="Go to Dashboard" style="flex:1; text-decoration:none; display:flex; justify-content:center; gap:8px; color:var(--text);">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-2)"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span class="user-name-text" style="margin-left:0; font-weight:500; color:var(--text);">Dashboard</span>
+        </a>
+        <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark mode" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:8px; cursor:pointer; font-size:1rem; flex-shrink:0;">☀</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main" id="main" style="display:flex; flex-direction:column; padding: 48px; background:var(--bg); overflow-y:auto; flex:1;">
+    <div style="max-width: 1000px; margin: 0 auto; width: 100%;">
+      
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 24px;">
+        <h1 style="font-family:'Times New Roman', Times, serif; font-size:2rem; font-weight:400; color:var(--text);">Projects</h1>
+        <div style="display:flex; gap:16px; align-items:center;">
+          <div style="color:var(--text-2); font-size:0.85rem;">Sort by <strong>Last updated <span style="font-size:0.7rem;">▼</span></strong></div>
+          <button id="main-new-proj-btn" style="background:var(--text); color:var(--bg); border:none; padding:8px 16px; border-radius:8px; font-weight:500; font-family:inherit; cursor:pointer;">New project</button>
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 32px; position:relative;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); width:18px; height:18px; color:var(--muted);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="projects-search-input" placeholder="Search projects..." style="width:100%; padding:12px 16px 12px 40px; background:var(--surface2); border:1px solid rgba(255,255,255,0.05); border-radius:8px; color:var(--text); font-size:0.95rem; font-family:inherit; outline:none;" />
+      </div>
+
+      <div id="projects-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px;">
+        <!-- Project Cards will be inserted here -->
+        <div style="color:var(--muted); font-size:0.9rem;">Loading projects...</div>
+      </div>
+      
+    </div>
+  </main>
+</div>
+
+<!-- Hidden file input -->
+<input type="file" id="file-input" multiple hidden />
+
+<!-- Drag-Drop Overlay -->
+<div class="drag-overlay hidden" id="drag-overlay">
+  <div class="drag-overlay-inner">
+    <div style="font-size:3rem"></div>
+    <strong>Drop files to attach</strong>
+    <small>Images,PDF,DOCX, code, and more</small>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toast-container" aria-live="assertive"></div>
+
+<!-- ── Prompt Optimizer Panel ── -->
+<div class="opt-backdrop hidden" id="opt-backdrop"></div>
+<div class="opt-panel hidden" id="opt-panel" role="dialog" aria-label="Prompt Optimizer">
+  <!-- Header -->
+  <div class="opt-header">
+    <div class="opt-title">
+      <span class="opt-icon"></span>
+      <span>Prompt Optimizer</span>
+      <span class="opt-badge">Quick optimizer</span>
+    </div>
+    <div class="opt-header-right">
+      <span class="opt-cost-display" id="opt-cost-display"></span>
+      <button class="opt-close-btn" id="opt-close-btn" title="Close">✕</button>
+    </div>
+  </div>
+
+  <!-- Split body -->
+  <div class="opt-body">
+    <!-- Original -->
+    <div class="opt-col">
+      <div class="opt-col-header">
+        <span class="opt-col-label">Your prompt</span>
+      </div>
+      <div class="opt-original" id="opt-original"></div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="opt-arrow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </div>
+
+    <!-- Optimized (editable) -->
+    <div class="opt-col">
+      <div class="opt-col-header">
+        <span class="opt-col-label">Suggested</span>
+        <span class="opt-edit-hint">click to edit</span>
+      </div>
+      <textarea class="opt-optimized" id="opt-optimized" spellcheck="true"
+        placeholder="Optimized prompt will appear here…"></textarea>
+    </div>
+  </div>
+
+  <!-- Loading state -->
+  <div class="opt-loading hidden" id="opt-loading">
+    <div class="opt-spinner"></div>
+    <span>Optimizing…</span>
+  </div>
+
+  <!-- Footer actions -->
+  <div class="opt-footer">
+    <div class="opt-diff-hint" id="opt-diff-hint"></div>
+    <div class="opt-actions">
+      <button class="opt-btn secondary" id="opt-keep-btn">Keep original</button>
+      <button class="opt-btn primary" id="opt-use-btn">Use this →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Skills Manager Modal ── -->
+<div class="modal-overlay hidden" id="skills-modal" role="dialog" aria-modal="true" style="align-items:center; justify-content:center; z-index: 10000;">
+  <div class="modal-card" style="max-width: 600px; text-align: left; padding: 32px; max-height: 90vh; overflow-y: auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <h2 style="font-size:1.4rem; font-family:var(--font-sans); font-weight:600;">Manage Skills</h2>
+      <button id="skills-modal-close" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--muted);">&times;</button>
+    </div>
+    
+    <div id="skills-manager-list" style="margin-bottom: 32px; display:flex; flex-direction:column; gap:12px;">
+      <!-- Custom skills listed here -->
+    </div>
+
+    <hr style="border:0; border-top:1px solid var(--border); margin-bottom:24px;">
+
+    <h3 style="margin-bottom:16px; font-size:1.1rem; font-weight:600;" id="new-skill-header">Create New Skill</h3>
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500;">Skill name</label>
+    <input type="text" id="new-skill-name" placeholder="e.g. Code Reviewer" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--text); margin-bottom:16px; outline:none;" />
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500;">Model</label>
+    <select id="new-skill-model" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--text); margin-bottom:16px; outline:none;">
+      <option value="haiku">Fast (Haiku)</option>
+      <option value="sonnet">Powerful (Sonnet)</option>
+    </select>
+    
+    <label style="display:block; margin-bottom:8px; font-size:0.9rem; font-weight:500;">Instructions</label>
+    <textarea id="new-skill-prompt" placeholder="What should Claude do?" rows="4" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--text); resize:vertical; margin-bottom:16px; outline:none;"></textarea>
+    
+    <label style="display:flex; align-items:center; gap:8px; margin-bottom:24px; font-size:0.9rem; cursor:pointer;">
+      <input type="checkbox" id="new-skill-shared" /> Share with team
+    </label>
+    
+    <div style="display:flex; justify-content:flex-end;">
+      <button class="primary-btn" id="save-skill-btn" style="padding:10px 16px; border-radius:8px; border:none; background:#d97757; color:#fff; font-weight:500; cursor:pointer;">Save Skill</button>
+    </div>
+  </div>
+</div>
+
+<script src="utils.js"></script>
+<script src="all-projects.js"></script>
+<script>
+// ── Export State ────────────────────────────────────────────────────────────
+window._lastAIResponse = { text: "", title: "System Export" };
+
+// Call from app.js after each AI reply
+window.setLastAIResponse = function(text, title) {
+  window._lastAIResponse = { text, title: title || "System Export" };
+};
+
+// Strip chat preamble / fake labels soDOCX matches what users expect (like System artifacts)
+function markdownBodyForExport(md) {
+  if (!md || !String(md).trim()) return md;
+  let s = String(md).trim();
+  s = s.replace(/^\s*(DOCUMENT:|MARKDOWN|Download)\s*:?\s*$/gim, "");
+  const lines = s.split(/\r?\n/);
+  const firstH = lines.findIndex(l => /^#{1,6}\s+\S/.test(l.trim()));
+  if (firstH > 0) {
+    const fluff = lines.slice(0, firstH).join("\n").trim();
+    if (
+      fluff.length > 60 ||
+      /\b(here'?s|i['']?ll\s+create|word-?ready|complete\s+markdown|below\s+(is|you))/i.test(fluff)
+    ) {
+      s = lines.slice(firstH).join("\n").trim();
+    }
+  }
+  return s;
+}
+
+/** Drop UI chrome before the first SLIDE N: soPPTX export gets a clean deck body. */
+function slideMarkdownForExport(md) {
+  if (!md || !String(md).trim()) return md;
+  const lines = String(md).split(/\r?\n/);
+  const slideRe = /^(\*{0,3}\s*)?SLIDE\s+\d+\s*:/i;
+  const mdSlideRe = /^##\s*SLIDE\s+\d+\s*:/i;
+  let idx = lines.findIndex((l) => slideRe.test(l.trim()) || mdSlideRe.test(l.trim()));
+  if (idx <= 0) return String(md).trim();
+  const junk = /^(?:✏\s*)?edit\s*$|^(?:✦)+\s*$|^claude\s*$/i;
+  const goodPre = [];
+  for (let i = 0; i < idx; i++) {
+    const t = lines[i].trim();
+    if (!t || junk.test(t)) continue;
+    goodPre.push(lines[i]);
+  }
+  const rest = lines.slice(idx).join("\n").trim();
+  if (!goodPre.length) return rest;
+  return [...goodPre, "", rest].join("\n").trim();
+}
+
+// ── Server-side Export ───────────────────────────────────────────────────────
+async function exportDocument(format, triggerEl) {
+  let { text, title } = window._lastAIResponse;
+  if (!text) {
+    alert("No content to export yet.");
+    return;
+  }
+
+  if (format === "docx" || format === "pdf") {
+    text = markdownBodyForExport(text);
+  }
+  if (format === "pptx") {
+    text = slideMarkdownForExport(markdownBodyForExport(text));
+  }
+
+  const btn = triggerEl || (typeof event !== "undefined" ? event.target : null);
+  const origLabel = btn ? btn.textContent : "";
+  if (btn) {
+    btn.textContent = "⏳ Generating...";
+    btn.disabled = true;
+  }
+
+  try {
+    const API = window.API || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'http://localhost:5000' : location.origin);
+    const res = await fetch(`${API}/api/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: text, format, title })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Export failed");
+    }
+
+    // Trigger browser download
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `${title.replace(/[^\w\s-]/g,"").trim().replace(/\s+/g,"_") || "export"}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert(`Export failed: ${e.message}`);
+  } finally {
+    if (btn) {
+      btn.textContent = origLabel;
+      btn.disabled = false;
+    }
+  }
+}
+
+window.exportDocument = exportDocument;
+
+// Legacy client-side functions removed — now server-backed
+function downloadArtifactPDF()  { exportDocument('pdf');  }
+function downloadArtifactDOCX() { exportDocument('docx'); }
+</script>
+</body>
+</html>
