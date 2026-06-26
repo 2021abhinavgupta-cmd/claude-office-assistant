@@ -239,36 +239,29 @@ window.openProject = async function(projectId) {
     currentProject = p;
     
     document.getElementById("welcome-screen")?.classList.add("hidden");
+    document.getElementById("chat-view")?.classList.add("hidden");
     document.getElementById("all-projects-view")?.classList.add("hidden");
+    const projView = document.getElementById("project-view");
+    if (projView) projView.classList.remove("hidden");
     
-    // Instead of hiding chat, we ensure it's visible, and show the side panel!
-    document.getElementById("chat-view")?.classList.remove("hidden");
-    const sidePanel = document.getElementById("project-side-panel");
-    if (sidePanel) sidePanel.classList.remove("hidden");
-    
-    const titleEl = document.getElementById("project-side-title");
+    const titleEl = document.getElementById("project-title-header");
     if (titleEl) titleEl.textContent = p.name;
+    
+    const descEl = document.getElementById("project-desc-header");
+    if (descEl) descEl.textContent = p.custom_instructions || "";
     
     const instEl = document.getElementById("project-custom-instructions");
     if (instEl) instEl.value = p.custom_instructions || "";
     
     renderProjectKb(p.knowledge_base || []);
     
-    // Auto-start a chat bound to this project
-    startNewChat(null, currentProjectId);
+    // Focus the chat input
+    const pInput = document.getElementById("project-chat-input");
+    if (pInput) setTimeout(() => pInput.focus(), 50);
 
   } catch (e) {
     showToast("Could not load project", "error");
   }
-};
-
-window.closeProjectPanel = function() {
-  currentProjectId = null;
-  currentProject = null;
-  document.getElementById("project-side-panel")?.classList.add("hidden");
-  loadProjects();
-  // Optional: clear out the chat if they close the project they were in
-  // startNewChat();
 };
 
 const projInstEl = document.getElementById("project-custom-instructions");
@@ -285,7 +278,15 @@ if (projInstEl) {
   });
 }
 
-// Project chat button listener removed as it's no longer needed
+const pNewChatBtn = document.getElementById("project-new-chat-btn");
+if (pNewChatBtn) {
+  pNewChatBtn.addEventListener("click", () => {
+    // Hide project view, start a chat bound to currentProjectId
+    const projView = document.getElementById("project-view");
+    if (projView) projView.classList.add("hidden");
+    startNewChat(null, currentProjectId);
+  });
+}
 
 const pFileInput = document.getElementById("project-file-input");
 if (pFileInput) {

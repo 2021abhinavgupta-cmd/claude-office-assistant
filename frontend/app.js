@@ -721,11 +721,9 @@ window.toggleProjectsPanel = function() {
 };
 
 function updateHeaderChips(task, modelTier) {
-  if (taskChip) taskChip.textContent  = task.replace(/_/g, " ");
-  if (modelChip) {
-    modelChip.textContent = modelTier;
-    modelChip.className   = `model-chip ${modelTier}`;
-  }
+  taskChip.textContent  = task.replace(/_/g, " ");
+  modelChip.textContent = modelTier;
+  modelChip.className   = `model-chip ${modelTier}`;
 }
 function updateInputMeta(taskName, modelName) {
   if (metaTask) metaTask.textContent = taskName.replace(/_/g, " ");
