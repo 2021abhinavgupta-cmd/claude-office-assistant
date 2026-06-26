@@ -487,9 +487,11 @@ def auto_fill_standup():
             assignees = t.get("assigned_to", "")
             if not sync_all and assigned_name:
                 target_uids = [user_id]
-            elif assignees:
+            else:
                 names = [n.strip() for n in assignees.split(",") if n.strip()]
                 target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
+                if not target_uids:
+                    target_uids = list(emp_name_to_id.values())
                 
             for target_user_id in target_uids:
                 cur.execute("SELECT id, due_date, notion_id, title FROM standup_tasks WHERE user_id=? AND date=?", (target_user_id, today_str))
@@ -598,10 +600,14 @@ def auto_fill_standup():
                 assignees = vt.get("assigned_to", "")
                 names = [n.strip() for n in assignees.split(",") if n.strip()]
                 target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
-                if not target_uids:
-                    continue # No matching user in the system
+                if target_uids:
+                    insert_allowed = True
+                else:
+                    target_uids = list(emp_name_to_id.values())
+                    insert_allowed = False
             else:
                 target_uids = [user_id]
+                insert_allowed = True
                 
             for target_user_id in target_uids:
                 cur.execute("SELECT id, notion_id, title FROM standup_tasks WHERE user_id=? AND date=?", (target_user_id, today_str))
@@ -622,11 +628,12 @@ def auto_fill_standup():
                         break
                                 
                 if not matched_id:
-                    cur.execute(
-                        "INSERT INTO standup_tasks (user_id, date, title, notion_id, due_date) VALUES (?, ?, ?, ?, ?)",
-                        (target_user_id, today_str, search_title, nid, d)
-                    )
-                    added_count += 1
+                    if insert_allowed:
+                        cur.execute(
+                            "INSERT INTO standup_tasks (user_id, date, title, notion_id, due_date) VALUES (?, ?, ?, ?, ?)",
+                            (target_user_id, today_str, search_title, nid, d)
+                        )
+                        added_count += 1
                 else:
                     cur.execute(
                         "UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?",
