@@ -458,7 +458,7 @@ def auto_fill_standup():
     existing_notion_ids = set()
     conn = _su_conn()
     cur = conn.cursor()
-    cur.execute("SELECT notion_id FROM standup_tasks WHERE date=?", (today_str,))
+    cur.execute("SELECT notion_id FROM standup_tasks WHERE date=? OR status NOT IN ('Completed', 'Archived')", (today_str,))
     for r in cur.fetchall():
         if r[0]: existing_notion_ids.add(r[0])
     
@@ -494,7 +494,7 @@ def auto_fill_standup():
                     target_uids = list(emp_name_to_id.values())
                 
             for target_user_id in target_uids:
-                cur.execute("SELECT id, due_date, notion_id, title FROM standup_tasks WHERE user_id=? AND date=?", (target_user_id, today_str))
+                cur.execute("SELECT id, due_date, notion_id, title FROM standup_tasks WHERE user_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (target_user_id, today_str))
                 local_tasks = cur.fetchall()
                 
                 matched_id = None
@@ -610,7 +610,7 @@ def auto_fill_standup():
                 insert_allowed = True
                 
             for target_user_id in target_uids:
-                cur.execute("SELECT id, notion_id, title FROM standup_tasks WHERE user_id=? AND date=?", (target_user_id, today_str))
+                cur.execute("SELECT id, notion_id, title FROM standup_tasks WHERE user_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (target_user_id, today_str))
                 local_tasks = cur.fetchall()
                 
                 matched_id = None
