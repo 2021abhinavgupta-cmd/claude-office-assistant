@@ -702,6 +702,7 @@ def standup_smart_add():
     user_id = body.get("user_id", "")
     assigned_to = body.get("assigned_to", "")
     title = body.get("title", "").strip()
+    due_date = body.get("due_date", "").strip()
 
     if not user_id or not title:
         return jsonify({"error": "user_id and title required"}), 400
@@ -732,7 +733,8 @@ Respond ONLY in valid JSON format:
     notion_id = None
     
     if is_project and notion_store.is_configured():
-        due_date = datetime.utcnow().strftime("%Y-%m-%d")
+        if not due_date:
+            due_date = datetime.utcnow().strftime("%Y-%m-%d")
         created = notion_store.create_task(
             title=title,
             client_name=client,
@@ -749,7 +751,7 @@ Respond ONLY in valid JSON format:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO standup_tasks (user_id, title, status, date, notion_id, due_date) VALUES (?, ?, 'pending', date('now'), ?, ?)",
-            (user_id, title, notion_id, due_date if 'due_date' in locals() else '')
+            (user_id, title, notion_id, due_date)
         )
         task_id = cur.lastrowid
         

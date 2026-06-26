@@ -131,10 +131,15 @@
         <p class="card-sub">Personal tasks — tick off as you go. Unfinished tasks carry over tomorrow.</p>
 
         <div class="task-add-row">
-          <input class="task-input" id="new-task-input" list="notion-tasks-list" placeholder="Add a task for today…" onkeydown="if(event.key==='Enter')addTask(this.nextElementSibling)"/>
+          <input class="task-input" id="new-task-input" list="notion-tasks-list" placeholder="Add a task for today…" onkeydown="if(event.key==='Enter')addTask(document.querySelector('.task-add-btn'))"/>
           <datalist id="notion-tasks-list"></datalist>
           <button class="task-add-btn" onclick="addTask(this)" style="display:flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add</button>
           <button class="task-add-btn" id="autofill-btn" onclick="autoFillStandup()" style="background:var(--s2);color:var(--acc);margin-left:8px;white-space:nowrap;display:flex;align-items:center;" title="Auto-fill tasks from Notion (In Progress / Due Today)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg> Auto-Fill</button>
+        </div>
+        <div style="display:flex; align-items:center; gap: 8px; margin-top: 10px; margin-bottom: 24px; margin-left: 4px;">
+          <input type="checkbox" id="add-post-date-check" onchange="document.getElementById('post-date-picker').style.display=this.checked?'block':'none'" style="cursor:pointer;" />
+          <label for="add-post-date-check" style="font-size:0.75rem; color:var(--muted); cursor:pointer; user-select:none;">Add Post Date</label>
+          <input type="date" id="post-date-picker" style="display:none; background:var(--s2); border:1px solid var(--bdr); border-radius:4px; color:var(--txt); padding:3px 8px; font-size:0.75rem; outline:none; font-family:'DM Sans',sans-serif;" />
         </div>
 
         <div class="task-stats" id="task-stats" style="display:none">
@@ -435,13 +440,25 @@ async function addTask(btnEl){
   if(!title) return;
   inp.value = "";
   
-  const origBtnText = btnEl ? btnEl.textContent : "+ Add";
-  if(btnEl) btnEl.textContent = "⏳...";
+  const origBtnText = btnEl ? btnEl.textContent : "Add";
+  if(btnEl) btnEl.textContent = "...";
+  
+  inp.value = "";
+  
+  const postDateCheck = document.getElementById("add-post-date-check");
+  const postDatePicker = document.getElementById("post-date-picker");
+  let dueDateStr = "";
+  if (postDateCheck && postDateCheck.checked && postDatePicker.value) {
+      dueDateStr = postDatePicker.value;
+      postDateCheck.checked = false;
+      postDatePicker.style.display = "none";
+      postDatePicker.value = "";
+  }
   
   try {
     const r = await fetch(`${API}/api/standup/smart-add`,{
       method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({user_id:UID, title:title, assigned_to:window.EMP_DICT[UID]||UID})
+      body:JSON.stringify({user_id:UID, title:title, assigned_to:window.EMP_DICT[UID]||UID, due_date:dueDateStr})
     });
     const d = await r.json();
     if(d.success){
