@@ -1206,8 +1206,7 @@ def notion_dashboard():
                 filtered_tasks = []
                 for t in c.get("tasks", []):
                     t_id = t.get("notion_id") or t.get("id")
-                    
-                    # Filter out if marked done in standup
+                    # Filter out if marked done in standup, and filter out random unassigned tasks
                     if t_id and t_id in standup_map:
                         if standup_map[t_id]["status"] == "done":
                             continue  # Skip adding this task to the list
@@ -1220,7 +1219,11 @@ def notion_dashboard():
                                 t["subtasks"] = json.loads(su_subtasks)
                             except:
                                 pass
-                                
+                    else:
+                        # If this is the Daily Standup Tasks block ("unassigned"), and it's NOT in standup_map, drop it!
+                        if c.get("notion_id") == "unassigned":
+                            continue
+                            
                     if t_id and t_id in feedback_map:
                         t["feedback"] = feedback_map[t_id]
                         
