@@ -563,12 +563,7 @@ async function toggleTask(id, newStatus){
   let payload = { status: newStatus };
   
   if(newStatus === "done" && t && t.notion_id) {
-    let pct = prompt(`This task is linked to Notion.\nHow much of the total task is complete now? (0-100)`, "100");
-    if (pct === null) return; // User cancelled
-    let parsed = parseInt(pct, 10);
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
-      payload.progress = parsed;
-    }
+    payload.progress = 100;
   }
 
   const item = document.getElementById(`task-${id}`);
