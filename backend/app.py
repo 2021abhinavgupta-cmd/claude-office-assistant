@@ -2338,7 +2338,7 @@ def add_project_knowledge(project_id):
     user_id = data.get("user_id")
     filename = data.get("filename", "untitled.txt")
     content = data.get("content", "")
-    doc = project_store.add_knowledge_base_doc(project_id, user_id, filename, content)
+    doc = project_store.add_knowledge_base_doc(project_id, filename, content)
     if not doc: return jsonify({"error": "Project not found"}), 404
     # Index for retrieval (non-fatal if FTS is unavailable)
     try:
@@ -2351,7 +2351,7 @@ def add_project_knowledge(project_id):
 def delete_project_knowledge(project_id, doc_id):
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id") or request.args.get("user_id")
-    if project_store.delete_knowledge_base_doc(project_id, user_id, doc_id):
+    if project_store.delete_knowledge_base_doc(project_id, doc_id):
         try:
             kb_retriever.delete_doc_index(project_id, user_id, doc_id)
         except Exception:
