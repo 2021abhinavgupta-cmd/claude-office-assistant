@@ -375,6 +375,13 @@ def delegate_task(task_id):
     return jsonify({"success": True})
 
 
+def _normalize_title(t: str) -> str:
+    if not t: return ""
+    t = t.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    t = re.sub(r'^\[.*?\]\s*', '', t)
+    return t.lower().strip()
+
+
 @ops_bp.route("/api/standup/my-tasks", methods=["POST"])
 def add_my_task():
     """
@@ -485,12 +492,26 @@ def auto_fill_standup():
                 target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
                 
             for target_user_id in target_uids:
-                cur.execute("SELECT id, due_date, notion_id FROM standup_tasks WHERE user_id=? AND date=? AND (title=? OR title=?)", 
-                            (target_user_id, today_str, search_title, raw_title))
-                row = cur.fetchone()
-                if row:
+                cur.execute("SELECT id, due_date, notion_id, title FROM standup_tasks WHERE user_id=? AND date=?", (target_user_id, today_str))
+                local_tasks = cur.fetchall()
+                
+                matched_id = None
+                norm_search = _normalize_title(search_title)
+                norm_raw = _normalize_title(raw_title)
+                
+                for lid, ldue, lnid, ltitle in local_tasks:
+                    if lnid and nid and lnid == nid:
+                        matched_id = lid
+                        break
+                    norm_ltitle = _normalize_title(ltitle)
+                    if norm_ltitle and (norm_ltitle == norm_search or norm_ltitle == norm_raw or 
+                                        norm_search.endswith(norm_ltitle) or norm_ltitle.endswith(norm_raw)):
+                        matched_id = lid
+                        break
+                
+                if matched_id:
                     # Update local task with accurate Notion data
-                    cur.execute("UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?", (search_title, d, nid, row[0]))
+                    cur.execute("UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?", (search_title, d, nid, matched_id))
 
         # Don't pull finished tasks
         if s in ("approved", "done", "submitted", "in_review", "pending_review"):
@@ -583,15 +604,24 @@ def auto_fill_standup():
                 target_uids = [user_id]
                 
             for target_user_id in target_uids:
-                if nid:
-                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=? OR title=?)", 
-                                (target_user_id, today_str, nid, search_title, raw_title))
-                else:
-                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (title=? OR title=?)", 
-                                (target_user_id, today_str, search_title, raw_title))
+                cur.execute("SELECT id, notion_id, title FROM standup_tasks WHERE user_id=? AND date=?", (target_user_id, today_str))
+                local_tasks = cur.fetchall()
+                
+                matched_id = None
+                norm_search = _normalize_title(search_title)
+                norm_raw = _normalize_title(raw_title)
+                
+                for lid, lnid, ltitle in local_tasks:
+                    if lnid and nid and lnid == nid:
+                        matched_id = lid
+                        break
+                    norm_ltitle = _normalize_title(ltitle)
+                    if norm_ltitle and (norm_ltitle == norm_search or norm_ltitle == norm_raw or 
+                                        norm_search.endswith(norm_ltitle) or norm_ltitle.endswith(norm_raw)):
+                        matched_id = lid
+                        break
                                 
-                row = cur.fetchone()
-                if not row:
+                if not matched_id:
                     cur.execute(
                         "INSERT INTO standup_tasks (user_id, date, title, notion_id, due_date) VALUES (?, ?, ?, ?, ?)",
                         (target_user_id, today_str, search_title, nid, d)
@@ -600,7 +630,7 @@ def auto_fill_standup():
                 else:
                     cur.execute(
                         "UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?",
-                        (search_title, d, nid, row[0])
+                        (search_title, d, nid, matched_id)
                     )
     conn.commit()
     conn.close()
