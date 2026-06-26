@@ -212,22 +212,52 @@
     <!-- Chat View -->
     <div class="chat-view hidden" id="chat-view">
       <header class="chat-header" id="chat-header" style="background: transparent; border-bottom: none; height: auto; padding-top: 16px;">
-        <div class="ch-left" style="gap: 8px;">
-          <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar" style="background: none; border: none; color: var(--text-2); padding: 4px;">
+        <div class="ch-left" style="gap: 8px; position:relative; align-items:center;">
+          <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar" style="background: none; border: none; color: var(--text-2); padding: 4px; display:flex;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
               <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
           </button>
-          <h1 class="conv-title-header" id="conv-title-header" style="font-size: 1rem; font-weight: 500;">New conversation</h1>
-          <span style="color: var(--muted); font-size: 0.8rem; cursor: pointer;">&#x25BE;</span>
+          
+          <div style="display:flex; align-items:center; cursor:pointer; padding: 4px 8px; border-radius:6px; transition:background 0.2s;" id="chat-title-trigger">
+            <span id="chat-project-name" style="font-size:1rem; font-weight:500; color:var(--text); display:none; margin-right:6px;"></span>
+            <span id="chat-title-separator" style="color:var(--text-2); font-size:1rem; display:none; margin-right:6px;">/</span>
+            <h1 class="conv-title-header" id="conv-title-header" style="font-size: 1rem; font-weight: 500; margin:0; padding:0; display:inline;">New conversation</h1>
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" style="margin-left:6px; color:var(--text-2);"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+          
+          <!-- Chat Title Dropdown -->
+          <div class="hidden" id="chat-title-dropdown" style="position:absolute; top:100%; left:36px; margin-top:4px; background:var(--surface2); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:8px 0; width:220px; box-shadow:0 10px 40px rgba(0,0,0,0.5); z-index:100;">
+            <div class="menu-item" style="padding:10px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; color:var(--text); font-size:0.9rem;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              Star
+            </div>
+            <div class="menu-item" style="padding:10px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; color:var(--text); font-size:0.9rem;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Rename
+            </div>
+            <div class="menu-item" style="padding:10px 16px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; color:var(--text); font-size:0.9rem;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                Change project
+              </div>
+              <span class="arrow">›</span>
+            </div>
+            <div class="menu-item" style="padding:10px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; color:var(--text); font-size:0.9rem;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18M9 3h10a2 2 0 0 1 2 2v10m-2.12 2.12A1.98 1.98 0 0 1 17 19H5a2 2 0 0 1-2-2V5c0-.55.22-1.05.59-1.41"/></svg>
+              Remove from project
+            </div>
+            <div style="height:1px; background:rgba(255,255,255,0.05); margin:4px 0;"></div>
+            <div class="menu-item" style="padding:10px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; color:#ef4444; font-size:0.9rem;" onclick="deleteCurrentConversation()">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Delete
+            </div>
+          </div>
         </div>
         <div class="ch-right">
-          <span class="task-chip" id="task-chip" style="font-size: 0.7rem; padding: 2px 6px;">general</span>
-          <span class="model-chip" id="model-chip" style="font-size: 0.7rem; padding: 2px 6px;">haiku</span>
-          <div class="conn-status" id="conn-status">
-            <span class="conn-dot ok"></span>
-            <span>Connected</span>
-          </div>
+          <button style="background:var(--surface2); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:6px 12px; color:var(--text); cursor:pointer; font-size:0.85rem; font-weight:500;">
+            Share
+          </button>
         </div>
       </header>
 

@@ -421,6 +421,22 @@ async function openConversation(convId) {
     const conv = await res.json();
 
     convTitleHeader.textContent = conv.title;
+    
+    // UI updates for project chat header
+    const projNameEl = document.getElementById("chat-project-name");
+    const projSepEl = document.getElementById("chat-title-separator");
+    if (conv.project_id && window.getProjectNameById) {
+       const pName = window.getProjectNameById(conv.project_id);
+       if (projNameEl && projSepEl) {
+          projNameEl.textContent = pName || "Project";
+          projNameEl.style.display = "inline";
+          projSepEl.style.display = "inline";
+       }
+    } else {
+       if (projNameEl) projNameEl.style.display = "none";
+       if (projSepEl) projSepEl.style.display = "none";
+    }
+
     const task  = conv.task_type || "general";
     const model = TASK_MODELS[task] || "haiku";
     updateHeaderChips(task, model);

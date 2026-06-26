@@ -476,3 +476,28 @@ if (toggleFilesBtn && filesExpanded && filesIcon) {
   });
 }
 
+// Chat Title Dropdown Logic
+const chatTitleTrigger = document.getElementById("chat-title-trigger");
+const chatTitleDropdown = document.getElementById("chat-title-dropdown");
+
+if (chatTitleTrigger && chatTitleDropdown) {
+  chatTitleTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    chatTitleDropdown.classList.toggle("hidden");
+  });
+  
+  document.addEventListener("click", (e) => {
+    if (!chatTitleTrigger.contains(e.target) && !chatTitleDropdown.contains(e.target)) {
+      chatTitleDropdown.classList.add("hidden");
+    }
+  });
+}
+
+window.getProjectNameById = function(id) {
+  if (window.allProjectsData) {
+    const p = window.allProjectsData.find(x => x.id === id);
+    if (p) return p.name;
+  }
+  return null;
+};
+
