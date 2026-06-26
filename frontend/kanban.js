@@ -32,10 +32,88 @@ function renderProjectsList(projects) {
   list.innerHTML = html;
 }
 
+function showCreateProjectModal() {
+  return new Promise((resolve) => {
+    let modalOverlay = document.getElementById('create-project-modal-overlay');
+    if (!modalOverlay) {
+      modalOverlay = document.createElement('div');
+      modalOverlay.id = 'create-project-modal-overlay';
+      modalOverlay.className = 'claude-modal-overlay';
+      
+      if (!document.getElementById('claude-modal-styles')) {
+        const style = document.createElement('style');
+        style.id = 'claude-modal-styles';
+        style.innerHTML = `
+          .claude-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); display: none; justify-content: center; align-items: center; z-index: 9999; }
+          .claude-modal { background: var(--surface2, #2a2a2a); border: 1px solid var(--border, #444); border-radius: 16px; padding: 24px; width: 450px; max-width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 16px; font-family: inherit; }
+          .claude-modal-header { font-size: 1.15rem; font-weight: 500; color: #fff; }
+          .claude-modal-body input { width: 100%; background: transparent; border: 1px solid var(--border, #555); border-radius: 8px; padding: 12px; color: #fff; font-family: inherit; font-size: 0.95rem; }
+          .claude-modal-body input:focus { outline: 1px solid rgba(255,255,255,0.4); }
+          .claude-modal-footer { display: flex; justify-content: flex-end; gap: 12px; }
+          .btn-cancel { background: transparent; border: none; color: #e0e0e0; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 0.9rem; }
+          .btn-cancel:hover { background: rgba(255,255,255,0.05); }
+          .btn-save { background: #e0e0e0; color: #000; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500; font-family: inherit; font-size: 0.9rem; }
+          .btn-save:hover { opacity: 0.9; }
+        `;
+        document.head.appendChild(style);
+      }
+
+      modalOverlay.innerHTML = `
+        <div class="claude-modal" onclick="event.stopPropagation()">
+          <div class="claude-modal-header">Create Project</div>
+          <div class="claude-modal-body">
+            <input type="text" id="create-project-input" placeholder="Enter project name..." autocomplete="off">
+          </div>
+          <div class="claude-modal-footer">
+            <button class="btn-cancel" id="cp-cancel-btn">Cancel</button>
+            <button class="btn-save" id="cp-save-btn">OK</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modalOverlay);
+    }
+
+    const input = document.getElementById('create-project-input');
+    const saveBtn = document.getElementById('cp-save-btn');
+    const cancelBtn = document.getElementById('cp-cancel-btn');
+
+    input.value = '';
+    modalOverlay.style.display = 'flex';
+    setTimeout(() => input.focus(), 50);
+
+    const handleSave = () => {
+      resolve(input.value.trim());
+      modalOverlay.style.display = 'none';
+      cleanup();
+    };
+    const handleCancel = () => {
+      resolve(null);
+      modalOverlay.style.display = 'none';
+      cleanup();
+    };
+    const handleKey = (e) => {
+      if (e.key === 'Enter') handleSave();
+      if (e.key === 'Escape') handleCancel();
+    };
+    
+    saveBtn.addEventListener('click', handleSave);
+    cancelBtn.addEventListener('click', handleCancel);
+    input.addEventListener('keydown', handleKey);
+    modalOverlay.addEventListener('click', handleCancel);
+
+    function cleanup() {
+      saveBtn.removeEventListener('click', handleSave);
+      cancelBtn.removeEventListener('click', handleCancel);
+      input.removeEventListener('keydown', handleKey);
+      modalOverlay.removeEventListener('click', handleCancel);
+    }
+  });
+}
+
 const newProjBtn = document.getElementById("new-project-btn");
 if (newProjBtn) {
   newProjBtn.addEventListener("click", async () => {
-    const name = prompt("Enter project name:");
+    const name = await showCreateProjectModal();
     if (!name) return;
     try {
       const res = await fetch(`${API}/api/projects`, {
