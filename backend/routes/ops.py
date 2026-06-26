@@ -459,13 +459,13 @@ def auto_fill_standup():
     for t in all_tasks:
         s = t.get("status", "").lower().replace(" ", "_").replace("-", "_")
         d = t.get("due_date", "")
-        title = t.get("title", "").strip()
+        raw_title = t.get("title", "").strip()
         nid = t.get("id")
 
         client = t.get("client_name", "").strip()
         content = t.get("content", "").strip() or t.get("description", "").strip() or t.get("brief", "").strip()
         
-        search_title = title
+        search_title = raw_title
         if client and not search_title.startswith(client):
             search_title = f"{client} — {search_title}"
         if content:
@@ -485,12 +485,12 @@ def auto_fill_standup():
                 target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
                 
             for target_user_id in target_uids:
-                cur.execute("SELECT id, due_date, notion_id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
-                            (target_user_id, today_str, search_title))
+                cur.execute("SELECT id, due_date, notion_id FROM standup_tasks WHERE user_id=? AND date=? AND (title=? OR title=?)", 
+                            (target_user_id, today_str, search_title, raw_title))
                 row = cur.fetchone()
                 if row:
                     # Update local task with accurate Notion data
-                    cur.execute("UPDATE standup_tasks SET due_date=?, notion_id=? WHERE id=?", (d, nid, row[0]))
+                    cur.execute("UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?", (search_title, d, nid, row[0]))
 
         # Don't pull finished tasks
         if s in ("approved", "done", "submitted", "in_review", "pending_review"):
@@ -552,19 +552,20 @@ def auto_fill_standup():
         cur = conn.cursor()
         for vt in valid_tasks:
             nid = vt.get("notion_id")
-            title = vt.get("title", "Untitled").strip()
+            raw_title = vt.get("title", "Untitled").strip()
             d = vt.get("due_date", "")
             
             # Add context for tasks (especially from social sheet)
             client = vt.get("client_name", "").strip()
             content = vt.get("content", "").strip() or vt.get("description", "").strip() or vt.get("brief", "").strip()
             
-            if client and not title.startswith(client):
-                title = f"{client} — {title}"
+            search_title = raw_title
+            if client and not search_title.startswith(client):
+                search_title = f"{client} — {search_title}"
             if content:
                 # Append a short preview of the content
                 preview = content[:40] + "..." if len(content) > 40 else content
-                title = f"{title} ({preview})"
+                search_title = f"{search_title} ({preview})"
                 
             # If sync_all is true, we update tasks for ALL assignees
             if sync_all:
@@ -583,23 +584,23 @@ def auto_fill_standup():
                 
             for target_user_id in target_uids:
                 if nid:
-                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=?)", 
-                                (target_user_id, today_str, nid, title))
+                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=? OR title=?)", 
+                                (target_user_id, today_str, nid, search_title, raw_title))
                 else:
-                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND title=?", 
-                                (target_user_id, today_str, title))
+                    cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (title=? OR title=?)", 
+                                (target_user_id, today_str, search_title, raw_title))
                                 
                 row = cur.fetchone()
                 if not row:
                     cur.execute(
                         "INSERT INTO standup_tasks (user_id, date, title, notion_id, due_date) VALUES (?, ?, ?, ?, ?)",
-                        (target_user_id, today_str, title, nid, d)
+                        (target_user_id, today_str, search_title, nid, d)
                     )
                     added_count += 1
                 else:
                     cur.execute(
-                        "UPDATE standup_tasks SET title=?, due_date=? WHERE id=?",
-                        (title, d, row[0])
+                        "UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?",
+                        (search_title, d, nid, row[0])
                     )
     conn.commit()
     conn.close()
@@ -763,7 +764,7 @@ def push_to_notion(task_id):
     if created and "id" in created:
         notion_id = created["id"]
         with conn:
-            conn.execute("UPDATE standup_tasks SET notion_id=? WHERE id=?", (notion_id, task_id))
+            conn.execute("UPDATE standup_tasks SET notion_id=?, due_date=? WHERE id=?", (notion_id, due_date, task_id))
         return jsonify({"success": True, "notion_id": notion_id})
     return jsonify({"error": "Failed to push to Notion"}), 500
 
