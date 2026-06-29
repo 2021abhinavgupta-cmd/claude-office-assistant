@@ -30,4 +30,4 @@ def _save_employees(data: dict):
 def _is_admin(user_id: str) -> bool:
     """Check if a user is an admin."""
     # Based on hardcoded list
-    return user_id in ["emp001", "emp003", "emp004"]
+    return user_id in ["emp001", "emp003", "emp004", "emp006"]

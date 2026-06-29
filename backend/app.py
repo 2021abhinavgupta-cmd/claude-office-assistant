@@ -2384,7 +2384,7 @@ def _calc_progress(task: dict) -> int:
     return 0
 
 def _is_admin(user_id: str) -> bool:
-    return user_id in ("emp001", "emp003", "emp004")
+    return user_id in ("emp001", "emp003", "emp004", "emp006")
 
 def _task_row_to_dict(row) -> dict:
     keys = ["id","client_id","title","description","assigned_to","status",
