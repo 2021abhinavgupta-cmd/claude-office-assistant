@@ -193,8 +193,10 @@
       document.getElementById('restricted-msg').style.display = 'block';
     } else {
       document.getElementById('bet-content').style.display = 'block';
-      loadVotes();
-      setInterval(loadVotes, 5000);
+      loadEmployees().then(() => {
+        loadVotes();
+        setInterval(loadVotes, 5000);
+      });
     }
 
     async function submitVote(vote) {
@@ -228,7 +230,7 @@
 
           data.votes.forEach(v => {
             if(v.user_id === user.user_id) myVote = v.vote;
-            const name = EMPLOYEES[v.user_id] ? EMPLOYEES[v.user_id].name : v.user_id;
+            const name = (window.EMP_DICT && window.EMP_DICT[v.user_id]) ? window.EMP_DICT[v.user_id] : v.user_id;
             const initial = name.charAt(0).toUpperCase();
             
             const div = document.createElement('div');
