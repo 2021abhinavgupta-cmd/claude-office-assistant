@@ -650,7 +650,7 @@
              const li = document.createElement('li');
              li.style.marginBottom = '12px';
              li.style.position = 'relative';
-             li.innerHTML = `<a href="${dep.content}" target="_blank" style="color:var(--blue);text-decoration:none;font-weight:500;">${dep.content}</a> <span style="font-size:0.75rem;color:var(--muted);margin-left:8px;">${new Date(dep.created_at+'Z').toLocaleDateString()}</span> <button class="btn-dep-delete" style="position:absolute;right:0;top:-2px;width:24px;height:24px;display:none;background:rgba(255,75,75,0.9);color:#fff;border:none;border-radius:50%;align-items:center;justify-content:center;cursor:pointer;" onclick="deleteDependency(${dep.id})" title="Remove">✕</button>`;
+             li.innerHTML = `<a href="${dep.content}" target="_blank" style="color:var(--blue);text-decoration:none;font-weight:500;">${dep.content}</a> <span style="font-size:0.75rem;color:var(--muted);margin-left:8px;">${dep.created_at ? new Date(dep.created_at.replace(' ', 'T')+'Z').toLocaleDateString() : ''}</span> <button class="btn-dep-delete" style="position:absolute;right:0;top:-2px;width:24px;height:24px;display:none;background:rgba(255,75,75,0.9);color:#fff;border:none;border-radius:50%;align-items:center;justify-content:center;cursor:pointer;" onclick="deleteDependency(${dep.id})" title="Remove">✕</button>`;
              li.onmouseenter = () => li.querySelector('button').style.display = 'flex';
              li.onmouseleave = () => li.querySelector('button').style.display = 'none';
              listContainer.appendChild(li);
@@ -666,7 +666,7 @@
                item.className = 'note-item';
                item.style = `background:#fffbcc; border-radius:12px; padding:20px; position:relative; overflow:hidden; font-family:'Helvetica Neue', sans-serif; box-shadow:0 2px 6px rgba(0,0,0,0.1); color:#333; line-height:1.6; white-space:pre-wrap; font-size: 1.05rem;`;
                let safeText = dep.content.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-               item.innerHTML = `<div>${safeText}</div><div style="font-size:0.8rem;color:rgba(0,0,0,0.5);margin-top:16px;text-align:right;">${new Date(dep.created_at+'Z').toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}</div><button class="btn-dep-delete" style="position:absolute;top:8px;right:8px;width:24px;height:24px;display:none;background:rgba(0,0,0,0.2);color:#000;border:none;border-radius:50%;align-items:center;justify-content:center;cursor:pointer;" onclick="deleteDependency(${dep.id})" title="Remove">✕</button>`;
+               item.innerHTML = `<div>${safeText}</div><div style="font-size:0.8rem;color:rgba(0,0,0,0.5);margin-top:16px;text-align:right;">${dep.created_at ? new Date(dep.created_at.replace(' ', 'T')+'Z').toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : ''}</div><button class="btn-dep-delete" style="position:absolute;top:8px;right:8px;width:24px;height:24px;display:none;background:rgba(0,0,0,0.2);color:#000;border:none;border-radius:50%;align-items:center;justify-content:center;cursor:pointer;" onclick="deleteDependency(${dep.id})" title="Remove">✕</button>`;
                item.onmouseenter = () => item.querySelector('button').style.display = 'flex';
                item.onmouseleave = () => item.querySelector('button').style.display = 'none';
                listContainer.appendChild(item);
