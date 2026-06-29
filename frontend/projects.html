@@ -17,7 +17,7 @@
     .wrap{flex:1;display:flex;flex-direction:column;padding:20px 28px;overflow:hidden;height:100vh;}
 
     /* Header */
-    .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;flex-shrink:0}
+    .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:12px;flex-shrink:0}
     .hdr h1{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800}
     .hdr h1 span{color:var(--acc)}
     .nav{display:flex;gap:8px}
@@ -269,7 +269,6 @@
   <div class="hdr">
     <div>
       <h1> Project <span>Board</span></h1>
-      <p style="color:var(--muted);font-size:.82rem;margin-top:3px">Dependency-aware tracker — one glance tells you everything</p>
     </div>
     <div class="nav">
       <a href="dashboard.html" class="nl"> Dashboard</a>
@@ -278,12 +277,12 @@
     </div>
   </div>
   
-  <div class="global-tabs">
+  <div class="global-tabs" style="margin-bottom: 6px;">
     <button class="gtab on" id="gtab-clients" onclick="switchGlobalTab('clients')"> Clients</button>
     <button class="gtab" id="gtab-calendar" onclick="switchGlobalTab('calendar')"> Calendar</button>
   </div>
   
-  <div id="clients-filter-bar" style="padding: 16px 28px 0 28px; display: flex; gap: 8px; flex-wrap: wrap;">
+  <div id="clients-filter-bar" style="padding: 6px 28px 0 28px; display: flex; gap: 8px; flex-wrap: wrap;">
     <button class="client-filter-btn on" data-type="All" onclick="filterClients('All')">All</button>
     <button class="client-filter-btn" data-type="social" onclick="filterClients('social')">Social Media</button>
     <button class="client-filter-btn" data-type="branding" onclick="filterClients('branding')">Branding</button>
@@ -307,7 +306,7 @@
     </div>
   </div>
 
-  <div id="clients-container" style="flex:1;overflow-y:auto;padding-bottom:24px;margin-top:10px">
+  <div id="clients-container" style="flex:1;overflow-y:auto;padding-bottom:24px;margin-top:4px">
     <div class="client-blocks" id="detail-list"><div class="empty">Loading...</div></div>
   </div>
 </div>
