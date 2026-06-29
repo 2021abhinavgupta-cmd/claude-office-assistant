@@ -364,7 +364,9 @@ A quick reference map for developers of the massive backend API.
 
 29. **Multi-User Identity & Branding in Chat**: User messages display a right-aligned name above their chat bubbles to differentiate senders in multi-user huddles. The assistant's avatar explicitly renders the "OPs" brand text (do not use placeholder initials like "AP" in `appendTyping()`).
 
-30. **Persistent Client Dependencies & File Uploads** — Client projects have a "Dependencies" section for Notes, Links, Images, Videos, and Voice Notes. These are permanently stored in the `dependencies` SQLite table. File uploads (including recorded voice notes) are saved locally to the backend `uploads/` directory using standard `werkzeug.utils.secure_filename` logic. When a client's page loads, `renderClientBlockers(clientId)` dynamically queries `/api/dependencies/<id>` to display all saved items and attach them to the correct sections with delete functionality.
+30. **Persistent Client Dependencies & File Uploads** — Client projects have a "Dependencies" section for Notes, Links, Images, Videos, and Voice Notes. These are permanently stored in the `dependencies` SQLite table. File uploads (including recorded voice notes) are saved locally to the backend `uploads/` directory using standard `werkzeug.utils.secure_filename` logic.
+    - **Client Dashboard Modals:** Uploaded assets are hidden behind "Open" or "Open Folder" buttons that trigger spacious, file-explorer-style modals. Inside the modal, files are intelligently grouped by upload date categories ("Today", "Yesterday", "Last week", etc.).
+    - **Specialized Views:** Drive Links bypass the grid layout and are displayed as a continuous serialized numbered list. Notes are rendered as iPhone-style full-width rounded yellow cards with proper text wrapping and timestamps.
 
 31. **Native Voice Recorder** — The client portal includes a native browser voice recorder using `navigator.mediaDevices.getUserMedia` and the `MediaRecorder` API. It records audio chunks, compiles them into a single `audio/webm` Blob, and uploads them to the server just like a regular file attachment. It does NOT use a 3rd-party library.
 
@@ -373,3 +375,5 @@ A quick reference map for developers of the massive backend API.
     - If a task has `subtasks` defined in the Standup DB (stored as a JSON string), they are attached to the task object and beautifully rendered as a checklist directly on the Kanban task card in `projects.html`.
 
 33. **Mobile Optimization** — The client dashboard (`client-dashboard.html`) and associated portal modals have been thoroughly optimized for mobile screens. This includes flexible wrap layouts, stacked modals, responsive calendar grids, and hamburger/scrollable tab menus, ensuring external clients have a flawless experience on their phones.
+
+34. **SQLite Datetime Parsing in JavaScript** — The server returns dates in standard SQL format (`YYYY-MM-DD HH:MM:SS`). When parsing these into native JavaScript `Date` objects on the frontend using `new Date(dateStr + 'Z')`, some browsers (Safari/Chrome) may throw an "Invalid Date" error. Always convert the space to a `T` first to strictly conform to the ISO standard: `new Date(dateStr.replace(' ', 'T') + 'Z')`.
