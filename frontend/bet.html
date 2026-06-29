@@ -190,7 +190,7 @@
     const allowed = ["emp002", "emp003", "emp007", "emp008"];
     
     if(!user || !allowed.includes(user.user_id)) {
-      document.getElementById('restricted-msg').style.display = 'block';
+      window.location.replace("dashboard.html");
     } else {
       document.getElementById('bet-content').style.display = 'block';
       loadEmployees().then(() => {
