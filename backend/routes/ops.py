@@ -1163,21 +1163,32 @@ def notion_update_task(notion_id: str):
     )
     
     # ── Auto-sync assignment to standup_tasks ─────────────────────────────────
-    if raw_assigned and result:
+    if result:
         task_title = body.get("new_title") or body.get("task_title") or "Untitled Task"
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        new_due = body.get("due_date")
+        
         su_conn = _su_conn()
-        cur2 = su_conn.cursor()
-        cur2.execute(
-            "SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND (notion_id=? OR title=?)",
-            (raw_assigned, today_str, notion_id, task_title)
-        )
-        if not cur2.fetchone():
-            with su_conn:
-                su_conn.execute(
-                    "INSERT INTO standup_tasks (user_id, date, title, status, notion_id) VALUES (?,?,?,'pending',?)",
-                    (raw_assigned, today_str, task_title, notion_id)
-                )
+        
+        # Sync title & due_date to any existing standup tasks tied to this notion_id
+        with su_conn:
+            su_conn.execute(
+                "UPDATE standup_tasks SET title=COALESCE(?, title), due_date=COALESCE(?, due_date) WHERE notion_id=?",
+                (task_title if task_title != "Untitled Task" else None, new_due, notion_id)
+            )
+            
+        if raw_assigned:
+            today_str = datetime.utcnow().strftime("%Y-%m-%d")
+            cur2 = su_conn.cursor()
+            cur2.execute(
+                "SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND notion_id=?",
+                (raw_assigned, today_str, notion_id)
+            )
+            if not cur2.fetchone():
+                with su_conn:
+                    su_conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, status, notion_id, due_date) VALUES (?,?,?,'pending',?,?)",
+                        (raw_assigned, today_str, task_title, notion_id, new_due)
+                    )
         su_conn.close()
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -1390,15 +1401,21 @@ def sqlite_patch_task(task_id: int):
     # ─────────────────────────────────────────────────────────────────────────
     # ── Auto-sync assignment to standup_tasks ─────────────────────────────────
     new_assignee = body.get("assigned_to", "").strip()
+    task_title = body.get("new_title") or (old_row[0] if old_row else f"Task #{task_id}")
+    new_due = body.get("due_date")
+    
+    su_conn = _su_conn()
+    
+    # Sync title and due_date for existing standup tasks matching the old title
+    if old_row and old_row[0]:
+        with su_conn:
+            su_conn.execute(
+                "UPDATE standup_tasks SET title=COALESCE(?, title), due_date=COALESCE(?, due_date) WHERE title=?",
+                (task_title if task_title != old_row[0] else None, new_due, old_row[0])
+            )
+            
     if new_assignee:
-        # Fetch the task title for the standup entry
-        cur = conn.cursor()
-        cur.execute("SELECT title FROM tasks WHERE id=?", (task_id,))
-        row = cur.fetchone()
-        task_title = row[0] if row else f"Task #{task_id}"
-
         today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        su_conn = _su_conn()
         cur2 = su_conn.cursor()
         # Only insert if not already in today's standup for this user
         cur2.execute(
@@ -1408,10 +1425,10 @@ def sqlite_patch_task(task_id: int):
         if not cur2.fetchone():
             with su_conn:
                 su_conn.execute(
-                    "INSERT INTO standup_tasks (user_id, date, title, status) VALUES (?,?,?,'pending')",
-                    (new_assignee, today_str, task_title)
+                    "INSERT INTO standup_tasks (user_id, date, title, status, due_date) VALUES (?,?,?,'pending',?)",
+                    (new_assignee, today_str, task_title, new_due)
                 )
-        su_conn.close()
+    su_conn.close()
     # ─────────────────────────────────────────────────────────────────────────
 
     conn.close()
