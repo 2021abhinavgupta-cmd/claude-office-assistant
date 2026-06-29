@@ -756,13 +756,23 @@
       document.getElementById('ft-status').textContent = task.status.replace(/_/g," ").replace(/\b\w/g, c => c.toUpperCase());
       document.getElementById('ft-comments').value = (task.feedback && task.feedback.comments) ? task.feedback.comments : "";
       
+      const linkify = (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        let escaped = div.innerHTML;
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return escaped.replace(urlRegex, function(url) {
+          return '<a href="' + url + '" target="_blank" style="color:var(--acc);text-decoration:underline;">' + url + '</a>';
+        });
+      };
+
       const setField = (id, val, isLink) => {
         const el = document.getElementById(id);
         const container = document.getElementById(id + '-container');
         if (val) {
           container.style.display = 'block';
           if (isLink) { el.href = val; el.textContent = 'View Link'; }
-          else { el.textContent = val; }
+          else { el.innerHTML = linkify(val); }
         } else {
           container.style.display = 'none';
         }
