@@ -222,6 +222,7 @@ def _verify_client_session(token: str):
     if datetime.utcnow().isoformat() + "Z" > expires_at:
         return None
     return {
+        "id": client_id,
         "client_id": client_id,
         "username": username,
         "client_name": client_name,
