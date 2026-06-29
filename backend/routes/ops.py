@@ -2230,3 +2230,35 @@ def delete_dependency(dep_id):
         logger.error(f"Error deleting dependency: {e}")
         return jsonify({"error": "Database error"}), 500
 
+@ops_bp.route("/api/bet", methods=["GET"])
+def get_bet():
+    try:
+        from db import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT user_id, vote FROM mohit_bets")
+        votes = [{"user_id": r[0], "vote": r[1]} for r in cur.fetchall()]
+        conn.close()
+        return jsonify({"success": True, "votes": votes})
+    except Exception as e:
+        logger.error(f"Error getting bets: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@ops_bp.route("/api/bet", methods=["POST"])
+def post_bet():
+    try:
+        data = request.json
+        user_id = data.get("user_id")
+        vote = data.get("vote")
+        if user_id not in ["emp002", "emp003", "emp007", "emp008"]:
+            return jsonify({"success": False, "error": "Not allowed"}), 403
+        
+        from db import get_connection
+        conn = get_connection()
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO mohit_bets (user_id, vote) VALUES (?, ?)", (user_id, vote))
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error posting bet: {e}")
+        return jsonify({"success": False, "error": str(e)})

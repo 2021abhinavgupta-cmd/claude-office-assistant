@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bet Page</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="auth.js"></script>
+  <script src="shared-config.js"></script>
+  <style>
+    body { display:flex; justify-content:center; align-items:center; height:100vh; background:var(--bg); color:var(--txt); font-family:'Inter', sans-serif; margin: 0; }
+    .bet-card { background:var(--s2); border:1px solid var(--bdr); padding:40px; border-radius:12px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.5); width: 100%; max-width: 500px; }
+    h1 { margin-bottom:24px; font-size:1.5rem; }
+    .btn-vote { background:var(--bg); color:var(--txt); border:1px solid var(--bdr); padding:12px 32px; font-size:1.2rem; cursor:pointer; border-radius:8px; margin:0 10px; transition:all 0.2s; font-weight: 600; }
+    .btn-vote:hover { background:var(--acc); color:#000; border-color:var(--acc); }
+    .btn-vote.active { background:var(--acc); color:#000; border-color:var(--acc); }
+    .votes-list { margin-top:30px; text-align:left; background:var(--bg); padding:20px; border-radius:8px; border:1px solid var(--bdr); }
+    .vote-item { margin:8px 0; font-size:1.05rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;}
+    .vote-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .restricted { display: none; }
+  </style>
+</head>
+<body>
+  <div class="bet-card" id="bet-content" style="display:none;">
+    <h1>Mohit aaj jayenge?</h1>
+    <div style="margin-bottom:30px; display: flex; justify-content: center; gap: 16px;">
+      <button class="btn-vote" id="btn-yes" onclick="submitVote('yes')">Yes</button>
+      <button class="btn-vote" id="btn-no" onclick="submitVote('no')">No</button>
+    </div>
+    
+    <div class="votes-list" id="votes-list">
+      <h3 style="margin-bottom: 16px; font-size: 1.1rem; color: var(--muted); border-bottom: 1px solid var(--bdr); padding-bottom: 8px;">Current Bets</h3>
+      <div id="votes-container"></div>
+    </div>
+    <div style="margin-top: 24px;">
+      <a href="index.html" style="color:var(--muted); text-decoration:none; font-size:0.9rem;">← Back to Chat</a>
+    </div>
+  </div>
+  
+  <div id="restricted-msg" class="bet-card" style="display:none;">
+    <h1>Access Restricted</h1>
+    <p style="color:var(--muted); line-height: 1.5; margin-bottom: 24px;">Only Abhinav, Nupur, Happy, and Palak can participate in this bet.</p>
+    <a href="index.html" style="color:var(--acc); text-decoration:none; font-size:0.9rem; font-weight: 600;">← Back to Chat</a>
+  </div>
+
+  <script>
+    const API = location.hostname === 'localhost' ? 'http://localhost:5000' : location.origin;
+    const user = JSON.parse(localStorage.getItem("agency_portal_user"));
+    const allowed = ["emp002", "emp003", "emp007", "emp008"];
+    
+    if(!user || !allowed.includes(user.user_id)) {
+      document.getElementById('restricted-msg').style.display = 'block';
+    } else {
+      document.getElementById('bet-content').style.display = 'block';
+      loadVotes();
+      // Auto refresh votes
+      setInterval(loadVotes, 10000);
+    }
+
+    async function submitVote(vote) {
+      if(!allowed.includes(user.user_id)) return;
+      
+      const res = await fetch(`${API}/api/bet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.user_id, vote: vote })
+      });
+      const data = await res.json();
+      if(data.success) {
+        loadVotes();
+      } else {
+        alert(data.error || "Failed to vote");
+      }
+    }
+
+    async function loadVotes() {
+      try {
+        const res = await fetch(`${API}/api/bet`);
+        const data = await res.json();
+        if(data.success) {
+          const container = document.getElementById('votes-container');
+          container.innerHTML = '';
+          let myVote = null;
+          
+          if(data.votes.length === 0) {
+            container.innerHTML = '<div style="color:var(--muted); text-align:center; font-style:italic;">No votes yet</div>';
+          }
+
+          data.votes.forEach(v => {
+            if(v.user_id === user.user_id) myVote = v.vote;
+            const name = EMPLOYEES[v.user_id] ? EMPLOYEES[v.user_id].name : v.user_id;
+            const div = document.createElement('div');
+            div.className = 'vote-item';
+            const badgeColor = v.vote === 'yes' ? 'var(--green)' : 'var(--red)';
+            div.innerHTML = `
+              <strong>${name}</strong>
+              <span style="background:${badgeColor}; color:#000; padding:2px 8px; border-radius:12px; font-size:0.8rem; font-weight:bold; text-transform:uppercase;">${v.vote}</span>
+            `;
+            container.appendChild(div);
+          });
+          
+          document.getElementById('btn-yes').classList.remove('active');
+          document.getElementById('btn-no').classList.remove('active');
+          if(myVote === 'yes') document.getElementById('btn-yes').classList.add('active');
+          if(myVote === 'no') document.getElementById('btn-no').classList.add('active');
+        }
+      } catch (e) {
+        console.error("Failed to load votes", e);
+      }
+    }
+  </script>
+</body>
+</html>

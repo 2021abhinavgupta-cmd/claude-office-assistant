@@ -97,6 +97,12 @@ def init_db():
             submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, date)
         )""")
+        
+        # Mohit bet
+        conn.execute("""CREATE TABLE IF NOT EXISTS mohit_bets (
+            user_id TEXT PRIMARY KEY,
+            vote TEXT NOT NULL
+        )""")
 
         # Personal daily task tracker (separate from project tasks)
         conn.execute("""CREATE TABLE IF NOT EXISTS standup_tasks (
