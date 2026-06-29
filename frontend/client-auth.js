@@ -15,7 +15,8 @@ async function verifyClientSession() {
   try {
     const res = await fetch(`${API}/api/auth/client_verify`, {
       method: "GET",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      credentials: "include"
     });
     
     if (res.status === 401) {
@@ -40,7 +41,7 @@ async function verifyClientSession() {
 
 async function clientLogout() {
   try {
-    await fetch(`${API}/api/auth/client_logout`, { method: "POST" });
+    await fetch(`${API}/api/auth/client_logout`, { method: "POST", credentials: "include" });
   } catch (err) {
     console.error(err);
   }
