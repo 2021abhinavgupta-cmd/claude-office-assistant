@@ -348,7 +348,7 @@
         <div class="nav-dropdown-content">
           <a href="standup.html" class="nav-dropdown-item">Daily Standup</a>
           <a href="my-tasks.html" class="nav-dropdown-item">My Tasks</a>
-          <a href="bet.html" class="nav-dropdown-item">Bet Page</a>
+          <a href="bet.html" class="nav-dropdown-item" id="bet-page-link" style="display:none;">Bet Page</a>
         </div>
       </div>
       
@@ -575,6 +575,13 @@ loadBudgetBanner();
       dbBtn.style.display = "flex";
       dbBtn.href = `${API}/api/admin/backup-db`;
     }
+  }
+  
+  // Show Bet Page link only to specific users
+  const allowedBetUsers = ["emp002", "emp003", "emp007", "emp008"];
+  if (allowedBetUsers.includes(u.user_id)) {
+    const betLink = document.getElementById("bet-page-link");
+    if (betLink) betLink.style.display = "flex";
   }
 })();
 
