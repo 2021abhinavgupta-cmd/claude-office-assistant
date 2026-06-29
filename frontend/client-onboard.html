@@ -213,8 +213,8 @@ const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "
 const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
 const UID = user.user_id || "emp003";
 
-// ── Admin-only access: only Vidit (emp001), Abhinav (emp003), Kshitij (emp004)
-const ONBOARD_ADMINS = ["emp001", "emp003", "emp004"];
+// ── Admin-only access: only Vidit (emp001), Abhinav (emp003), Kshitij (emp004), Mohit (emp006)
+const ONBOARD_ADMINS = ["emp001", "emp003", "emp004", "emp006"];
 if (!ONBOARD_ADMINS.includes(user.user_id)) {
   document.getElementById("main-card").innerHTML = `
     <div style="text-align:center;padding:40px 20px">
