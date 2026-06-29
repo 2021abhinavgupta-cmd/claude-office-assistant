@@ -232,12 +232,12 @@
           </div>
           <h3>Voice Notes</h3>
           <p>Upload audio briefs, context, or verbal feedback</p>
+          <button class="dep-upload-btn btn-open-folder" onclick="openDepFolder('voice', 'Voice Notes')" style="margin-bottom:8px;">Open Folder</button>
           <div style="display:flex;gap:8px">
             <button class="dep-upload-btn" style="flex:1" onclick="document.getElementById('dep-voice').click()">Upload File</button>
             <button class="dep-upload-btn" style="flex:1;background:var(--acc);color:#000;border-color:var(--acc);" id="btn-record-voice" onclick="toggleVoiceRecord()">Record</button>
           </div>
           <input type="file" id="dep-voice" accept="audio/*" style="display:none" onchange="handleDepUpload(this, 'voice')"/>
-          <div class="dep-list" id="list-voice"></div>
         </div>
         <div class="dep-card">
           <div class="dep-icon">
@@ -245,9 +245,9 @@
           </div>
           <h3>Images</h3>
           <p>Share brand assets, logos, or inspiration</p>
+          <button class="dep-upload-btn btn-open-folder" onclick="openDepFolder('images', 'Images')" style="margin-bottom:8px;">Open Folder</button>
           <button class="dep-upload-btn" onclick="document.getElementById('dep-images').click()">Upload Images</button>
           <input type="file" id="dep-images" accept="image/*" multiple style="display:none" onchange="handleDepUpload(this, 'images')"/>
-          <div class="dep-list" id="list-images"></div>
         </div>
         <div class="dep-card">
           <div class="dep-icon">
@@ -255,9 +255,9 @@
           </div>
           <h3>Videos</h3>
           <p>Upload raw footage, screencasts, or references</p>
+          <button class="dep-upload-btn btn-open-folder" onclick="openDepFolder('videos', 'Videos')" style="margin-bottom:8px;">Open Folder</button>
           <button class="dep-upload-btn" onclick="document.getElementById('dep-videos').click()">Upload Videos</button>
           <input type="file" id="dep-videos" accept="video/*" multiple style="display:none" onchange="handleDepUpload(this, 'videos')"/>
-          <div class="dep-list" id="list-videos"></div>
         </div>
         <div class="dep-card">
           <div class="dep-icon">
@@ -265,8 +265,8 @@
           </div>
           <h3>Drive Links</h3>
           <p>Link to Google Drive, Dropbox, or Figma</p>
+          <button class="dep-upload-btn btn-open-folder" onclick="openDepFolder('links', 'Drive Links')" style="margin-bottom:8px;">Open Folder</button>
           <button class="dep-upload-btn" onclick="promptAddLink()">Add Link</button>
-          <div class="dep-list" id="list-links"></div>
         </div>
         <div class="dep-card">
           <div class="dep-icon">
@@ -274,9 +274,9 @@
           </div>
           <h3>Documents</h3>
           <p>Upload PDFs, Word files, or spreadsheets</p>
+          <button class="dep-upload-btn btn-open-folder" onclick="openDepFolder('docs', 'Documents')" style="margin-bottom:8px;">Open Folder</button>
           <button class="dep-upload-btn" onclick="document.getElementById('dep-docs').click()">Upload Documents</button>
           <input type="file" id="dep-docs" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="handleDepUpload(this, 'docs')"/>
-          <div class="dep-list" id="list-docs"></div>
         </div>
         <div class="dep-card">
           <div class="dep-icon">
@@ -284,10 +284,19 @@
           </div>
           <h3>Notes</h3>
           <p>Add text notes, passwords, or simple instructions</p>
+          <button class="dep-upload-btn btn-open-folder" onclick="openDepFolder('notes', 'Notes')" style="margin-bottom:8px;">Open Folder</button>
           <button class="dep-upload-btn" onclick="openNoteModal()">Add Note</button>
-          <div class="dep-list" id="list-notes"></div>
         </div>
       </div>
+    </div>
+    
+    <div id="all-lists-container" style="display:none;">
+      <div class="dep-list" id="list-voice"></div>
+      <div class="dep-list" id="list-images"></div>
+      <div class="dep-list" id="list-videos"></div>
+      <div class="dep-list" id="list-links"></div>
+      <div class="dep-list" id="list-docs"></div>
+      <div class="dep-list" id="list-notes"></div>
     </div>
 
   </div>
@@ -802,6 +811,29 @@
       currentFeedbackTask = null;
     }
 
+    let currentActiveFolder = null;
+    function openDepFolder(type, title) {
+      document.getElementById('df-title').textContent = title + " Folder";
+      const container = document.getElementById('df-list-container');
+      const allContainer = document.getElementById('all-lists-container');
+      
+      if (currentActiveFolder) {
+        allContainer.appendChild(currentActiveFolder);
+        currentActiveFolder.style.display = 'none';
+      }
+      
+      const activeList = document.getElementById('list-' + type);
+      activeList.style.display = 'flex';
+      container.appendChild(activeList);
+      currentActiveFolder = activeList;
+      
+      document.getElementById('dep-folder-modal').classList.add('active');
+    }
+
+    function closeDepFolder() {
+      document.getElementById('dep-folder-modal').classList.remove('active');
+    }
+
     async function submitTaskFeedback(status) {
       if(!currentFeedbackTask) return;
       const comments = document.getElementById('ft-comments').value;
@@ -897,6 +929,19 @@
           <button class="btn-action btn-reject" onclick="closeNoteModal()" style="background:transparent;border:1px solid var(--bdr);color:var(--txt);">Cancel</button>
           <button class="btn-action" onclick="submitNoteModal()" style="background:var(--acc);color:#000;">Save Note</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPENDENCY FOLDER MODAL -->
+  <div class="modal-overlay" id="dep-folder-modal" onclick="if(event.target===this) closeDepFolder()">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2 id="df-title">Folder</h2>
+        <button class="btn-close" onclick="closeDepFolder()">×</button>
+      </div>
+      <div class="modal-body" id="df-list-container">
+        <!-- Active list will be moved here dynamically -->
       </div>
     </div>
   </div>
