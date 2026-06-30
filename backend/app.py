@@ -1771,6 +1771,30 @@ def conversation_chat(conv_id):
             context = _inject_web_context(list(context), snip)
             logger.info("Chat | web_search context injected | len=%d", len(snip))
 
+    if message.strip().lower().startswith("/standup"):
+        try:
+            from db import get_connection
+            conn = get_connection()
+            cur = conn.cursor()
+            date_str = datetime.utcnow().strftime("%Y-%m-%d")
+            cur.execute(
+                "SELECT title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
+                (sender_id, date_str),
+            )
+            rows = cur.fetchall()
+            conn.close()
+            
+            task_list_str = "\n".join([f"- {r[0]} (Due: {r[1]}, Status: {r[2]})" for r in rows]) if rows else "No active tasks found."
+            standup_note = f"\n\nSYSTEM INSTRUCTION FOR /standup COMMAND:\nThe user wants to do their daily standup. Here are their active tasks for today:\n{task_list_str}\n\nPlease act as an AI Standup Coach. Recommend what they should say in their standup today, prioritizing tasks due soon. Ask if they want you to mark other tasks as delayed or blocked.\n\n"
+            
+            if context and context[-1]["role"] == "user":
+                if isinstance(context[-1]["content"], str):
+                    context[-1]["content"] += standup_note
+                elif isinstance(context[-1]["content"], list):
+                    context[-1]["content"].append({"type": "text", "text": standup_note})
+        except Exception as e:
+            logger.error(f"Error fetching tasks for /standup in chat: {e}")
+
     # Call System with full conversation context + any file attachments
     result = call_claude_with_context(
         task_type,
@@ -1964,6 +1988,25 @@ def conversation_stream(conv_id):
                     
         if skill_id == "web_search":
             web_search_enabled = True
+
+    if message.strip().lower().startswith("/standup"):
+        try:
+            from db import get_connection
+            conn = get_connection()
+            cur = conn.cursor()
+            date_str = datetime.utcnow().strftime("%Y-%m-%d")
+            cur.execute(
+                "SELECT title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
+                (sender_id, date_str),
+            )
+            rows = cur.fetchall()
+            conn.close()
+            
+            task_list_str = "\n".join([f"- {r[0]} (Due: {r[1]}, Status: {r[2]})" for r in rows]) if rows else "No active tasks found."
+            
+            skill_prompt += f"\n\nSYSTEM INSTRUCTION FOR /standup COMMAND:\nThe user wants to do their daily standup. Here are their active tasks for today:\n{task_list_str}\n\nPlease act as an AI Standup Coach. Recommend what they should say in their standup today, prioritizing tasks due soon. Ask if they want you to mark other tasks as delayed or blocked.\n\n"
+        except Exception as e:
+            logger.error(f"Error fetching tasks for /standup: {e}")
 
     # --- Style handling ---
     style = data.get("style")

@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bet Page | Mohit aaj jayenge?</title>
+  <title>Bet Page | Lunch?</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="auth.js"></script>
   <script src="shared-config.js"></script>
@@ -17,135 +18,269 @@
       --green: #22d3a0;
       --red: #ef4444;
     }
-    * { box-sizing: border-box; }
-    
-    body { 
-      display: flex; justify-content: center; align-items: center; 
-      min-height: 100vh; background: var(--bg); 
-      color: var(--text); font-family: 'Inter', sans-serif; 
-      margin: 0; padding: 20px;
-    }
-    
-    /* Animated background orbs */
-    .bg-orbs { position: fixed; inset: 0; pointer-events: none; z-index: -1; overflow: hidden; }
-    .orb {
-      position: absolute; border-radius: 50%;
-      filter: blur(90px); opacity: 0.15;
-      animation: orb-drift 20s ease-in-out infinite;
-    }
-    .orb-1 { width: 500px; height: 500px; background: #ff6f91; top: 0%; left: 0%; }
-    .orb-2 { width: 600px; height: 600px; background: #8B5A2B; bottom: -10%; right: -10%; animation-delay: -5s; }
-    @keyframes orb-drift {
-      0%, 100% { transform: translate(0,0) scale(1); }
-      33%       { transform: translate(40px,-50px) scale(1.1); }
-      66%       { transform: translate(-30px,40px) scale(0.9); }
+
+    * {
+      box-sizing: border-box;
     }
 
-    .bet-card { 
-      background: rgba(26, 26, 38, 0.65); 
-      border: 1px solid rgba(255, 255, 255, 0.08); 
-      padding: 50px 40px; border-radius: 24px; 
-      text-align: center; 
-      box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.03); 
-      width: 100%; max-width: 500px;
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+
+    /* Animated background orbs */
+    .bg-orbs {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: 0.15;
+      animation: orb-drift 20s ease-in-out infinite;
+    }
+
+    .orb-1 {
+      width: 500px;
+      height: 500px;
+      background: #ff6f91;
+      top: 0%;
+      left: 0%;
+    }
+
+    .orb-2 {
+      width: 600px;
+      height: 600px;
+      background: #8B5A2B;
+      bottom: -10%;
+      right: -10%;
+      animation-delay: -5s;
+    }
+
+    @keyframes orb-drift {
+
+      0%,
+      100% {
+        transform: translate(0, 0) scale(1);
+      }
+
+      33% {
+        transform: translate(40px, -50px) scale(1.1);
+      }
+
+      66% {
+        transform: translate(-30px, 40px) scale(0.9);
+      }
+    }
+
+    .bet-card {
+      background: rgba(26, 26, 38, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 50px 40px;
+      border-radius: 24px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+      width: 100%;
+      max-width: 500px;
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
       animation: fade-in 0.5s ease-out;
     }
+
     @keyframes fade-in {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
-    
-    h1 { 
-      margin-top: 0; margin-bottom: 40px; font-size: 2.2rem; font-weight: 800;
+
+    h1 {
+      margin-top: 0;
+      margin-bottom: 40px;
+      font-size: 2.2rem;
+      font-weight: 800;
       background: linear-gradient(135deg, #fff 0%, #a0a0b0 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       letter-spacing: -0.03em;
       line-height: 1.2;
     }
-    
+
     .vote-actions {
-      display: flex; justify-content: center; gap: 16px; margin-bottom: 40px;
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 40px;
     }
-    
-    .btn-vote { 
+
+    .btn-vote {
       flex: 1;
-      background: rgba(255, 255, 255, 0.03); 
-      color: #fff; border: 1px solid rgba(255,255,255,0.1); 
-      padding: 16px 24px; font-size: 1.3rem; cursor: pointer; 
-      border-radius: 16px; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
-      font-weight: 700; font-family: inherit;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      background: rgba(255, 255, 255, 0.03);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px 24px;
+      font-size: 1.3rem;
+      cursor: pointer;
+      border-radius: 16px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      font-weight: 700;
+      font-family: inherit;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     }
-    .btn-vote:hover { 
+
+    .btn-vote:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
     }
-    
-    #btn-yes:hover, #btn-yes.active { 
-      background: var(--green); color: #000; border-color: var(--green); 
+
+    #btn-yes:hover,
+    #btn-yes.active {
+      background: var(--green);
+      color: #000;
+      border-color: var(--green);
       box-shadow: 0 8px 30px rgba(34, 211, 160, 0.4);
     }
-    #btn-no:hover, #btn-no.active { 
-      background: var(--red); color: #fff; border-color: var(--red); 
+
+    #btn-no:hover,
+    #btn-no.active {
+      background: var(--red);
+      color: #fff;
+      border-color: var(--red);
       box-shadow: 0 8px 30px rgba(239, 68, 68, 0.4);
     }
-    
-    .votes-list { 
-      text-align: left; background: rgba(0,0,0,0.3); 
-      padding: 24px; border-radius: 16px; 
-      border: 1px solid rgba(255,255,255,0.05); 
+
+    .votes-list {
+      text-align: left;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 24px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
-    
+
     .votes-list h3 {
-      margin-top: 0; margin-bottom: 20px; font-size: 0.95rem; color: var(--muted); 
-      border-bottom: 1px solid rgba(255,255,255,0.08); 
-      padding-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      margin-top: 0;
+      margin-bottom: 20px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
-    
-    .vote-item { 
-      margin: 10px 0; font-size: 1.05rem; display: flex; 
-      justify-content: space-between; align-items: center; 
-      padding: 12px 16px; background: rgba(255,255,255,0.02); 
-      border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);
+
+    .vote-item {
+      margin: 10px 0;
+      font-size: 1.05rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.03);
       transition: transform 0.2s, background 0.2s;
     }
-    .vote-item:hover { transform: translateX(4px); background: rgba(255,255,255,0.04); }
-    .vote-item:last-child { margin-bottom: 0; }
-    
+
+    .vote-item:hover {
+      transform: translateX(4px);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .vote-item:last-child {
+      margin-bottom: 0;
+    }
+
     .vote-item strong {
-      font-weight: 600; color: #fff; display: flex; align-items: center; gap: 12px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
-    
+
     .avatar-mini {
-      width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
-      display: inline-flex; justify-content: center; align-items: center;
-      font-size: 0.75rem; color: #000; font-weight: 800;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 0.75rem;
+      color: #000;
+      font-weight: 800;
     }
-    
+
     .badge {
-      padding: 6px 12px; border-radius: 100px; font-size: 0.75rem; 
-      font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 6px 12px;
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    .badge.yes { background: rgba(34,211,160,0.15); color: var(--green); border: 1px solid rgba(34,211,160,0.3); }
-    .badge.no { background: rgba(239,68,68,0.15); color: #ff8a8a; border: 1px solid rgba(239,68,68,0.3); }
-    
+
+    .badge.yes {
+      background: rgba(34, 211, 160, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(34, 211, 160, 0.3);
+    }
+
+    .badge.no {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ff8a8a;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
     .back-btn {
-      display: inline-flex; align-items: center; gap: 8px; margin-top: 32px;
-      color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 500;
-      padding: 10px 20px; border-radius: 100px; background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.05);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 32px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 10px 20px;
+      border-radius: 100px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
       transition: all 0.2s;
     }
-    .back-btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
-    
+
+    .back-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
     .no-votes {
-      color: var(--muted); text-align: center; font-style: italic; padding: 10px 0; font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+      font-style: italic;
+      padding: 10px 0;
+      font-size: 0.9rem;
     }
   </style>
 </head>
+
 <body>
   <div class="bg-orbs">
     <div class="orb orb-1"></div>
@@ -154,32 +289,36 @@
 
   <div class="bet-card" id="bet-content" style="display:none;">
     <h1>Mohit aaj jayenge? 🧐</h1>
-    
+
     <div class="vote-actions">
       <button class="btn-vote" id="btn-yes" onclick="submitVote('yes')">Yes</button>
       <button class="btn-vote" id="btn-no" onclick="submitVote('no')">No</button>
     </div>
-    
+
     <div class="votes-list" id="votes-list">
       <h3>Current Bets</h3>
       <div id="votes-container"></div>
     </div>
-    
+
     <div>
       <a href="index.html" class="back-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
         Back to Dashboard
       </a>
     </div>
   </div>
-  
+
   <div id="restricted-msg" class="bet-card" style="display:none;">
     <h1>Access Restricted 🔒</h1>
     <p style="color:var(--muted); line-height: 1.6; margin-bottom: 30px; font-size:1.05rem;">
       Only Abhinav, Nupur, Happy, and Palak can participate in this bet.
     </p>
     <a href="index.html" class="back-btn">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
       Back to Dashboard
     </a>
   </div>
@@ -188,8 +327,8 @@
     const API = location.hostname === 'localhost' ? 'http://localhost:5000' : location.origin;
     const user = JSON.parse(localStorage.getItem("agency_portal_user"));
     const allowed = ["emp002", "emp003", "emp007", "emp008"];
-    
-    if(!user || !allowed.includes(user.user_id)) {
+
+    if (!user || !allowed.includes(user.user_id)) {
       window.location.replace("dashboard.html");
     } else {
       document.getElementById('bet-content').style.display = 'block';
@@ -200,15 +339,15 @@
     }
 
     async function submitVote(vote) {
-      if(!allowed.includes(user.user_id)) return;
-      
+      if (!allowed.includes(user.user_id)) return;
+
       const res = await fetch(`${API}/api/bet`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user.user_id, vote: vote })
       });
       const data = await res.json();
-      if(data.success) {
+      if (data.success) {
         loadVotes();
       } else {
         alert(data.error || "Failed to vote");
@@ -219,24 +358,24 @@
       try {
         const res = await fetch(`${API}/api/bet`);
         const data = await res.json();
-        if(data.success) {
+        if (data.success) {
           const container = document.getElementById('votes-container');
           container.innerHTML = '';
           let myVote = null;
-          
-          if(data.votes.length === 0) {
+
+          if (data.votes.length === 0) {
             container.innerHTML = '<div class="no-votes">No votes cast yet.</div>';
           }
 
           data.votes.forEach(v => {
-            if(v.user_id === user.user_id) myVote = v.vote;
+            if (v.user_id === user.user_id) myVote = v.vote;
             const name = (window.EMP_DICT && window.EMP_DICT[v.user_id]) ? window.EMP_DICT[v.user_id] : v.user_id;
             const initial = name.charAt(0).toUpperCase();
-            
+
             const div = document.createElement('div');
             div.className = 'vote-item';
             const badgeClass = v.vote === 'yes' ? 'yes' : 'no';
-            
+
             div.innerHTML = `
               <strong>
                 <span class="avatar-mini">${initial}</span>
@@ -246,11 +385,11 @@
             `;
             container.appendChild(div);
           });
-          
+
           document.getElementById('btn-yes').classList.remove('active');
           document.getElementById('btn-no').classList.remove('active');
-          if(myVote === 'yes') document.getElementById('btn-yes').classList.add('active');
-          if(myVote === 'no') document.getElementById('btn-no').classList.add('active');
+          if (myVote === 'yes') document.getElementById('btn-yes').classList.add('active');
+          if (myVote === 'no') document.getElementById('btn-no').classList.add('active');
         }
       } catch (e) {
         console.error("Failed to load votes", e);
@@ -258,4 +397,5 @@
     }
   </script>
 </body>
+
 </html>
