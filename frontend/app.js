@@ -649,6 +649,8 @@ async function sendWelcomeMessage() {
   const text = welcomeInput.value.trim();
   if (!text || !currentUser) return;
   welcomeInput.value = "";
+  const popup = document.getElementById("welcome-slash-popup");
+  if (popup) popup.style.display = "none";
   toggleWelcomeSend();
   await startNewChat(text);
 }
@@ -660,7 +662,24 @@ welcomeInput.addEventListener("keydown", e => {
 welcomeInput.addEventListener("input", () => {
   autoResize(welcomeInput);
   toggleWelcomeSend();
+  
+  const popup = document.getElementById("welcome-slash-popup");
+  if (popup) {
+    if (welcomeInput.value.trim() === "/") {
+      popup.style.display = "block";
+    } else {
+      popup.style.display = "none";
+    }
+  }
 });
+
+window.applySlashCommandWelcome = function(cmd) {
+  welcomeInput.value = cmd + " ";
+  const popup = document.getElementById("welcome-slash-popup");
+  if (popup) popup.style.display = "none";
+  welcomeInput.focus();
+  toggleWelcomeSend();
+};
 
 function toggleWelcomeSend() {
   welcomeSend.disabled = !welcomeInput.value.trim();

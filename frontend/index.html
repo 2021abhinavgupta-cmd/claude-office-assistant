@@ -147,7 +147,13 @@
         <div class="input-wrap" id="welcome-input-wrap" style="width: 100%; max-width: 980px; margin-top: 24px;">
           <div class="active-badges" id="welcome-active-badges"></div>
           
-          <div class="input-top-row" style="display: flex; width: 100%;">
+          <div class="input-top-row" style="display: flex; width: 100%; position: relative;">
+            <div id="welcome-slash-popup" style="display: none; position: absolute; bottom: 100%; left: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 100; margin-bottom: 8px; min-width: 250px;">
+              <div class="slash-option" style="padding: 8px 12px; cursor: pointer; border-radius: 4px; color: var(--text); font-size: 0.9rem; display: flex; flex-direction: column; gap: 2px;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'" onclick="applySlashCommandWelcome('/standup')">
+                <span style="font-weight: 500;">/standup</span>
+                <span style="color: var(--text-2); font-size: 0.8rem;">Daily standup AI coach</span>
+              </div>
+            </div>
             <textarea id="welcome-input" class="msg-input" rows="1"
               placeholder="Paste a doc, an email, or a question to get started" maxlength="500000" style="padding-bottom: 0px; margin-top: 0px;"></textarea>
           </div>
