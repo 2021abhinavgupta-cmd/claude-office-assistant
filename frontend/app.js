@@ -875,8 +875,24 @@ function setupInputs() {
     charCount.textContent = len > warnAt ? `${len} / ${MSG_MAX_CHARS} characters` : "";
     charCount.style.color = len > Math.floor(MSG_MAX_CHARS * 0.875) ? "#ef4444" : "";
     sendBtn.disabled = !msgInput.value.trim() || isLoading;
+
+    const popup = document.getElementById("slash-popup");
+    if (popup) {
+      if (msgInput.value.trim() === "/") {
+        popup.style.display = "block";
+      } else {
+        popup.style.display = "none";
+      }
+    }
   });
 }
+
+window.applySlashCommand = function(cmd) {
+  msgInput.value = cmd + " ";
+  const popup = document.getElementById("slash-popup");
+  if (popup) popup.style.display = "none";
+  msgInput.focus();
+};
 
 function autoResize(el) {
   el.style.height = "auto";
@@ -1372,6 +1388,9 @@ window.regenerateWithNote = function(assistantEl, note) {
 window.sendMessage = async function(overrideText = null, truncateFromIndex = null, opts = {}) {
   const text = overrideText || msgInput.value.trim();
   if (!text || isLoading || !currentConvId) return;
+  
+  const popup = document.getElementById("slash-popup");
+  if (popup) popup.style.display = "none";
 
   const atts = typeof pendingAttachments !== "undefined" ? [...pendingAttachments] : [];
 
