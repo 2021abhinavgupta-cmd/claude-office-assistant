@@ -1691,6 +1691,28 @@ function updateStreamingMessage(el, text) {
 function finalizeStreamingMessage(el, text, meta = {}) {
   const body   = el.querySelector(".msg-body");
   const textEl = el.querySelector(".msg-text");
+
+  // Handle Standup Actions
+  let standupActionsMatch = text.match(/<standup_actions>([\s\S]*?)<\/standup_actions>/);
+  if (standupActionsMatch) {
+    try {
+      const actionsJson = JSON.parse(standupActionsMatch[1]);
+      text = text.replace(/<standup_actions>[\s\S]*?<\/standup_actions>/g, '');
+      
+      fetch(`${API}/api/standup/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actions: actionsJson, user_id: currentUser })
+      }).then(r => r.json()).then(data => {
+        if (data.success && data.results && data.results.length > 0) {
+          showToast(`✅ ${data.results.length} task(s) updated`, 'success');
+        }
+      }).catch(err => console.error("Error executing standup actions:", err));
+    } catch (e) {
+      console.error("Failed to parse standup actions JSON", e);
+    }
+  }
+
   textEl.innerHTML = formatText(text);
 
   // Auto-open artifact panel if response contains an HTML or SVG code block

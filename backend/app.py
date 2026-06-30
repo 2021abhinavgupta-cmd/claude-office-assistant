@@ -1785,7 +1785,24 @@ def conversation_chat(conv_id):
             conn.close()
             
             task_list_str = "\n".join([f"- {r[0]} (Due: {r[1]}, Status: {r[2]})" for r in rows]) if rows else "No active tasks found."
-            standup_note = f"\n\nSYSTEM INSTRUCTION FOR /standup COMMAND:\nThe user wants to do their daily standup. Here are their active tasks for today:\n{task_list_str}\n\nPlease act as an AI Standup Coach. Recommend what they should say in their standup today, prioritizing tasks due soon. Ask if they want you to mark other tasks as delayed or blocked.\n\n"
+            standup_note = f"""
+
+SYSTEM INSTRUCTION FOR /standup COMMAND:
+The user wants to do their daily standup. Here are their active tasks for today:
+{task_list_str}
+
+Please act as an AI Standup Coach.
+1. Recommend what they should say in their standup today, prioritizing tasks due soon.
+2. IMPORTANT: If the user asks you to mark a task as done, delayed, or add a new task (or if they paste meeting notes to extract tasks), you MUST output a JSON block at the very end of your response wrapped exactly in <standup_actions> tags, like this:
+<standup_actions>
+[
+  {{"action": "update_task", "task_id": 12, "status": "done"}},
+  {{"action": "add_task", "title": "Review docs", "due_date": "2026-07-01"}}
+]
+</standup_actions>
+3. If the user mentions they are blocked on something, proactively provide advice or search for solutions to unblock them.
+
+"""
             
             if context and context[-1]["role"] == "user":
                 if isinstance(context[-1]["content"], str):
@@ -2004,7 +2021,24 @@ def conversation_stream(conv_id):
             
             task_list_str = "\n".join([f"- {r[0]} (Due: {r[1]}, Status: {r[2]})" for r in rows]) if rows else "No active tasks found."
             
-            skill_prompt += f"\n\nSYSTEM INSTRUCTION FOR /standup COMMAND:\nThe user wants to do their daily standup. Here are their active tasks for today:\n{task_list_str}\n\nPlease act as an AI Standup Coach. Recommend what they should say in their standup today, prioritizing tasks due soon. Ask if they want you to mark other tasks as delayed or blocked.\n\n"
+            skill_prompt += f"""
+
+SYSTEM INSTRUCTION FOR /standup COMMAND:
+The user wants to do their daily standup. Here are their active tasks for today:
+{task_list_str}
+
+Please act as an AI Standup Coach.
+1. Recommend what they should say in their standup today, prioritizing tasks due soon.
+2. IMPORTANT: If the user asks you to mark a task as done, delayed, or add a new task (or if they paste meeting notes to extract tasks), you MUST output a JSON block at the very end of your response wrapped exactly in <standup_actions> tags, like this:
+<standup_actions>
+[
+  {{"action": "update_task", "task_id": 12, "status": "done"}},
+  {{"action": "add_task", "title": "Review docs", "due_date": "2026-07-01"}}
+]
+</standup_actions>
+3. If the user mentions they are blocked on something, proactively provide advice or search for solutions to unblock them.
+
+"""
         except Exception as e:
             logger.error(f"Error fetching tasks for /standup: {e}")
 
