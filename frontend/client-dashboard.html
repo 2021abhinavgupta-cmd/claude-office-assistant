@@ -1014,7 +1014,7 @@
         <div class="modal-task-detail">
           <div style="font-size:1.1rem;font-weight:700;color:var(--txt);margin-bottom:8px" id="ft-title"></div>
           <div>Due Date: <strong id="ft-date"></strong></div>
-          <div>Current Status: <strong id="ft-status"></strong></div>
+          <div style="display:none">Current Status: <strong id="ft-status"></strong></div>
           <div id="ft-type-container" style="display:none;margin-top:8px">Type: <strong id="ft-type" style="color:var(--txt)"></strong></div>
           <div id="ft-content-container" style="display:none">Content: <strong id="ft-content" style="color:var(--txt)"></strong></div>
           <div id="ft-idea-container" style="display:none">Idea: <strong id="ft-idea" style="color:var(--txt)"></strong></div>
@@ -1023,7 +1023,7 @@
           <div id="ft-link-container" style="display:none;margin-top:8px">File: <a href="#" id="ft-link" target="_blank" style="color:var(--acc);font-weight:bold;text-decoration:underline"></a></div>
         </div>
         <div id="ft-banner" class="feedback-banner"></div>
-        <textarea id="ft-comments" class="feedback-textarea" placeholder="Leave a comment or request specific changes..."></textarea>
+        <textarea id="ft-comments" class="feedback-textarea" placeholder="Leave a comment or upload drive link"></textarea>
         <div class="modal-actions">
           <button class="btn-action btn-reject" onclick="submitTaskFeedback('changes_requested')"> Request Changes</button>
           <button class="btn-action btn-comment" onclick="submitTaskFeedback('comment')" style="background:var(--acc);color:white"> Leave Comment</button>
