@@ -831,8 +831,8 @@
     let audioChunks = [];
     let isRecording = false;
 
-    async function toggleVoiceRecord() {
-      const btn = document.getElementById("btn-record-voice");
+    async function toggleVoiceRecord(btnId = "btn-record-voice") {
+      const btn = document.getElementById(btnId);
       if(!isRecording) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -851,7 +851,7 @@
             
             btn.innerHTML = "Saving...";
             await handleDepUpload(dummyInput, 'voice');
-            btn.innerHTML = "Record";
+            btn.innerHTML = btnId === "btn-record-voice" ? "Record" : " Add Audio";
             
             stream.getTracks().forEach(track => track.stop());
           };
@@ -918,6 +918,13 @@
         banner.textContent = task.feedback.status === 'approved' ? ' You previously approved this task.' : ' You requested changes for this task.';
       } else {
         banner.style.display = 'none';
+      }
+      
+      const audioBtn = document.getElementById('btn-modal-audio');
+      if (clientInfo && clientInfo.client_name && clientInfo.client_name.toLowerCase().includes('mellow')) {
+        audioBtn.style.display = 'inline-block';
+      } else {
+        audioBtn.style.display = 'none';
       }
 
       document.getElementById('task-feedback-modal').classList.add('active');
@@ -1027,6 +1034,7 @@
         <div class="modal-actions">
           <button class="btn-action btn-reject" onclick="submitTaskFeedback('changes_requested')"> Request Changes</button>
           <button class="btn-action btn-comment" onclick="submitTaskFeedback('comment')" style="background:var(--acc);color:white"> Leave Comment</button>
+          <button class="btn-action btn-audio" id="btn-modal-audio" onclick="toggleVoiceRecord('btn-modal-audio')" style="background:#5c9eff;color:white;display:none;"> Add Audio</button>
           <button class="btn-action btn-approve" onclick="submitTaskFeedback('approved')"> Approve</button>
         </div>
       </div>
