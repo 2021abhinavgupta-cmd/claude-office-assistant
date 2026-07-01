@@ -1778,13 +1778,13 @@ def conversation_chat(conv_id):
             cur = conn.cursor()
             date_str = datetime.utcnow().strftime("%Y-%m-%d")
             cur.execute(
-                "SELECT title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
+                "SELECT id, title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
                 (sender_id, date_str),
             )
             rows = cur.fetchall()
             conn.close()
             
-            task_list_str = "\n".join([f"- {r[0]} (Due: {r[1]}, Status: {r[2]})" for r in rows]) if rows else "No active tasks found."
+            task_list_str = "\n".join([f"- [ID: {r[0]}] {r[1]} (Due: {r[2]}, Status: {r[3]})" for r in rows]) if rows else "No active tasks found."
             standup_note = f"""
 
 SYSTEM INSTRUCTION FOR /standup COMMAND:
@@ -2013,13 +2013,13 @@ def conversation_stream(conv_id):
             cur = conn.cursor()
             date_str = datetime.utcnow().strftime("%Y-%m-%d")
             cur.execute(
-                "SELECT title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
+                "SELECT id, title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
                 (sender_id, date_str),
             )
             rows = cur.fetchall()
             conn.close()
             
-            task_list_str = "\n".join([f"- {r[0]} (Due: {r[1]}, Status: {r[2]})" for r in rows]) if rows else "No active tasks found."
+            task_list_str = "\n".join([f"- [ID: {r[0]}] {r[1]} (Due: {r[2]}, Status: {r[3]})" for r in rows]) if rows else "No active tasks found."
             
             skill_prompt += f"""
 
