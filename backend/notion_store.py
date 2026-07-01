@@ -456,6 +456,19 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
         return []
 
 
+def get_task_type(notion_id: str) -> str:
+    """Fetches a single task and returns its Type or Task Type."""
+    if not is_configured() or not notion_id:
+        return ""
+    try:
+        r = _notion_request("GET", f"https://api.notion.com/v1/pages/{notion_id}", headers=_headers())
+        props = r.json().get("properties", {})
+        return _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {}))
+    except Exception:
+        logger.exception(f"Notion get_task_type failed for {notion_id}")
+        return ""
+
+
 def update_task(notion_id: str, status: str = None, progress: int = None,
                 submission_note: str = None, assigned_to: str = None,
                 new_title: str = None, due_date: str = None,

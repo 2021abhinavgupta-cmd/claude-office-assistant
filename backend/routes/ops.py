@@ -926,6 +926,17 @@ def update_my_task(task_id: int):
                     elif notion_progress > 0: notion_status = "In Progress"
             
             if notion_progress is not None:
+                if notion_status == "Done":
+                    task_type = notion_store.get_task_type(notion_id)
+                    if task_type and task_type.lower() == "social media":
+                        notion_status = "need_for_approval"
+                        
+                        # Also update local db to reflect this
+                        conn = _su_conn()
+                        conn.execute("UPDATE standup_tasks SET status='need_for_approval' WHERE id=?", (task_id,))
+                        conn.commit()
+                        conn.close()
+
                 notion_store.update_task(notion_id, progress=notion_progress, status=notion_status)
         except Exception as e:
             logger.warning(f"Notion sync failed for task {notion_id}: {e}")
