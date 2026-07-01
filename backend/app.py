@@ -1778,7 +1778,7 @@ def conversation_chat(conv_id):
             cur = conn.cursor()
             date_str = datetime.utcnow().strftime("%Y-%m-%d")
             cur.execute(
-                "SELECT id, title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
+                "SELECT id, title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status NOT IN ('done', 'need_for_approval')",
                 (sender_id, date_str),
             )
             rows = cur.fetchall()
@@ -1800,6 +1800,7 @@ Please act as an AI Standup Coach.
   {{"action": "add_task", "title": "Review docs", "due_date": "2026-07-01"}}
 ]
 </standup_actions>
+- EXCEPTION FOR SOCIAL MEDIA: If the task being marked as done is a Social Media task, you MUST set its status to "need_for_approval" instead of "done" so it can be approved before posting.
 3. If the user mentions they are blocked on something, proactively provide advice or search for solutions to unblock them.
 
 """
@@ -2013,7 +2014,7 @@ def conversation_stream(conv_id):
             cur = conn.cursor()
             date_str = datetime.utcnow().strftime("%Y-%m-%d")
             cur.execute(
-                "SELECT id, title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status != 'done'",
+                "SELECT id, title, due_date, status FROM standup_tasks WHERE user_id=? AND date=? AND status NOT IN ('done', 'need_for_approval')",
                 (sender_id, date_str),
             )
             rows = cur.fetchall()
@@ -2036,6 +2037,7 @@ Please act as an AI Standup Coach.
   {{"action": "add_task", "title": "Review docs", "due_date": "2026-07-01"}}
 ]
 </standup_actions>
+- EXCEPTION FOR SOCIAL MEDIA: If the task being marked as done is a Social Media task, you MUST set its status to "need_for_approval" instead of "done" so it can be approved before posting.
 3. If the user mentions they are blocked on something, proactively provide advice or search for solutions to unblock them.
 
 """

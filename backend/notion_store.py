@@ -482,7 +482,9 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
             "posted": "Posted",
             "final": "Final",
             "scheduled": "Scheduled",
-            "paused": "Paused"
+            "paused": "Paused",
+            "need_for_approval": "Need for approval",
+            "need_approval": "Need for approval"
         }
         notion_status_name = status_map.get(status.lower(), status)
         props["Status"] = _select(notion_status_name)

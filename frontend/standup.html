@@ -283,8 +283,8 @@ function formatShortDate(dStr) {
 function renderTasks(){
   const list = document.getElementById("task-list");
   const stats = document.getElementById("task-stats");
-  const done  = allTasks.filter(t=>t.status==="done").length;
-  const pend  = allTasks.filter(t=>t.status==="pending").length;
+  const done  = allTasks.filter(t=>t.status==="done" || t.status==="need_for_approval").length;
+  const pend  = allTasks.filter(t=>t.status!=="done" && t.status!=="need_for_approval").length;
 
   if(allTasks.length === 0){
     list.innerHTML = '<div class="empty-tasks">No tasks yet — add your first task above!</div>';
@@ -338,28 +338,28 @@ function renderTasks(){
     `;
 
     return `
-    <div class="task-item ${t.status==="done"?"done":""} ${t.carried_from?"carried":""}" id="task-${t.id}" style="align-items:flex-start; flex-direction:column;">
+    <div class="task-item ${(t.status==="done" || t.status==="need_for_approval")?"done":""} ${t.carried_from?"carried":""}" id="task-${t.id}" style="align-items:flex-start; flex-direction:column;">
       <div style="display:flex; width:100%; align-items:flex-start; gap:10px;">
-        <button class="task-check ${t.status==="done"?"checked":""}" onclick="toggleTask(${t.id},'${t.status==="done"?"pending":"done"}')" style="margin-top:2px">
-          ${t.status==="done"?"✓":""}
+        <button class="task-check ${(t.status==="done" || t.status==="need_for_approval")?"checked":""}" onclick="toggleTask(${t.id},'${(t.status==="done" || t.status==="need_for_approval")?"pending":"done"}')" style="margin-top:2px">
+          ${(t.status==="done" || t.status==="need_for_approval")?"✓":""}
         </button>
         <div style="flex:1;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;align-items:center;gap:8px">
             <input type="text" class="task-title-input" value="${esc(t.title)}" 
                    onchange="updateTaskTitle(${t.id}, this.value)"
                    style="background:transparent; border:none; outline:none; color:inherit; font-size:0.88rem; font-family:inherit; flex:1; text-decoration:inherit; padding: 0;"
-                   ${t.status==="done" || t.status==="delegated" ? "disabled" : ""} />
+                   ${t.status==="done" || t.status==="need_for_approval" || t.status==="delegated" ? "disabled" : ""} />
             ${t.carried_from?`<span class="carried-badge">↩ from ${t.carried_from}</span>`:""}
             ${t.delegated_from?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated from ${t.delegated_from}</span>`:""}
             ${t.status==="delegated"?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated to ${t.delegated_to}</span>`:""}
-            ${t.status==="pending" ? `
+            ${(t.status!=="done" && t.status!=="need_for_approval") ? `
               <select class="delegate-select" onchange="delegateTask(${t.id}, this.value, this.options[this.selectedIndex].text)" style="background:transparent; border:1px dashed var(--bdr); border-radius:4px; color:var(--muted); font-size:0.7rem; outline:none; max-width: 100px;">
                 <option value="">Assign...</option>
                 ${allEmployees.filter(e=>e.id!==UID).map(e=>`<option value="${e.id}">${e.name}</option>`).join("")}
               </select>
             ` : ""}
           </div>
-          ${t.status==="pending" ? `
+          ${(t.status!=="done" && t.status!=="need_for_approval") ? `
             <input type="text" placeholder="Add a blocker (optional)..." 
                    value="${esc(t.blocker)}" onchange="updateBlocker(${t.id}, this.value)"
                    style="background:transparent; border:none; border-bottom:1px dashed rgba(255,255,255,0.15); color:var(--txt); padding:4px 0px; font-size:0.75rem; width:100%; outline:none; font-family:inherit; transition: border-color 0.2s;"
@@ -585,7 +585,7 @@ async function deleteTask(id){
 }
 
 async function wrapUpDay(){
-  const pend = allTasks.filter(t=>t.status==="pending");
+  const pend = allTasks.filter(t=>t.status!=="done" && t.status!=="need_for_approval");
   const btn  = document.getElementById("wrap-btn");
   const conf = document.getElementById("wrap-confirm");
   if(pend.length===0){
@@ -707,7 +707,7 @@ async function loadTeamStandups(dateStr = ""){
             taskHtml += `<div class="fl" style="margin-top:6px"> New Tasks</div>`;
             taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
             newTasks.forEach(task => {
-                const isDone = task.status === "done";
+                const isDone = task.status === "done" || task.status === "need_for_approval";
                 const stList = task.subtasks || [];
                 let subtasksHtml = "";
                 if (stList.length > 0) {
@@ -738,7 +738,7 @@ async function loadTeamStandups(dateStr = ""){
             taskHtml += `<div class="fl" style="margin-top:10px; color:var(--acc);"> Carried Over</div>`;
             taskHtml += `<ul style="list-style:none;padding-left:4px;font-size:.82rem;color:var(--txt)">`;
             carriedTasks.forEach(task => {
-                const isDone = task.status === "done";
+                const isDone = task.status === "done" || task.status === "need_for_approval";
                 let daysOverdue = 0;
                 if (task.carried_from) {
                     const d1 = new Date(task.carried_from);
