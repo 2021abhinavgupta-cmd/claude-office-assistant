@@ -1804,7 +1804,7 @@
       setField('ft-link', task.file_link, true);
 
       const banner = document.getElementById('ft-banner');
-      if (task.feedback && task.feedback.status) {
+      if (task.feedback && (task.feedback.status === 'approved' || task.feedback.status === 'changes_requested')) {
         banner.style.display = 'block';
         banner.className = `feedback-banner ${task.feedback.status === 'approved' ? 'approved' : 'rejected'}`;
         banner.textContent = task.feedback.status === 'approved' ? ' You previously approved this task.' : ' You requested changes for this task.';
