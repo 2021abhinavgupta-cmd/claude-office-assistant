@@ -1297,8 +1297,8 @@ def notion_dashboard():
         # Attach task feedback
         conn = _pt_conn()
         cur = conn.cursor()
-        cur.execute("SELECT task_id, status, comments, updated_at FROM client_task_feedback")
-        feedback_map = {r[0]: {"status": r[1], "comments": r[2], "updated_at": r[3]} for r in cur.fetchall()}
+        cur.execute("SELECT task_id, status, comments, audio_url, updated_at FROM client_task_feedback")
+        feedback_map = {r[0]: {"status": r[1], "comments": r[2], "audio_url": r[3], "updated_at": r[4]} for r in cur.fetchall()}
         conn.close()
 
         # Attach standup subtasks & filter out tasks done in standup
@@ -2009,8 +2009,8 @@ def client_portal_tasks():
         task_ids = [str(t.get("id")) for t in tasks if t.get("id")]
         if task_ids:
             placeholders = ",".join("?" * len(task_ids))
-            cur.execute(f"SELECT task_id, status, comments, updated_at FROM client_task_feedback WHERE task_id IN ({placeholders})", task_ids)
-            feedback_map = {r[0]: {"status": r[1], "comments": r[2], "updated_at": r[3]} for r in cur.fetchall()}
+            cur.execute(f"SELECT task_id, status, comments, audio_url, updated_at FROM client_task_feedback WHERE task_id IN ({placeholders})", task_ids)
+            feedback_map = {r[0]: {"status": r[1], "comments": r[2], "audio_url": r[3], "updated_at": r[4]} for r in cur.fetchall()}
             for t in tasks:
                 t_id = str(t.get("id"))
                 if t_id in feedback_map:
@@ -2091,6 +2091,7 @@ def submit_task_feedback(task_id):
     data = request.json or {}
     status = data.get("status")
     comments = data.get("comments", "")
+    audio_url = data.get("audio_url", None)
     source = data.get("source", "sqlite")
     
     # Store feedback locally
@@ -2098,10 +2099,10 @@ def submit_task_feedback(task_id):
         conn = _pt_conn()
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO client_task_feedback (task_id, status, comments, updated_at) 
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(task_id) DO UPDATE SET status=excluded.status, comments=excluded.comments, updated_at=CURRENT_TIMESTAMP
-        """, (str(task_id), status, comments))
+            INSERT INTO client_task_feedback (task_id, status, comments, audio_url, updated_at) 
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(task_id) DO UPDATE SET status=excluded.status, comments=excluded.comments, audio_url=excluded.audio_url, updated_at=CURRENT_TIMESTAMP
+        """, (str(task_id), status, comments, audio_url))
         conn.commit()
         conn.close()
     except Exception as e:

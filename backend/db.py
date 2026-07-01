@@ -205,6 +205,11 @@ def init_db():
             updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
 
+        try:
+            conn.execute("ALTER TABLE client_task_feedback ADD COLUMN audio_url TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
         # Projects migration
         try:
             # Check if old schema exists (has 'data' column)

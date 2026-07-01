@@ -1363,6 +1363,7 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
       <div style="margin-top:8px;padding:6px;border-radius:4px;font-size:0.75rem;border:1px solid ${t.feedback.status==='approved'?'#22c55e40':'#f43f5e40'};background:${t.feedback.status==='approved'?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)'}">
         <b style="color:${t.feedback.status==='approved'?'#22c55e':'#f43f5e'}">${t.feedback.status==='approved'?'Client Approved':'Client Requested Changes'}</b>
         ${t.feedback.comments?`<div style="margin-top:4px;color:var(--muted);font-style:italic">"${t.feedback.comments}"</div>`:''}
+        ${t.feedback.audio_url?`<audio controls src="${t.feedback.audio_url}" style="height:30px; width:100%; margin-top:8px;"></audio>`:''}
       </div>
     `:''}
     <div class="cp-actions">
