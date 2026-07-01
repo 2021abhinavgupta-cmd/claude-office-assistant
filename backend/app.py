@@ -85,6 +85,13 @@ app.register_blueprint(attendance_bp)
 app.register_blueprint(system_bp)
 app.register_blueprint(ops_bp)
 
+# ── Run DB Migrations ─────────────────────────────────────────────────────────
+import db
+try:
+    db.init_db()
+except Exception as e:
+    logger.error(f"Failed to run database migrations: {e}")
+
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
 limiter.init_app(app)
 
