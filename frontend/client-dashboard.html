@@ -1689,6 +1689,9 @@
     function removeFeedbackAudio() {
       currentFeedbackAudioUrl = null;
       renderFeedbackAudio();
+      if (currentFeedbackTask) {
+        submitTaskFeedback(currentFeedbackTask.feedback?.status || 'comment', false, true);
+      }
     }
 
     async function toggleVoiceRecord(btnId = "btn-record-voice") {
@@ -1726,6 +1729,7 @@
                 if (data.success) {
                   currentFeedbackAudioUrl = data.url;
                   renderFeedbackAudio();
+                  submitTaskFeedback(currentFeedbackTask.feedback?.status || 'comment', false, true);
                 } else {
                   alert(data.error || "Upload failed");
                 }
@@ -1846,12 +1850,12 @@
       document.getElementById('dep-folder-modal').classList.remove('active');
     }
 
-    async function submitTaskFeedback(status) {
+    async function submitTaskFeedback(status, closeAfter = true, isAutoSave = false) {
       if (!currentFeedbackTask) return;
       const comments = document.getElementById('ft-comments').value;
 
       // If toggling off the current status (e.g. clicking "Approve" when already approved)
-      if (status !== 'comment' && currentFeedbackTask.feedback && currentFeedbackTask.feedback.status === status) {
+      if (!isAutoSave && status !== 'comment' && currentFeedbackTask.feedback && currentFeedbackTask.feedback.status === status) {
         status = '';
       }
 
@@ -1883,7 +1887,9 @@
             currentFeedbackTask.progress = 80;
           }
           // if status === 'comment', we leave currentFeedbackTask.status unchanged.
-          closeTaskFeedback();
+          if (closeAfter) {
+            closeTaskFeedback();
+          }
           renderViews();
         } else {
           alert('Failed to submit feedback.');
