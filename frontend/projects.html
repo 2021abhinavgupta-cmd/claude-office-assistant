@@ -984,6 +984,7 @@ function renderClientSheets(clientId) {
             <option value="scheduled"     ${s==='scheduled'    ?'selected':''}>Scheduled</option>
             <option value="in_progress"   ${s==='in_progress'  ?'selected':''}>In Progress</option>
             <option value="paused"         ${s==='paused'       ?'selected':''}>Paused</option>
+            <option value="need_for_approval" ${['need_for_approval','Need for approval'].includes(s)?'selected':''}>Need for approval</option>
             <option value="posted"         ${['posted','approved','done'].includes(s)?'selected':''}>Posted</option>
             <option value="final"          ${s==='final'        ?'selected':''}>Final</option>
           </select>
@@ -1660,6 +1661,7 @@ const SOCIAL_STAGE_COLS = [
   {key:"scheduled",     label:"Scheduled",     emoji:"", statuses:["scheduled","Scheduled"]},
   {key:"in_progress",   label:"In Progress",   emoji:"", statuses:["in_progress","In Progress"]},
   {key:"paused",        label:"Paused",         emoji:"⏸", statuses:["paused","Paused"]},
+  {key:"need_for_approval", label:"Need for approval", emoji:"👀", statuses:["need_for_approval","Need for approval"]},
   {key:"posted",        label:"Posted",         emoji:"", statuses:["posted","Posted","approved","Done","done"]},
   {key:"final",         label:"Final",          emoji:"", statuses:["final","Final"]},
 ];
@@ -1668,6 +1670,7 @@ const SOCIAL_STATUS_MAP = {
   scheduled:"scheduled",
   in_progress:"in_progress",
   paused:"paused",
+  need_for_approval:"need_for_approval",
   posted:"posted",
   final:"final",
 };
