@@ -1063,21 +1063,16 @@ async function addSocialSheetRow(clientId) {
     });
     const d = await res.json();
     if (d.success) {
-      toast("Row added successfully!");
-      if (isNotionClient) {
-        toast("Saved! Synced with Notion");
-        client.tasks = client.tasks || [];
-        client.tasks.unshift({
-          id: d.notion_id || Date.now(),
-          notion_id: d.notion_id,
-          title: "[Post] New Idea",
-          service: "Social Media",
-          status: "not_started"
-        });
-        renderClientSheets(clientId);
-      } else {
-        renderClientSheets(clientId);
-      }
+      toast(isNotionClient ? "Saved! Synced with Notion" : "Row added successfully!");
+      client.tasks = client.tasks || [];
+      client.tasks.unshift({
+        id: isNotionClient ? (d.notion_id || Date.now()) : d.task_id,
+        notion_id: isNotionClient ? d.notion_id : null,
+        title: "[Post] New Idea",
+        service: "Social Media",
+        status: "not_started"
+      });
+      renderClientSheets(clientId);
     } else {
       toast(d.error || "Failed to add row", "err");
     }
@@ -1175,9 +1170,13 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   const notes = detailParts.join(" | ");
   
   let taskObj = null;
+  let isNotionClient = false;
   for (const c of allData.clients || []) {
     taskObj = (c.tasks || []).find(t => String(t.id) === String(taskId));
-    if (taskObj) break;
+    if (taskObj) {
+      isNotionClient = notionMode && !!c.notion_id;
+      break;
+    }
   }
   if (!taskObj) return;
   
@@ -1198,7 +1197,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   cellElem.style.opacity = "0.5";
   
   try {
-    const endpoint = notionMode 
+    const endpoint = isNotionClient 
       ? `${API}/api/notion/tasks/${taskId}`
       : `${API}/api/sqlite/tasks/${taskId}`;
       
