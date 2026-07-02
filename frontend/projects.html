@@ -273,7 +273,6 @@
     <div class="nav">
       <a href="dashboard.html" class="nl"> Dashboard</a>
       <button onclick="openMeetingNotesModal()" class="btn" style="background:var(--accent),rgba(59,130,246,.1));border:1px solid rgba(124,58,237,.4);color:#c4b5fd"> Paste Meeting Notes</button>
-      <button onclick="openFormSettings()" class="btn" style="background:var(--s2);border:1px solid var(--bdr);color:var(--txt);">Manage Forms</button>
       <a href="client-onboard.html" class="btn btn-acc">+ New Client</a>
     </div>
   </div>
@@ -309,19 +308,6 @@
 
   <div id="clients-container" style="flex:1;overflow-y:auto;padding-bottom:24px;margin-top:4px">
     <div class="client-blocks" id="detail-list"><div class="empty">Loading...</div></div>
-  </div>
-</div>
-
-<!-- Form Settings Modal -->
-<div class="modal-ov" id="form-settings-modal">
-  <div class="modal" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
-    <h3>Manage Discovery Questionnaire</h3>
-    <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 12px;">Edit the default form template questions below (JSON format).</p>
-    <textarea id="form-schema-input" style="min-height: 400px; font-family: monospace;"></textarea>
-    <div class="modal-btns">
-      <button class="btn" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted)" onclick="closeFormSettings()">Cancel</button>
-      <button class="btn btn-acc" onclick="saveFormSettings()">Save Template</button>
-    </div>
   </div>
 </div>
 
@@ -426,47 +412,6 @@ function updateMsDisplay(wrapId) {
   const display = wrap.querySelector('.ms-display');
   if (chks.length === 0) { display.textContent = '— Daily Standup Tasks —'; display.style.color = 'var(--muted)'; }
   else { display.textContent = chks.map(c => c.nextSibling.textContent.trim()).join(', '); display.style.color = 'var(--txt)'; }
-}
-
-async function openFormSettings() {
-  document.getElementById('form-schema-input').value = 'Loading...';
-  document.getElementById('form-settings-modal').classList.add('open');
-  try {
-    const res = await fetch(`${API}/api/form-templates/discovery_global`);
-    const data = await res.json();
-    if (data.success && data.template) {
-      document.getElementById('form-schema-input').value = JSON.stringify(data.template, null, 2);
-    } else {
-      document.getElementById('form-schema-input').value = '[\n  {\n    "id": "q1",\n    "section": "General",\n    "label": "Question?",\n    "type": "textarea"\n  }\n]';
-    }
-  } catch (e) {
-    document.getElementById('form-schema-input').value = 'Error loading template.';
-  }
-}
-
-function closeFormSettings() {
-  document.getElementById('form-settings-modal').classList.remove('open');
-}
-
-async function saveFormSettings() {
-  try {
-    const val = document.getElementById('form-schema-input').value;
-    const template = JSON.parse(val); // validate JSON
-    const res = await fetch(`${API}/api/form-templates/discovery_global`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ template })
-    });
-    const data = await res.json();
-    if (data.success) {
-      toast("Template saved successfully", true);
-      closeFormSettings();
-    } else {
-      toast("Error saving template", false);
-    }
-  } catch (e) {
-    alert("Invalid JSON format. Please correct it and try again.");
-  }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
