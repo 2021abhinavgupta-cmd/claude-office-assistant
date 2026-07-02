@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Client Forms Database | Agency Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="auth.js"></script>
+  <style>
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #12121a;
+      --surface2:  #1a1a26;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #e8e8f0;
+      --muted:     #6b6b8a;
+      --accent:    #8B5A2B;
+      --accent-hover: #a06b36;
+      --radius:    14px;
+      --radius-sm: 8px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+    /* ── Background ── */
+    .bg-orbs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.12; animation: orb-drift 20s ease-in-out infinite; }
+    .orb-1 { width: 500px; height: 500px; background: var(--accent);  top: -10%; left: -5%; }
+    @keyframes orb-drift {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      50%       { transform: translate(40px,-30px) scale(1.08); }
+    }
+
+    .container { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; padding: 32px 24px; }
+    
+    /* ── Pill Navigation (from standard design) ── */
+    .pill-nav-container { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; }
+    .pill-logo { font-size: 1.25rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; letter-spacing: -0.02em; }
+    .pill-navbar { display: flex; align-items: center; gap: 4px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 6px; border-radius: 100px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+    .nav-dropdown { position: relative; }
+    .nav-dropbtn { background: transparent; color: var(--text); border: none; padding: 8px 18px; border-radius: 100px; font-size: 0.9rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.2s, color 0.2s; }
+    .nav-dropdown:hover .nav-dropbtn { background: rgba(255, 255, 255, 0.08); color: #fff; }
+    .nav-dropbtn svg { width: 14px; height: 14px; transition: transform 0.2s; opacity: 0.6; }
+    .nav-dropdown:hover .nav-dropbtn svg { transform: rotate(180deg); opacity: 1; }
+    .nav-dropdown-content { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(10px); background: rgba(26, 26, 38, 0.95); border: 1px solid var(--border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 14px; padding: 8px; min-width: 200px; box-shadow: 0 12px 30px rgba(0,0,0,0.4); opacity: 0; visibility: hidden; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); z-index: 100; display: flex; flex-direction: column; gap: 2px; }
+    .nav-dropdown:hover .nav-dropdown-content { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .nav-dropdown-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; color: var(--text); text-decoration: none; font-size: 0.875rem; border-radius: 8px; transition: all 0.2s; white-space: nowrap; font-weight: 500; }
+    .nav-dropdown-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; padding-left: 18px; }
+    .nav-right-actions { display: flex; align-items: center; gap: 12px; }
+    .nav-btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 8px 18px; border-radius: 100px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .nav-btn:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); }
+    .nav-btn.danger:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: var(--red); }
+
+    .header-section { margin-bottom: 30px; }
+    .header-section h1 { font-size: 2.2rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .header-section p { color: var(--muted); font-size: 1.05rem; }
+
+    /* Layout */
+    .layout-grid { display: grid; grid-template-columns: 300px 1fr; gap: 24px; align-items: start; }
+    
+    /* List View */
+    .submissions-list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; max-height: calc(100vh - 200px); }
+    .list-header { padding: 16px; border-bottom: 1px solid var(--border); background: var(--surface2); font-weight: 600; color: #fff; }
+    .list-items { overflow-y: auto; flex: 1; }
+    .list-item { padding: 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s; }
+    .list-item:hover { background: rgba(255,255,255,0.03); }
+    .list-item.active { background: rgba(139, 90, 43, 0.1); border-left: 3px solid var(--accent); padding-left: 13px; }
+    .list-item-title { font-weight: 600; color: #fff; margin-bottom: 4px; font-size: 0.95rem; }
+    .list-item-meta { font-size: 0.8rem; color: var(--muted); }
+
+    /* Detail View */
+    .submission-detail { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; min-height: 400px; }
+    .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 1.1rem; }
+    
+    .detail-header { margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .detail-header h2 { font-size: 1.8rem; margin-bottom: 8px; color: #fff; }
+    .detail-header .meta { display: flex; gap: 16px; font-size: 0.9rem; color: var(--muted); }
+    
+    .q-a-block { margin-bottom: 24px; }
+    .q-label { font-size: 0.9rem; color: var(--accent); font-weight: 600; margin-bottom: 6px; letter-spacing: 0.02em; }
+    .a-text { font-size: 1.05rem; color: #fff; line-height: 1.6; background: rgba(255,255,255,0.02); padding: 16px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.05); white-space: pre-wrap; }
+
+    @media (max-width: 768px) {
+      .pill-nav-container { flex-direction: column; gap: 16px; }
+      .layout-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+</div>
+
+<div class="container">
+  
+  <div class="pill-nav-container">
+    <div class="pill-logo">
+      <span style="background:var(--accent); color:#000; width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:10px; font-size:1.1rem; font-weight:800;">OP</span>
+      OPs
+    </div>
+    <div class="pill-navbar">
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">Ai <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="index.html" class="nav-dropdown-item">Chat</a>
+          <a href="api-costing.html" class="nav-dropdown-item">Cost API Dashboard</a>
+        </div>
+      </div>
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">For You <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="standup.html" class="nav-dropdown-item">Daily Standup</a>
+          <a href="my-tasks.html" class="nav-dropdown-item">My Tasks</a>
+        </div>
+      </div>
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">Client <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="dashboard.html" class="nav-dropdown-item">Client Dashboard</a>
+          <a href="client-portal.html" class="nav-dropdown-item">Client Portal</a>
+          <a href="client-onboard.html" class="nav-dropdown-item admin-only">Onboard Client</a>
+          <a href="client-login.html" class="nav-dropdown-item">Client Login</a>
+          <a href="manage-forms.html" class="nav-dropdown-item admin-only">Manage Client Forms</a>
+          <a href="client-forms-db.html" class="nav-dropdown-item admin-only">Client Forms Database</a>
+        </div>
+      </div>
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">Project <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="projects.html" class="nav-dropdown-item">Project Board</a>
+          <a href="add-tasks.html" class="nav-dropdown-item">Add Tasks</a>
+        </div>
+      </div>
+    </div>
+    <div class="nav-right-actions">
+      <button class="nav-btn danger" onclick="window.authLogout?.()">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="header-section">
+    <h1>Client Forms Database</h1>
+    <p>View all submitted Discovery Questionnaires from the public form.</p>
+  </div>
+
+  <div class="layout-grid">
+    <!-- List -->
+    <div class="submissions-list">
+      <div class="list-header">Submissions</div>
+      <div class="list-items" id="list-container">
+        <div style="padding: 20px; text-align: center; color: var(--muted);">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Detail -->
+    <div class="submission-detail" id="detail-container">
+      <div class="detail-empty">Select a submission from the left to view details.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = (window.location.protocol === "file:" || !window.location.hostname)
+    ? "http://localhost:5000"
+    : (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? "http://localhost:5000"
+        : window.location.origin);
+  
+  let submissions = [];
+  let questionsTemplate = [];
+
+  async function init() {
+    try {
+      const [subRes, tplRes] = await Promise.all([
+        fetch(`${API}/api/discovery-submissions`),
+        fetch(`${API}/api/form-templates/discovery_global`)
+      ]);
+      const subData = await subRes.json();
+      const tplData = await tplRes.json();
+      
+      if (tplData.success && tplData.template) {
+        questionsTemplate = tplData.template;
+      }
+      if (subData.success) {
+        submissions = subData.submissions || [];
+        renderList();
+      } else {
+        document.getElementById('list-container').innerHTML = `<div style="padding: 20px; color: var(--red);">Error loading submissions.</div>`;
+      }
+    } catch (e) {
+      document.getElementById('list-container').innerHTML = `<div style="padding: 20px; color: var(--red);">Network error.</div>`;
+    }
+  }
+
+  function renderList() {
+    const container = document.getElementById('list-container');
+    container.innerHTML = '';
+    
+    if (submissions.length === 0) {
+      container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted);">No submissions yet.</div>';
+      return;
+    }
+    
+    submissions.forEach(sub => {
+      const dateStr = new Date(sub.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.id = `sub-item-${sub.id}`;
+      item.innerHTML = `
+        <div class="list-item-title">${escapeHtml(sub.company_name)}</div>
+        <div class="list-item-meta">${dateStr}</div>
+      `;
+      item.onclick = () => viewSubmission(sub.id);
+      container.appendChild(item);
+    });
+  }
+
+  function viewSubmission(id) {
+    // Update active state
+    document.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
+    document.getElementById(`sub-item-${id}`).classList.add('active');
+    
+    const sub = submissions.find(s => s.id === id);
+    if (!sub) return;
+
+    const container = document.getElementById('detail-container');
+    const dateStr = new Date(sub.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    
+    let html = `
+      <div class="detail-header">
+        <h2>${escapeHtml(sub.company_name)}</h2>
+        <div class="meta">
+          <span>📧 ${escapeHtml(sub.email)}</span>
+          <span>📅 ${dateStr}</span>
+        </div>
+      </div>
+      <div>
+    `;
+    
+    // Map answers using the template questions to get the label
+    // If a question was removed from the template, we show the raw ID
+    const answers = sub.answers || {};
+    
+    if (Object.keys(answers).length === 0) {
+      html += `<div style="color:var(--muted);">No answers provided.</div>`;
+    } else {
+      questionsTemplate.forEach(q => {
+        const val = answers[q.id];
+        if (val) {
+          html += `
+            <div class="q-a-block">
+              <div class="q-label">${escapeHtml(q.label)}</div>
+              <div class="a-text">${escapeHtml(val)}</div>
+            </div>
+          `;
+          delete answers[q.id];
+        }
+      });
+      
+      // Print any leftover answers (questions that were deleted from template)
+      for (const [key, val] of Object.entries(answers)) {
+        if (val) {
+          html += `
+            <div class="q-a-block">
+              <div class="q-label">${escapeHtml(key)} (Archived Question)</div>
+              <div class="a-text">${escapeHtml(val)}</div>
+            </div>
+          `;
+        }
+      }
+    }
+    
+    html += `</div>`;
+    container.innerHTML = html;
+  }
+
+  function escapeHtml(unsafe) {
+    return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

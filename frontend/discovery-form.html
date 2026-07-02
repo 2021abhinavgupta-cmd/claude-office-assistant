@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Discovery Questionnaire | MMGA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #12121a;
+      --surface2:  #1a1a26;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #e8e8f0;
+      --muted:     #6b6b8a;
+      --accent:    #8B5A2B;
+      --accent-hover: #a06b36;
+      --green:     #22d3a0;
+      --red:       #ef4444;
+      --radius:    14px;
+      --radius-sm: 8px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+    /* ── Background ── */
+    .bg-orbs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-drift 20s ease-in-out infinite; }
+    .orb-1 { width: 500px; height: 500px; background: var(--accent);  top: -10%; left: -5%; }
+    .orb-3 { width: 300px; height: 300px; background: var(--green);   top: 50%; right: -10%; animation-delay: -14s; }
+    @keyframes orb-drift {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      33%       { transform: translate(40px,-30px) scale(1.08); }
+      66%       { transform: translate(-20px,40px) scale(0.94); }
+    }
+
+    .container { position: relative; z-index: 1; max-width: 800px; margin: 40px auto; padding: 0 24px; }
+    
+    .form-header { text-align: center; margin-bottom: 40px; }
+    .form-header h1 { font-size: 2.2rem; font-weight: 700; color: #fff; margin-bottom: 12px; }
+    .form-header p { color: var(--muted); font-size: 1.05rem; line-height: 1.5; max-width: 600px; margin: 0 auto; }
+
+    .q-card { background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--accent); border-radius: var(--radius); padding: 32px; margin-bottom: 24px; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    
+    .q-section-title { font-size: 1.25rem; font-weight: 600; color: var(--accent); margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    
+    .q-group { margin-bottom: 24px; }
+    .q-group:last-child { margin-bottom: 0; }
+    .q-group label { display: block; font-size: 1rem; font-weight: 500; color: var(--text); margin-bottom: 10px; }
+    .q-group .required { color: var(--red); margin-left: 4px; }
+    
+    .q-input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 14px 16px; border-radius: var(--radius-sm); font-size: 1rem; width: 100%; outline: none; transition: all 0.2s; font-family: inherit; }
+    .q-input:focus { border-color: var(--accent); background: rgba(255,255,255,0.03); }
+    textarea.q-input { resize: vertical; min-height: 100px; }
+
+    .btn-submit { background: var(--accent); color: #000; border: none; padding: 16px 32px; border-radius: 100px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: all 0.2s; width: 100%; margin-top: 16px; box-shadow: 0 4px 15px rgba(139, 90, 43, 0.4); }
+    .btn-submit:hover { background: var(--accent-hover); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139, 90, 43, 0.6); }
+    .btn-submit:disabled { opacity: 0.7; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%); background: var(--green); color: #000; padding: 12px 24px; border-radius: 100px; font-weight: 600; font-size: 0.9rem; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .toast.show { bottom: 30px; }
+    .toast.err { background: var(--red); color: #fff; }
+    
+    .success-msg { text-align: center; display: none; padding: 60px 20px; }
+    .success-msg h2 { color: var(--green); font-size: 2rem; margin-bottom: 16px; }
+    .success-msg p { color: var(--muted); font-size: 1.1rem; }
+  </style>
+</head>
+<body>
+
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<div class="container">
+  
+  <div class="form-header">
+    <h1>Discovery Questionnaire</h1>
+    <p>Please fill out this comprehensive questionnaire to help us understand your business goals, workflows, and visual design preferences.</p>
+  </div>
+
+  <div id="loading" style="text-align:center; padding: 40px; color: var(--muted);">Loading questionnaire...</div>
+
+  <form id="discovery-form" style="display: none;" onsubmit="submitForm(event)">
+    <!-- Identity Card -->
+    <div class="q-card">
+      <h3 class="q-section-title">Your Details</h3>
+      <div class="q-group">
+        <label>Company Name <span class="required">*</span></label>
+        <input type="text" id="company_name" class="q-input" required placeholder="e.g. Acme Corp">
+      </div>
+      <div class="q-group">
+        <label>Email Address <span class="required">*</span></label>
+        <input type="email" id="email" class="q-input" required placeholder="e.g. hello@acmecorp.com">
+      </div>
+    </div>
+    
+    <div id="dynamic-fields"></div>
+
+    <button type="submit" class="btn-submit" id="submitBtn">Submit Answers</button>
+  </form>
+  
+  <div id="success-view" class="success-msg">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 24px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+    <h2>Thank You!</h2>
+    <p>Your discovery questionnaire has been successfully submitted. We will review your answers and be in touch soon.</p>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  const API = (window.location.protocol === "file:" || !window.location.hostname)
+    ? "http://localhost:5000"
+    : (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? "http://localhost:5000"
+        : window.location.origin);
+  
+  let questions = [];
+
+  function showToast(msg, isErr = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    if (isErr) t.classList.add('err'); else t.classList.remove('err');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  async function loadForm() {
+    const loading = document.getElementById('loading');
+    const form = document.getElementById('discovery-form');
+    
+    try {
+      const res = await fetch(`${API}/api/form-templates/discovery_global`);
+      const data = await res.json();
+      
+      if (data.success && data.template && data.template.length > 0) {
+        questions = data.template;
+        renderQuestions();
+        loading.style.display = 'none';
+        form.style.display = 'block';
+      } else {
+        loading.innerHTML = '<div style="color:var(--muted);">No questionnaire has been configured yet.</div>';
+      }
+    } catch (e) {
+      loading.innerHTML = `<div style="color:var(--red);">Error connecting to server.</div>`;
+    }
+  }
+
+  function renderQuestions() {
+    const container = document.getElementById('dynamic-fields');
+    
+    // Group by section
+    const sections = {};
+    questions.forEach(q => {
+      const s = q.section || "General";
+      if (!sections[s]) sections[s] = [];
+      sections[s].push(q);
+    });
+
+    let html = '';
+    for (const [sName, qs] of Object.entries(sections)) {
+      html += `<div class="q-card">
+                 <h3 class="q-section-title">${escapeHtml(sName)}</h3>`;
+      
+      qs.forEach(q => {
+        html += `
+          <div class="q-group">
+            <label>${escapeHtml(q.label)}</label>
+            ${q.type === 'textarea' 
+              ? `<textarea id="q_${q.id}" class="q-input" placeholder="Type your answer here..."></textarea>`
+              : `<input type="text" id="q_${q.id}" class="q-input" placeholder="Type your answer here...">`
+            }
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+    
+    container.innerHTML = html;
+  }
+
+  async function submitForm(e) {
+    e.preventDefault();
+    
+    const company_name = document.getElementById('company_name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    
+    if (!company_name || !email) {
+      showToast("Please fill in your company name and email.", true);
+      return;
+    }
+
+    const answers = {};
+    questions.forEach(q => {
+      const el = document.getElementById(`q_${q.id}`);
+      if (el) answers[q.id] = el.value.trim();
+    });
+
+    const btn = document.getElementById('submitBtn');
+    btn.textContent = "Submitting...";
+    btn.disabled = true;
+
+    try {
+      const res = await fetch(`${API}/api/discovery-submissions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_name, email, answers })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        document.getElementById('discovery-form').style.display = 'none';
+        document.getElementById('success-view').style.display = 'block';
+        window.scrollTo(0, 0);
+      } else {
+        showToast(data.error || "Failed to submit form.", true);
+        btn.textContent = "Submit Answers";
+        btn.disabled = false;
+      }
+    } catch (err) {
+      showToast("Network error submitting form.", true);
+      btn.textContent = "Submit Answers";
+      btn.disabled = false;
+    }
+  }
+
+  function escapeHtml(unsafe) {
+    return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  document.addEventListener('DOMContentLoaded', loadForm);
+</script>
+</body>
+</html>

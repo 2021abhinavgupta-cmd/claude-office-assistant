@@ -241,6 +241,15 @@ def init_db():
             answers_json TEXT NOT NULL
         )""")
         
+        # Public Discovery Questionnaire Submissions
+        conn.execute("""CREATE TABLE IF NOT EXISTS discovery_submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            answers_json TEXT NOT NULL,
+            submitted_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        
         # Seed default questionnaire
         cur = conn.execute("SELECT id FROM form_templates WHERE id='discovery_global'")
         if not cur.fetchone():
