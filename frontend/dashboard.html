@@ -359,7 +359,7 @@
           <a href="client-onboard.html" class="nav-dropdown-item admin-only" style="display:none;">Onboard Client</a>
           <a href="client-login.html" class="nav-dropdown-item">Client Login</a>
           <button onclick="copyClientLink()" class="nav-dropdown-item admin-only" style="display:none; width:100%; text-align:left; background:none; border:none; cursor:pointer; font-family:inherit;">Copy Login Link</button>
-          <button onclick="openFormSettings()" class="nav-dropdown-item admin-only" style="display:none; width:100%; text-align:left; background:none; border:none; cursor:pointer; font-family:inherit;">Manage Client Forms</button>
+          <a href="manage-forms.html" class="nav-dropdown-item admin-only" style="display:none;">Manage Client Forms</a>
         </div>
       </div>
       
@@ -420,19 +420,6 @@
     <p>Agency Portal Assistant · Agency Dashboard · Auto-refreshes every 60s</p>
   </footer>
 
-</div>
-
-<!-- Form Settings Modal -->
-<div class="modal-ov" id="form-settings-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:100; align-items:center; justify-content:center;">
-  <div class="modal" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px; width:90%; max-width:700px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.5);">
-    <h3 style="font-size:1.1rem; margin-bottom:12px;">Manage Discovery Questionnaire</h3>
-    <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 12px;">Edit the default form template questions below (JSON format).</p>
-    <textarea id="form-schema-input" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); padding:12px; font-family:monospace; font-size:0.875rem; min-height:400px; resize:vertical; outline:none;"></textarea>
-    <div style="display:flex; gap:10px; margin-top:16px; justify-content:flex-end;">
-      <button style="padding:8px 16px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface2); color:var(--muted); cursor:pointer;" onclick="closeFormSettings()">Cancel</button>
-      <button style="padding:8px 16px; border-radius:var(--radius-sm); border:none; background:var(--accent); color:#fff; cursor:pointer; font-weight:500;" onclick="saveFormSettings()">Save Template</button>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -635,47 +622,6 @@ async function generateDailyReport() {
   }
   btn.disabled = false;
   btn.textContent = " Regenerate";
-}
-
-async function openFormSettings() {
-  document.getElementById('form-schema-input').value = 'Loading...';
-  document.getElementById('form-settings-modal').style.display = 'flex';
-  try {
-    const res = await fetch(`${API}/api/form-templates/discovery_global`);
-    const data = await res.json();
-    if (data.success && data.template) {
-      document.getElementById('form-schema-input').value = JSON.stringify(data.template, null, 2);
-    } else {
-      document.getElementById('form-schema-input').value = '[\n  {\n    "id": "q1",\n    "section": "General",\n    "label": "Question?",\n    "type": "textarea"\n  }\n]';
-    }
-  } catch (e) {
-    document.getElementById('form-schema-input').value = 'Error loading template.';
-  }
-}
-
-function closeFormSettings() {
-  document.getElementById('form-settings-modal').style.display = 'none';
-}
-
-async function saveFormSettings() {
-  try {
-    const val = document.getElementById('form-schema-input').value;
-    const template = JSON.parse(val); // validate JSON
-    const res = await fetch(`${API}/api/form-templates/discovery_global`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ template })
-    });
-    const data = await res.json();
-    if (data.success) {
-      alert("Template saved successfully");
-      closeFormSettings();
-    } else {
-      alert("Error saving template");
-    }
-  } catch (e) {
-    alert("Invalid JSON format. Please correct it and try again.");
-  }
 }
 </script>
 </body>

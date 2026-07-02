@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Forms | Agency Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="auth.js"></script>
+  <style>
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #12121a;
+      --surface2:  #1a1a26;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #e8e8f0;
+      --muted:     #6b6b8a;
+      --accent:    #8B5A2B;
+      --accent-hover: #a06b36;
+      --green:     #22d3a0;
+      --red:       #ef4444;
+      --radius:    14px;
+      --radius-sm: 8px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+    /* ── Background ── */
+    .bg-orbs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.12; animation: orb-drift 20s ease-in-out infinite; }
+    .orb-1 { width: 500px; height: 500px; background: var(--accent);  top: -10%; left: -5%; }
+    .orb-3 { width: 300px; height: 300px; background: var(--green);   top: 50%; left: 50%; animation-delay: -14s; }
+    @keyframes orb-drift {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      33%       { transform: translate(40px,-30px) scale(1.08); }
+      66%       { transform: translate(-20px,40px) scale(0.94); }
+    }
+
+    .container { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+    
+    /* ── Pill Navigation ── */
+    .pill-nav-container { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; position: relative; z-index: 50; }
+    .pill-logo { font-size: 1.25rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; letter-spacing: -0.02em; }
+    .pill-navbar { display: flex; align-items: center; gap: 4px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 6px; border-radius: 100px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+    .nav-dropdown { position: relative; }
+    .nav-dropbtn { background: transparent; color: var(--text); border: none; padding: 8px 18px; border-radius: 100px; font-size: 0.9rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.2s, color 0.2s; }
+    .nav-dropdown:hover .nav-dropbtn { background: rgba(255, 255, 255, 0.08); color: #fff; }
+    .nav-dropbtn svg { width: 14px; height: 14px; transition: transform 0.2s; opacity: 0.6; }
+    .nav-dropdown:hover .nav-dropbtn svg { transform: rotate(180deg); opacity: 1; }
+    .nav-dropdown-content { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(10px); background: rgba(26, 26, 38, 0.95); border: 1px solid var(--border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 14px; padding: 8px; min-width: 200px; box-shadow: 0 12px 30px rgba(0,0,0,0.4); opacity: 0; visibility: hidden; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); z-index: 100; display: flex; flex-direction: column; gap: 2px; }
+    .nav-dropdown:hover .nav-dropdown-content { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .nav-dropdown-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; color: var(--text); text-decoration: none; font-size: 0.875rem; border-radius: 8px; transition: all 0.2s; white-space: nowrap; font-weight: 500; }
+    .nav-dropdown-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; padding-left: 18px; }
+    .nav-right-actions { display: flex; align-items: center; gap: 12px; }
+    .nav-btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 8px 18px; border-radius: 100px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .nav-btn:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); }
+    .nav-btn.danger:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: var(--red); }
+
+    /* ── Form Builder UI ── */
+    .form-header { text-align: center; margin-bottom: 30px; }
+    .form-header h1 { font-size: 2rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .form-header p { color: var(--muted); font-size: 1rem; }
+
+    .sticky-controls { position: sticky; top: 20px; z-index: 40; display: flex; justify-content: space-between; background: rgba(18,18,26,0.8); backdrop-filter: blur(12px); padding: 16px; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    
+    .btn { padding: 10px 20px; border-radius: var(--radius-sm); border: 1px solid transparent; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--muted); }
+
+    .q-card { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--radius); padding: 24px; margin-bottom: 16px; position: relative; transition: border-color 0.2s, transform 0.2s; }
+    .q-card:focus-within { border-color: var(--accent); box-shadow: 0 4px 15px rgba(0,0,0,0.4); transform: translateX(2px); }
+    
+    .q-row { display: flex; gap: 16px; margin-bottom: 16px; }
+    .q-input-group { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .q-input-group label { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .q-input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px; border-radius: var(--radius-sm); font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    .q-input:focus { border-color: var(--accent); }
+    
+    .q-select { appearance: none; background: var(--surface2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236b6b8a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E") no-repeat right 12px center; border: 1px solid var(--border); color: var(--text); padding: 12px 32px 12px 12px; border-radius: var(--radius-sm); font-size: 0.9rem; outline: none; transition: border-color 0.2s; cursor: pointer; }
+    .q-select:focus { border-color: var(--accent); }
+
+    .q-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 8px; }
+    
+    .icon-btn { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 6px; border-radius: 4px; transition: color 0.2s, background 0.2s; display: flex; align-items: center; justify-content: center; }
+    .icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .icon-btn.delete:hover { background: rgba(239,68,68,0.1); color: var(--red); }
+
+    .add-btn-wrap { display: flex; justify-content: center; margin: 30px 0; }
+    .add-btn { display: flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px dashed var(--muted); color: var(--text); padding: 12px 24px; border-radius: 100px; font-size: 0.95rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .add-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(139, 90, 43, 0.1); }
+
+    /* Toast */
+    .toast { position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%); background: var(--green); color: #000; padding: 12px 24px; border-radius: 100px; font-weight: 600; font-size: 0.9rem; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .toast.show { bottom: 30px; }
+    .toast.err { background: var(--red); color: #fff; }
+
+    @media (max-width: 768px) {
+      .pill-nav-container { flex-direction: column; gap: 16px; align-items: stretch; }
+      .pill-navbar { flex-wrap: wrap; justify-content: center; }
+      .nav-right-actions { justify-content: center; }
+      .q-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<div class="container">
+  <!-- Pill Navigation (same as dashboard) -->
+  <div class="pill-nav-container">
+    <div class="pill-logo">
+      <span style="background:var(--accent); color:#000; width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:10px; font-size:1.1rem; font-weight:800;">OP</span>
+      OPs
+    </div>
+    <div class="pill-navbar">
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">Ai <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="index.html" class="nav-dropdown-item">Chat</a>
+          <a href="api-costing.html" class="nav-dropdown-item">Cost API Dashboard</a>
+        </div>
+      </div>
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">For You <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="standup.html" class="nav-dropdown-item">Daily Standup</a>
+          <a href="my-tasks.html" class="nav-dropdown-item">My Tasks</a>
+        </div>
+      </div>
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">Client <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="dashboard.html" class="nav-dropdown-item">Client Dashboard</a>
+          <a href="client-portal.html" class="nav-dropdown-item">Client Portal</a>
+          <a href="client-onboard.html" class="nav-dropdown-item admin-only">Onboard Client</a>
+          <a href="client-login.html" class="nav-dropdown-item">Client Login</a>
+          <a href="manage-forms.html" class="nav-dropdown-item admin-only">Manage Client Forms</a>
+        </div>
+      </div>
+      <div class="nav-dropdown">
+        <button class="nav-dropbtn">Project <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="nav-dropdown-content">
+          <a href="projects.html" class="nav-dropdown-item">Project Board</a>
+          <a href="add-tasks.html" class="nav-dropdown-item">Add Tasks</a>
+        </div>
+      </div>
+    </div>
+    <div class="nav-right-actions">
+      <button class="nav-btn danger" onclick="window.authLogout?.()">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="form-header">
+    <h1>Discovery Questionnaire Builder</h1>
+    <p>Manage the default questions shown to clients when they view their discovery form.</p>
+  </div>
+
+  <div class="sticky-controls">
+    <button class="btn btn-secondary" onclick="loadForm()">Discard Changes</button>
+    <button class="btn btn-primary" onclick="saveForm()" id="saveBtn">Save Questionnaire</button>
+  </div>
+
+  <div id="form-builder-container">
+    <div style="text-align:center; padding: 40px; color: var(--muted);">Loading questionnaire...</div>
+  </div>
+
+  <div class="add-btn-wrap">
+    <button class="add-btn" onclick="addQuestion()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Add New Question
+    </button>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  const API = (window.location.protocol === "file:" || !window.location.hostname)
+    ? "http://localhost:5000"
+    : (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? "http://localhost:5000"
+        : window.location.origin);
+  
+  let questions = [];
+
+  function showToast(msg, isErr = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    if (isErr) t.classList.add('err'); else t.classList.remove('err');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  async function loadForm() {
+    const container = document.getElementById('form-builder-container');
+    container.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--muted);">Loading questionnaire...</div>';
+    try {
+      const res = await fetch(`${API}/api/form-templates/discovery_global`);
+      const data = await res.json();
+      if (data.success && data.template) {
+        questions = data.template;
+        renderBuilder();
+      } else {
+        questions = [];
+        renderBuilder();
+      }
+    } catch (e) {
+      container.innerHTML = `<div style="text-align:center; padding: 40px; color: var(--red);">Error loading form: ${e.message}</div>`;
+    }
+  }
+
+  function renderBuilder() {
+    const container = document.getElementById('form-builder-container');
+    container.innerHTML = '';
+    
+    if (questions.length === 0) {
+      container.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--muted); border: 1px dashed var(--border); border-radius: var(--radius);">No questions found. Add one below!</div>';
+      return;
+    }
+
+    questions.forEach((q, index) => {
+      const card = document.createElement('div');
+      card.className = 'q-card';
+      
+      card.innerHTML = `
+        <div class="q-row">
+          <div class="q-input-group" style="flex: 2;">
+            <label>Question Text</label>
+            <input type="text" class="q-input" value="${escapeHtml(q.label)}" oninput="updateQ(${index}, 'label', this.value)" placeholder="e.g. What are your main goals?">
+          </div>
+          <div class="q-input-group">
+            <label>Input Type</label>
+            <select class="q-select" onchange="updateQ(${index}, 'type', this.value)">
+              <option value="text" ${q.type === 'text' ? 'selected' : ''}>Short Text</option>
+              <option value="textarea" ${q.type === 'textarea' ? 'selected' : ''}>Paragraph</option>
+            </select>
+          </div>
+        </div>
+        <div class="q-row">
+          <div class="q-input-group">
+            <label>Section Category</label>
+            <input type="text" class="q-input" value="${escapeHtml(q.section || 'General')}" oninput="updateQ(${index}, 'section', this.value)" placeholder="e.g. 1. Company Overview">
+          </div>
+          <div class="q-input-group" style="max-width: 150px;">
+            <label>Field ID</label>
+            <input type="text" class="q-input" style="color: var(--muted); background: rgba(255,255,255,0.02);" value="${q.id}" disabled>
+          </div>
+        </div>
+        <div class="q-footer">
+          <button class="icon-btn" onclick="moveQ(${index}, -1)" title="Move Up" ${index === 0 ? 'disabled style="opacity:0.2"' : ''}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+          </button>
+          <button class="icon-btn" onclick="moveQ(${index}, 1)" title="Move Down" ${index === questions.length - 1 ? 'disabled style="opacity:0.2"' : ''}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div style="width: 1px; height: 20px; background: var(--border); margin: 0 4px;"></div>
+          <button class="icon-btn delete" onclick="deleteQ(${index})" title="Delete Question">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  function updateQ(index, field, val) {
+    questions[index][field] = val;
+  }
+
+  function deleteQ(index) {
+    if(confirm("Are you sure you want to delete this question?")) {
+      questions.splice(index, 1);
+      renderBuilder();
+    }
+  }
+
+  function moveQ(index, dir) {
+    if (index + dir >= 0 && index + dir < questions.length) {
+      const temp = questions[index];
+      questions[index] = questions[index + dir];
+      questions[index + dir] = temp;
+      renderBuilder();
+    }
+  }
+
+  function addQuestion() {
+    const newId = 'q' + Date.now();
+    questions.push({
+      id: newId,
+      section: questions.length > 0 ? questions[questions.length-1].section : 'General',
+      label: 'New Question',
+      type: 'text'
+    });
+    renderBuilder();
+    // scroll to bottom smoothly
+    setTimeout(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }, 100);
+  }
+
+  async function saveForm() {
+    const btn = document.getElementById('saveBtn');
+    btn.textContent = "Saving...";
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API}/api/form-templates/discovery_global`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template: questions })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Form saved successfully!");
+      } else {
+        showToast("Error saving form", true);
+      }
+    } catch (e) {
+      showToast("Network error saving form", true);
+    }
+    btn.textContent = "Save Questionnaire";
+    btn.disabled = false;
+  }
+
+  function escapeHtml(unsafe) {
+    return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  document.addEventListener('DOMContentLoaded', loadForm);
+</script>
+</body>
+</html>
