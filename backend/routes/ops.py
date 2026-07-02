@@ -2319,3 +2319,65 @@ def post_bet():
     except Exception as e:
         logger.error(f"Error posting bet: {e}")
         return jsonify({"success": False, "error": str(e)})
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DISCOVERY QUESTIONNAIRE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@ops_bp.route("/api/form-templates/<template_id>", methods=["GET"])
+def get_form_template(template_id):
+    try:
+        from db import get_connection
+        conn = get_connection()
+        cur = conn.execute("SELECT schema_json FROM form_templates WHERE id=?", (template_id,))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return jsonify({"success": True, "template": json.loads(row[0])})
+        return jsonify({"success": False, "error": "Template not found"}), 404
+    except Exception as e:
+        logger.error(f"Error fetching form template: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@ops_bp.route("/api/form-templates/<template_id>", methods=["POST"])
+def save_form_template(template_id):
+    try:
+        data = request.json
+        from db import get_connection
+        conn = get_connection()
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO form_templates (id, schema_json) VALUES (?, ?)", (template_id, json.dumps(data.get("template", []))))
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error saving form template: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@ops_bp.route("/api/clients/<client_id>/form-answers", methods=["GET"])
+def get_client_form_answers(client_id):
+    try:
+        from db import get_connection
+        conn = get_connection()
+        cur = conn.execute("SELECT answers_json FROM client_form_answers WHERE client_id=?", (client_id,))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return jsonify({"success": True, "answers": json.loads(row[0])})
+        return jsonify({"success": True, "answers": {}})
+    except Exception as e:
+        logger.error(f"Error fetching client form answers: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@ops_bp.route("/api/clients/<client_id>/form-answers", methods=["POST"])
+def save_client_form_answers(client_id):
+    try:
+        data = request.json
+        from db import get_connection
+        conn = get_connection()
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO client_form_answers (client_id, answers_json) VALUES (?, ?)", (client_id, json.dumps(data.get("answers", {}))))
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error saving client form answers: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

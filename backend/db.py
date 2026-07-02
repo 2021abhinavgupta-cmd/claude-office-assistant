@@ -231,6 +231,55 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
 
+        # Discovery Questionnaire
+        conn.execute("""CREATE TABLE IF NOT EXISTS form_templates (
+            id TEXT PRIMARY KEY,
+            schema_json TEXT NOT NULL
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS client_form_answers (
+            client_id TEXT PRIMARY KEY,
+            answers_json TEXT NOT NULL
+        )""")
+        
+        # Seed default questionnaire
+        cur = conn.execute("SELECT id FROM form_templates WHERE id='discovery_global'")
+        if not cur.fetchone():
+            default_questions = [
+                {"id": "q1", "section": "1. Company & Project Overview", "label": "Company Name", "type": "text"},
+                {"id": "q2", "section": "1. Company & Project Overview", "label": "What does your company do and how does this platform support your operations?", "type": "textarea"},
+                {"id": "q3", "section": "1. Company & Project Overview", "label": "What are the top three business goals?", "type": "textarea"},
+                {"id": "q4", "section": "1. Company & Project Overview", "label": "What would define a successful redesign?", "type": "textarea"},
+                {"id": "q5", "section": "2. Users & Personas", "label": "Primary user groups", "type": "textarea"},
+                {"id": "q6", "section": "2. Users & Personas", "label": "Most active users", "type": "textarea"},
+                {"id": "q7", "section": "2. Users & Personas", "label": "Devices used", "type": "text"},
+                {"id": "q8", "section": "2. Users & Personas", "label": "Biggest pain points", "type": "textarea"},
+                {"id": "q9", "section": "3. Workflow Analysis", "label": "Describe the most common workflow", "type": "textarea"},
+                {"id": "q10", "section": "3. Workflow Analysis", "label": "Which tasks take longest?", "type": "textarea"},
+                {"id": "q11", "section": "3. Workflow Analysis", "label": "Where do users get confused?", "type": "textarea"},
+                {"id": "q12", "section": "3. Workflow Analysis", "label": "Which steps can be simplified?", "type": "textarea"},
+                {"id": "q13", "section": "4. Design Preferences", "label": "Preferred style (Minimal, Corporate, Industrial, Premium, Modern SaaS)", "type": "text"},
+                {"id": "q14", "section": "4. Design Preferences", "label": "Preferred theme (Light/Dark/Both)", "type": "text"},
+                {"id": "q15", "section": "4. Design Preferences", "label": "Link 3-5 reference products and why", "type": "textarea"},
+                {"id": "q16", "section": "4. Design Preferences", "label": "Designs to avoid", "type": "textarea"},
+                {"id": "q17", "section": "4. Design Preferences", "label": "Animation or interaction preferences", "type": "textarea"},
+                {"id": "q18", "section": "5. Branding", "label": "Are their any Brand guidelines", "type": "textarea"},
+                {"id": "q19", "section": "5. Branding", "label": "Preferred colors & why?", "type": "textarea"},
+                {"id": "q20", "section": "5. Branding", "label": "Preferred typography & why?", "type": "textarea"},
+                {"id": "q21", "section": "6. Dashboard & Navigation", "label": "Information shown after login", "type": "textarea"},
+                {"id": "q22", "section": "6. Dashboard & Navigation", "label": "Important KPIs", "type": "textarea"},
+                {"id": "q23", "section": "6. Dashboard & Navigation", "label": "Navigation preference", "type": "textarea"},
+                {"id": "q24", "section": "6. Dashboard & Navigation", "label": "Simple vs data-rich dashboard", "type": "textarea"},
+                {"id": "q25", "section": "6. Dashboard & Navigation", "label": "Preferred charts and visualizations", "type": "textarea"},
+                {"id": "q26", "section": "7. Screen Prioritization", "label": "Dashboard, Projects, Tasks", "type": "textarea"},
+                {"id": "q27", "section": "8. Mobile Experience", "label": "Desktop", "type": "textarea"},
+                {"id": "q28", "section": "8. Mobile Experience", "label": "Tablet", "type": "textarea"},
+                {"id": "q29", "section": "8. Mobile Experience", "label": "Mobile usage", "type": "textarea"},
+                {"id": "q30", "section": "9. Accessibility & Technical Constraints", "label": "Components that cannot change", "type": "textarea"},
+                {"id": "q31", "section": "10. Success & Delivery", "label": "Success metrics", "type": "textarea"},
+                {"id": "q32", "section": "10. Success & Delivery", "label": "Additional comments", "type": "textarea"}
+            ]
+            conn.execute("INSERT INTO form_templates (id, schema_json) VALUES (?, ?)", ("discovery_global", json.dumps(default_questions)))
+
         conn.execute("""CREATE TABLE IF NOT EXISTS project_files (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,

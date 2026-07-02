@@ -1010,6 +1010,7 @@
         <button class="view-btn" onclick="switchView('calendar')" id="btn-calendar">Calendar</button>
         <button class="view-btn" onclick="switchView('timeline')" id="btn-timeline">Timeline</button>
         <button class="view-btn" onclick="switchView('dependencies')" id="btn-dependencies">Dependencies</button>
+        <button class="view-btn" onclick="switchView('discovery')" id="btn-discovery">Discovery Form</button>
       </div>
     </div>
 
@@ -1150,6 +1151,17 @@
       <div class="dep-list" id="list-notes"></div>
     </div>
 
+    <!-- DISCOVERY QUESTIONNAIRE -->
+    <div id="view-discovery" class="view-container">
+      <div class="discovery-header" style="margin-bottom: 24px; max-width: 800px;">
+        <h2 style="font-size: 1.4rem; color: var(--txt); margin-bottom: 8px;">Discovery Questionnaire</h2>
+        <p style="color: var(--muted); line-height: 1.5; font-size: 0.95rem;">Please fill out this comprehensive questionnaire to help us understand your business goals, workflows, and visual design preferences.</p>
+      </div>
+      <div id="discovery-form-container" style="max-width: 800px; display: flex; flex-direction: column; gap: 32px; padding-bottom: 60px;">
+        <div style="color: var(--muted);">Loading questionnaire...</div>
+      </div>
+    </div>
+
   </div>
 
   <script src="client-auth.js"></script>
@@ -1186,6 +1198,9 @@
       document.getElementById(`btn-${view}`).classList.add("active");
       document.querySelectorAll(".view-container").forEach(v => v.classList.remove("active"));
       document.getElementById(`view-${view}`).classList.add("active");
+      if (view === 'discovery') {
+        loadDiscoveryForm();
+      }
     }
 
     function renderViews() {
@@ -1204,6 +1219,90 @@
         renderKanban();
         renderCalendar();
         renderTimeline();
+      }
+    }
+
+    // ── Discovery Form Logic ──────────────────────────────────────────────
+    async function loadDiscoveryForm() {
+      const container = document.getElementById("discovery-form-container");
+      container.innerHTML = '<div style="color: var(--muted);">Loading questionnaire...</div>';
+      try {
+        const [tplRes, ansRes] = await Promise.all([
+          fetch(`${API}/api/form-templates/discovery_global`),
+          fetch(`${API}/api/clients/${clientId}/form-answers`)
+        ]);
+        const tplData = await tplRes.json();
+        const ansData = await ansRes.json();
+        
+        if (!tplData.success) {
+          container.innerHTML = `<div style="color:var(--red);">Error loading questionnaire template: ${tplData.error}</div>`;
+          return;
+        }
+        
+        const template = tplData.template || [];
+        const answers = ansData.answers || {};
+        
+        let html = '';
+        let currentSection = '';
+        
+        template.forEach(q => {
+          if (q.section && q.section !== currentSection) {
+            currentSection = q.section;
+            html += `<h3 style="font-size: 1.1rem; color: var(--acc); margin-top: 16px; margin-bottom: 8px; border-bottom: 1px solid var(--bdr); padding-bottom: 4px;">${currentSection}</h3>`;
+          }
+          const val = answers[q.id] || '';
+          html += `
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+              <label style="font-weight: 500; font-size: 0.95rem; color: var(--txt);">${q.label}</label>
+              ${q.type === 'textarea' 
+                ? `<textarea id="df_${q.id}" onchange="saveDiscoveryForm()" style="width: 100%; min-height: 80px; padding: 12px; background: var(--s2); border: 1px solid var(--bdr); border-radius: 8px; color: var(--txt); font-family: inherit; font-size: 0.9rem; resize: vertical;">${val}</textarea>`
+                : `<input type="text" id="df_${q.id}" onchange="saveDiscoveryForm()" value="${val}" style="width: 100%; padding: 10px 12px; background: var(--s2); border: 1px solid var(--bdr); border-radius: 8px; color: var(--txt); font-family: inherit; font-size: 0.9rem;">`
+              }
+            </div>
+          `;
+        });
+        
+        html += `<div style="margin-top: 24px;">
+                   <button onclick="saveDiscoveryForm(true)" class="btn-kanban" style="background: var(--acc); color: #000; padding: 10px 20px; font-weight: 600; border: none; border-radius: var(--rs); cursor: pointer;">Save Answers</button>
+                   <span id="df-save-status" style="margin-left: 12px; font-size: 0.85rem; color: var(--green); opacity: 0; transition: opacity 0.3s;">Saved automatically</span>
+                 </div>`;
+        
+        container.innerHTML = html;
+      } catch (e) {
+        console.error("Error loading discovery form", e);
+        container.innerHTML = '<div style="color:var(--red);">Error connecting to server.</div>';
+      }
+    }
+
+    async function saveDiscoveryForm(showToast = false) {
+      try {
+        const tplRes = await fetch(`${API}/api/form-templates/discovery_global`);
+        const tplData = await tplRes.json();
+        if (!tplData.success) return;
+        
+        const answers = {};
+        tplData.template.forEach(q => {
+          const el = document.getElementById(`df_${q.id}`);
+          if (el) answers[q.id] = el.value;
+        });
+        
+        const res = await fetch(`${API}/api/clients/${clientId}/form-answers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ answers })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          const stat = document.getElementById("df-save-status");
+          if (stat) {
+            stat.style.opacity = 1;
+            setTimeout(() => stat.style.opacity = 0, 2000);
+          }
+          if (showToast && typeof window.toast === "function") toast("Answers saved successfully");
+        }
+      } catch (e) {
+        console.error("Error saving form", e);
       }
     }
 
