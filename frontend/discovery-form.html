@@ -173,7 +173,10 @@
       qs.forEach(q => {
         html += `
           <div class="q-group">
-            <label>${escapeHtml(q.label)}</label>
+            <label>
+              ${escapeHtml(q.label)}
+              ${q.reference_link ? `<a href="${escapeHtml(q.reference_link)}" target="_blank" style="color:var(--accent); text-decoration:underline; font-size:0.85rem; margin-left:8px;">Link</a>` : ''}
+            </label>
             ${q.type === 'textarea' 
               ? `<textarea id="q_${q.id}" class="q-input" placeholder="Type your answer here..."></textarea>`
               : `<input type="text" id="q_${q.id}" class="q-input" placeholder="Type your answer here...">`

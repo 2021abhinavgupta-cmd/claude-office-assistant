@@ -315,6 +315,10 @@
             <label>Section Category</label>
             <input type="text" class="q-input" value="${escapeHtml(q.section || 'General')}" oninput="updateQ(${index}, 'section', this.value)" placeholder="e.g. 1. Company Overview">
           </div>
+          <div class="q-input-group" style="flex: 2;">
+            <label>Reference Link (Optional)</label>
+            <input type="text" class="q-input" value="${escapeHtml(q.reference_link || '')}" oninput="updateQ(${index}, 'reference_link', this.value)" placeholder="e.g. https://www.canva.com/...">
+          </div>
           <div class="q-input-group" style="max-width: 150px;">
             <label>Field ID</label>
             <input type="text" class="q-input" style="color: var(--muted); background: rgba(255,255,255,0.02);" value="${q.id}" disabled>
