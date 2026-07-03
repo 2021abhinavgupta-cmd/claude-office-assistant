@@ -1343,6 +1343,15 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
     approved:' Approved',rejected:'↩ Changes',unlocked:'Unlocked'}[t.status]||t.status||'—';
   const taskId = t.notion_id || t.id;
   const cid = clientId || t.clientId;
+
+  const notes = t.description || "";
+  let extContent = t.content || "";
+  let extIdea = t.idea || "";
+  let extScripts = t.scripts || t.scripts_copy || "";
+  if (!extContent) { const m = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link):|$)/); if(m) extContent = m[1].trim(); }
+  if (!extIdea) { const m = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link):|$)/); if(m) extIdea = m[1].trim(); }
+  if (!extScripts) { const m = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link):|$)/); if(m) extScripts = m[1].trim(); }
+
   let nav = dayTasks.length>1 ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <span style="font-size:.72rem;color:var(--muted)">${idx+1} / ${dayTasks.length}</span>
     <div style="display:flex;gap:6px">
@@ -1355,9 +1364,9 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
     <div class="cp-row"> Assignee: <span>${assigneeName}</span></div>
     <div class="cp-row"> Status: <span>${statusLabel}</span></div>
     <div class="cp-row"> Due: <span>${t.due_date||'—'}</span></div>
-    ${t.content?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--txt)"><b>Content:</b> ${t.content}</div>`:''}
-    ${t.idea?`<div class="cp-row" style="margin-top:2px;font-size:.75rem;color:var(--txt)"><b>Idea:</b> <a href="${t.idea}" target="_blank" style="color:var(--acc);text-decoration:underline">Link</a></div>`:''}
-    ${(t.scripts||t.scripts_copy)?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;background:var(--bg);padding:6px;border-radius:4px;max-height:80px;overflow-y:auto;border:1px solid var(--bdr)"><b>Scripts:</b><br/>${(t.scripts||t.scripts_copy).replace(/\n/g, '<br/>')}</div>`:''}
+    ${extContent?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--txt)"><b>Content:</b> ${extContent}</div>`:''}
+    ${extIdea?`<div class="cp-row" style="margin-top:2px;font-size:.75rem;color:var(--txt)"><b>Idea:</b> <a href="${extIdea}" target="_blank" style="color:var(--acc);text-decoration:underline">Link</a></div>`:''}
+    ${extScripts?`<div class="cp-row" style="margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;background:var(--bg);padding:6px;border-radius:4px;max-height:80px;overflow-y:auto;border:1px solid var(--bdr)"><b>Scripts:</b><br/>${extScripts.replace(/\n/g, '<br/>')}</div>`:''}
     ${t.feedback&&t.feedback.status?`
       <div style="margin-top:8px;padding:6px;border-radius:4px;font-size:0.75rem;border:1px solid ${t.feedback.status==='approved'?'#22c55e40':'#f43f5e40'};background:${t.feedback.status==='approved'?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)'}">
         <b style="color:${t.feedback.status==='approved'?'#22c55e':'#f43f5e'}">${t.feedback.status==='approved'?'Client Approved':'Client Requested Changes'}</b>
