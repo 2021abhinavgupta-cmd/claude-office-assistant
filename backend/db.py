@@ -244,11 +244,17 @@ def init_db():
         # Public Discovery Questionnaire Submissions
         conn.execute("""CREATE TABLE IF NOT EXISTS discovery_submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            form_id TEXT DEFAULT 'discovery_global',
             company_name TEXT NOT NULL,
             email TEXT NOT NULL,
             answers_json TEXT NOT NULL,
             submitted_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
+        
+        try:
+            conn.execute("ALTER TABLE discovery_submissions ADD COLUMN form_id TEXT DEFAULT 'discovery_global'")
+        except Exception:
+            pass  # Column already exists
         
         # Seed default questionnaire
         cur = conn.execute("SELECT id FROM form_templates WHERE id='discovery_global'")

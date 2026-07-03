@@ -2324,6 +2324,20 @@ def post_bet():
 # DISCOVERY QUESTIONNAIRE
 # ══════════════════════════════════════════════════════════════════════════════
 
+@ops_bp.route("/api/form-templates", methods=["GET"])
+def get_all_form_templates():
+    try:
+        from db import get_connection
+        conn = get_connection()
+        cur = conn.execute("SELECT id FROM form_templates ORDER BY id ASC")
+        rows = cur.fetchall()
+        conn.close()
+        templates = [r[0] for r in rows]
+        return jsonify({"success": True, "templates": templates})
+    except Exception as e:
+        logger.error(f"Error fetching form templates list: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @ops_bp.route("/api/form-templates/<template_id>", methods=["GET"])
 def get_form_template(template_id):
     try:
@@ -2387,17 +2401,18 @@ def get_discovery_submissions():
     try:
         from db import get_connection
         conn = get_connection()
-        cur = conn.execute("SELECT id, company_name, email, answers_json, submitted_at FROM discovery_submissions ORDER BY submitted_at DESC")
+        cur = conn.execute("SELECT id, form_id, company_name, email, answers_json, submitted_at FROM discovery_submissions ORDER BY submitted_at DESC")
         rows = cur.fetchall()
         conn.close()
         submissions = []
         for r in rows:
             submissions.append({
                 "id": r[0],
-                "company_name": r[1],
-                "email": r[2],
-                "answers": json.loads(r[3]),
-                "submitted_at": r[4]
+                "form_id": r[1],
+                "company_name": r[2],
+                "email": r[3],
+                "answers": json.loads(r[4]),
+                "submitted_at": r[5]
             })
         return jsonify({"success": True, "submissions": submissions})
     except Exception as e:
@@ -2408,6 +2423,7 @@ def get_discovery_submissions():
 def save_discovery_submission():
     try:
         data = request.json
+        form_id = data.get("form_id", "discovery_global").strip()
         company_name = data.get("company_name", "").strip()
         email = data.get("email", "").strip()
         answers = data.get("answers", {})
@@ -2419,8 +2435,8 @@ def save_discovery_submission():
         conn = get_connection()
         with conn:
             conn.execute(
-                "INSERT INTO discovery_submissions (company_name, email, answers_json) VALUES (?, ?, ?)", 
-                (company_name, email, json.dumps(answers))
+                "INSERT INTO discovery_submissions (form_id, company_name, email, answers_json) VALUES (?, ?, ?, ?)", 
+                (form_id, company_name, email, json.dumps(answers))
             )
         conn.close()
         return jsonify({"success": True})

@@ -158,12 +158,16 @@
   </div>
 
   <div class="form-header">
-    <h1>Discovery Questionnaire Builder</h1>
-    <p>Manage the default questions shown to clients when they view their discovery form.</p>
+    <h1>Client Forms Builder</h1>
+    <p>Manage the questions shown to clients when they view their forms.</p>
   </div>
 
   <div class="sticky-controls">
-    <div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <select id="form-selector" class="q-select" onchange="changeForm(this.value)" style="min-width: 200px; padding: 10px 32px 10px 12px; font-weight: 600;">
+        <option value="discovery_global">Loading forms...</option>
+      </select>
+      <button class="btn btn-secondary" onclick="createNewForm()">+ Create New Form</button>
       <button class="btn btn-secondary" onclick="copyShareLink()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px; margin-top: -2px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         Copy Share Link
@@ -198,6 +202,8 @@
         : window.location.origin);
   
   let questions = [];
+  let currentFormId = "discovery_global";
+  let availableForms = [];
 
   function showToast(msg, isErr = false) {
     const t = document.getElementById('toast');
@@ -207,11 +213,63 @@
     setTimeout(() => t.classList.remove('show'), 3000);
   }
 
+  async function loadTemplatesList() {
+    try {
+      const res = await fetch(`${API}/api/form-templates`);
+      const data = await res.json();
+      if (data.success && data.templates) {
+        availableForms = data.templates;
+        if (!availableForms.includes("discovery_global")) {
+          availableForms.unshift("discovery_global");
+        }
+        updateFormSelector();
+      }
+    } catch (e) {
+      console.error("Failed to load templates", e);
+    }
+  }
+
+  function updateFormSelector() {
+    const sel = document.getElementById('form-selector');
+    sel.innerHTML = '';
+    availableForms.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f;
+      if (f === currentFormId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function changeForm(newId) {
+    currentFormId = newId;
+    loadForm();
+  }
+
+  async function createNewForm() {
+    let newId = prompt("Enter a unique Form ID (e.g., 'website_design'):");
+    if (!newId) return;
+    newId = newId.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+    if (!newId) return;
+    
+    if (availableForms.includes(newId)) {
+      showToast("Form ID already exists", true);
+      return;
+    }
+    
+    availableForms.push(newId);
+    currentFormId = newId;
+    updateFormSelector();
+    questions = [];
+    renderBuilder();
+    showToast(`Created new form: ${newId}. Add questions and save!`);
+  }
+
   async function loadForm() {
     const container = document.getElementById('form-builder-container');
     container.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--muted);">Loading questionnaire...</div>';
     try {
-      const res = await fetch(`${API}/api/form-templates/discovery_global`);
+      const res = await fetch(`${API}/api/form-templates/${currentFormId}`);
       const data = await res.json();
       if (data.success && data.template) {
         questions = data.template;
@@ -319,7 +377,7 @@
     btn.textContent = "Saving...";
     btn.disabled = true;
     try {
-      const res = await fetch(`${API}/api/form-templates/discovery_global`, {
+      const res = await fetch(`${API}/api/form-templates/${currentFormId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ template: questions })
@@ -349,7 +407,7 @@
     
     // In production, the backend serves static files from the root. 
     // Just in case, we use /discovery-form.html
-    const link = `${baseUrl}/discovery-form.html`;
+    const link = `${baseUrl}/discovery-form.html?form_id=${currentFormId}`;
     
     navigator.clipboard.writeText(link).then(() => {
       showToast("Share link copied to clipboard!");
@@ -359,7 +417,10 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', loadForm);
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadTemplatesList();
+    loadForm();
+  });
 </script>
 </body>
 </html>

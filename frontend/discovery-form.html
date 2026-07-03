@@ -122,6 +122,8 @@
         : window.location.origin);
   
   let questions = [];
+  const urlParams = new URLSearchParams(window.location.search);
+  const formId = urlParams.get('form_id') || 'discovery_global';
 
   function showToast(msg, isErr = false) {
     const t = document.getElementById('toast');
@@ -136,7 +138,7 @@
     const form = document.getElementById('discovery-form');
     
     try {
-      const res = await fetch(`${API}/api/form-templates/discovery_global`);
+      const res = await fetch(`${API}/api/form-templates/${formId}`);
       const data = await res.json();
       
       if (data.success && data.template && data.template.length > 0) {
@@ -210,7 +212,7 @@
       const res = await fetch(`${API}/api/discovery-submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_name, email, answers })
+        body: JSON.stringify({ form_id: formId, company_name, email, answers })
       });
       const data = await res.json();
       
