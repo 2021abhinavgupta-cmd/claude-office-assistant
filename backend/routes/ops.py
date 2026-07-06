@@ -2295,7 +2295,7 @@ def get_bet():
         cur = conn.cursor()
         cur.execute("SELECT value FROM app_settings WHERE key='bet_question'")
         row = cur.fetchone()
-        question = row[0] if row else "Mohit aaj jayenge? 🧐"
+        question = row[0] if row else "Enter bet question here..."
         
         cur.execute("SELECT user_id, vote FROM mohit_bets")
         votes = [{"user_id": r[0], "vote": r[1]} for r in cur.fetchall()]

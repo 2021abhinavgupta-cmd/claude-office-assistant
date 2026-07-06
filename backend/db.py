@@ -111,7 +111,7 @@ def init_db():
         )""")
         cur = conn.execute("SELECT key FROM app_settings WHERE key='bet_question'")
         if not cur.fetchone():
-            conn.execute("INSERT INTO app_settings (key, value) VALUES ('bet_question', 'Mohit aaj jayenge? 🧐')")
+            conn.execute("INSERT INTO app_settings (key, value) VALUES ('bet_question', 'Enter bet question here...')")
 
         # Personal daily task tracker (separate from project tasks)
         conn.execute("""CREATE TABLE IF NOT EXISTS standup_tasks (
