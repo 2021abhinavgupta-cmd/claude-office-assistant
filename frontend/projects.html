@@ -254,12 +254,12 @@
     @media (max-width: 768px) {
       .wrap { padding: 12px 16px; }
       .hdr { flex-direction: column; align-items: flex-start; gap: 12px; }
-      .nav { width: 100%; overflow-x: auto; padding-bottom: 4px; }
+      .nav { width: 100%; overflow-x: auto; overscroll-behavior-x: none; padding-bottom: 4px; }
       .kanban-toolbar { flex-direction: column; align-items: stretch; }
-      .kanban-group-toggle { overflow-x: auto; padding-bottom: 4px; width: 100%; justify-content: flex-start; }
+      .kanban-group-toggle { overflow-x: auto; overscroll-behavior-x: none; padding-bottom: 4px; width: 100%; justify-content: flex-start; }
       .quick-task-btn { margin-left: 0; width: 100%; text-align: center; }
-      #clients-filter-bar { padding: 12px 16px 0 16px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
-      .global-tabs { padding: 0 16px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+      #clients-filter-bar { padding: 12px 16px 0 16px; overflow-x: auto; overscroll-behavior-x: none; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+      .global-tabs { padding: 0 16px; overflow-x: auto; overscroll-behavior-x: none; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
       .qt-modal { width: 95%; padding: 20px; }
     }
   </style>
@@ -736,7 +736,7 @@ function renderDetail(clients){
           </div>
         </div>
 
-        <div id="ctab-${c.id}-sheets" class="ctab-content" style="display:none; padding-top: 12px; overflow-x: auto;">
+        <div id="ctab-${c.id}-sheets" class="ctab-content" style="display:none; padding-top: 12px; overflow-x: auto; overscroll-behavior-x: none;">
           <div id="csheets-${c.id}"></div>
         </div>
 
@@ -833,7 +833,7 @@ function renderClientSheets(clientId) {
         </div>
         <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
       </div>
-      <div style="max-height: 65vh; overflow-y: auto; overflow-x: auto; border: 1px solid var(--bdr); border-radius: var(--rs);">
+      <div style="max-height: 65vh; overflow-y: auto; overflow-x: auto; overscroll-behavior-x: none; border: 1px solid var(--bdr); border-radius: var(--rs);">
         <table class="c-sheets" style="min-width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
           <thead>
             <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
