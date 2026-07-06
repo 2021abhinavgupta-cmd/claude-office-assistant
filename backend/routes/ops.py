@@ -611,7 +611,7 @@ def auto_fill_standup():
         # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
         pull_all_upcoming = body.get("pull_upcoming", False)
         
-        if is_future_creation and is_not_started:
+        if is_future_creation:
             # If it's already in the local DB mistakenly, delete it!
             if t.get("notion_id") in existing_notion_ids:
                 try:
