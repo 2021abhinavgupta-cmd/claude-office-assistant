@@ -580,6 +580,7 @@ def auto_fill_standup():
         # Check if this is a task with a specific Creation Date
         is_creation_today = False
         has_creation_date = False
+        is_future_creation = False
         desc = t.get("description", "") or t.get("notes", "") or ""
         if desc:
             import re as _re
@@ -588,8 +589,12 @@ def auto_fill_standup():
                 has_creation_date = True
                 try:
                     cr_date = cr_match.group(1).strip()
+                    if _re.match(r"^\d{2}-\d{2}-\d{4}$", cr_date):
+                        cr_date = f"{cr_date[6:10]}-{cr_date[3:5]}-{cr_date[0:2]}"
                     if cr_date == today_str and s == "not_started":
                         is_creation_today = True
+                    elif cr_date > today_str:
+                        is_future_creation = True
                 except: pass
 
         # If the user has "not started" tasks, pull them in if they are due within 7 days
@@ -605,7 +610,15 @@ def auto_fill_standup():
         # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
         pull_all_upcoming = body.get("pull_upcoming", False)
         
-        if is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
+        if is_future_creation and s == "not_started":
+            # If it's already in the local DB mistakenly, delete it!
+            if t.get("notion_id") in existing_notion_ids:
+                try:
+                    cur.execute("DELETE FROM standup_tasks WHERE notion_id=?", (t.get("notion_id"),))
+                except: pass
+            continue
+        
+        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
             valid_tasks.append(t)
 
     conn.commit()
