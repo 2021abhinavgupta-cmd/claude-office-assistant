@@ -600,7 +600,8 @@ def auto_fill_standup():
         # If the user has "not started" tasks, pull them in if they are due within 7 days
         # BUT skip this for tasks that have a specific Creation Date (they should only appear on their exact Creation Date)
         is_upcoming = False
-        if d and s == "not_started" and not has_creation_date:
+        is_not_started = s in ("not_started", "need_to_start", "")
+        if d and is_not_started and not has_creation_date:
             try:
                 due_dt = datetime.strptime(d.split("T")[0], "%Y-%m-%d")
                 if (due_dt - today).days <= 7:
@@ -610,7 +611,7 @@ def auto_fill_standup():
         # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
         pull_all_upcoming = body.get("pull_upcoming", False)
         
-        if is_future_creation and s == "not_started":
+        if is_future_creation and is_not_started:
             # If it's already in the local DB mistakenly, delete it!
             if t.get("notion_id") in existing_notion_ids:
                 try:
@@ -618,8 +619,18 @@ def auto_fill_standup():
                 except: pass
             continue
         
-        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
+        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and is_not_started) or (t.get("notion_id") in existing_notion_ids):
             valid_tasks.append(t)
+
+    # Clean up any tasks that were in the local DB but no longer exist in Notion (deleted/archived)
+    # We only do this if sync_all is True, because otherwise we only fetched tasks for one user!
+    if sync_all:
+        fetched_notion_ids = set(t.get("notion_id") for t in all_tasks if t.get("notion_id"))
+        for nid in existing_notion_ids:
+            if nid not in fetched_notion_ids:
+                try:
+                    cur.execute("DELETE FROM standup_tasks WHERE notion_id=?", (nid,))
+                except: pass
 
     conn.commit()
     conn.close()
