@@ -561,7 +561,8 @@ def auto_fill_standup():
                     cur.execute("UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?", (search_title, d, nid, matched_id))
 
         # Don't pull finished tasks
-        if s in ("approved", "done", "submitted", "in_review", "pending_review"):
+        if s in ("approved", "done", "submitted", "in_review", "pending_review", "posted", "final"):
+            cur.execute("UPDATE standup_tasks SET status='done' WHERE id=? AND status='pending'", (matched_id,))
             continue
             
         # Add if status is active
