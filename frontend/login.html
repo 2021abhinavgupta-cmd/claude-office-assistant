@@ -484,8 +484,7 @@
     function redirect(userOrData) {
       // Go directly to Dashboard/Tasks — read is_admin from localStorage or the verify payload
       const stored = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
-      const isAdmin = stored.is_admin || userOrData.is_admin;
-      window.location.href = isAdmin ? "dashboard.html" : "my-tasks.html";
+      window.location.href = "dashboard.html";
     }
 
     function goBack() {
