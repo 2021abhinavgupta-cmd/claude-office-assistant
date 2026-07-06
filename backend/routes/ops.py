@@ -581,7 +581,7 @@ def auto_fill_standup():
         is_creation_today = False
         has_creation_date = False
         is_future_creation = False
-        desc = t.get("description", "") or t.get("notes", "") or ""
+        desc = t.get("description", "") or t.get("content", "") or t.get("brief", "") or ""
         if desc:
             import re as _re
             cr_match = _re.search(r'Creation Date:\s*([\d-]+)', desc)
