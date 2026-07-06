@@ -619,7 +619,12 @@ def auto_fill_standup():
                 except: pass
             continue
         
-        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and is_not_started) or (t.get("notion_id") in existing_notion_ids):
+        # Check for /daily and /alternate features
+        combined_text = f"{raw_title} {desc}".lower()
+        is_daily_trigger = ("/daily" in combined_text)
+        is_alternate_trigger = ("/alternate" in combined_text and today.toordinal() % 2 == 0)
+
+        if is_active or is_due or is_upcoming or is_creation_today or is_daily_trigger or is_alternate_trigger or (pull_all_upcoming and is_not_started) or (t.get("notion_id") in existing_notion_ids):
             valid_tasks.append(t)
 
     # Clean up any tasks that were in the local DB but no longer exist in Notion (deleted/archived)
