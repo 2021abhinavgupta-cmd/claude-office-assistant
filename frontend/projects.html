@@ -386,6 +386,7 @@
 
 <script>
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+function esc(s){if(!s)return'';return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]);}
 const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
 const UID = user.user_id || "emp003";
 
@@ -950,7 +951,7 @@ function renderClientSheets(clientId) {
         <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
           <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${t.due_date || ""}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${title}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(title)}</td>
         <td style="padding: 10px; border-right: 1px solid var(--bdr);">
           <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
             <option value="" ${type===''?'selected':''}></option>
@@ -961,10 +962,10 @@ function renderClientSheets(clientId) {
             <option value="Post" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
           </select>
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${content}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${idea}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${scripts}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${caption}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(content)}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(idea)}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(scripts)}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(caption)}</td>
         <td style="padding: 6px 10px; border-right: 1px solid var(--bdr); position: relative; overflow: visible;">
           <div class="ms-wrap sheet-ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
             <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="background:var(--s1); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; font-size:0.82rem; cursor:pointer; min-height:28px;">
@@ -989,8 +990,8 @@ function renderClientSheets(clientId) {
             <option value="final"          ${s==='final'        ?'selected':''}>Final</option>
           </select>
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${link}</td>
-        <td style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${myNotes}</td>
+        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(link)}</td>
+        <td style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(myNotes)}</td>
       </tr>
     `;
   });
@@ -1364,9 +1365,9 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
     <div class="cp-row"> Assignee: <span>${assigneeName}</span></div>
     <div class="cp-row"> Status: <span>${statusLabel}</span></div>
     <div class="cp-row"> Due: <span>${t.due_date||'—'}</span></div>
-    ${extContent?`<div class="cp-row" style="display:block;margin-top:6px;font-size:.75rem;color:var(--txt)"><b>Content:</b> ${extContent.replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" onclick="event.stopPropagation()" style="color:var(--acc);text-decoration:underline">Link</a>')}</div>`:''}
-    ${extIdea?`<div class="cp-row" style="display:block;margin-top:2px;font-size:.75rem;color:var(--txt)"><b>Idea:</b> ${extIdea.replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" onclick="event.stopPropagation()" style="color:var(--acc);text-decoration:underline">Link</a>')}</div>`:''}
-    ${extScripts?`<div class="cp-row" style="display:block;margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;background:var(--bg);padding:6px;border-radius:4px;max-height:80px;overflow-y:auto;border:1px solid var(--bdr)"><b>Scripts:</b><br/>${extScripts.replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" onclick="event.stopPropagation()" style="color:var(--acc);text-decoration:underline">Link</a>').replace(/\n/g, '<br/>')}</div>`:''}
+    ${esc(extContent)?`<div class="cp-row" style="display:block;margin-top:6px;font-size:.75rem;color:var(--txt)"><b>Content:</b> ${esc(extContent).replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" onclick="event.stopPropagation()" style="color:var(--acc);text-decoration:underline">Link</a>')}</div>`:''}
+    ${esc(extIdea)?`<div class="cp-row" style="display:block;margin-top:2px;font-size:.75rem;color:var(--txt)"><b>Idea:</b> ${esc(extIdea).replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" onclick="event.stopPropagation()" style="color:var(--acc);text-decoration:underline">Link</a>')}</div>`:''}
+    ${esc(extScripts)?`<div class="cp-row" style="display:block;margin-top:6px;font-size:.75rem;color:var(--muted);line-height:1.4;background:var(--bg);padding:6px;border-radius:4px;max-height:80px;overflow-y:auto;border:1px solid var(--bdr)"><b>Scripts:</b><br/>${esc(extScripts).replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" onclick="event.stopPropagation()" style="color:var(--acc);text-decoration:underline">Link</a>').replace(/\n/g, '<br/>')}</div>`:''}
     ${t.feedback&&t.feedback.status?`
       <div style="margin-top:8px;padding:6px;border-radius:4px;font-size:0.75rem;border:1px solid ${t.feedback.status==='approved'?'#22c55e40':'#f43f5e40'};background:${t.feedback.status==='approved'?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)'}">
         <b style="color:${t.feedback.status==='approved'?'#22c55e':'#f43f5e'}">${t.feedback.status==='approved'?'Client Approved':'Client Requested Changes'}</b>
