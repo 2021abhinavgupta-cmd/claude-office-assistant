@@ -111,7 +111,7 @@
       }
     }
 
-    h1 {
+    .question-input {
       margin-top: 0;
       margin-bottom: 40px;
       font-size: 2.2rem;
@@ -121,6 +121,17 @@
       -webkit-text-fill-color: transparent;
       letter-spacing: -0.03em;
       line-height: 1.2;
+      border: none;
+      text-align: center;
+      width: 100%;
+      outline: none;
+      font-family: inherit;
+      border-bottom: 2px solid transparent;
+      transition: border-bottom 0.3s;
+    }
+
+    .question-input:focus {
+      border-bottom: 2px solid rgba(255,255,255,0.2);
     }
 
     .vote-actions {
@@ -288,7 +299,7 @@
   </div>
 
   <div class="bet-card" id="bet-content" style="display:none;">
-    <h1>Mohit aaj jayenge? 🧐</h1>
+    <input type="text" id="bet-question-input" class="question-input" value="Loading..." onchange="updateQuestion(this.value)" placeholder="Enter question..." />
 
     <div class="vote-actions">
       <button class="btn-vote" id="btn-yes" onclick="submitVote('yes')">Yes</button>
@@ -354,6 +365,25 @@
       }
     }
 
+    async function updateQuestion(val) {
+      if (!allowed.includes(user.user_id)) return;
+      try {
+        const res = await fetch(`${API}/api/bet/question`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: user.user_id, question: val })
+        });
+        const data = await res.json();
+        if (data.success) {
+          loadVotes();
+        } else {
+          alert(data.error || "Failed to update question");
+        }
+      } catch (e) {
+        console.error("Failed to update question", e);
+      }
+    }
+
     async function loadVotes() {
       try {
         const res = await fetch(`${API}/api/bet`);
@@ -362,6 +392,11 @@
           const container = document.getElementById('votes-container');
           container.innerHTML = '';
           let myVote = null;
+
+          const qInput = document.getElementById('bet-question-input');
+          if (data.question && document.activeElement !== qInput) {
+            qInput.value = data.question;
+          }
 
           if (data.votes.length === 0) {
             container.innerHTML = '<div class="no-votes">No votes cast yet.</div>';

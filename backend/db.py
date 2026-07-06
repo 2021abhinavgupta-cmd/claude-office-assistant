@@ -103,6 +103,15 @@ def init_db():
             user_id TEXT PRIMARY KEY,
             vote TEXT NOT NULL
         )""")
+        
+        # App Settings
+        conn.execute("""CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )""")
+        cur = conn.execute("SELECT key FROM app_settings WHERE key='bet_question'")
+        if not cur.fetchone():
+            conn.execute("INSERT INTO app_settings (key, value) VALUES ('bet_question', 'Mohit aaj jayenge? 🧐')")
 
         # Personal daily task tracker (separate from project tasks)
         conn.execute("""CREATE TABLE IF NOT EXISTS standup_tasks (

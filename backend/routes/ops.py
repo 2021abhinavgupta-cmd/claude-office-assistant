@@ -2293,10 +2293,14 @@ def get_bet():
         from db import get_connection
         conn = get_connection()
         cur = conn.cursor()
+        cur.execute("SELECT value FROM app_settings WHERE key='bet_question'")
+        row = cur.fetchone()
+        question = row[0] if row else "Mohit aaj jayenge? 🧐"
+        
         cur.execute("SELECT user_id, vote FROM mohit_bets")
         votes = [{"user_id": r[0], "vote": r[1]} for r in cur.fetchall()]
         conn.close()
-        return jsonify({"success": True, "votes": votes})
+        return jsonify({"success": True, "votes": votes, "question": question})
     except Exception as e:
         logger.error(f"Error getting bets: {e}")
         return jsonify({"success": False, "error": str(e)})
@@ -2318,6 +2322,27 @@ def post_bet():
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error posting bet: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@ops_bp.route("/api/bet/question", methods=["POST"])
+def post_bet_question():
+    try:
+        data = request.json
+        user_id = data.get("user_id")
+        question = data.get("question")
+        if user_id not in ["emp002", "emp003", "emp007", "emp008"]:
+            return jsonify({"success": False, "error": "Not allowed"}), 403
+        
+        from db import get_connection
+        conn = get_connection()
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('bet_question', ?)", (question,))
+            # Clear previous votes since question changed
+            conn.execute("DELETE FROM mohit_bets")
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error posting bet question: {e}")
         return jsonify({"success": False, "error": str(e)})
 
 # ══════════════════════════════════════════════════════════════════════════════
