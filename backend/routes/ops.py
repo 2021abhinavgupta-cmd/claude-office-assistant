@@ -2133,28 +2133,6 @@ def submit_task_feedback(task_id):
         logger.error(f"Error saving task feedback: {e}")
         return jsonify({"error": "Failed to save feedback"}), 500
 
-    # Update actual task status
-    if status in ("approved", "changes_requested", ""):
-        if status == "approved":
-            new_task_status = "approved"
-        else:
-            new_task_status = "pending_review"  # changes requested or cleared feedback
-
-        if source == "notion":
-            try:
-                notion_store.update_task(task_id, status=new_task_status, progress=100 if new_task_status == "approved" else 80)
-            except Exception as e:
-                logger.error(f"Failed to update Notion task: {e}")
-        else:
-            try:
-                conn = _su_conn()
-                conn.execute("UPDATE tasks SET status = ?, progress = ? WHERE id = ?", 
-                             (new_task_status, 100 if new_task_status == "approved" else 80, task_id))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                logger.error(f"Failed to update SQLite task: {e}")
-
     return jsonify({"success": True})
 
 
