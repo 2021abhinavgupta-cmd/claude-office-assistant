@@ -349,6 +349,8 @@ function renderTasks(){
                    onchange="updateTaskTitle(${t.id}, this.value)"
                    style="background:transparent; border:none; outline:none; color:inherit; font-size:0.88rem; font-family:inherit; flex:1; text-decoration:inherit; padding: 0;"
                    ${t.status==="done" || t.status==="need_for_approval" || t.status==="delegated" ? "disabled" : ""} />
+            ${(t.title||'').toLowerCase().includes('/daily')?`<span class="carried-badge" style="background:rgba(34,211,160,0.15);color:var(--grn);border:none;">/daily</span>`:""}
+            ${(t.title||'').toLowerCase().includes('/alternate')?`<span class="carried-badge" style="background:rgba(92,158,255,0.15);color:var(--blu);border:none;">/alternate</span>`:""}
             ${t.carried_from?`<span class="carried-badge">↩ from ${t.carried_from}</span>`:""}
             ${t.delegated_from?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated from ${t.delegated_from}</span>`:""}
             ${t.status==="delegated"?`<span class="carried-badge" style="background:#8b5cf6;color:#fff;border:none">Delegated to ${t.delegated_to}</span>`:""}
@@ -721,7 +723,7 @@ async function loadTeamStandups(dateStr = ""){
                     <div style="flex: 1; min-width: 0;">
                       ${isDone ? '✓' : '•'} 
                       <a href="projects.html?notion_id=${task.notion_id || task.id}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
-                        ${esc(task.title)}
+                        ${esc(task.title).replace(/\/(daily|alternate)/gi, match => `<span style="color:${match.toLowerCase()==='/daily'?'var(--grn)':'var(--blu)'};background:${match.toLowerCase()==='/daily'?'rgba(34,211,160,0.15)':'rgba(92,158,255,0.15)'};padding:1px 5px;border-radius:4px;font-size:0.7rem;margin-left:2px;border:none;">${match}</span>`)}
                       </a>
                       ${subtasksHtml}
                       ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:14px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
@@ -763,7 +765,7 @@ async function loadTeamStandups(dateStr = ""){
                     <div style="flex: 1; min-width: 0;">
                       ${isDone ? '✓' : '•'} 
                       <a href="projects.html?notion_id=${task.notion_id || task.id}&title=${encodeURIComponent(task.title)}" style="color:inherit; text-decoration:none; cursor:pointer; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="View in Project Board">
-                        ${esc(task.title)}
+                        ${esc(task.title).replace(/\/(daily|alternate)/gi, match => `<span style="color:${match.toLowerCase()==='/daily'?'var(--grn)':'var(--blu)'};background:${match.toLowerCase()==='/daily'?'rgba(34,211,160,0.15)':'rgba(92,158,255,0.15)'};padding:1px 5px;border-radius:4px;font-size:0.7rem;margin-left:2px;border:none;">${match}</span>`)}
                       </a>
                       ${subtasksHtml}
                       ${task.blocker ? `<div style="color:var(--red);font-size:0.75rem;margin-left:22px;margin-top:2px;text-decoration:none;"> Blocker: ${esc(task.blocker)}</div>` : ""}
