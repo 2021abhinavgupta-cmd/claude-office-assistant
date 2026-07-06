@@ -584,7 +584,7 @@ def auto_fill_standup():
         desc = t.get("description", "") or t.get("content", "") or t.get("brief", "") or ""
         if desc:
             import re as _re
-            cr_match = _re.search(r'Creation Date:\s*([\d-]+)', desc)
+            cr_match = _re.search(r'creation date\s*:\s*([\d-]+)', desc, _re.IGNORECASE)
             if cr_match:
                 has_creation_date = True
                 try:

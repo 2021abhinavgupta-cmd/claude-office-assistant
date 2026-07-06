@@ -880,26 +880,26 @@ function renderClientSheets(clientId) {
     const notes = t.description || "";
     let creationDate = "", content = "", idea = "", scripts = "", caption = "", link = "";
     
-    const crMatch = notes.match(/Creation Date:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link):|$)/);
+    const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
     if (crMatch) creationDate = crMatch[1].trim();
 
-    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link):|$)/);
+    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/);
     if (cntMatch) content = cntMatch[1].trim();
     
-    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link):|$)/);
+    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link)\s*:|$)/);
     if (iMatch) idea = iMatch[1].trim();
     
-    const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link):|$)/);
+    const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link)\s*:|$)/);
     if (sMatch) scripts = sMatch[1].trim();
     
-    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link):|$)/);
+    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link)\s*:|$)/);
     if (cMatch) caption = cMatch[1].trim();
     
-    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes):|$)/);
+    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes)\s*:|$)/);
     if (lMatch) link = lMatch[1].trim();
     
     let myNotes = "";
-    const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link):|$)/);
+    const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link)\s*:|$)/);
     if (nMatch) myNotes = nMatch[1].trim();
     
     // Status color (social media statuses)
@@ -1348,9 +1348,9 @@ function _renderPopupContent(popup, dayTasks, idx, clientId){
   let extContent = t.content || "";
   let extIdea = t.idea || "";
   let extScripts = t.scripts || t.scripts_copy || "";
-  if (!extContent) { const m = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link):|$)/); if(m) extContent = m[1].trim(); }
-  if (!extIdea) { const m = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link):|$)/); if(m) extIdea = m[1].trim(); }
-  if (!extScripts) { const m = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link):|$)/); if(m) extScripts = m[1].trim(); }
+  if (!extContent) { const m = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/); if(m) extContent = m[1].trim(); }
+  if (!extIdea) { const m = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link)\s*:|$)/); if(m) extIdea = m[1].trim(); }
+  if (!extScripts) { const m = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link)\s*:|$)/); if(m) extScripts = m[1].trim(); }
 
   let nav = dayTasks.length>1 ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <span style="font-size:.72rem;color:var(--muted)">${idx+1} / ${dayTasks.length}</span>

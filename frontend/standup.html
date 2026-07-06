@@ -298,7 +298,7 @@ function renderTasks(){
   // Fallback: if due_date is missing, try to use Creation Date from title preview
   allTasks.forEach(t => {
     if (!t.due_date && t.title) {
-       const m = t.title.match(/Creation Date:\s*([\d-]+)/i);
+       const m = t.title.match(/Creation Date\s*:\s*([\d-]+)/i);
        if (m) {
            t.due_date = m[1];
        }
@@ -663,7 +663,7 @@ async function loadTeamStandups(dateStr = ""){
     // Fallback: extract Creation Date from title preview if due_date is empty
     tasksByUser[uid].forEach(t => {
       if (!t.due_date && t.title) {
-         const m = t.title.match(/Creation Date:\s*([\d-]+)/i);
+         const m = t.title.match(/Creation Date\s*:\s*([\d-]+)/i);
          if (m) {
              t.due_date = m[1];
          }
