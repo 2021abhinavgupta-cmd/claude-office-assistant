@@ -718,6 +718,9 @@ def auto_fill_standup():
                         )
                         added_count += 1
                 else:
+                if not insert_allowed:
+                    cur.execute("DELETE FROM standup_tasks WHERE id=?", (matched_id,))
+                else:
                     cur.execute(
                         "UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?",
                         (search_title, d, nid, matched_id)
