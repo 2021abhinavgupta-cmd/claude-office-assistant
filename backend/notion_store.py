@@ -380,8 +380,6 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
         return []
 
     filters = []
-    if assigned_to:
-        filters.append({"property": "Assigned To", "multi_select": {"contains": assigned_to}})
     if client_notion_id:
         filters.append({"property": "Client ID", "rich_text": {"equals": client_notion_id}})
     if status_filter:
@@ -462,6 +460,15 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             has_more = data.get("has_more", False)
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
+            # If assigned_to was requested, we filter in Python because Notion API fails
+        # when attempting to filter a 'people' property with a 'multi_select' condition.
+        if assigned_to:
+            filtered_tasks = []
+            for t in tasks:
+                n_assignees = t.get("assigned_to", "")
+                if assigned_to.lower() in n_assignees.lower():
+                    filtered_tasks.append(t)
+            return filtered_tasks
         return tasks
     except Exception:
         logger.exception("Notion list_tasks failed")
