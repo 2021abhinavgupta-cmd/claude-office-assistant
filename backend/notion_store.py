@@ -188,8 +188,14 @@ def _get_string_val(prop: dict) -> str:
 
 
 def _get_date(prop: dict) -> str:
-    d = prop.get("date") or {}
-    return d.get("start", "")
+    if "date" in prop:
+        d = prop.get("date") or {}
+        return d.get("start", "")
+    elif "created_time" in prop:
+        return prop.get("created_time", "")
+    elif "last_edited_time" in prop:
+        return prop.get("last_edited_time", "")
+    return ""
 
 
 def _get_number(prop: dict) -> int:
