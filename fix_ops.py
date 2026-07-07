@@ -1,58 +1,35 @@
-import sys
+import re
 
 with open('backend/routes/ops.py', 'r', encoding='utf-8') as f:
-    code = f.read()
+    content = f.read()
 
-target1 = '''        if not assigned_name:
-            return jsonify({"error": "assigned_name required"}), 400
-        all_tasks = notion_store.list_tasks(assigned_to=assigned_name)
+# Fix 1: t.get("id")
+old_nid = r'nid = t.get\("id"\)'
+new_nid = r'nid = t.get("notion_id") or t.get("id")'
+content = re.sub(old_nid, new_nid, content)
 
-    # Filter active tasks
-    valid_tasks = []
-    for t in all_tasks:'''
+# Fix 2: Unassign deletion
+old_cleanup = r'# Clean up any tasks that were in the local DB but no longer exist in Notion \(deleted/archived\)\n\s*# We only do this if sync_all is True, because otherwise we only fetched tasks for one user!\n\s*if sync_all:\n\s*fetched_notion_ids = set\(t\.get\("notion_id"\) for t in all_tasks if t\.get\("notion_id"\)\)\n\s*for nid in existing_notion_ids:\n\s*if nid not in fetched_notion_ids:\n\s*try:\n\s*cur\.execute\("DELETE FROM standup_tasks WHERE notion_id=\?", \(nid,\)\)\n\s*except: pass'
 
-replacement1 = '''        if not assigned_name:
-            return jsonify({"error": "assigned_name required"}), 400
-        all_tasks = notion_store.list_tasks(assigned_to=assigned_name)
-
-    # Pre-fetch existing notion_ids for today to ensure we update them even if they are future tasks
-    existing_notion_ids = set()
-    conn = _su_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT notion_id FROM standup_tasks WHERE date=?", (today_str,))
-    for r in cur.fetchall():
-        if r[0]: existing_notion_ids.add(r[0])
-    conn.close()
-
-    # Filter active tasks
-    valid_tasks = []
-    for t in all_tasks:'''
-
-if target1 in code:
-    code = code.replace(target1, replacement1)
-    print('Replaced chunk 1')
-else:
-    print('Failed to find chunk 1')
-
-
-target2 = '''        # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
-        pull_all_upcoming = body.get("pull_upcoming", False)
+new_cleanup = """        # Clean up any tasks that were in the local DB but no longer exist in fetched list
+        fetched_notion_ids = set(t.get("notion_id") or t.get("id") for t in all_tasks if t.get("notion_id") or t.get("id"))
         
-        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started"):
-            valid_tasks.append(t)'''
+        if sync_all:
+            for nid in existing_notion_ids:
+                if nid not in fetched_notion_ids:
+                    try:
+                        cur.execute("DELETE FROM standup_tasks WHERE notion_id=?", (nid,))
+                    except: pass
+        else:
+            cur.execute("SELECT notion_id FROM standup_tasks WHERE user_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (user_id, today_str))
+            my_existing_nids = set(r[0] for r in cur.fetchall() if r[0])
+            for nid in my_existing_nids:
+                if nid not in fetched_notion_ids:
+                    try:
+                        cur.execute("DELETE FROM standup_tasks WHERE notion_id=? AND user_id=?", (nid, user_id))
+                    except: pass"""
 
-replacement2 = '''        # Also, if body explicitly requested "upcoming", we can pull all not_started tasks
-        pull_all_upcoming = body.get("pull_upcoming", False)
-        
-        if is_active or is_due or is_upcoming or is_creation_today or (pull_all_upcoming and s == "not_started") or (t.get("notion_id") in existing_notion_ids):
-            valid_tasks.append(t)'''
-
-if target2 in code:
-    code = code.replace(target2, replacement2)
-    print('Replaced chunk 2')
-else:
-    print('Failed to find chunk 2')
+content = re.sub(old_cleanup, new_cleanup, content)
 
 with open('backend/routes/ops.py', 'w', encoding='utf-8') as f:
-    f.write(code)
-
+    f.write(content)

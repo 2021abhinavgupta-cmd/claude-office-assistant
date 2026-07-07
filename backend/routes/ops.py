@@ -512,7 +512,7 @@ def auto_fill_standup():
         s = t.get("status", "").lower().replace(" ", "_").replace("-", "_")
         d = t.get("due_date", "")
         raw_title = t.get("title", "").strip()
-        nid = t.get("id")
+        nid = t.get("notion_id") or t.get("id")
 
         client = t.get("client_name", "").strip()
         content = t.get("content", "").strip() or t.get("description", "").strip() or t.get("brief", "").strip()
@@ -628,15 +628,23 @@ def auto_fill_standup():
         if is_active or is_due or is_upcoming or is_creation_today or is_daily_trigger or is_alternate_trigger or (pull_all_upcoming and is_not_started) or (t.get("notion_id") in existing_notion_ids):
             valid_tasks.append(t)
 
-    # Clean up any tasks that were in the local DB but no longer exist in Notion (deleted/archived)
-    # We only do this if sync_all is True, because otherwise we only fetched tasks for one user!
-    if sync_all:
-        fetched_notion_ids = set(t.get("notion_id") for t in all_tasks if t.get("notion_id"))
-        for nid in existing_notion_ids:
-            if nid not in fetched_notion_ids:
-                try:
-                    cur.execute("DELETE FROM standup_tasks WHERE notion_id=?", (nid,))
-                except: pass
+            # Clean up any tasks that were in the local DB but no longer exist in fetched list
+        fetched_notion_ids = set(t.get("notion_id") or t.get("id") for t in all_tasks if t.get("notion_id") or t.get("id"))
+        
+        if sync_all:
+            for nid in existing_notion_ids:
+                if nid not in fetched_notion_ids:
+                    try:
+                        cur.execute("DELETE FROM standup_tasks WHERE notion_id=?", (nid,))
+                    except: pass
+        else:
+            cur.execute("SELECT notion_id FROM standup_tasks WHERE user_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (user_id, today_str))
+            my_existing_nids = set(r[0] for r in cur.fetchall() if r[0])
+            for nid in my_existing_nids:
+                if nid not in fetched_notion_ids:
+                    try:
+                        cur.execute("DELETE FROM standup_tasks WHERE notion_id=? AND user_id=?", (nid, user_id))
+                    except: pass
 
     conn.commit()
     conn.close()
