@@ -1,14 +1,9 @@
-import os, sys, json
-with open('backend/.env') as f:
-    for line in f:
-        if '=' in line and not line.startswith('#'):
-            k, v = line.strip().split('=', 1)
-            os.environ[k] = v.strip('"\'')
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
-import notion_store
+import sys, json
+sys.stdout.reconfigure(encoding='utf-8')
+from backend.notion_store import list_tasks
 
-tasks = notion_store.list_tasks(assigned_to='Happy')
-print('Found tasks:', len(tasks))
+tasks = list_tasks()
+print(f'Total tasks: {len(tasks)}')
 for t in tasks:
-    if '[Carousel]' in t.get('title', ''):
-        print(json.dumps(t, indent=2))
+    if t.get('assigned_to') == 'Abhinav':
+        print(t.get('title'), '||', t.get('status'), '||', t.get('due_date'))
