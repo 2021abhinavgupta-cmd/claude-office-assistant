@@ -538,6 +538,16 @@ def auto_fill_standup():
                 if not target_uids:
                     target_uids = list(emp_name_to_id.values())
                 
+
+            # Robust cleanup: Ensure users who are no longer assigned do not keep this task
+            if sync_all and nid:
+                if insert_allowed and target_uids:
+                    placeholders = ",".join("?" * len(target_uids))
+                    query = f"DELETE FROM standup_tasks WHERE notion_id=? AND (date=? OR status NOT IN ('Completed', 'Archived')) AND user_id NOT IN ({placeholders})"
+                    params = [nid, today_str] + target_uids
+                    cur.execute(query, params)
+                else:
+                    cur.execute("DELETE FROM standup_tasks WHERE notion_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (nid, today_str))
             for target_user_id in target_uids:
                 cur.execute("SELECT id, due_date, notion_id, title FROM standup_tasks WHERE user_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (target_user_id, today_str))
                 local_tasks = cur.fetchall()
@@ -692,6 +702,16 @@ def auto_fill_standup():
                 target_uids = [user_id]
                 insert_allowed = True
                 
+
+            # Robust cleanup: Ensure users who are no longer assigned do not keep this task
+            if sync_all and nid:
+                if insert_allowed and target_uids:
+                    placeholders = ",".join("?" * len(target_uids))
+                    query = f"DELETE FROM standup_tasks WHERE notion_id=? AND (date=? OR status NOT IN ('Completed', 'Archived')) AND user_id NOT IN ({placeholders})"
+                    params = [nid, today_str] + target_uids
+                    cur.execute(query, params)
+                else:
+                    cur.execute("DELETE FROM standup_tasks WHERE notion_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (nid, today_str))
             for target_user_id in target_uids:
                 cur.execute("SELECT id, notion_id, title FROM standup_tasks WHERE user_id=? AND (date=? OR status NOT IN ('Completed', 'Archived'))", (target_user_id, today_str))
                 local_tasks = cur.fetchall()
