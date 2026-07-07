@@ -602,7 +602,7 @@ def auto_fill_standup():
                     cr_date = cr_match.group(1).strip()
                     if _re.match(r"^\d{2}-\d{2}-\d{4}$", cr_date):
                         cr_date = f"{cr_date[6:10]}-{cr_date[3:5]}-{cr_date[0:2]}"
-                    if cr_date == today_str and s == "not_started":
+                    if cr_date == today_str and s in ("not_started", "need_to_start", ""):
                         is_creation_today = True
                     elif cr_date > today_str:
                         is_future_creation = True
