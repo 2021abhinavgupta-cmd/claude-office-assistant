@@ -534,7 +534,12 @@ def auto_fill_standup():
                 target_uids = [user_id]
             else:
                 names = [n.strip() for n in assignees.split(",") if n.strip()]
-                target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
+            target_uids = []
+            for n in names:
+                for ename, eid in emp_name_to_id.items():
+                    if ename.lower() in n.lower():
+                        if eid not in target_uids:
+                            target_uids.append(eid)
                 if not target_uids:
                     target_uids = list(emp_name_to_id.values())
                 
@@ -704,7 +709,12 @@ def auto_fill_standup():
                 }
                 assignees = vt.get("assigned_to", "")
                 names = [n.strip() for n in assignees.split(",") if n.strip()]
-                target_uids = [emp_name_to_id.get(n) for n in names if emp_name_to_id.get(n)]
+            target_uids = []
+            for n in names:
+                for ename, eid in emp_name_to_id.items():
+                    if ename.lower() in n.lower():
+                        if eid not in target_uids:
+                            target_uids.append(eid)
                 if target_uids:
                     insert_allowed = True
                 else:

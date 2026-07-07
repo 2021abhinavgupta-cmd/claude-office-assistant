@@ -139,8 +139,13 @@ def _get_select(prop: dict) -> str:
 
 
 def _get_multi_select(prop: dict) -> str:
-    items = prop.get("multi_select") or []
-    return ", ".join(item.get("name", "") for item in items)
+    if "multi_select" in prop:
+        items = prop.get("multi_select") or []
+        return ", ".join(item.get("name", "") for item in items if item.get("name"))
+    elif "people" in prop:
+        items = prop.get("people") or []
+        return ", ".join(item.get("name", "") for item in items if item.get("name"))
+    return ""
 
 
 _page_title_cache = {}
