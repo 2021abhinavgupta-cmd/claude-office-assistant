@@ -575,12 +575,14 @@ def auto_fill_standup():
                         break
                 
                 if matched_id:
-                    # Update local task with accurate Notion data
-                    cur.execute("UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?", (search_title, d, nid, matched_id))
+                    if s in ("approved", "done", "submitted", "in_review", "pending_review", "posted", "final"):
+                        cur.execute("UPDATE standup_tasks SET status='done' WHERE id=? AND status='pending'", (matched_id,))
+                    else:
+                        # Update local task with accurate Notion data
+                        cur.execute("UPDATE standup_tasks SET title=?, due_date=?, notion_id=? WHERE id=?", (search_title, d, nid, matched_id))
 
         # Don't pull finished tasks
         if s in ("approved", "done", "submitted", "in_review", "pending_review", "posted", "final"):
-            cur.execute("UPDATE standup_tasks SET status='done' WHERE id=? AND status='pending'", (matched_id,))
             continue
             
         # Add if status is active
@@ -1294,8 +1296,9 @@ def notion_update_task(notion_id: str):
                  "emp007":"Palak","emp008":"Happy"}
                  
     raw_assigned = body.get("assigned_to", "")
-    mapped_assigned = EMP_NAMES.get(raw_assigned, raw_assigned)
-    
+    raw_assigned_ids = [a.strip() for a in raw_assigned.split(",") if a.strip()]
+    mapped_assigned = ",".join(EMP_NAMES.get(a, a) for a in raw_assigned_ids)
+
     result = notion_store.update_task(
         notion_id=notion_id, status=body.get("status"),
         progress=body.get("progress"), submission_note=body.get("submission_note"),
@@ -1318,18 +1321,18 @@ def notion_update_task(notion_id: str):
                 (task_title if task_title != "Untitled Task" else None, new_due, notion_id)
             )
             
-        if raw_assigned:
-            today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        for uid in raw_assigned_ids:
             cur2 = su_conn.cursor()
             cur2.execute(
                 "SELECT id FROM standup_tasks WHERE user_id=? AND date=? AND notion_id=?",
-                (raw_assigned, today_str, notion_id)
+                (uid, today_str, notion_id)
             )
             if not cur2.fetchone():
                 with su_conn:
                     su_conn.execute(
                         "INSERT INTO standup_tasks (user_id, date, title, status, notion_id, due_date) VALUES (?,?,?,'pending',?,?)",
-                        (raw_assigned, today_str, task_title, notion_id, new_due)
+                        (uid, today_str, task_title, notion_id, new_due)
                     )
         su_conn.close()
     # ─────────────────────────────────────────────────────────────────────────
