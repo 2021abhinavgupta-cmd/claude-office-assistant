@@ -2538,6 +2538,7 @@ def create_client():
     user_id = _verify_session(token)
     if not user_id or not _is_admin(user_id):
         return jsonify({"error": "Unauthorized"}), 403
+    body = request.get_json(silent=True) or {}
     name = body.get("name", "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400

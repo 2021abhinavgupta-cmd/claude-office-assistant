@@ -133,7 +133,7 @@ claude-office-assistant/
 > [!WARNING]
 > **Known Security Flaws in Client Onboarding:**
 > 1. **Plaintext Passwords:** Client passwords in `client_users` are currently stored and compared in plaintext (`routes/auth.py`). They need to be securely hashed.
-> 2. **Insecure Admin Authorization (Spoofing):** The SQLite `POST /api/clients` route trusts `body.get("user_id")` to verify admin status, allowing any user to spoof an admin ID to create clients.
+> 2. **`POST /api/clients` (`app.py::create_client`)** actually authenticates via session cookie (`_verify_session`), not body spoofing — this warning was stale. (It *was* broken a different way until this session: missing `body = request.get_json(...)` meant every call 500'd unconditionally — now fixed.)
 > 3. **Missing Auth on Notion endpoint:** `POST /api/notion/clients` (`routes/ops.py`) has completely missing authentication/authorization. Anyone can create a Notion client.
 > 4. **Bet feature spoofing:** `POST /api/bet` and `POST /api/bet/question` (`routes/ops.py`) authorize by checking a client-supplied `user_id` against a hardcoded whitelist (`["emp002","emp003","emp007","emp008"]`) — zero session verification. Same spoofing pattern as #2, just lower stakes.
 > 5. **Discovery form fully public, no rate limit:** `GET/POST /api/form-templates*` and `POST /api/discovery-submissions` (`routes/ops.py`) have no auth check at all. `discovery-form.html` is intentionally public (it's a client-facing intake form), but the submission endpoint can be spammed by anyone with the link.
@@ -259,6 +259,12 @@ bash start.sh
 ```
 
 The Flask app serves the `frontend/` folder as static files.
+
+> [!NOTE]
+> The default `python`/`pip` on PATH may not be this project's venv. Use `.venv/Scripts/python.exe` (Windows) explicitly for anything needing project deps (Flask, requests, etc) — a bare `python -m pyflakes ...` can silently run against an unrelated environment.
+
+### Debugging
+- `.venv/Scripts/python.exe -m pyflakes backend/*.py backend/routes/*.py` — static undefined-name check (`pip install pyflakes` first if missing). This codebase has a recurring copy-paste bug pattern: a variable set in one `if/else` branch, then referenced unconditionally afterward (or via a stray `for...else`) — silently 500s in production. Caught 4 real bugs this way in one session.
 
 ---
 
@@ -441,3 +447,9 @@ A quick reference map for developers of the massive backend API.
 39. **Admin allowlists are duplicated and inconsistent** — See security warning #6 above. When adding a new admin employee, you must update `utils.py::_is_admin()`, `app.py`'s local `_is_admin()`, and `dashboard.html`'s `ONBOARD_ADMINS` separately — there is no single source of truth.
 
 40. **Discovery form vs. client form-answers — don't conflate** — `discovery_submissions` (public intake, no `client_id`) and `client_form_answers` (per-client, keyed by `client_id`) are two separate tables/features that look superficially similar. Only the former has frontend pages (`discovery-form.html`, `client-forms-db.html`); the latter's endpoints (`/api/clients/<id>/form-answers`) have no UI consumer found — treat it as unfinished, not broken, if asked to "fix the client form answers page" (there isn't one yet).
+
+41. **`auto_fill_standup()` (`routes/ops.py`) is fragile — check variable scope before editing.** Had 3 separate `NameError` bugs where `target_uids`/`insert_allowed`/`names` were set inside `if sync_all: ... else: ...` but then referenced unconditionally afterward (once via a stray `for...else` instead of `if...else`), silently 500ing every "Sync All Tasks" / personal "Auto-Fill" click. Fixed, but the pattern is easy to reintroduce here.
+
+42. **Assigning a task in Sheets/Kanban directly inserts into `standup_tasks`** — `PATCH /api/notion/tasks/<id>` (`notion_update_task()`, `routes/ops.py` ~1303) auto-inserts a `pending` row into the assignee's standup for today the moment `assigned_to` changes, *if* the Notion write succeeds. This is independent of the `/api/standup/auto-fill` pull-based flow. If a task doesn't show up after assigning, check whether the Notion PATCH actually succeeded before assuming Auto-Fill is broken.
+
+43. **Notion "Assigned To" property type varies by workspace — don't hardcode `_multi_select()`.** `notion_store.py::update_task()` writes it via `_assigned_to_prop()`, which reads the live Tasks DB schema (`_get_assigned_to_prop_type()`, cached 5min) and builds a `people`/`select`/`multi_select` payload to match. Notion rejects the **entire** PATCH if any one property's shape is wrong — a bad assumption here used to silently kill status/title/due_date updates bundled in the same request too.

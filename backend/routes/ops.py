@@ -532,6 +532,7 @@ def auto_fill_standup():
             assignees = t.get("assigned_to", "")
             if not sync_all and assigned_name:
                 target_uids = [user_id]
+                insert_allowed = True
             else:
                 names = [n.strip() for n in assignees.split(",") if n.strip()]
                 for n in names:
@@ -539,9 +540,12 @@ def auto_fill_standup():
                         if ename.lower() in n.lower():
                             if eid not in target_uids:
                                 target_uids.append(eid)
-                if not target_uids:
+                if target_uids:
+                    insert_allowed = True
+                else:
                     target_uids = list(emp_name_to_id.values())
-                
+                    insert_allowed = False
+
 
             # Robust cleanup: Ensure users who are no longer assigned do not keep this task
             if sync_all and nid:

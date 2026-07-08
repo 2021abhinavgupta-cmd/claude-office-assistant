@@ -116,6 +116,97 @@ def _multi_select(value: str) -> dict:
     return {"multi_select": [{"name": n} for n in names]}
 
 
+_ASSIGNED_TO_TYPE_CACHE = {"type": None, "ts": 0}
+_WORKSPACE_USERS_CACHE = {"users": None, "ts": 0}
+_CACHE_TTL = 300  # seconds
+
+
+def _get_assigned_to_prop_type() -> Optional[str]:
+    """
+    Reads the Tasks DB schema to find the actual Notion property type of
+    "Assigned To" (e.g. "people", "select", "multi_select"). Different
+    workspaces configure this column differently, and writing the wrong
+    shape makes the ENTIRE page-update request fail (Notion rejects the
+    whole PATCH, not just the mismatched property), which used to happen
+    silently. Cached for _CACHE_TTL seconds since the schema rarely changes.
+    """
+    now = time.time()
+    if _ASSIGNED_TO_TYPE_CACHE["type"] and (now - _ASSIGNED_TO_TYPE_CACHE["ts"]) < _CACHE_TTL:
+        return _ASSIGNED_TO_TYPE_CACHE["type"]
+    try:
+        r = _notion_request("GET", f"https://api.notion.com/v1/databases/{_tasks_db()}", headers=_headers())
+        schema = r.json().get("properties", {})
+        ptype = (schema.get("Assigned To") or {}).get("type")
+        if ptype:
+            _ASSIGNED_TO_TYPE_CACHE["type"] = ptype
+            _ASSIGNED_TO_TYPE_CACHE["ts"] = now
+        return ptype
+    except Exception:
+        logger.exception("Failed to read Assigned To property type from Notion schema")
+        return None
+
+
+def _get_workspace_users() -> list:
+    """Fetches and caches all Notion workspace users (for resolving names -> person IDs)."""
+    now = time.time()
+    if _WORKSPACE_USERS_CACHE["users"] is not None and (now - _WORKSPACE_USERS_CACHE["ts"]) < _CACHE_TTL:
+        return _WORKSPACE_USERS_CACHE["users"]
+    users = []
+    try:
+        cursor = None
+        while True:
+            params = {"page_size": 100}
+            if cursor:
+                params["start_cursor"] = cursor
+            r = _notion_request("GET", "https://api.notion.com/v1/users", headers=_headers(), params=params)
+            data = r.json()
+            for u in data.get("results", []):
+                if u.get("type") == "person" and u.get("name"):
+                    users.append({"id": u["id"], "name": u["name"]})
+            if data.get("has_more"):
+                cursor = data.get("next_cursor")
+            else:
+                break
+        _WORKSPACE_USERS_CACHE["users"] = users
+        _WORKSPACE_USERS_CACHE["ts"] = now
+    except Exception:
+        logger.exception("Failed to fetch Notion workspace users")
+    return users
+
+
+def _resolve_people_ids(names_csv: str) -> list:
+    """Fuzzy-matches comma-separated display names (e.g. 'Abhinav') against
+    real Notion workspace user names (e.g. 'Abhinav Gupta') to get person IDs."""
+    if not names_csv or not str(names_csv).strip():
+        return []
+    users = _get_workspace_users()
+    ids = []
+    for n in [x.strip() for x in str(names_csv).split(",") if x.strip()]:
+        for u in users:
+            if n.lower() in u["name"].lower() or u["name"].lower() in n.lower():
+                if u["id"] not in ids:
+                    ids.append(u["id"])
+                break
+    return ids
+
+
+def _assigned_to_prop(value: str) -> dict:
+    """
+    Builds the correct Notion property payload for "Assigned To" based on
+    its actual configured type, instead of assuming multi_select.
+    """
+    ptype = _get_assigned_to_prop_type()
+    if ptype == "people":
+        ids = _resolve_people_ids(value)
+        if not ids and value:
+            logger.warning(f"Could not resolve any Notion user for Assigned To value: {value!r}")
+        return {"people": [{"id": i} for i in ids]}
+    if ptype == "select":
+        return _select(value)
+    # Default / "multi_select" / unknown-schema fallback (previous behavior)
+    return _multi_select(value)
+
+
 def _date(value: str) -> dict:
     """Notion date property value (ISO date string or empty)."""
     if value:
@@ -525,7 +616,7 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
     if submission_note is not None:
         props["Notes"] = _text(submission_note)
     if assigned_to is not None:
-        props["Assigned To"] = _multi_select(assigned_to)
+        props["Assigned To"] = _assigned_to_prop(assigned_to)
     if new_title is not None:
         props["Task"] = _title(new_title)
     if due_date is not None:
