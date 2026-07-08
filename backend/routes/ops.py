@@ -607,7 +607,7 @@ def auto_fill_standup():
             has_creation_date = True
             try:
                 cr_date = cr_date_val.split("T")[0]
-                if cr_date == today_str and s == "need_to_start":
+                if cr_date == today_str and s in ("not_started", "need_to_start"):
                     is_creation_today = True
                 elif cr_date > today_str:
                     is_future_creation = True
@@ -623,7 +623,7 @@ def auto_fill_standup():
                         cr_date = cr_match.group(1).strip()
                         if _re.match(r"^\d{2}-\d{2}-\d{4}$", cr_date):
                             cr_date = f"{cr_date[6:10]}-{cr_date[3:5]}-{cr_date[0:2]}"
-                        if cr_date == today_str and s == "need_to_start":
+                        if cr_date == today_str and s in ("not_started", "need_to_start"):
                             is_creation_today = True
                         elif cr_date > today_str:
                             is_future_creation = True
