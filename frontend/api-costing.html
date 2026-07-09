@@ -518,26 +518,28 @@ function renderDashboard(d) {
     }
   }
 
-  // Dynamic Limits
-  const limit = d.budget_limit || 20;
-  const warnLimit = limit * 0.8;
-  const critLimit = limit * 0.9;
-  
-  const elBudgetSub = document.getElementById("kpi-budget-sub");
-  if (elBudgetSub) elBudgetSub.textContent = `of ${formatCost(limit, 2)} budget`;
-  
-  const elBbLimit = document.getElementById("bb-limit");
-  if (elBbLimit) elBbLimit.textContent = formatCost(limit, 2);
-  
-  const elWarnChip = document.getElementById("warn-chip");
-  if (elWarnChip) elWarnChip.innerHTML = `⚠ Warning at ${formatCost(warnLimit, 2)} (80%)`;
-  
-  const elCritChip = document.getElementById("crit-chip");
-  if (elCritChip) elCritChip.innerHTML = ` Critical at ${formatCost(critLimit, 2)} (90%)`;
-
   // KPIs
   const allTimeSpent = d.total_spent_ever || 0;
-  const limitVal = d.budget_limit || 20;
+  const hasManualBalance = accountBalance !== null && accountBalance !== undefined;
+
+  // When a real console balance is set, treat total credits as spent + remaining
+  // (actual $ purchased) instead of the static MONTHLY_BUDGET_LIMIT env fallback,
+  // so the utilization bar/thresholds stay consistent with the real number.
+  const limit = hasManualBalance ? (allTimeSpent + accountBalance) : (d.budget_limit || 20);
+  const warnLimit = limit * 0.8;
+  const critLimit = limit * 0.9;
+
+  const elBudgetSub = document.getElementById("kpi-budget-sub");
+  if (elBudgetSub) elBudgetSub.textContent = `of ${formatCost(limit, 2)} budget`;
+
+  const elBbLimit = document.getElementById("bb-limit");
+  if (elBbLimit) elBbLimit.textContent = formatCost(limit, 2);
+
+  const elWarnChip = document.getElementById("warn-chip");
+  if (elWarnChip) elWarnChip.innerHTML = `⚠ Warning at ${formatCost(warnLimit, 2)} (80%)`;
+
+  const elCritChip = document.getElementById("crit-chip");
+  if (elCritChip) elCritChip.innerHTML = ` Critical at ${formatCost(critLimit, 2)} (90%)`;
 
   document.getElementById("kpi-spent").textContent     = formatCost(d.monthly_spend || 0, 4);
   document.getElementById("kpi-calls").textContent     = d.total_calls || 0;
@@ -545,16 +547,16 @@ function renderDashboard(d) {
 
   const elRemaining = document.getElementById("kpi-remaining");
   const elMonthSub  = document.getElementById("kpi-month");
-  if (accountBalance !== null && accountBalance !== undefined) {
+  if (hasManualBalance) {
     elRemaining.textContent = formatCost(accountBalance, 2);
     elMonthSub.textContent  = "Console balance (manual)";
   } else {
-    elRemaining.textContent = formatCost(Math.max(limitVal - allTimeSpent, 0), 2);
+    elRemaining.textContent = formatCost(Math.max(limit - allTimeSpent, 0), 2);
     elMonthSub.textContent  = d.month || "—";
   }
 
   //Usage bar (user requested tracking all-time spend instead of monthly)
-  const pct = Math.min((allTimeSpent / limitVal) * 100, 100);
+  const pct = Math.min((allTimeSpent / limit) * 100, 100);
   const bar  = document.getElementById("budget-bar-fill");
   bar.style.width = pct + "%";
   bar.className = "budget-bar-fill" + (pct >= 90 ? " limit" : pct >= 80 ? " warn" : "");
@@ -570,7 +572,7 @@ function renderDashboard(d) {
     banner.className = "alert-banner visible critical";
     document.getElementById("alert-icon").textContent = "";
     document.getElementById("alert-text").textContent =
-      `CRITICAL: You have spent ${pct.toFixed(1)}% of your monthly budget ($${(d.monthly_spend||0).toFixed(2)} of $${d.budget_limit}). Non-critical tasks pausing soon.`;
+      `CRITICAL: You have spent ${pct.toFixed(1)}% of your budget ($${allTimeSpent.toFixed(2)} of ${formatCost(limit, 2)}). Non-critical tasks pausing soon.`;
   } else if (level === "WARNING") {
     banner.className = "alert-banner visible warning";
     document.getElementById("alert-icon").textContent = "⚠";
