@@ -295,7 +295,7 @@
     </div>
     <div class="kpi-card" style="--accent-color:var(--accent)">
       <div class="kpi-label">Remaining</div>
-      <div class="kpi-value" id="kpi-remaining">—</div>
+      <div class="kpi-value" id="kpi-remaining" onclick="editAccountBalance()" style="cursor:pointer" title="Click to update from Anthropic Console balance">—</div>
       <div class="kpi-sub" id="kpi-month">This month</div>
     </div>
     <div class="kpi-card" style="--accent-color:var(--yellow)">
@@ -432,19 +432,48 @@ function formatUser(userId) {
   return userId;
 }
 
+let accountBalance = null;
+
+async function editAccountBalance() {
+  const current = accountBalance !== null ? accountBalance : "";
+  const input = prompt("Enter real remaining balance from console.anthropic.com (USD):", current);
+  if (input === null) return;
+  const value = parseFloat(input);
+  if (isNaN(value)) { alert("Enter a valid number."); return; }
+  try {
+    const res = await fetch(`${API}/api/account-balance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ balance: value })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    accountBalance = value;
+    if (currentDashboardData) renderDashboard(currentDashboardData);
+  } catch (e) {
+    alert("Failed to save balance.");
+    console.error(e);
+  }
+}
+
 async function loadDashboard() {
   const offlineIds = ["kpi-spent", "kpi-remaining", "kpi-calls", "kpi-alltime"];
   try {
     let url = `${API}/api/usage`;
     if (currentMonthFilter) url += `?month=${currentMonthFilter}`;
     
-    const [usageRes, empRes] = await Promise.all([
+    const [usageRes, empRes, balanceRes] = await Promise.all([
       fetch(url),
-      fetch(`${API}/api/employees`).catch(() => null)
+      fetch(`${API}/api/employees`).catch(() => null),
+      fetch(`${API}/api/account-balance`).catch(() => null)
     ]);
-    
+
     if (!usageRes.ok) throw new Error(`HTTP ${usageRes.status}`);
-    
+
+    if (balanceRes && balanceRes.ok) {
+      const balanceData = await balanceRes.json();
+      accountBalance = balanceData.balance;
+    }
+
     if (empRes && empRes.ok) {
       const empData = await empRes.json();
       (empData.employees || []).forEach(emp => {
@@ -511,10 +540,18 @@ function renderDashboard(d) {
   const limitVal = d.budget_limit || 20;
 
   document.getElementById("kpi-spent").textContent     = formatCost(d.monthly_spend || 0, 4);
-  document.getElementById("kpi-remaining").textContent = formatCost(Math.max(limitVal - allTimeSpent, 0), 2);
   document.getElementById("kpi-calls").textContent     = d.total_calls || 0;
   document.getElementById("kpi-alltime").textContent   = formatCost(allTimeSpent, 4);
-  document.getElementById("kpi-month").textContent     = d.month || "—";
+
+  const elRemaining = document.getElementById("kpi-remaining");
+  const elMonthSub  = document.getElementById("kpi-month");
+  if (accountBalance !== null && accountBalance !== undefined) {
+    elRemaining.textContent = formatCost(accountBalance, 2);
+    elMonthSub.textContent  = "Console balance (manual)";
+  } else {
+    elRemaining.textContent = formatCost(Math.max(limitVal - allTimeSpent, 0), 2);
+    elMonthSub.textContent  = d.month || "—";
+  }
 
   //Usage bar (user requested tracking all-time spend instead of monthly)
   const pct = Math.min((allTimeSpent / limitVal) * 100, 100);

@@ -158,6 +158,38 @@ def budget_status():
     return jsonify({**summary, "alert_level": alert_level, "percent_used": pct})
 
 
+@system_bp.route("/api/account-balance", methods=["GET", "POST"])
+def account_balance():
+    """Manually-tracked real Anthropic Console credit balance.
+
+    The app's own budget tracking is an internal cost estimate, not the
+    actual org credit balance (Anthropic exposes no API for that), so this
+    is a simple key/value override the admin updates by hand after each
+    top-up / from the console.
+    """
+    from db import get_connection
+    conn = get_connection()
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        try:
+            balance = round(float(body.get("balance")), 2)
+        except (TypeError, ValueError):
+            conn.close()
+            return jsonify({"error": "balance must be a number"}), 400
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('account_balance', ?)",
+                (str(balance),),
+            )
+        conn.close()
+        return jsonify({"balance": balance})
+
+    cur = conn.execute("SELECT value FROM app_settings WHERE key='account_balance'")
+    row = cur.fetchone()
+    conn.close()
+    return jsonify({"balance": float(row[0]) if row else None})
+
+
 @system_bp.route("/api/usage", methods=["GET"])
 def usage_dashboard():
     """Full usageDashboard data — powers the cost monitoringDashboard."""
