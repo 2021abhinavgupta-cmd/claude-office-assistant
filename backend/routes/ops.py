@@ -1309,7 +1309,14 @@ def notion_update_task(notion_id: str):
     
     # ── Auto-sync assignment to standup_tasks ─────────────────────────────────
     if result:
-        task_title = body.get("new_title") or body.get("task_title") or "Untitled Task"
+        task_title = body.get("new_title") or body.get("task_title") or ""
+        if not task_title:
+            summary = notion_store.get_task_summary(notion_id)
+            parts = [p for p in (summary.get("client_name"), summary.get("title")) if p]
+            task_title = " — ".join(parts) or "Untitled Task"
+            if summary.get("content"):
+                preview = summary["content"][:40] + "..." if len(summary["content"]) > 40 else summary["content"]
+                task_title = f"{task_title} ({preview})"
         new_due = body.get("due_date")
         
         su_conn = _su_conn()
@@ -1317,8 +1324,8 @@ def notion_update_task(notion_id: str):
         # Sync title & due_date to any existing standup tasks tied to this notion_id
         with su_conn:
             su_conn.execute(
-                "UPDATE standup_tasks SET title=COALESCE(?, title), due_date=COALESCE(?, due_date) WHERE notion_id=?",
-                (task_title if task_title != "Untitled Task" else None, new_due, notion_id)
+                "UPDATE standup_tasks SET title=?, due_date=COALESCE(?, due_date) WHERE notion_id=?",
+                (task_title, new_due, notion_id)
             )
             
         today_str = datetime.utcnow().strftime("%Y-%m-%d")

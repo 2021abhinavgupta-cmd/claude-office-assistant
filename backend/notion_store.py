@@ -579,6 +579,34 @@ def get_task_type(notion_id: str) -> str:
         return ""
 
 
+def get_task_summary(notion_id: str) -> dict:
+    """Fetches a single task page and returns its title/client/content, for
+    building a readable standup entry when the caller didn't supply a title."""
+    if not is_configured() or not notion_id:
+        return {}
+    try:
+        r = _notion_request("GET", f"https://api.notion.com/v1/pages/{notion_id}", headers=_headers())
+        props = r.json().get("properties", {})
+        desc = _get_string_val(props.get("Notes", {}))
+        content = _get_string_val(props.get("Content", {}))
+        if not content and desc and "|" in desc:
+            for pt in [pt.strip() for pt in desc.split("|")]:
+                if pt.lower().startswith("content:"):
+                    content = pt[8:].strip()
+                    break
+        client_name_val = (_get_string_val(props.get("Customer Name")) or _get_string_val(props.get("Client Name"))
+                            or _get_string_val(props.get("Client")) or _get_string_val(props.get("Brand"))
+                            or _get_string_val(props.get("Customer")) or _get_string_val(props.get("Account")))
+        return {
+            "title": _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})) or _get_text(props.get("Post", {})),
+            "client_name": client_name_val,
+            "content": content or desc,
+        }
+    except Exception:
+        logger.exception(f"Notion get_task_summary failed for {notion_id}")
+        return {}
+
+
 def update_task(notion_id: str, status: str = None, progress: int = None,
                 submission_note: str = None, assigned_to: str = None,
                 new_title: str = None, due_date: str = None,
