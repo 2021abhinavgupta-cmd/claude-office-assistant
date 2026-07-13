@@ -138,6 +138,10 @@ SYSTEM_PROMPTS = {
     "html_design": (
         "TASK-SPECIFIC OUTPUT: One complete, self-contained HTML page.\n\n"
 
+        "OUTPUT FORMAT — STRICT:\n"
+        "- Reply with ONLY a single ```html code block containing the complete page.\n"
+        "- No introduction, no explanation, no summary before or after the code block. Just the code.\n\n"
+
         "TECHNICAL:\n"
         "- Raw HTML from <!DOCTYPE html> through </html>; all CSS in <style>, all JS in <script>\n"
         "- External resources: Google Fonts only\n"

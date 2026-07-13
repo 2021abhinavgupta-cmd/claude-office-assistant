@@ -1582,6 +1582,17 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
               }, 80);
             }
           }
+          if (event.task_type === "html_design" && typeof extractFirstHtmlFence === "function") {
+            const htmlCode = extractFirstHtmlFence(fullText);
+            if (htmlCode) {
+              setTimeout(() => {
+                try {
+                  downloadHtmlArtifact(htmlCode, event.title);
+                  showToast(" Downloading HTML file…", "success");
+                } catch (_) {}
+              }, 80);
+            }
+          }
           updateHeaderChips(event.task_type || "general", event.model_tier || "haiku");
           updateInputMeta(event.task_type || "general", event.model_used || "");
           convTitleHeader.textContent = event.title || convTitleHeader.textContent;
@@ -1907,6 +1918,19 @@ window.downloadCode = function(btn, ext) {
   const originalText = btn.innerHTML;
   btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22d3a0" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> <span style="color:#22d3a0">Saved</span>`;
   setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+};
+
+window.downloadHtmlArtifact = function(code, title) {
+  const blob = new Blob([code], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const safeName = String(title || "page").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "page";
+  a.download = `${safeName}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 };
 
 // ── Copy Message ──────────────────────────────────────────────────────────────
