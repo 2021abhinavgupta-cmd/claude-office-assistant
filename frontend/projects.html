@@ -879,10 +879,12 @@ function renderClientSheets(clientId) {
     // Parse description for Brief, Idea, Caption, Link
     // Format: Content: xxx | Idea: yyy | Scripts: zzz | Caption: aaa | Link: www
     const notes = t.description || "";
-    let creationDate = "", content = "", idea = "", scripts = "", caption = "", link = "";
-    
-    const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
-    if (crMatch) creationDate = crMatch[1].trim();
+    let creationDate = t.creation_date || "", content = "", idea = "", scripts = "", caption = "", link = "";
+
+    if (!creationDate) {
+      const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
+      if (crMatch) creationDate = crMatch[1].trim();
+    }
 
     const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/);
     if (cntMatch) content = cntMatch[1].trim();
@@ -1161,7 +1163,6 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   const myNotes = tr.cells[12].innerText.trim();
   
   const detailParts = [];
-  if (creation_date) detailParts.push(`Creation Date: ${creation_date}`);
   if (content) detailParts.push(`Content: ${content}`);
   if (idea) detailParts.push(`Idea: ${idea}`);
   if (scripts) detailParts.push(`Scripts: ${scripts}`);
@@ -1185,6 +1186,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   
   const changedPayload = {};
     if (taskObj.description !== notes) changedPayload.submission_note = notes;
+    if ((taskObj.creation_date || "") !== creation_date) changedPayload.creation_date = creation_date;
     if (taskObj.due_date !== due_date) changedPayload.due_date = due_date;
     if (taskObj.title !== newTitle) changedPayload.new_title = newTitle;
     if (taskObj.assigned_to !== assigned_to) changedPayload.assigned_to = assigned_to;
@@ -1193,6 +1195,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     if (Object.keys(changedPayload).length === 0) return;
 
     taskObj.description = notes;
+    taskObj.creation_date = creation_date;
     taskObj.due_date = due_date;
     taskObj.title = newTitle;
     taskObj.assigned_to = assigned_to;

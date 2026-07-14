@@ -89,6 +89,31 @@ def _tasks_db() -> str:
     return os.getenv("NOTION_TASKS_DB_ID", TASKS_DB_ID)
 
 
+_creation_date_prop_ready = False
+
+
+def _ensure_creation_date_property() -> bool:
+    """One-time, cached schema patch: adds 'Creation Date' (date type) to the
+    Tasks DB if it doesn't already exist. Notion rejects an entire page PATCH
+    if it references an unknown property, so callers must check this before
+    writing to it."""
+    global _creation_date_prop_ready
+    if _creation_date_prop_ready:
+        return True
+    try:
+        _notion_request(
+            "PATCH",
+            f"https://api.notion.com/v1/databases/{_tasks_db()}",
+            headers=_headers(),
+            json={"properties": {"Creation Date": {"date": {}}}},
+        )
+        _creation_date_prop_ready = True
+        return True
+    except Exception:
+        logger.exception("Failed to ensure Notion 'Creation Date' property exists")
+        return False
+
+
 # ── Low-level helpers ─────────────────────────────────────────────────────────
 
 def _text(value: str) -> dict:
@@ -601,6 +626,8 @@ def get_task_summary(notion_id: str) -> dict:
             "title": _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})) or _get_text(props.get("Post", {})),
             "client_name": client_name_val,
             "content": content or desc,
+            "description": desc,
+            "creation_date": _get_date(props.get("Creation Date", {})),
         }
     except Exception:
         logger.exception(f"Notion get_task_summary failed for {notion_id}")
@@ -609,10 +636,10 @@ def get_task_summary(notion_id: str) -> dict:
 
 def update_task(notion_id: str, status: str = None, progress: int = None,
                 submission_note: str = None, assigned_to: str = None,
-                new_title: str = None, due_date: str = None,
+                new_title: str = None, due_date: str = None, creation_date: str = None,
                 task_title: str = "", assignee: str = "", client_name: str = "") -> bool:
     """
-    Update Status, Progress, SubmissionNote, AssignedTo, Title, and/or DueDate on a task page.
+    Update Status, Progress, SubmissionNote, AssignedTo, Title, DueDate, and/or CreationDate on a task page.
     Pass only the fields you want to change.
     Automatically sends WhatsApp notification on key status changes.
     """
@@ -649,6 +676,8 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
         props["Task"] = _title(new_title)
     if due_date is not None:
         props["Due Date"] = _date(due_date)
+    if creation_date is not None and _ensure_creation_date_property():
+        props["Creation Date"] = _date(creation_date)
 
     if not props:
         return True  # nothing to update

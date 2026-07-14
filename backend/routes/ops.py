@@ -44,6 +44,28 @@ def _su_conn():
     from db import get_connection
     return get_connection()
 
+
+def _task_creation_is_future(notion_id: str, today_str: str) -> bool:
+    """True if the live Notion Creation Date for this task is after today.
+    Mirrors the property-then-text-fallback logic used in auto_fill_standup()."""
+    summary = notion_store.get_task_summary(notion_id)
+    if not summary:
+        return False
+    cr_date_val = summary.get("creation_date")
+    if cr_date_val:
+        try:
+            return cr_date_val.split("T")[0] > today_str
+        except Exception:
+            return False
+    desc = summary.get("description", "") or ""
+    m = re.search(r'creation date\s*:\s*([\d-]+)', desc, re.IGNORECASE)
+    if not m:
+        return False
+    cr_date = m.group(1).strip()
+    if re.match(r"^\d{2}-\d{2}-\d{4}$", cr_date):
+        cr_date = f"{cr_date[6:10]}-{cr_date[3:5]}-{cr_date[0:2]}"
+    return cr_date > today_str
+
 def _pt_conn():
     from db import get_connection
     return get_connection()
@@ -360,8 +382,28 @@ def get_my_tasks():
         (user_id, date_str),
     )
     rows = cur.fetchall()
+
+    # Auto-clean: a task pulled into this snapshot earlier may have had its live
+    # Notion Creation Date pushed to the future since then (e.g. postponed in
+    # Sheets) — the local row doesn't self-heal on its own, so re-check and drop
+    # it here rather than leaving it stuck until the next manual Auto-Fill/Sync.
+    if date_str == datetime.utcnow().strftime("%Y-%m-%d") and notion_store.is_configured():
+        future_ids = []
+        for r in rows:
+            nid, row_status = r[6], r[2]
+            if nid and row_status not in ("done", "deleted", "delegated"):
+                try:
+                    if _task_creation_is_future(nid, date_str):
+                        future_ids.append(r[0])
+                except Exception:
+                    pass
+        if future_ids:
+            with conn:
+                conn.executemany("DELETE FROM standup_tasks WHERE id=?", [(i,) for i in future_ids])
+            rows = [r for r in rows if r[0] not in future_ids]
+
     conn.close()
-    
+
     tasks = []
     for r in rows:
         if r[2] in ("deleted", "delegated"): continue
@@ -1295,15 +1337,16 @@ def notion_update_task(notion_id: str):
                  "emp004":"Kshitij","emp006":"Mohit",
                  "emp007":"Palak","emp008":"Happy"}
                  
-    raw_assigned = body.get("assigned_to", "")
-    raw_assigned_ids = [a.strip() for a in raw_assigned.split(",") if a.strip()]
-    mapped_assigned = ",".join(EMP_NAMES.get(a, a) for a in raw_assigned_ids)
+    raw_assigned = body.get("assigned_to")
+    raw_assigned_ids = [a.strip() for a in raw_assigned.split(",") if a.strip()] if raw_assigned is not None else []
+    mapped_assigned = ",".join(EMP_NAMES.get(a, a) for a in raw_assigned_ids) if raw_assigned is not None else None
 
     result = notion_store.update_task(
         notion_id=notion_id, status=body.get("status"),
         progress=body.get("progress"), submission_note=body.get("submission_note"),
         assigned_to=mapped_assigned, new_title=body.get("new_title"),
-        due_date=body.get("due_date"), task_title=body.get("task_title", ""),
+        due_date=body.get("due_date"), creation_date=body.get("creation_date"),
+        task_title=body.get("task_title", ""),
         assignee=body.get("assignee", ""), client_name=body.get("client_name", ""),
     )
     
