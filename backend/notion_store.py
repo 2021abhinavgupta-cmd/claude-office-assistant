@@ -535,8 +535,11 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                 caption = _get_string_val(props.get("Caption", {}))
                 file_link = props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
                 
-                # Parse pipe-separated values from description/Notes if present
-                if not brief and desc and "|" in desc:
+                # Parse pipe-separated values from description/Notes if present.
+                # NOTE: single-field Notes (e.g. only "Scripts: ...") has no "|" —
+                # desc.split("|") still returns [desc] as one part, so this must
+                # NOT require "|" in desc or single-field saves never get parsed.
+                if not brief and desc:
                     parts = [pt.strip() for pt in desc.split("|")]
                     for pt in parts:
                         pt_lower = pt.lower()
