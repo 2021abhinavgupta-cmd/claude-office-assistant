@@ -1,0 +1,38 @@
+#!/bin/sh
+# Pre-commit hook: blocks commits that introduce undefined-name bugs in
+# staged Python files. This repo has a recurring bug pattern — a variable
+# set inside one branch of an if/else (or a loop) then referenced
+# unconditionally afterward — that pyflakes catches instantly but nobody
+# runs manually before committing. This makes it automatic.
+#
+# Install (one-time, per local checkout — .git/hooks/ isn't tracked by git):
+#   cp scripts/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Only blocks on "undefined name" — the actual NameError-causing class of
+# bug. Does NOT block on unused imports, unused variables, or other
+# pyflakes noise (this repo has plenty of pre-existing warnings in those
+# categories that aren't worth gating every commit on).
+
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$')
+
+if [ -z "$STAGED_PY" ]; then
+  exit 0
+fi
+
+PYFLAKES=".venv/Scripts/python.exe"
+if [ ! -f "$PYFLAKES" ]; then
+  PYFLAKES="python"
+fi
+
+ERRORS=$("$PYFLAKES" -m pyflakes $STAGED_PY 2>&1 | grep "undefined name")
+
+if [ -n "$ERRORS" ]; then
+  echo "pre-commit: pyflakes found undefined-name errors in staged files:"
+  echo "$ERRORS"
+  echo ""
+  echo "Fix these (or run with --no-verify to skip this check) before committing."
+  exit 1
+fi
+
+exit 0

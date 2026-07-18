@@ -1176,6 +1176,17 @@ def notion_status():
     })
 
 
+@ops_bp.route("/api/notion/schema-check", methods=["GET"])
+def notion_schema_check():
+    """
+    Compares the live Notion Tasks/Clients DB schemas against what this
+    codebase actually reads/writes. Hit this after editing Notion properties
+    by hand, or whenever something that reads Notion data starts silently
+    returning empty values — it's usually a renamed/missing property.
+    """
+    return jsonify(notion_store.get_schema_report())
+
+
 @ops_bp.route("/api/notion/clients", methods=["GET"])
 def notion_list_clients():
     status_filter = request.args.get("status", "")

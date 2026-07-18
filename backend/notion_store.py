@@ -114,6 +114,93 @@ def _ensure_creation_date_property() -> bool:
         return False
 
 
+# ── Schema health check ──────────────────────────────────────────────────────
+# This codebase's most common recurring bug this session was a Notion
+# property being renamed/missing/never-created and the code silently
+# falling back to empty data instead of erroring (Creation Date, Scripts,
+# extra_notes were all this exact bug). This gives a way to catch that
+# BEFORE it silently breaks something, instead of after a client complains.
+
+# Properties the code actually depends on. "required" = core functionality
+# breaks or silently degrades without it. "optional" = one of several
+# fallback names the code already tries — fine if missing, just documents
+# what the fallback chain is covering.
+_TASKS_DB_EXPECTED = {
+    "required": ["Task", "Status", "Due Date", "Assigned To", "Client ID",
+                 "Notes", "Progress", "Task Type"],
+    "optional_fallbacks": {
+        "title (Task)":        ["Post Title", "Post"],
+        "client name":         ["Customer Name", "Client Name", "Client", "Brand", "Customer", "Account"],
+        "due date":            ["Post Day"],
+        "type":                ["Type"],
+        "scripts/copy":        ["Scripts/ Copy", "Script/ Copy"],
+        "other content":       ["Brief", "Content", "Idea", "Caption"],
+        "file link":           ["File (Drive Link)", "File", "Drive Link"],
+        "creation date (auto-created on first write)": ["Creation Date"],
+    },
+}
+_CLIENTS_DB_EXPECTED = {
+    "required": ["Client", "Contact", "Requirements", "Deadline", "Budget", "Notes", "Status"],
+    "optional_fallbacks": {},
+}
+
+
+def _fetch_db_schema(db_id: str) -> dict:
+    """Returns {property_name: property_type} for a Notion database, or {} on failure."""
+    try:
+        r = _notion_request("GET", f"https://api.notion.com/v1/databases/{db_id}", headers=_headers())
+        return {k: v.get("type") for k, v in r.json().get("properties", {}).items()}
+    except Exception:
+        logger.exception(f"Failed to fetch Notion DB schema for {db_id}")
+        return {}
+
+
+def _check_db_schema(db_id: str, expected: dict) -> dict:
+    schema = _fetch_db_schema(db_id)
+    if not schema:
+        return {"reachable": False, "missing_required": [], "present_fallbacks": {}, "properties": {}}
+
+    missing_required = [p for p in expected["required"] if p not in schema]
+    present_fallbacks = {}
+    for label, names in expected.get("optional_fallbacks", {}).items():
+        present = [n for n in names if n in schema]
+        if len(present) < len(names):
+            present_fallbacks[label] = {"present": present, "missing": [n for n in names if n not in present]}
+
+    return {
+        "reachable": True,
+        "missing_required": missing_required,
+        "present_fallbacks": present_fallbacks,
+        "properties": schema,
+    }
+
+
+def get_schema_report() -> dict:
+    """
+    Compares the live Notion Tasks/Clients DB schemas against what this
+    codebase actually reads/writes. Returns a dict with an "ok" flag and
+    per-DB details — surface this on an admin page or hit it directly
+    (GET /api/notion/schema-check) after editing Notion properties by hand.
+    """
+    if not is_configured():
+        return {"ok": False, "configured": False, "error": "Notion not configured"}
+
+    tasks_report = _check_db_schema(_tasks_db(), _TASKS_DB_EXPECTED)
+    clients_report = _check_db_schema(_clients_db(), _CLIENTS_DB_EXPECTED)
+
+    ok = (
+        tasks_report["reachable"] and clients_report["reachable"]
+        and not tasks_report["missing_required"] and not clients_report["missing_required"]
+    )
+
+    return {
+        "ok": ok,
+        "configured": True,
+        "tasks_db": tasks_report,
+        "clients_db": clients_report,
+    }
+
+
 # ── Low-level helpers ─────────────────────────────────────────────────────────
 
 def _text(value: str) -> dict:
