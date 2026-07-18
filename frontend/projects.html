@@ -12,7 +12,7 @@
   <style>
     :root{--bg:#0c0c10;--s1:#131318;--s2:#1c1c24;--bdr:rgba(255,255,255,.07);--txt:#e8e8f0;--muted:#6b6b8a;--acc:#f5a623;--grn:#22d3a0;--red:#ff5c5c;--blu:#5c9eff;--r:12px;--rs:8px}
     *{margin:0;padding:0;box-sizing:border-box}
-    html,body{height:100%;overflow:hidden;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt)}
+    html,body{height:100%;overflow:hidden;overscroll-behavior-x:none;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt)}
     body{display:flex;flex-direction:column;min-height:100vh;}
     .wrap{flex:1;display:flex;flex-direction:column;padding:20px 28px;overflow:hidden;height:100vh;}
 
@@ -797,6 +797,23 @@ function updateSheetMsDisplay(chk) {
   }
 }
 
+// Stops a fast 2-finger trackpad swipe from triggering the browser's
+// back/forward navigation gesture once a horizontally-scrollable element
+// hits its scroll boundary. overscroll-behavior-x:none alone doesn't
+// reliably catch this on Windows Chrome/Edge for high-velocity swipes.
+function preventEdgeSwipeNav(el) {
+  if (!el || el.__edgeSwipeGuarded) return;
+  el.__edgeSwipeGuarded = true;
+  el.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    const atLeftEdge = el.scrollLeft <= 0;
+    const atRightEdge = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    if ((e.deltaX < 0 && atLeftEdge) || (e.deltaX > 0 && atRightEdge)) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+}
+
 function renderClientSheets(clientId) {
   const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
   if(!client) return;
@@ -1010,8 +1027,9 @@ function renderClientSheets(clientId) {
   if (newScrollWrapper) {
     newScrollWrapper.scrollTop = scrollTop;
     newScrollWrapper.scrollLeft = scrollLeft;
+    preventEdgeSwipeNav(newScrollWrapper);
   }
-  
+
   const tbody = container.querySelector('.c-sheets tbody');
   if (tbody && typeof Sortable !== 'undefined') {
     new Sortable(tbody, {
