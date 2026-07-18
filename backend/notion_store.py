@@ -264,11 +264,12 @@ def _get_multi_select(prop: dict) -> str:
     return ""
 
 
-_page_title_cache = {}
+_page_title_cache = {}  # page_id -> (title, cached_at)
 
 def _fetch_page_title(page_id: str) -> str:
-    if page_id in _page_title_cache:
-        return _page_title_cache[page_id]
+    cached = _page_title_cache.get(page_id)
+    if cached and (time.time() - cached[1]) < _CACHE_TTL:
+        return cached[0]
     try:
         r = _notion_request("GET", f"https://api.notion.com/v1/pages/{page_id}", headers=_headers())
         if r.status_code == 200:
@@ -278,10 +279,10 @@ def _fetch_page_title(page_id: str) -> str:
             for k, v in props.items():
                 if v.get("type") == "title":
                     title = _get_text(v)
-                    _page_title_cache[page_id] = title
+                    _page_title_cache[page_id] = (title, time.time())
                     return title
     except: pass
-    _page_title_cache[page_id] = ""
+    _page_title_cache[page_id] = ("", time.time())
     return ""
 
 def _get_string_val(prop: dict) -> str:
@@ -342,7 +343,7 @@ def create_client(name: str, contact: str = "", requirements: str = "",
         return None
 
     payload = {
-        "parent": {"database_id": CLIENTS_DB_ID},
+        "parent": {"database_id": _clients_db()},
         "properties": {
             "Client":       _title(name),
             "Contact":      _text(contact),
@@ -397,18 +398,21 @@ def list_clients(status_filter: str = "") -> list:
             data = r.json()
             pages = data.get("results", [])
             for p in pages:
-                props = p.get("properties", {})
-                clients.append({
-                    "notion_id":    p["id"],
-                    "name":         _get_text(props.get("Client", {})),
-                    "contact":      _get_text(props.get("Contact", {})),
-                    "requirements": _get_text(props.get("Requirements", {})),
-                    "deadline":     _get_date(props.get("Deadline", {})),
-                    "budget":       _get_text(props.get("Budget", {})),
-                    "notes":        _get_text(props.get("Notes", {})),
-                    "status":       _get_select(props.get("Status", {})),
-                    "url":          p.get("url", ""),
-                })
+                try:
+                    props = p.get("properties", {})
+                    clients.append({
+                        "notion_id":    p["id"],
+                        "name":         _get_text(props.get("Client", {})),
+                        "contact":      _get_text(props.get("Contact", {})),
+                        "requirements": _get_text(props.get("Requirements", {})),
+                        "deadline":     _get_date(props.get("Deadline", {})),
+                        "budget":       _get_text(props.get("Budget", {})),
+                        "notes":        _get_text(props.get("Notes", {})),
+                        "status":       _get_select(props.get("Status", {})),
+                        "url":          p.get("url", ""),
+                    })
+                except Exception:
+                    logger.exception(f"Notion list_clients: skipping malformed page {p.get('id')}")
             has_more = data.get("has_more", False)
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
@@ -461,7 +465,7 @@ def create_task(title: str, client_name: str, client_notion_id: str,
             "Task":          _title(title),
             "Customer Name": _text(client_name),
             "Client ID":     _text(client_notion_id),
-            "Assigned To":   _multi_select(assigned_to),
+            "Assigned To":   _assigned_to_prop(assigned_to),
             "Due Date":      _date(due_date),
             "Status":        _select(status),
             "Progress":      _number(progress),
@@ -526,56 +530,59 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
             data = r.json()
             pages = data.get("results", [])
             for p in pages:
-                props = p.get("properties", {})
-                desc = _get_string_val(props.get("Notes", {}))
-                brief = _get_string_val(props.get("Brief", {}))
-                content = _get_string_val(props.get("Content", {}))
-                idea = _get_string_val(props.get("Idea", {}))
-                scripts_copy = _get_string_val(props.get("Scripts/ Copy", {})) or _get_string_val(props.get("Script/ Copy", {}))
-                caption = _get_string_val(props.get("Caption", {}))
-                file_link = props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
-                
-                # Parse pipe-separated values from description/Notes if present.
-                # NOTE: single-field Notes (e.g. only "Scripts: ...") has no "|" —
-                # desc.split("|") still returns [desc] as one part, so this must
-                # NOT require "|" in desc or single-field saves never get parsed.
-                if not brief and desc:
-                    parts = [pt.strip() for pt in desc.split("|")]
-                    for pt in parts:
-                        pt_lower = pt.lower()
-                        if pt_lower.startswith("brief:"): brief = pt[6:].strip()
-                        elif pt_lower.startswith("content:"): content = pt[8:].strip()
-                        elif pt_lower.startswith("idea:"): idea = pt[5:].strip()
-                        elif pt_lower.startswith("scripts:") or pt_lower.startswith("script:"): scripts_copy = pt.split(":", 1)[1].strip()
-                        elif pt_lower.startswith("scripts/copy:") or pt_lower.startswith("script/copy:"): scripts_copy = pt.split(":", 1)[1].strip()
-                        elif pt_lower.startswith("caption:"): caption = pt[8:].strip()
-                        elif pt_lower.startswith("link:"): file_link = pt[5:].strip()
-                        elif pt_lower.startswith("file:"): file_link = pt[5:].strip()
+                try:
+                    props = p.get("properties", {})
+                    desc = _get_string_val(props.get("Notes", {}))
+                    brief = _get_string_val(props.get("Brief", {}))
+                    content = _get_string_val(props.get("Content", {}))
+                    idea = _get_string_val(props.get("Idea", {}))
+                    scripts_copy = _get_string_val(props.get("Scripts/ Copy", {})) or _get_string_val(props.get("Script/ Copy", {}))
+                    caption = _get_string_val(props.get("Caption", {}))
+                    file_link = props.get("File (Drive Link)", {}).get("url", "") or props.get("File", {}).get("url", "") or props.get("Drive Link", {}).get("url", "") or _get_text(props.get("File (Drive Link)", {})) or _get_text(props.get("File", {}))
 
-                client_name_val = _get_string_val(props.get("Customer Name")) or _get_string_val(props.get("Client Name")) or _get_string_val(props.get("Client")) or _get_string_val(props.get("Brand")) or _get_string_val(props.get("Customer")) or _get_string_val(props.get("Account"))
-                
-                tasks.append({
-                    "notion_id":   p["id"],
-                    "title":        _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})) or _get_text(props.get("Post", {})),
-                    "client_name":  client_name_val,
-                    "client_notion_id": _get_text(props.get("Client ID", {})),
-                    "assigned_to":  _get_multi_select(props.get("Assigned To", {})),
-                    "due_date":     _get_date(props.get("Due Date", {})) or _get_date(props.get("Post Day", {})),
-            "creation_date":  _get_date(props.get("Creation Date", {})),
-                    "status":       _get_select(props.get("Status", {})),
-                    "progress":    _get_number(props.get("Progress", {})),
-                    "service":     _get_select(props.get("Task Type", {})),
-                    "description":  desc,
-                    "url":         p.get("url", ""),
-                    "type":         _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {})),
-                    "brief":        brief,
-                    "content":      content,
-                    "idea":         idea,
-                    "scripts_copy": scripts_copy,
-                    "caption":      caption,
-                    "file_link":    file_link,
-                    "created_time": p.get("created_time", "")
-                })
+                    # Parse pipe-separated values from description/Notes if present.
+                    # NOTE: single-field Notes (e.g. only "Scripts: ...") has no "|" —
+                    # desc.split("|") still returns [desc] as one part, so this must
+                    # NOT require "|" in desc or single-field saves never get parsed.
+                    if not brief and desc:
+                        parts = [pt.strip() for pt in desc.split("|")]
+                        for pt in parts:
+                            pt_lower = pt.lower()
+                            if pt_lower.startswith("brief:"): brief = pt[6:].strip()
+                            elif pt_lower.startswith("content:"): content = pt[8:].strip()
+                            elif pt_lower.startswith("idea:"): idea = pt[5:].strip()
+                            elif pt_lower.startswith("scripts:") or pt_lower.startswith("script:"): scripts_copy = pt.split(":", 1)[1].strip()
+                            elif pt_lower.startswith("scripts/copy:") or pt_lower.startswith("script/copy:"): scripts_copy = pt.split(":", 1)[1].strip()
+                            elif pt_lower.startswith("caption:"): caption = pt[8:].strip()
+                            elif pt_lower.startswith("link:"): file_link = pt[5:].strip()
+                            elif pt_lower.startswith("file:"): file_link = pt[5:].strip()
+
+                    client_name_val = _get_string_val(props.get("Customer Name")) or _get_string_val(props.get("Client Name")) or _get_string_val(props.get("Client")) or _get_string_val(props.get("Brand")) or _get_string_val(props.get("Customer")) or _get_string_val(props.get("Account"))
+
+                    tasks.append({
+                        "notion_id":   p["id"],
+                        "title":        _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})) or _get_text(props.get("Post", {})),
+                        "client_name":  client_name_val,
+                        "client_notion_id": _get_text(props.get("Client ID", {})),
+                        "assigned_to":  _get_multi_select(props.get("Assigned To", {})),
+                        "due_date":     _get_date(props.get("Due Date", {})) or _get_date(props.get("Post Day", {})),
+                        "creation_date":  _get_date(props.get("Creation Date", {})),
+                        "status":       _get_select(props.get("Status", {})),
+                        "progress":    _get_number(props.get("Progress", {})),
+                        "service":     _get_select(props.get("Task Type", {})),
+                        "description":  desc,
+                        "url":         p.get("url", ""),
+                        "type":         _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {})),
+                        "brief":        brief,
+                        "content":      content,
+                        "idea":         idea,
+                        "scripts_copy": scripts_copy,
+                        "caption":      caption,
+                        "file_link":    file_link,
+                        "created_time": p.get("created_time", "")
+                    })
+                except Exception:
+                    logger.exception(f"Notion list_tasks: skipping malformed page {p.get('id')}")
             has_more = data.get("has_more", False)
             if has_more:
                 payload["start_cursor"] = data.get("next_cursor")
@@ -617,7 +624,7 @@ def get_task_summary(notion_id: str) -> dict:
         props = r.json().get("properties", {})
         desc = _get_string_val(props.get("Notes", {}))
         content = _get_string_val(props.get("Content", {}))
-        if not content and desc and "|" in desc:
+        if not content and desc:
             for pt in [pt.strip() for pt in desc.split("|")]:
                 if pt.lower().startswith("content:"):
                     content = pt[8:].strip()
