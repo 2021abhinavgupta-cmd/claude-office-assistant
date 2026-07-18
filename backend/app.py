@@ -691,8 +691,10 @@ Valid USER_IDs you can assign memories to:
     if project_id:
         project = project_store.get_project(project_id)
         if project:
-            if project.get("custom_instructions"):
-                sections.append(f"## Custom Instructions\n{project['custom_instructions']}")
+            if project.get("instructions"):
+                sections.append(f"## Custom Instructions\n{project['instructions']}")
+            if project.get("memory"):
+                sections.append(f"## Project Memory\n{project['memory']}")
             if message:
                 matches = kb_retriever.search_hybrid(project_id, user_id, message, limit=8)
                 kb_sources = kb_retriever.unique_doc_labels(matches)
@@ -1320,6 +1322,11 @@ def _parse_slides(markdown: str) -> list:
                 bullets.append(ls[2:].strip())
             elif re.match(r"^\s*(?:IMAGE|IMG|img)\s*:", ls, re.I):
                 continue
+
+        slides.append({"title": title, "bullets": bullets, "notes": notes})
+
+    return slides
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MULTI-TURN CONVERSATION ROUTES
@@ -2379,31 +2386,14 @@ def delete_memory(user_id, memory_id):
 
 
 # ──Projects ──────────────────────────────────────────────────────────────────
-@app.route("/api/projects", methods=["GET"])
-def list_projects():
-    user_id = request.args.get("user_id")
-    if not user_id:
-        return jsonify({"error": "user_id is required"}), 400
-    return jsonify({"projects": project_store.get_projects(user_id)})
-
-@app.route("/api/projects", methods=["POST"])
-def create_project():
-    data = request.get_json(silent=True) or {}
-    user_id = data.get("user_id")
-    name = data.get("name", "New Project")
-    custom_instructions = data.get("custom_instructions", "")
-    if not user_id:
-        return jsonify({"error": "user_id is required"}), 400
-    p = project_store.create_project(user_id, name, custom_instructions)
-    return jsonify(p), 201
-
-@app.route("/api/projects/<project_id>", methods=["GET"])
-def get_project(project_id):
-    user_id = request.args.get("user_id")
-    p = project_store.get_project(project_id)
-    if not p: return jsonify({"error": "Not found"}), 404
-    return jsonify(p)
-
+# NOTE: GET/POST /api/projects and GET /api/projects/<id> are already defined
+# above (~line 1450, api_get_projects/api_create_project/api_get_project) —
+# those are the live routes since Flask keeps whichever rule was registered
+# first. A second, unreachable copy used to live here (list_projects/
+# create_project/get_project) and was deleted since it could never execute
+# and only risked someone editing the dead copy by mistake (see CLAUDE.md
+# gotcha on duplicate route definitions in this file). PATCH/DELETE below
+# are NOT duplicated anywhere else and are the only place they're defined.
 @app.route("/api/projects/<project_id>", methods=["PATCH"])
 def update_project(project_id):
     data = request.get_json(silent=True) or {}
@@ -3145,14 +3135,15 @@ def auto_generate_tasks(client_id):
             )
             created_ids.append(cur.lastrowid)
 
-        # Wire sequential dependencies (each task depends on the one before it within service)
+        # Wire sequential dependencies (each task depends on the one before it within service).
+        # Pair by position (ordered_tasks[i] was inserted as created_ids[i] in the
+        # loop above) rather than ordered_tasks.index(tmpl) — .index() always
+        # resolves to the FIRST matching dict, so two tasks with identical
+        # title/assignee/due_date/order/service (e.g. duplicated custom tasks
+        # left with default titles) would both wire to the same task's ID.
+        task_id_by_position = list(zip(ordered_tasks, created_ids[len(social_posts):]))
         for svc in services:
-            svc_tasks = [t for t in ordered_tasks if t.get("service") == svc]
-            svc_ids = []
-            for tmpl in svc_tasks:
-                idx = ordered_tasks.index(tmpl)
-                if idx >= 0:
-                    svc_ids.append(created_ids[idx])
+            svc_ids = [tid for tmpl, tid in task_id_by_position if tmpl.get("service") == svc]
             for i in range(1, len(svc_ids)):
                 conn.execute("INSERT OR IGNORE INTO dependencies VALUES (?,?)",
                              (svc_ids[i], svc_ids[i-1]))

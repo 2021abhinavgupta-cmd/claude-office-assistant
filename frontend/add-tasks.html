@@ -1495,18 +1495,25 @@
           }),
           signal: AbortSignal.timeout(15000),
         });
-        const ad = await ar.json();
-        if (!ad.success && ad.error) {
-          showErr(ad.error);
+        const ad = await ar.json().catch(() => ({}));
+        if (!ar.ok || ad.success === false || (!ad.success && ad.error)) {
+          showErr(ad.error || "Failed to add tasks. Please try again.");
           btn.disabled = false; btn.textContent = " Add Tasks";
           return;
         }
 
-        // Clear localStorage for this client
+        // Clear localStorage for this client — both keys used to look it up
+        // (see clientChanged()'s lookup-by-id-or-name), otherwise a client
+        // re-onboarded later under the same name inherits this stale entry.
         try {
           const cs = JSON.parse(localStorage.getItem('claude_client_services') || '{}');
           delete cs[clientId];
+          delete cs[clientName.toLowerCase().trim()];
           localStorage.setItem('claude_client_services', JSON.stringify(cs));
+          const cd = JSON.parse(localStorage.getItem('claude_client_deadlines') || '{}');
+          delete cd[clientId];
+          delete cd[clientName.toLowerCase().trim()];
+          localStorage.setItem('claude_client_deadlines', JSON.stringify(cd));
         } catch (e) { }
 
         document.getElementById("main-card").style.display = "none";

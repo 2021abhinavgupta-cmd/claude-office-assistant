@@ -151,11 +151,11 @@
     }
     .budget-bar-fill {
       height: 100%; border-radius: 100px;
-      background: var(--accent), var(--accent));
+      background: var(--accent);
       transition: width .6s cubic-bezier(.4,0,.2,1);
     }
-    .budget-bar-fill.warn  { background: var(--accent), #f97316); }
-    .budget-bar-fill.limit { background: var(--accent), #dc2626); }
+    .budget-bar-fill.warn  { background: linear-gradient(90deg, var(--accent), #f97316); }
+    .budget-bar-fill.limit { background: linear-gradient(90deg, var(--accent), #dc2626); }
     .budget-row {
       display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
       font-size: 0.875rem; color: var(--muted);

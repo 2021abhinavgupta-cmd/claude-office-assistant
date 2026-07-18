@@ -92,6 +92,39 @@ def create_project(user_id: str, name: str, description: str = "") -> dict:
     
     return get_project(project_id)
 
+def update_project(project_id: str, user_id: str, name: str = None, custom_instructions: str = None) -> dict:
+    """Update a project's name and/or instructions. Pass only the fields you want to change."""
+    updates = []
+    values = []
+    if name is not None:
+        updates.append("name=?")
+        values.append(name)
+    if custom_instructions is not None:
+        updates.append("instructions=?")
+        values.append(custom_instructions)
+
+    if updates:
+        values.append(project_id)
+        conn = get_connection()
+        with conn:
+            conn.execute(f"UPDATE projects SET {', '.join(updates)} WHERE id=?", values)
+        conn.close()
+
+    return get_project(project_id)
+
+
+def delete_project(project_id: str, user_id: str = None) -> bool:
+    """Delete a project and its knowledge base files."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    with conn:
+        cursor.execute("DELETE FROM project_files WHERE project_id=?", (project_id,))
+        cursor.execute("DELETE FROM projects WHERE id=?", (project_id,))
+        deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+
 def update_project_instructions(project_id: str, instructions: str) -> bool:
     """Update project instructions."""
     conn = get_connection()

@@ -10,6 +10,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from db import get_connection
+from utils import IST
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 
@@ -18,8 +19,10 @@ BUDGET_LIMIT = float(os.getenv("MONTHLY_BUDGET_LIMIT", 20.0))
 logger = logging.getLogger(__name__)
 
 def get_current_month_key() -> str:
-    """Returns YYYY-MM string for current month."""
-    return datetime.utcnow().strftime("%Y-%m")
+    """Returns YYYY-MM string for current month (IST, not UTC — spend near
+    midnight UTC would otherwise get bucketed into the wrong month for
+    the first/last ~5.5 hours of the month in IST)."""
+    return datetime.now(IST).strftime("%Y-%m")
 
 def get_monthly_spend(month_key: str = None) -> float:
     """Returns total spend for the specified calendar month (USD)."""

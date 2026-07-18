@@ -16,6 +16,7 @@ const API = (() => {
 let currentUser   = null;   // { user_id, user_name }
 let currentConvId = null;   // active conversation ID
 let isLoading     = false;
+let isRenamingConv = false; // true while a sidebar title rename input is open
 
 const TASK_ICONS = {
   coding: "⌨", html_design: "", presentations: "",
@@ -324,6 +325,11 @@ async function loadConversations() {
 }
 
 function renderConvList(convs) {
+  // The 5s huddle-invite poll calls this via loadConversations() — skip the
+  // destructive full re-render while a rename input is open, or a slow poll
+  // tick wipes out whatever the user was mid-typing.
+  if (isRenamingConv) return;
+
   if (!convs.length) {
     convList.innerHTML = "<div class='conv-empty'>No chats yet.<br>Click <strong>New Chat</strong> to begin.</div>";
     return;
@@ -385,7 +391,9 @@ function renderConvList(convs) {
       titleEl.replaceWith(input);
       input.focus();
       input.select();
+      isRenamingConv = true;
       const save = async () => {
+        isRenamingConv = false;
         const newTitle = input.value.trim();
         if (newTitle) {
           await fetch(`${API}/api/conversations/${convId}/title`, {
@@ -400,7 +408,7 @@ function renderConvList(convs) {
       input.addEventListener("blur", save);
       input.addEventListener("keydown", e => {
         if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-        if (e.key === "Escape") { loadConversations(); }
+        if (e.key === "Escape") { isRenamingConv = false; loadConversations(); }
       });
     });
   });
@@ -419,6 +427,11 @@ async function openConversation(convId) {
   try {
     const res  = await fetch(`${API}/api/conversations/${convId}`);
     const conv = await res.json();
+
+    // If the user clicked another conversation while this fetch was in
+    // flight, currentConvId has already moved on — bail out so a slow
+    // response for the old chat doesn't overwrite the newer one on screen.
+    if (currentConvId !== convId) return;
 
     convTitleHeader.textContent = conv.title;
     
@@ -771,11 +784,11 @@ function appendMessage(role, content, meta = {}) {
        </div>`
     : "";
 
+  // Assistant messages get their action row (Copy/PDF/DOCX/PPT/Retry) added
+  // by the window.appendMessage wrapper below — building one here too used
+  // to produce two overlapping rows of buttons on every reopened conversation.
   const actionsBtn = role === "assistant"
-    ? `<div class="msg-actions">
-         <button class="msg-action-btn copy-btn" onclick="copyMessage(this)" data-text="${escHtml(content).replace(/"/g,'&quot;')}" title="Copy"> Copy</button>
-         <button class="msg-action-btn dislike-btn" onclick="dislikeMessage(this)" title="Bad Response"> Dislike</button>
-       </div>`
+    ? ""
     : `<div class="msg-actions">
          <button class="msg-action-btn edit-btn" onclick="editMessage(this)" title="Edit Message">✏ Edit</button>
        </div>`;
@@ -1398,7 +1411,7 @@ window.regenerateWithNote = function(assistantEl, note) {
     showToast("Could not find your previous message", "error");
     return;
   }
-  const userText = prevUser.querySelector(".msg-text")?.innerText?.split("\n")[0].trim() || "";
+  const userText = prevUser.querySelector(".msg-text")?.innerText?.trim() || "";
   if (!userText) return;
   const combined = userText + "\n\n---\nRegenerate your last reply with this instruction: " + n;
   window.sendMessage(combined, idx, { amend_last_user: true });
@@ -1793,7 +1806,7 @@ function finalizeStreamingMessage(el, text, meta = {}) {
     el.remove();
     const lastUser = [...messagesEl.querySelectorAll(".msg.user")].pop();
     if (lastUser) {
-      const content = lastUser.querySelector(".msg-text")?.textContent?.split("\n")[0].trim();
+      const content = lastUser.querySelector(".msg-text")?.textContent?.trim();
       if (content) { msgInput.value = content; window.sendMessage(); }
     }
   });
@@ -1850,7 +1863,7 @@ window.appendMessage = function(role, content, meta = {}) {
       el.remove();
       const lastUser = [...messagesEl.querySelectorAll(".msg.user")].pop();
       if (lastUser) {
-        const c = lastUser.querySelector(".msg-text")?.textContent?.split("\n")[0].trim();
+        const c = lastUser.querySelector(".msg-text")?.textContent?.trim();
         if (c) { msgInput.value = c; window.sendMessage(); }
       }
     });

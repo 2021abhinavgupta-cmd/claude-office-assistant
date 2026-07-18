@@ -98,7 +98,7 @@ def submit_standup():
     if not yesterday and not today_txt:
         return jsonify({"error": "Provide at least one update field"}), 400
 
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = today_ist()
     conn = _su_conn()
     try:
         with conn:
@@ -119,13 +119,13 @@ def submit_standup():
 @ops_bp.route("/api/standup/today", methods=["GET"])
 def get_standups_today():
     """Get all standups for a specific date (defaults to today). Founder view."""
-    date_str = request.args.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = request.args.get("date") or today_ist()
     user_id  = request.args.get("user_id", "")
     conn = _su_conn()
     cur = conn.cursor()
     
     # Auto-carry-over for all users if querying today
-    if date_str == datetime.utcnow().strftime("%Y-%m-%d") and not user_id:
+    if date_str == today_ist() and not user_id:
         cur.execute("SELECT DISTINCT user_id FROM standup_tasks WHERE status='pending' AND date < ? AND user_id NOT IN (SELECT user_id FROM standup_tasks WHERE date=?)", (date_str, date_str))
         missing_users = [r[0] for r in cur.fetchall()]
         for u in missing_users:
@@ -245,7 +245,7 @@ def get_velocity():
     conn = _su_conn()
     cur  = conn.cursor()
 
-    since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    since = (datetime.now(IST) - timedelta(days=days)).strftime("%Y-%m-%d")
 
     if user_id:
         cur.execute("""
@@ -309,11 +309,11 @@ def execute_standup_actions():
                         results.append({"task_id": task_id, "status": new_status, "updated": True})
             elif action == "add_task":
                 title = action_item.get("title")
-                due_date = action_item.get("due_date") or datetime.utcnow().strftime("%Y-%m-%d")
+                due_date = action_item.get("due_date") or today_ist()
                 status = action_item.get("status", "pending")
                 if title:
                     cur.execute("INSERT INTO standup_tasks (user_id, date, due_date, title, status) VALUES (?, ?, ?, ?, ?)",
-                                (user_id, datetime.utcnow().strftime("%Y-%m-%d"), due_date, title, status))
+                                (user_id, today_ist(), due_date, title, status))
                     new_id = cur.lastrowid
                     results.append({"task_id": new_id, "title": title, "added": True})
         except Exception as e:
@@ -334,7 +334,7 @@ def get_my_tasks():
     Query: user_id, date (optional — defaults to today UTC)
     """
     user_id  = request.args.get("user_id", "").strip()
-    date_str = request.args.get("date", "") or datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = request.args.get("date", "") or today_ist()
     if not user_id:
         return jsonify({"error": "user_id required"}), 400
 
@@ -344,7 +344,7 @@ def get_my_tasks():
     # Auto-carry-over: if no tasks exist for today, copy pending ones from yesterday
     cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=?", (user_id, date_str))
     existing = cur.fetchall()
-    if not existing and date_str == datetime.utcnow().strftime("%Y-%m-%d"):
+    if not existing and date_str == today_ist():
         cur.execute("SELECT MAX(date) FROM standup_tasks WHERE user_id=? AND date<?", (user_id, date_str))
         last_date_row = cur.fetchone()
         if last_date_row and last_date_row[0]:
@@ -387,7 +387,7 @@ def get_my_tasks():
     # Notion Creation Date pushed to the future since then (e.g. postponed in
     # Sheets) — the local row doesn't self-heal on its own, so re-check and drop
     # it here rather than leaving it stuck until the next manual Auto-Fill/Sync.
-    if date_str == datetime.utcnow().strftime("%Y-%m-%d") and notion_store.is_configured():
+    if date_str == today_ist() and notion_store.is_configured():
         future_ids = []
         for r in rows:
             nid, row_status = r[6], r[2]
@@ -447,7 +447,7 @@ def delegate_task(task_id):
                  "emp007":"Palak","emp008":"Happy"}
     orig_user_name = EMP_NAMES.get(orig_user_id, orig_user_id)
     
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = today_ist()
     
     with conn:
         # 1. Mark original task as delegated
@@ -482,7 +482,7 @@ def add_my_task():
     if not user_id or not title:
         return jsonify({"error": "user_id and title required"}), 400
 
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = today_ist()
     conn = _su_conn()
     with conn:
         cur = conn.execute(
@@ -538,7 +538,7 @@ def auto_fill_standup():
                           "Kshitij":"emp004","Mohit":"emp006",
                           "Palak":"emp007","Happy":"emp008"}
 
-    today = datetime.utcnow()
+    today = datetime.now(IST)
     today_str = today.strftime("%Y-%m-%d")
     
     # Pre-fetch existing notion_ids for today to ensure we update them even if they are future tasks
@@ -822,7 +822,7 @@ def auto_fill_standup():
 @ops_bp.route("/api/debug/tasks", methods=["GET"])
 def debug_tasks():
     user_id = request.args.get("user_id", "emp008")
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = today_ist()
     
     conn = _su_conn()
     cur = conn.cursor()
@@ -860,7 +860,7 @@ def debug_tasks():
 
 @ops_bp.route("/api/debug/cleanup-today", methods=["GET"])
 def cleanup_today():
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = today_ist()
     conn = _su_conn()
     cur = conn.cursor()
     # Delete all auto-synced tasks for today (that were not carried over from yesterday)
@@ -909,7 +909,7 @@ Respond ONLY in valid JSON format:
     
     if is_project and notion_store.is_configured():
         if not due_date:
-            due_date = datetime.utcnow().strftime("%Y-%m-%d")
+            due_date = today_ist()
         created = notion_store.create_task(
             title=title,
             client_name=client,
@@ -966,7 +966,7 @@ def push_to_notion(task_id):
     except:
         client = "Internal"
         
-    due_date = datetime.utcnow().strftime("%Y-%m-%d")
+    due_date = today_ist()
     created = notion_store.create_task(
         title=title,
         client_name=client,
@@ -1098,8 +1098,8 @@ def carry_over_tasks():
         return jsonify({"error": "user_id required"}), 400
 
     from datetime import timedelta
-    today    = datetime.utcnow().strftime("%Y-%m-%d")
-    tomorrow = (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%d")
+    today    = today_ist()
+    tomorrow = (datetime.now(IST) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     conn = _su_conn()
     cur  = conn.cursor()
@@ -1371,7 +1371,7 @@ def notion_update_task(notion_id: str):
                 (task_title, new_due, notion_id)
             )
             
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        today_str = today_ist()
         for uid in raw_assigned_ids:
             cur2 = su_conn.cursor()
             cur2.execute(
@@ -1601,16 +1601,21 @@ def sqlite_patch_task(task_id: int):
     
     su_conn = _su_conn()
     
-    # Sync title and due_date for existing standup tasks matching the old title
-    if old_row and old_row[0]:
+    # Sync title and due_date for existing standup tasks matching the old title.
+    # Scoped to the task's assignee too — title alone isn't unique across the
+    # team (e.g. two clients both have a "Weekly Sync" task), and without this
+    # scoping an edit here would silently overwrite every employee's standup
+    # row sharing that title, not just the person this task actually belongs to.
+    sync_assignee = new_assignee or (old_row[1] if old_row else None)
+    if old_row and old_row[0] and sync_assignee:
         with su_conn:
             su_conn.execute(
-                "UPDATE standup_tasks SET title=COALESCE(?, title), due_date=COALESCE(?, due_date) WHERE title=?",
-                (task_title if task_title != old_row[0] else None, new_due, old_row[0])
+                "UPDATE standup_tasks SET title=COALESCE(?, title), due_date=COALESCE(?, due_date) WHERE title=? AND user_id=?",
+                (task_title if task_title != old_row[0] else None, new_due, old_row[0], sync_assignee)
             )
             
     if new_assignee:
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        today_str = today_ist()
         cur2 = su_conn.cursor()
         # Only insert if not already in today's standup for this user
         cur2.execute(
@@ -1824,9 +1829,9 @@ def ai_parse_task():
     if not text:
         return jsonify({"error": "text is required"}), 400
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    tomorrow = (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%d")
-    next_week = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d")
+    today = today_ist()
+    tomorrow = (datetime.now(IST) + timedelta(days=1)).strftime("%Y-%m-%d")
+    next_week = (datetime.now(IST) + timedelta(days=7)).strftime("%Y-%m-%d")
 
     system = (
         "You are a task parser. Extract structured data from the user's natural language task description. "
@@ -1866,7 +1871,7 @@ def ai_coach():
     # Fetch the user's tasks from Notion
     tasks = notion_store.list_tasks(assigned_to=assigned_name) if assigned_name else []
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_ist()
     task_summary = ""
     if tasks:
         lines = []
@@ -1914,7 +1919,7 @@ def meeting_to_tasks():
     if not notes:
         return jsonify({"error": "notes is required"}), 400
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_ist()
 
     system = f"""You are an expert project manager assistant for a creative agency.
 The user has pasted raw meeting notes. Extract every clear action item or task from the notes.
@@ -1931,7 +1936,16 @@ Only include genuine action items. Ignore discussion/context sentences."""
     try:
         resp = _claude_call(system, notes, max_tokens=800)
         match = re.search(r'\[.*\]', resp, re.DOTALL)
-        tasks_raw = json.loads(match.group(0)) if match else []
+        parsed = json.loads(match.group(0)) if match else []
+        # Claude occasionally returns a flat array of title strings instead of
+        # the requested {title, assigned_to, due_date} objects — normalize so
+        # a shape mismatch doesn't 500 the whole batch below.
+        tasks_raw = []
+        for item in parsed:
+            if isinstance(item, dict):
+                tasks_raw.append(item)
+            elif isinstance(item, str) and item.strip():
+                tasks_raw.append({"title": item.strip()})
     except Exception as e:
         logger.error(f"meeting_to_tasks parse failed: {e}")
         return jsonify({"error": "Failed to parse tasks from notes"}), 500
@@ -1968,7 +1982,7 @@ def daily_summary():
     Body: { user_id: str }
     """
     body = request.get_json(silent=True) or {}
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_ist()
 
     conn = _su_conn()
     cur = conn.cursor()
