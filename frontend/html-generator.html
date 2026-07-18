@@ -94,7 +94,7 @@
     /* Generate button */
     .gen-btn {
       width:100%;padding:14px;border-radius:var(--radius-sm);
-      background:var(--accent),#6c5ce7);
+      background:linear-gradient(135deg,var(--accent),#6c5ce7);
       border:none;color:white;font-size:.95rem;font-weight:600;
       cursor:pointer;transition:all .25s;display:flex;align-items:center;justify-content:center;gap:8px;
     }
@@ -352,7 +352,6 @@ async function generateHTML() {
               wrap.scrollTop = wrap.scrollHeight;
             } else if (ev.type === "error") {
               alert("Error: " + ev.error);
-              setLoading(false);
               return;
             } else if (ev.type === "done") {
               // Strip code fences if present
@@ -373,7 +372,6 @@ async function generateHTML() {
               renderOutput(generatedHTML, ev);
               // Save to localStorage history (#8)
               saveHistory(document.getElementById("description").value.trim(), generatedHTML);
-              setLoading(false);
               return;
             }
           } catch (e) {
@@ -382,9 +380,15 @@ async function generateHTML() {
         }
       }
     }
+    // Loop exited via `done: true` from the reader without ever seeing a
+    // "done"/"error" event from the backend — the connection dropped
+    // mid-stream. Without this, the button was left stuck disabled forever
+    // since setLoading(false) only ran inside the terminal-event branches.
+    alert("Generation stopped unexpectedly — the connection may have dropped. Please try again.");
   } catch (e) {
     alert("Could not connect to Flask server. Make sure it's running on port 5000.");
     console.error(e);
+  } finally {
     setLoading(false);
   }
 }

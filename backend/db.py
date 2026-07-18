@@ -395,9 +395,20 @@ def migrate_from_json():
                 budget = data.get("budget", {})
                 for period, bdata in budget.items():
                     conn.execute("INSERT OR IGNORE INTO budget (period, total_cost) VALUES (?, ?)", (period, bdata.get("total_cost", 0.0)))
+                # Dedup by exact content, not just primary key (this table has no
+                # natural unique key) — if the process is killed between this
+                # commit and the os.rename() below, usage.json is still present
+                # on next boot and this whole block re-runs; without the dedup
+                # check every log line would be re-inserted and double-count
+                # toward budget/usage totals shown on the dashboard.
                 logs = data.get("logs", [])
                 for log in logs:
-                    conn.execute("INSERT INTO usage_logs (data) VALUES (?)", (json.dumps(log),))
+                    log_json = json.dumps(log)
+                    conn.execute(
+                        "INSERT INTO usage_logs (data) SELECT ? WHERE NOT EXISTS "
+                        "(SELECT 1 FROM usage_logs WHERE data = ?)",
+                        (log_json, log_json)
+                    )
             os.rename(usage_file, usage_file + ".bak")
         except Exception as e:
             print("Migration error usage:", e)

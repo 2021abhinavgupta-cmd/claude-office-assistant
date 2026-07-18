@@ -352,16 +352,20 @@
     async function submitVote(vote) {
       if (!allowed.includes(user.user_id)) return;
 
-      const res = await fetch(`${API}/api/bet`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.user_id, vote: vote })
-      });
-      const data = await res.json();
-      if (data.success) {
-        loadVotes();
-      } else {
-        alert(data.error || "Failed to vote");
+      try {
+        const res = await fetch(`${API}/api/bet`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: user.user_id, vote: vote })
+        });
+        const data = await res.json();
+        if (data.success) {
+          loadVotes();
+        } else {
+          alert(data.error || "Failed to vote");
+        }
+      } catch (e) {
+        alert("Network error — your vote wasn't recorded. Try again.");
       }
     }
 

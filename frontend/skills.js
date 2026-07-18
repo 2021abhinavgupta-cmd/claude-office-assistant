@@ -4,89 +4,54 @@ window.activeStyle = null;
 window.webSearchEnabled = false;
 let availableSkills = { builtin: [], custom: [] };
 
-document.addEventListener("DOMContentLoaded", () => {
-  const plusBtn = document.getElementById("plus-btn");
-  const plusMenu = document.getElementById("plus-menu");
-  
-  if (plusBtn && plusMenu) {
-    plusBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isHidden = plusMenu.classList.contains("hidden");
-      plusMenu.classList.toggle("hidden");
-      if (isHidden) {
-        fetchSkills();
-      }
-    });
+// Wires a plus-menu (main chat or welcome screen — they're separate DOM
+// trees with parallel IDs, not shared elements) to the shared skills/
+// web-search/style behaviors below. Both menus are wired through this one
+// function so a new menu item only needs adding once, not once per screen.
+function wirePlusMenu(cfg) {
+  const plusBtn = document.getElementById(cfg.plusBtn);
+  const plusMenu = document.getElementById(cfg.plusMenu);
+  if (!plusBtn || !plusMenu) return;
 
-    // Only close the menu when clicking outside — don't block any other actions
-    document.addEventListener("click", (e) => {
-      if (!plusMenu.classList.contains("hidden")) {
-        const container = plusBtn.closest(".plus-menu-container");
-        if (!container || !container.contains(e.target)) {
-          plusMenu.classList.add("hidden");
-        }
-      }
-    });
-  }
+  plusBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isHidden = plusMenu.classList.contains("hidden");
+    plusMenu.classList.toggle("hidden");
+    if (isHidden) fetchSkills();
+  });
 
-  // Same logic for welcome plus menu
-  const welcomePlusBtn = document.getElementById("welcome-plus-btn");
-  const welcomePlusMenu = document.getElementById("welcome-plus-menu");
-  
-  if (welcomePlusBtn && welcomePlusMenu) {
-    welcomePlusBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isHidden = welcomePlusMenu.classList.contains("hidden");
-      welcomePlusMenu.classList.toggle("hidden");
-      if (isHidden) {
-        fetchSkills();
+  // Only close the menu when clicking outside — don't block any other actions
+  document.addEventListener("click", (e) => {
+    if (!plusMenu.classList.contains("hidden")) {
+      const container = plusBtn.closest(".plus-menu-container");
+      if (!container || !container.contains(e.target)) {
+        plusMenu.classList.add("hidden");
       }
-    });
+    }
+  });
 
-    document.addEventListener("click", (e) => {
-      if (!welcomePlusMenu.classList.contains("hidden")) {
-        const container = welcomePlusBtn.closest(".plus-menu-container");
-        if (!container || !container.contains(e.target)) {
-          welcomePlusMenu.classList.add("hidden");
-        }
-      }
-    });
-  }
-
-  // File upload via menu
-  const menuUpload = document.getElementById("menu-upload");
+  const menuUpload = document.getElementById(cfg.upload);
   if (menuUpload) {
     menuUpload.addEventListener("click", (e) => {
       e.stopPropagation();
-      if(plusMenu) plusMenu.classList.add("hidden");
-      document.getElementById("file-input")?.click();
-    });
-  }
-  
-  const welcomeMenuUpload = document.getElementById("welcome-menu-upload");
-  if (welcomeMenuUpload) {
-    welcomeMenuUpload.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if(welcomePlusMenu) welcomePlusMenu.classList.add("hidden");
+      plusMenu.classList.add("hidden");
       document.getElementById("file-input")?.click();
     });
   }
 
-  // Web search toggle
-  const menuWebSearch = document.getElementById("menu-web-search");
-  const webSearchCheck = document.getElementById("web-search-check");
+  const menuWebSearch = document.getElementById(cfg.webSearch);
+  const webSearchCheck = document.getElementById(cfg.webSearchCheck);
   if (menuWebSearch) {
     menuWebSearch.addEventListener("click", (e) => {
       e.stopPropagation();
       window.webSearchEnabled = !window.webSearchEnabled;
+      syncWebSearchCheck();
       if (window.webSearchEnabled) {
-        webSearchCheck.classList.remove("hidden");
         addBadge("web-search", "Web search", () => {
           window.webSearchEnabled = false;
-          webSearchCheck.classList.add("hidden");
+          syncWebSearchCheck();
         });
       } else {
-        webSearchCheck.classList.add("hidden");
         removeBadge("web-search");
       }
       plusMenu.classList.add("hidden");
@@ -94,7 +59,52 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Styles
+  const manageSkillsBtn = document.getElementById(cfg.manageSkills);
+  const addSkillBtn = document.getElementById(cfg.addSkill);
+  const skillsModal = document.getElementById("skills-modal");
+
+  if (manageSkillsBtn && skillsModal) {
+    manageSkillsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      plusMenu.classList.add("hidden");
+      openSkillsModal();
+    });
+  }
+
+  if (addSkillBtn && skillsModal) {
+    addSkillBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      plusMenu.classList.add("hidden");
+      openSkillsModal();
+      document.getElementById("new-skill-name").focus();
+    });
+  }
+}
+
+// Keeps both menus' web-search checkmarks in sync with the single global
+// window.webSearchEnabled flag, regardless of which menu toggled it.
+function syncWebSearchCheck() {
+  ["web-search-check", "welcome-web-search-check"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("hidden", !window.webSearchEnabled);
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  wirePlusMenu({
+    plusBtn: "plus-btn", plusMenu: "plus-menu", upload: "menu-upload",
+    webSearch: "menu-web-search", webSearchCheck: "web-search-check",
+    manageSkills: "menu-manage-skills", addSkill: "menu-add-skill",
+  });
+  wirePlusMenu({
+    plusBtn: "welcome-plus-btn", plusMenu: "welcome-plus-menu", upload: "welcome-menu-upload",
+    webSearch: "welcome-menu-web-search", webSearchCheck: "welcome-web-search-check",
+    manageSkills: "welcome-menu-manage-skills", addSkill: "welcome-menu-add-skill",
+  });
+
+  // Styles — a single global selector covers both menus' .style-option
+  // elements since they share the class; close whichever menu the clicked
+  // option actually belongs to.
   document.querySelectorAll(".style-option").forEach(el => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -108,34 +118,15 @@ document.addEventListener("DOMContentLoaded", () => {
           window.activeStyle = null;
         });
       }
-      plusMenu.classList.add("hidden");
+      el.closest(".plus-menu")?.classList.add("hidden");
       updateInputPlaceholder();
     });
   });
 
   // Skills Manager Modal
-  const manageSkillsBtn = document.getElementById("menu-manage-skills");
-  const addSkillBtn = document.getElementById("menu-add-skill");
   const skillsModal = document.getElementById("skills-modal");
   const skillsModalClose = document.getElementById("skills-modal-close");
   const saveSkillBtn = document.getElementById("save-skill-btn");
-
-  if (manageSkillsBtn && skillsModal) {
-    manageSkillsBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      plusMenu.classList.add("hidden");
-      openSkillsModal();
-    });
-  }
-  
-  if (addSkillBtn && skillsModal) {
-    addSkillBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      plusMenu.classList.add("hidden");
-      openSkillsModal();
-      document.getElementById("new-skill-name").focus();
-    });
-  }
 
   if (skillsModalClose) {
     skillsModalClose.addEventListener("click", () => {
@@ -185,78 +176,97 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
+let _fetchSkillsInFlight = null;
+
 async function fetchSkills() {
+  // Guard against overlapping requests (e.g. rapidly toggling the menu):
+  // if one's already in flight, reuse its promise instead of firing another
+  // that could resolve out of order and overwrite a newer response.
+  if (_fetchSkillsInFlight) return _fetchSkillsInFlight;
+
   const uid = currentUser ? currentUser.user_id : "anonymous";
-  try {
-    const res = await fetch(`${API}/api/skills?user_id=${encodeURIComponent(uid)}`);
-    const data = await res.json();
-    availableSkills = data;
-    renderSkillsMenu();
-  } catch (e) {
-    console.error("Failed to load skills", e);
-  }
+  _fetchSkillsInFlight = (async () => {
+    try {
+      const res = await fetch(`${API}/api/skills?user_id=${encodeURIComponent(uid)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      availableSkills = { builtin: data.builtin || [], custom: data.custom || [] };
+      renderSkillsMenu();
+    } catch (e) {
+      console.error("Failed to load skills", e);
+      if (typeof showToast === "function") showToast("Could not load skills", "error");
+    } finally {
+      _fetchSkillsInFlight = null;
+    }
+  })();
+  return _fetchSkillsInFlight;
 }
 
 function renderSkillsMenu() {
-  const container = document.getElementById("skills-list-container");
-  if (!container) return;
-  container.innerHTML = "";
-  
   const allSkills = [...availableSkills.custom, ...availableSkills.builtin];
-  
-  allSkills.forEach(sk => {
-    const el = document.createElement("div");
-    el.className = "menu-item";
-    el.textContent = sk.name;
-    el.addEventListener("click", (e) => {
-      e.stopPropagation();
-      window.activeSkill = sk.id;
-      addBadge("skill", sk.name, () => {
-        window.activeSkill = null;
+
+  ["skills-list-container", "welcome-skills-list-container"].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = "";
+
+    allSkills.forEach(sk => {
+      const el = document.createElement("div");
+      el.className = "menu-item";
+      el.textContent = sk.name;
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.activeSkill = sk.id;
+        addBadge("skill", sk.name, () => {
+          window.activeSkill = null;
+        });
+        el.closest(".plus-menu")?.classList.add("hidden");
+        updateInputPlaceholder();
       });
-      document.getElementById("plus-menu").classList.add("hidden");
-      updateInputPlaceholder();
+      container.appendChild(el);
     });
-    container.appendChild(el);
   });
 }
 
+// Badges live in two separate containers (main chat vs welcome screen —
+// parallel DOM trees, not a shared/moved element), so every add/remove
+// applies to both to keep whichever screen is visible in sync.
 function addBadge(type, text, onRemove) {
-  const container = document.getElementById("active-badges");
-  if (!container) return;
-  
-  // Remove existing of same type
-  const existing = container.querySelector(`[data-type="${type}"]`);
-  if (existing) existing.remove();
+  ["active-badges", "welcome-active-badges"].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
 
-  const badge = document.createElement("div");
-  badge.className = "skill-badge";
-  badge.dataset.type = type;
-  badge.innerHTML = `<span>${escHtml(text)}</span> <span class="remove-badge" title="Remove">&times;</span>`;
-  
-  badge.querySelector(".remove-badge").addEventListener("click", (e) => {
-    e.stopPropagation();
-    badge.remove();
-    onRemove();
-    updateInputPlaceholder();
+    const existing = container.querySelector(`[data-type="${type}"]`);
+    if (existing) existing.remove();
+
+    const badge = document.createElement("div");
+    badge.className = "skill-badge";
+    badge.dataset.type = type;
+    badge.innerHTML = `<span>${escHtml(text)}</span> <span class="remove-badge" title="Remove">&times;</span>`;
+
+    badge.querySelector(".remove-badge").addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeBadge(type);
+      onRemove();
+      updateInputPlaceholder();
+    });
+
+    container.appendChild(badge);
   });
-  
-  container.appendChild(badge);
 }
 
 function removeBadge(type) {
-  const container = document.getElementById("active-badges");
-  if (!container) return;
-  const existing = container.querySelector(`[data-type="${type}"]`);
-  if (existing) existing.remove();
+  ["active-badges", "welcome-active-badges"].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const existing = container.querySelector(`[data-type="${type}"]`);
+    if (existing) existing.remove();
+  });
 }
 
 function updateInputPlaceholder() {
-  const msgInput = document.getElementById("msg-input");
-  if (!msgInput) return;
-  
   let ph = "Type your message…";
-  
+
   if (window.activeSkill) {
     const all = [...availableSkills.builtin, ...availableSkills.custom];
     const sk = all.find(s => s.id === window.activeSkill);
@@ -266,8 +276,11 @@ function updateInputPlaceholder() {
   } else if (window.webSearchEnabled) {
     ph = "Ask anything to search the web…";
   }
-  
-  msgInput.placeholder = ph;
+
+  ["msg-input", "welcome-input"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.placeholder = ph;
+  });
 }
 
 function openSkillsModal() {

@@ -3293,7 +3293,7 @@ def send_whatsapp_message(to: str, text: str):
     """Send a WhatsApp text message via Meta Cloud API."""
     import requests as req
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-    token    = os.getenv("META_WHATSAPP_TOKEN")
+    token    = os.getenv("WHATSAPP_ACCESS_TOKEN")
     if not phone_id or not token:
         logger.warning("WhatsApp env vars not set — message not sent.")
         return
@@ -3309,7 +3309,9 @@ def send_whatsapp_message(to: str, text: str):
         "Content-Type": "application/json",
     }
     try:
-        req.post(url, json=payload, headers=headers, timeout=10)
+        resp = req.post(url, json=payload, headers=headers, timeout=10)
+        if not resp.ok:
+            logger.error(f"WhatsApp send failed: HTTP {resp.status_code} — {resp.text[:500]}")
     except Exception as exc:
         logger.error(f"WhatsApp send failed: {exc}")
 

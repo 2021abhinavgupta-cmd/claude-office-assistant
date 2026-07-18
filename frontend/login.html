@@ -423,6 +423,11 @@
     }
 
     function pressKey(k) {
+      // Guard the on-screen numpad the same way the physical-keyboard
+      // listener already is — without this, clicking ⌫ then a digit while
+      // submitPin() is still in flight re-hits 4 digits and fires a second
+      // concurrent login (and attendance check-in) request.
+      if (isPinSubmitting()) return;
       if (k === "⌫" || k === "") { if (k === "⌫") { pin = pin.slice(0, -1); updateDots(); } return; }
       if (pin.length >= 4) return;
       pin += k; updateDots();
