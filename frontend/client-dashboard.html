@@ -40,6 +40,10 @@
       overflow-x: hidden;
     }
 
+    #toast{position:fixed;bottom:20px;right:20px;background:var(--s1);border:1px solid var(--bdr);padding:11px 18px;border-radius:var(--rs);font-size:.84rem;display:none;z-index:9999;max-width:320px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+    #toast.ok{border-color:var(--green);color:var(--green)}
+    #toast.err{border-color:var(--red);color:var(--red)}
+
     /* Header */
     header {
       display: flex;
@@ -986,6 +990,8 @@
 
 <body>
 
+  <div id="toast"></div>
+
   <header>
     <div class="logo">
       <img src="logo.png" alt="Client Logo" id="header-client-logo"
@@ -1153,6 +1159,15 @@
 
   <script src="client-auth.js"></script>
   <script>
+    function toast(m, t = "ok") {
+      const e = document.getElementById("toast");
+      e.textContent = m;
+      e.className = t;
+      e.style.display = "block";
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => e.style.display = "none", 2500);
+    }
+
     let allTasks = [];
     let clientInfo = null;
     let calDate = new Date(); // Current calendar month
@@ -1589,7 +1604,7 @@
         allDependencies = allDependencies.filter(d => d.id !== id);
         renderAllDependencies();
       } catch (e) {
-        alert("Failed to delete.");
+        toast("Failed to delete.", "err");
       }
     }
 
@@ -1614,7 +1629,7 @@
             allDependencies.push({ id: data.id, type: type, content: data.url, original_name: data.original_name, created_at: new Date().toISOString() });
             renderAllDependencies();
           } else {
-            alert(data.error || "Upload failed");
+            toast(data.error || "Upload failed", "err");
           }
         } catch (e) {
           console.error("Upload failed", e);
@@ -1637,7 +1652,7 @@
           allDependencies.push({ id: data.id, type: type, content: content, created_at: new Date().toISOString() });
           renderAllDependencies();
         } else {
-          alert(data.error || "Save failed");
+          toast(data.error || "Save failed", "err");
         }
       } catch (e) {
         console.error("Failed to save", e);
@@ -1732,7 +1747,7 @@
                   renderFeedbackAudio();
                   submitTaskFeedback(currentFeedbackTask.feedback?.status || 'comment', false, true);
                 } else {
-                  alert(data.error || "Upload failed");
+                  toast(data.error || "Upload failed", "err");
                 }
               } catch (e) {
                 console.error("Upload failed", e);
@@ -1751,7 +1766,7 @@
           btn.innerHTML = "🔴 Stop Recording";
           btn.style.animation = "shimmer 1.5s infinite"; // reuse existing animation
         } catch (e) {
-          alert("Microphone access denied or unavailable.");
+          toast("Microphone access denied or unavailable.", "err");
         }
       } else {
         mediaRecorder.stop();
@@ -1893,10 +1908,10 @@
           }
           renderViews();
         } else {
-          alert('Failed to submit feedback.');
+          toast('Failed to submit feedback.', "err");
         }
       } catch (e) {
-        alert('Error connecting to server.');
+        toast('Error connecting to server.', "err");
       } finally {
         const btnApp = document.querySelector('.btn-approve');
         const btnRej = document.querySelector('.btn-reject');

@@ -105,9 +105,13 @@
       .task-input { width: 100%; }
       .sc-header { flex-direction: column; align-items: flex-start; }
     }
+    #toast{position:fixed;bottom:20px;right:20px;background:var(--s1);border:1px solid var(--bdr);padding:11px 18px;border-radius:var(--rs);font-size:.84rem;display:none;z-index:9999;max-width:320px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+    #toast.ok{border-color:var(--grn);color:var(--grn)}
+    #toast.err{border-color:var(--red);color:var(--red)}
   </style>
 </head>
 <body>
+<div id="toast"></div>
 <div class="wrap">
   <div class="hdr">
     <div>
@@ -221,6 +225,13 @@ if (!UID) window.location.href = "login.html";
 const IS_ADMIN = user.is_admin === true;
 
 function esc(s){if(!s)return"";return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[m]);}
+
+function toast(m,t="ok"){
+  const e=document.getElementById("toast");
+  e.textContent=m; e.className=t; e.style.display="block";
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>e.style.display="none",2500);
+}
 
 (async()=>{
   await loadEmployees();
@@ -490,12 +501,12 @@ async function pushToBoard(id, btn){
       if(t) t.notion_id = d.notion_id;
       renderTasks();
     } else {
-      alert("Error pushing to Notion.");
+      toast("Error pushing to Notion.", "err");
       btn.textContent = "↗";
       btn.style.opacity = "1";
     }
   } catch(e){
-      alert("Network error.");
+      toast("Network error.", "err");
       btn.textContent = "↗";
       btn.style.opacity = "1";
   }
@@ -527,10 +538,10 @@ async function autoFillStandup(pull_upcoming = false, sync_all = false) {
     if (d.success) {
       if (sync_all) {
           loadTeamStandups(document.getElementById("standup-date") ? document.getElementById("standup-date").value : "");
-          alert("Successfully synced all active tasks from Notion!");
+          toast("Successfully synced all active tasks from Notion!");
       } else {
           if (d.added > 0) {
-            alert(` Added ${d.added} task(s) from Notion to your standup!`);
+            toast(`Added ${d.added} task(s) from Notion to your standup!`);
             loadMyTasks();
           } else {
             if (!pull_upcoming) {
@@ -539,15 +550,15 @@ async function autoFillStandup(pull_upcoming = false, sync_all = false) {
                     return;
                 }
             } else {
-                alert("No upcoming tasks found in Notion.");
+                toast("No upcoming tasks found in Notion.", "err");
             }
           }
       }
     } else {
-      alert("Error: " + (d.error || "Could not auto-fill"));
+      toast("Error: " + (d.error || "Could not auto-fill"), "err");
     }
   } catch (err) {
-    alert("Network error.");
+    toast("Network error.", "err");
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -830,7 +841,7 @@ async function loadAlerts(){
 async function runCheck(){
   const r=await fetch(`${API}/api/alerts/run-check`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:UID})});
   const d=await r.json();
-  alert(`Check complete. ${d.alerts_fired||0} new alert(s) fired.`);
+  toast(`Check complete. ${d.alerts_fired||0} new alert(s) fired.`);
   loadAlerts();
 }
 
