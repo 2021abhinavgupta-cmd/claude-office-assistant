@@ -1213,8 +1213,12 @@ async function saveSheetRow(taskId, cellElem, clientId) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changedPayload)
       });
-    if (!res.ok) throw new Error("Network error");
-    
+    if (!res.ok) {
+      let msg = "Row didn't save";
+      try { const d = await res.json(); if (d.error) msg = d.error; } catch(_) {}
+      throw new Error(msg);
+    }
+
     // Dynamically update row background based on status without re-rendering the whole table
     const s = status.toLowerCase().replace(/ /g, '_');
     let rowBg = "transparent";
@@ -1232,7 +1236,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
       // intentionally NOT calling renderClientSheets(clientId) to prevent focus loss and scroll jumping
     }
   } catch(e) {
-    toast("Error saving row", "err");
+    toast(e.message || "Error saving row", "err");
   } finally {
     cellElem.style.opacity = "1";
   }

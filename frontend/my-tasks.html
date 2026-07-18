@@ -889,14 +889,17 @@ async function bulkDefer(idsStr) {
   
   toast("Deferring tasks...");
   try {
-    await Promise.all(ids.map(nid => 
+    const results = await Promise.all(ids.map(nid =>
       fetch(`${API}/api/notion/tasks/${nid}`, {
         method: "PATCH",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({due_date: nextDay})
-      })
+      }).then(r => r.ok)
     ));
-    toast("All overdue tasks deferred!");
+    const failCount = results.filter(ok => !ok).length;
+    if (failCount === 0) toast("All overdue tasks deferred!");
+    else if (failCount < ids.length) toast(`Deferred ${ids.length - failCount}/${ids.length} tasks — ${failCount} failed`, "err");
+    else toast("Error deferring tasks", "err");
     load();
   } catch(e) {
     toast("Error deferring tasks", "err");
@@ -908,14 +911,17 @@ async function bulkStart(idsStr) {
   if(!ids.length) return;
   toast("Starting sprint...");
   try {
-    await Promise.all(ids.map(nid => 
+    const results = await Promise.all(ids.map(nid =>
       fetch(`${API}/api/notion/tasks/${nid}`, {
         method: "PATCH",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({status:"in_progress", progress:10})
-      })
+      }).then(r => r.ok)
     ));
-    toast("Sprint started! Let's go!");
+    const failCount = results.filter(ok => !ok).length;
+    if (failCount === 0) toast("Sprint started! Let's go!");
+    else if (failCount < ids.length) toast(`Started ${ids.length - failCount}/${ids.length} tasks — ${failCount} failed`, "err");
+    else toast("Error starting sprint", "err");
     load();
   } catch(e) {
     toast("Error starting sprint", "err");
@@ -986,11 +992,15 @@ async function recalcSubtasks(nid, subtasks) {
   try {
     const payload = { progress: newProgress };
     if (newProgress > 0) payload.status = "in_progress"; // Auto-start if progressing
-    await fetch(`${API}/api/notion/tasks/${nid}`, {
+    const r = await fetch(`${API}/api/notion/tasks/${nid}`, {
       method: "PATCH",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(payload)
     });
+    if (!r.ok) {
+      toast("Subtask progress didn't save — check your connection", "err");
+      return;
+    }
     // Update local cache to reflect immediately
     const t = window.allTasks.find(x => x.notion_id === nid);
     if(t) {
@@ -999,6 +1009,7 @@ async function recalcSubtasks(nid, subtasks) {
     }
   } catch(e) {
     console.error("Failed to sync subtask progress to Notion", e);
+    toast("Subtask progress didn't save — check your connection", "err");
   }
 }
 
