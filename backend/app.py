@@ -3093,6 +3093,10 @@ def auto_generate_tasks(client_id):
             )
             if res:
                 created_ids.append(res["notion_id"])
+
+        if extra_notes:
+            notion_store.append_client_requirements(client_id, extra_notes)
+
         return jsonify({"success": True, "tasks_created": len(created_ids), "task_ids": created_ids})
 
     # SQLite Mode

@@ -434,9 +434,19 @@ if (pChatSendBtn) {
     
     // Hide project view, trigger a new chat bound to this project, and pre-fill the prompt
     document.getElementById("project-view")?.classList.add("hidden");
-    
+
+    pChatInput.value = "";
+    pChatInput.style.height = "auto";
+
     // We can simulate starting a new chat
-    startNewChat(null, currentProjectId).then(() => {
+    startNewChat(null, currentProjectId).then((ok) => {
+       if (!ok) {
+         // startNewChat already showed an error toast — restore the text
+         // and the project view so the message isn't just lost.
+         pChatInput.value = text;
+         document.getElementById("project-view")?.classList.remove("hidden");
+         return;
+       }
        const mainInput = document.getElementById("msg-input");
        const mainSendBtn = document.getElementById("send-btn");
        if (mainInput && mainSendBtn) {
@@ -445,9 +455,6 @@ if (pChatSendBtn) {
          mainSendBtn.click();
        }
     });
-    
-    pChatInput.value = "";
-    pChatInput.style.height = "auto";
   });
 }
 

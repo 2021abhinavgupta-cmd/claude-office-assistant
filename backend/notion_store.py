@@ -422,6 +422,29 @@ def list_clients(status_filter: str = "") -> list:
         return []
 
 
+def append_client_requirements(notion_id: str, extra_text: str) -> bool:
+    """Appends text to a client's Requirements field. Notion has no native
+    string-append operation, so this fetches the current value and PATCHes
+    the concatenated result."""
+    if not is_configured() or not notion_id or not extra_text:
+        return False
+    try:
+        r = _notion_request("GET", f"https://api.notion.com/v1/pages/{notion_id}", headers=_headers())
+        props = r.json().get("properties", {})
+        current = _get_text(props.get("Requirements", {}))
+        combined = (current + "\n" + extra_text) if current else extra_text
+        _notion_request(
+            "PATCH",
+            f"https://api.notion.com/v1/pages/{notion_id}",
+            headers=_headers(),
+            json={"properties": {"Requirements": _text(combined)}},
+        )
+        return True
+    except Exception:
+        logger.exception(f"Notion append_client_requirements failed for {notion_id}")
+        return False
+
+
 def update_client_status(notion_id: str, status: str) -> bool:
     """Update the Status property of a client page."""
     if not is_configured():

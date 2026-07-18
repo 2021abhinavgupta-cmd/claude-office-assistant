@@ -211,9 +211,12 @@ def ai_priority_advisor():
         return jsonify({"reply": "I don't see any active tasks for you right now. You're all caught up!"})
         
     system_prompt = f"You are an AI priority advisor for {assigned_name}. The user will provide a list of their tasks and ask a question. Provide a direct, actionable, and encouraging answer."
-    user_prompt = f"Here are my current tasks:\n" + "\n".join(tasks) + f"\n\nQuestion: {question}"
-    
-    reply = _claude_call(system_prompt, user_prompt)
+    user_prompt = "Here are my current tasks:\n" + "\n".join(tasks) + f"\n\nQuestion: {question}"
+
+    try:
+        reply = _claude_call(system_prompt, user_prompt)
+    except Exception:
+        return jsonify({"error": "Could not get priority advice right now. Please try again."}), 500
     return jsonify({"reply": reply})
 
 
@@ -1791,8 +1794,8 @@ def ai_proof_of_work():
     if not task_title:
         return jsonify({"error": "task_title is required"}), 400
 
-    done_list = [st["text"] for st in subtasks if st.get("done")]
-    pending_list = [st["text"] for st in subtasks if not st.get("done")]
+    done_list = [st.get("text", "") for st in subtasks if st.get("done")]
+    pending_list = [st.get("text", "") for st in subtasks if not st.get("done")]
 
     completed_str = "\n".join(f"- {t}" for t in done_list) if done_list else "- All work completed"
     pending_str = "\n".join(f"- {t}" for t in pending_list) if pending_list else "None"

@@ -1042,6 +1042,7 @@
 
     async function loadEmployees() {
       const r = await fetch(`${API}/api/employees`);
+      if (!r.ok) throw new Error(`Failed to load employees (HTTP ${r.status})`);
       let list = await r.json();
       if (list && list.employees) {
         list = list.employees;
@@ -1069,11 +1070,13 @@
 
       if (useNotion) {
         const res = await fetch(`${API}/api/notion/dashboard`);
+        if (!res.ok) throw new Error(`Failed to load Notion clients (HTTP ${res.status})`);
         const data = await res.json();
         _clientsList = data.clients || [];
         _clientsList.forEach(c => { c.id = c.notion_id; });
       } else {
         const res = await fetch(`${API}/api/dashboard/founder?user_id=${UID}`);
+        if (!res.ok) throw new Error(`Failed to load clients (HTTP ${res.status})`);
         const data = await res.json();
         _clientsList = data.clients || data || [];
       }
@@ -1084,8 +1087,15 @@
 
     document.addEventListener("DOMContentLoaded", async () => {
       initColumnResizers();
-      await loadEmployees();
-      await loadClients();
+      try {
+        await loadEmployees();
+        await loadClients();
+      } catch (e) {
+        toast("Failed to load clients/employees. Refresh to retry.", "err");
+        const sel = document.getElementById("client_id");
+        if (sel) sel.innerHTML = '<option value="">Failed to load — refresh page</option>';
+        return;
+      }
       EMP = window.EMP_DICT || {};
       EMP_OPTS = Object.entries(EMP).map(([id, name]) => `<label><input type="checkbox" value="${id}" class="ms-chk" onchange="updateMsDisplay(this)"> ${name}</label>`).join("");
 

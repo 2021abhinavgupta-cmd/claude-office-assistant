@@ -620,9 +620,11 @@ async function startNewChat(initialMessage = null, projectId = null) {
     } else {
       msgInput.focus();
     }
+    return true;
   } catch (e) {
     console.error("Chat creation error:", e);
     showToast("Could not create conversation. Please refresh the page.", "error");
+    return false;
   }
 }
 
@@ -768,8 +770,11 @@ function updateInputMeta(taskName, modelName) {
 function appendMessage(role, content, meta = {}) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
-  // Assign index based on current number of messages in DOM
-  const msgIndex = Array.from(messagesEl.querySelectorAll('.msg')).length;
+  // Assign index based on current number of messages in DOM. Excludes
+  // .error bubbles (appendErrorMessage) — those aren't part of the backend's
+  // saved message list, so counting them would desync this index from the
+  // server-side position that Edit/Retry rely on.
+  const msgIndex = Array.from(messagesEl.querySelectorAll('.msg:not(.error)')).length;
   el.dataset.index = msgIndex;
 
   const senderName = meta.sender_name || (role === "user" ? (currentUser ? currentUser.user_name : "You") : "System");
@@ -1400,7 +1405,7 @@ window.regenerateWithNote = function(assistantEl, note) {
     showToast("Add a short instruction first", "info");
     return;
   }
-  const allMsgs = [...messagesEl.querySelectorAll(".msg")];
+  const allMsgs = [...messagesEl.querySelectorAll(".msg:not(.error)")];
   const idx = allMsgs.indexOf(assistantEl);
   if (idx < 1) {
     showToast("Cannot regenerate this reply", "error");
@@ -1427,7 +1432,7 @@ window.sendMessage = async function(overrideText = null, truncateFromIndex = nul
   const atts = typeof pendingAttachments !== "undefined" ? [...pendingAttachments] : [];
 
   if (truncateFromIndex !== null) {
-    const allMsgs = Array.from(messagesEl.querySelectorAll('.msg'));
+    const allMsgs = Array.from(messagesEl.querySelectorAll('.msg:not(.error)'));
     for (let i = truncateFromIndex; i < allMsgs.length; i++) {
       allMsgs[i].remove();
     }
