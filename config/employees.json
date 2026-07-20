@@ -76,6 +76,17 @@
       "pin": "0230",
       "tone_profile": "Creative, highly visual, and focused on video generation mechanics.",
       "checkins": []
+    },
+    {
+      "id": "emp009",
+      "name": "Noorish",
+      "role": "HR",
+      "whatsapp": "",
+      "department": "HR",
+      "status": "active",
+      "pin": "0000",
+      "tone_profile": "Professional, clear, and people-focused.",
+      "checkins": []
     }
   ]
 }

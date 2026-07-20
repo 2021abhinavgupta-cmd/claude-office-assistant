@@ -28,6 +28,5 @@ def _save_employees(data: dict):
     os.replace(tmp, EMPLOYEES_DB)
 
 def _is_admin(user_id: str) -> bool:
-    """Check if a user is an admin."""
-    # Based on hardcoded list
-    return user_id in ["emp001", "emp003", "emp004", "emp006"]
+    """All employees have full admin access."""
+    return bool(user_id)

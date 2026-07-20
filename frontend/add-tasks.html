@@ -975,8 +975,7 @@
     const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
     const UID = user.user_id || "emp003";
 
-    const ONBOARD_ADMINS = ["emp001", "emp003", "emp004", "emp006"];
-    if (!ONBOARD_ADMINS.includes(user.user_id)) {
+    if (!user.user_id) {
       document.getElementById("main-card").innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
       <div style="font-size:2rem"></div>
