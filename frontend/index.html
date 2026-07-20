@@ -734,7 +734,7 @@ function slideMarkdownForExport(md) {
 async function exportDocument(format, triggerEl) {
   let { text, title } = window._lastAIResponse;
   if (!text) {
-    alert("No content to export yet.");
+    showToast("No content to export yet.", "error");
     return;
   }
 
@@ -776,7 +776,7 @@ async function exportDocument(format, triggerEl) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (e) {
-    alert(`Export failed: ${e.message}`);
+    showToast(`Export failed: ${e.message}`, "error");
   } finally {
     if (btn) {
       btn.textContent = origLabel;

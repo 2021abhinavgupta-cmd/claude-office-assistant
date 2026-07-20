@@ -25,3 +25,15 @@ build/
 
 # Scratch exports / local decks (don’t commit binaries by mistake)
 .tmp_export_test.pptx
+
+# Stray debugging DB copies (the only real DB is logs/app.db, already ignored above)
+/*.db
+/backend/*.db
+
+# One-off debug/patch scripts from AI-assisted sessions — not part of the app
+/fix_*.py
+/test_*.py
+/patch.py
+/query_db.py
+/scratch.py
+/*_edit.py

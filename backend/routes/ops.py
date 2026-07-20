@@ -1918,76 +1918,6 @@ def ai_coach():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Feature 1: Meeting Notes → Notion Tasks ──────────────────────────────────
-@ops_bp.route("/api/ai/meeting-to-tasks", methods=["POST"])
-def meeting_to_tasks():
-    """
-    Parse raw meeting notes into structured tasks and create them in Notion.
-    Body: { notes: str, assigned_to: str, client_name: str }
-    """
-    body = request.get_json(silent=True) or {}
-    notes = body.get("notes", "").strip()
-    assigned_to = body.get("assigned_to", "")
-    client_name = body.get("client_name", "Internal")
-
-    if not notes:
-        return jsonify({"error": "notes is required"}), 400
-
-    today = today_ist()
-
-    system = f"""You are an expert project manager assistant for a creative agency.
-The user has pasted raw meeting notes. Extract every clear action item or task from the notes.
-For each task, guess the best assignee from this team list: Vidit (Design/Website), Nupur (Design), Abhinav (Website/Dev), Kshitij (Review), Mohit (Content), Tanaya (Accounts), Happy (Video).
-If no one is obvious, use "{assigned_to or 'Unassigned'}".
-Also guess a due date (within 7 days of today {today} unless notes specify otherwise, format YYYY-MM-DD).
-Respond ONLY with a valid JSON array:
-[
-  {{"title": "Task title", "assigned_to": "Name", "due_date": "YYYY-MM-DD"}},
-  ...
-]
-Only include genuine action items. Ignore discussion/context sentences."""
-
-    try:
-        resp = _claude_call(system, notes, max_tokens=800)
-        match = re.search(r'\[.*\]', resp, re.DOTALL)
-        parsed = json.loads(match.group(0)) if match else []
-        # Claude occasionally returns a flat array of title strings instead of
-        # the requested {title, assigned_to, due_date} objects — normalize so
-        # a shape mismatch doesn't 500 the whole batch below.
-        tasks_raw = []
-        for item in parsed:
-            if isinstance(item, dict):
-                tasks_raw.append(item)
-            elif isinstance(item, str) and item.strip():
-                tasks_raw.append({"title": item.strip()})
-    except Exception as e:
-        logger.error(f"meeting_to_tasks parse failed: {e}")
-        return jsonify({"error": "Failed to parse tasks from notes"}), 500
-
-    created = []
-    if notion_store.is_configured():
-        for t in tasks_raw:
-            result = notion_store.create_task(
-                title=t.get("title", "Untitled"),
-                client_name=client_name,
-                client_notion_id="",
-                assigned_to=t.get("assigned_to", assigned_to),
-                due_date=t.get("due_date", today),
-                status="not_started"
-            )
-            created.append({
-                "title": t.get("title"),
-                "assigned_to": t.get("assigned_to"),
-                "due_date": t.get("due_date"),
-                "notion_id": result.get("id") if result else None
-            })
-    else:
-        # Return tasks without creating in Notion
-        created = tasks_raw
-
-    return jsonify({"success": True, "tasks": created})
-
-
 # ── Feature 3: Manager's End-of-Day Summary ───────────────────────────────────
 @ops_bp.route("/api/ai/daily-summary", methods=["POST"])
 def daily_summary():
@@ -2535,35 +2465,6 @@ def save_form_template(template_id):
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error saving form template: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@ops_bp.route("/api/clients/<client_id>/form-answers", methods=["GET"])
-def get_client_form_answers(client_id):
-    try:
-        from db import get_connection
-        conn = get_connection()
-        cur = conn.execute("SELECT answers_json FROM client_form_answers WHERE client_id=?", (client_id,))
-        row = cur.fetchone()
-        conn.close()
-        if row:
-            return jsonify({"success": True, "answers": json.loads(row[0])})
-        return jsonify({"success": True, "answers": {}})
-    except Exception as e:
-        logger.error(f"Error fetching client form answers: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@ops_bp.route("/api/clients/<client_id>/form-answers", methods=["POST"])
-def save_client_form_answers(client_id):
-    try:
-        data = request.json
-        from db import get_connection
-        conn = get_connection()
-        with conn:
-            conn.execute("INSERT OR REPLACE INTO client_form_answers (client_id, answers_json) VALUES (?, ?)", (client_id, json.dumps(data.get("answers", {}))))
-        conn.close()
-        return jsonify({"success": True})
-    except Exception as e:
-        logger.error(f"Error saving client form answers: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @ops_bp.route("/api/discovery-submissions", methods=["GET"])

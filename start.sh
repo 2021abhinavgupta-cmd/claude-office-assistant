@@ -35,6 +35,13 @@ if ! pip install -q -r backend/requirements.txt; then
   exit 1
 fi
 
+# ── 2b. Install pre-commit hook if missing (blocks NameError-prone commits) ──
+if [ -f "scripts/pre-commit" ] && [ ! -f ".git/hooks/pre-commit" ]; then
+  echo "⚙️  Installing pre-commit hook..."
+  cp scripts/pre-commit .git/hooks/pre-commit
+  chmod +x .git/hooks/pre-commit
+fi
+
 # ── 3. Free port 5000 if in use ──────────────────────────────────────────────
 if lsof -ti:5000 > /dev/null 2>&1; then
   echo "⚙️  Freeing port 5000..."

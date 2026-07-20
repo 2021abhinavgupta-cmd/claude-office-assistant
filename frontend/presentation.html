@@ -185,6 +185,8 @@
 </head>
 <body>
 
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;z-index:9999;padding:10px 18px;border-radius:8px;font-size:.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3)"></div>
+
 <div class="bg-orbs" aria-hidden="true">
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
@@ -307,6 +309,18 @@
 </div>
 
 <script>
+function toast(msg, type = "ok") {
+  const e = document.getElementById("toast");
+  if (!e) return;
+  e.textContent = msg;
+  e.style.background = type === "err" ? "rgba(239,68,68,.15)" : "rgba(34,211,160,.15)";
+  e.style.border = type === "err" ? "1px solid #ef4444" : "1px solid var(--green)";
+  e.style.color = type === "err" ? "#ef4444" : "var(--green)";
+  e.style.display = "block";
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => e.style.display = "none", 3500);
+}
+
 // Auto-detect API base: localhost in dev, same-origin in production
 const API = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
   ? "http://localhost:5000"
@@ -323,7 +337,7 @@ async function generatePresentation() {
   const extra  = document.getElementById("extra-notes").value.trim();
   const topicF = extra ? `${topic}. Additional notes: ${extra}` : topic;
 
-  if (!topic) { alert("Please enter a topic."); return; }
+  if (!topic) { toast("Please enter a topic.", "err"); return; }
 
   setLoading(true);
 
@@ -336,7 +350,7 @@ async function generatePresentation() {
     const data = await res.json();
 
     if (!res.ok || !data.success) {
-      alert("Error: " + (data.error || "Generation failed"));
+      toast("Error: " + (data.error || "Generation failed"), "err");
       return;
     }
 
@@ -347,7 +361,7 @@ async function generatePresentation() {
     renderDeck(data);
 
   } catch(e) {
-    alert("Could not connect to Flask server. Make sure it's running on port 5000.");
+    toast("Could not connect to Flask server. Make sure it's running on port 5000.", "err");
     console.error(e);
   } finally {
     setLoading(false);

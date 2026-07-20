@@ -237,7 +237,7 @@ if (newProjectBtn && projectModal) {
     const name = projectNameInput.value.trim();
     const desc = projectDescInput.value.trim();
     if (!name) {
-      alert("Project name is required.");
+      showToast("Project name is required.", "error");
       return;
     }
     projectCreateBtn.disabled = true;
@@ -256,10 +256,10 @@ if (newProjectBtn && projectModal) {
       if (res.ok) {
         window.location.href = `project.html?id=${data.id}`;
       } else {
-        alert(data.error || "Failed to create project");
+        showToast(data.error || "Failed to create project", "error");
       }
     } catch (e) {
-      alert("Error creating project.");
+      showToast("Error creating project.", "error");
     } finally {
       projectCreateBtn.disabled = false;
       projectCreateBtn.textContent = "Create project";

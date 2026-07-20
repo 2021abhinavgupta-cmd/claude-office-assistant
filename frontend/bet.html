@@ -293,6 +293,7 @@
 </head>
 
 <body>
+  <div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;z-index:9999;padding:10px 18px;border-radius:8px;font-size:.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3)"></div>
   <div class="bg-orbs">
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
@@ -335,6 +336,18 @@
   </div>
 
   <script>
+    function toast(msg, type = "ok") {
+      const e = document.getElementById("toast");
+      if (!e) return;
+      e.textContent = msg;
+      e.style.background = type === "err" ? "rgba(239,68,68,.15)" : "rgba(34,211,160,.15)";
+      e.style.border = type === "err" ? "1px solid var(--red)" : "1px solid var(--green)";
+      e.style.color = type === "err" ? "var(--red)" : "var(--green)";
+      e.style.display = "block";
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => e.style.display = "none", 3500);
+    }
+
     const API = location.hostname === 'localhost' ? 'http://localhost:5000' : location.origin;
     const user = JSON.parse(localStorage.getItem("agency_portal_user"));
     const allowed = ["emp002", "emp003", "emp007", "emp008"];
@@ -362,10 +375,10 @@
         if (data.success) {
           loadVotes();
         } else {
-          alert(data.error || "Failed to vote");
+          toast(data.error || "Failed to vote", "err");
         }
       } catch (e) {
-        alert("Network error — your vote wasn't recorded. Try again.");
+        toast("Network error — your vote wasn't recorded. Try again.", "err");
       }
     }
 
@@ -381,7 +394,7 @@
         if (data.success) {
           loadVotes();
         } else {
-          alert(data.error || "Failed to update question");
+          toast(data.error || "Failed to update question", "err");
         }
       } catch (e) {
         console.error("Failed to update question", e);

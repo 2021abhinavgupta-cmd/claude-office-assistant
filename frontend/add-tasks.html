@@ -1684,7 +1684,7 @@
           });
           toast("Import complete. Data loaded exactly as-is.", "ok");
         } catch (err) {
-          alert("Error importing data.");
+          toast("Error importing data.", "err");
           console.error(err);
         } finally {
           btn.innerHTML = oldText;

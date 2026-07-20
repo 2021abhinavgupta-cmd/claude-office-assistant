@@ -142,7 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const isShared = document.getElementById("new-skill-shared").checked;
 
       if (!name || !prompt) {
-        alert("Name and instructions are required.");
+        if (typeof showToast === "function") showToast("Name and instructions are required.", "error");
         return;
       }
       saveSkillBtn.disabled = true;
@@ -164,10 +164,10 @@ document.addEventListener("DOMContentLoaded", () => {
           await fetchSkills();
           renderSkillsManager();
         } else {
-          alert("Error saving skill.");
+          if (typeof showToast === "function") showToast("Error saving skill.", "error");
         }
       } catch (e) {
-        alert("Error saving skill.");
+        if (typeof showToast === "function") showToast("Error saving skill.", "error");
       } finally {
         saveSkillBtn.disabled = false;
         saveSkillBtn.textContent = "Save Skill";
@@ -334,9 +334,9 @@ window.deleteSkill = async function(skillId) {
         updateInputPlaceholder();
       }
     } else {
-      alert("Error deleting skill");
+      if (typeof showToast === "function") showToast("Error deleting skill", "error");
     }
   } catch (e) {
-    alert("Error deleting skill");
+    if (typeof showToast === "function") showToast("Error deleting skill", "error");
   }
 };

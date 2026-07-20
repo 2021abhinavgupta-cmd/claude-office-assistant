@@ -251,6 +251,8 @@
 </head>
 <body>
 
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;z-index:9999;padding:10px 18px;border-radius:8px;font-size:.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3)"></div>
+
 <div class="bg-orbs" aria-hidden="true">
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
@@ -387,6 +389,18 @@
 </div>
 
 <script>
+function toast(msg, type = "ok") {
+  const e = document.getElementById("toast");
+  if (!e) return;
+  e.textContent = msg;
+  e.style.background = type === "err" ? "rgba(239,68,68,.15)" : "rgba(34,211,160,.15)";
+  e.style.border = type === "err" ? "1px solid var(--red)" : "1px solid var(--green)";
+  e.style.color = type === "err" ? "var(--red)" : "var(--green)";
+  e.style.display = "block";
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => e.style.display = "none", 3500);
+}
+
 // Auto-detect API base: localhost in dev, same-origin in production
 const API = (window.location.protocol === "file:" || !window.location.hostname)
   ? "http://localhost:5000"
@@ -439,7 +453,7 @@ async function editAccountBalance() {
   const input = prompt("Enter real remaining balance from console.anthropic.com (USD):", current);
   if (input === null) return;
   const value = parseFloat(input);
-  if (isNaN(value)) { alert("Enter a valid number."); return; }
+  if (isNaN(value)) { toast("Enter a valid number.", "err"); return; }
   try {
     const res = await fetch(`${API}/api/account-balance`, {
       method: "POST",
@@ -450,7 +464,7 @@ async function editAccountBalance() {
     accountBalance = value;
     if (currentDashboardData) renderDashboard(currentDashboardData);
   } catch (e) {
-    alert("Failed to save balance.");
+    toast("Failed to save balance.", "err");
     console.error(e);
   }
 }
