@@ -240,6 +240,8 @@
     .gtab.on{color:var(--acc);border-bottom-color:var(--acc)}
     .c-sheets th { position: sticky; top: 0; background: var(--s1); z-index: 10; border-bottom: 1px solid var(--bdr); box-shadow: inset 0 -1px 0 var(--bdr); }
     .c-sheets td { border-bottom: 1px solid var(--bdr); }
+    .c-sheets td.sheet-cell-selected { outline: 2px solid var(--acc); outline-offset: -2px; }
+    .ctx-item:hover { background: var(--s2); }
     .fullscreen-sheets {
       position: fixed !important;
       top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
@@ -814,87 +816,183 @@ function preventEdgeSwipeNav(el) {
   }, { passive: false });
 }
 
+// ── Sheets state: sort / search / column visibility / row selection ──────────
+const COLUMN_LABELS = ['#','Creation Date','Post Day','Post','Type','Content','Idea','Scripts/ Copy','Caption','Assigned To','Status','File (Drive Link)','Notes'];
+const SORT_FIELD = {1:'creationDate',2:'due_date',3:'title',4:'type',5:'content',6:'idea',7:'scripts',8:'caption',9:'assigneeName',10:'rawS',11:'link',12:'myNotes'};
+let sheetSortState = {};
+let sheetSearchState = {};
+let checkedSheetRows = new Set();
+
+function sortIndicator(clientId, colIndex) {
+  const st = sheetSortState[clientId];
+  if (st && st.col === colIndex) return st.dir === 'asc' ? '▲' : '▼';
+  return '⇅';
+}
+
+function sortSheetBy(clientId, colIndex) {
+  const cur = sheetSortState[clientId];
+  if (cur && cur.col === colIndex) {
+    sheetSortState[clientId] = cur.dir === 'asc' ? { col: colIndex, dir: 'desc' } : null;
+  } else {
+    sheetSortState[clientId] = { col: colIndex, dir: 'asc' };
+  }
+  renderClientSheets(clientId);
+}
+
+function loadHiddenCols(clientId) {
+  try { return new Set(JSON.parse(localStorage.getItem(`sheetsHiddenCols_${clientId}`)) || []); } catch(e) { return new Set(); }
+}
+function saveHiddenCols(clientId, set) {
+  localStorage.setItem(`sheetsHiddenCols_${clientId}`, JSON.stringify([...set]));
+}
+function toggleSheetColumn(clientId, colIndex) {
+  const hidden = loadHiddenCols(clientId);
+  if (hidden.has(colIndex)) hidden.delete(colIndex); else hidden.add(colIndex);
+  saveHiddenCols(clientId, hidden);
+  applyColumnVisibility(clientId);
+}
+function applyColumnVisibility(clientId) {
+  const hidden = loadHiddenCols(clientId);
+  const container = document.getElementById(`csheets-${clientId}`);
+  if (!container) return;
+  for (let i = 1; i <= 12; i++) {
+    container.querySelectorAll(`.sheet-col-${i}`).forEach(el => { el.style.display = hidden.has(i) ? 'none' : ''; });
+  }
+}
+function toggleColumnsMenu(clientId) {
+  const menu = document.getElementById(`cols-menu-${clientId}`);
+  if (!menu) return;
+  const willOpen = menu.style.display !== 'block';
+  document.querySelectorAll('[id^="cols-menu-"]').forEach(m => m.style.display = 'none');
+  menu.style.display = willOpen ? 'block' : 'none';
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[id^="cols-menu-"]') && !e.target.closest('[onclick^="toggleColumnsMenu"]')) {
+    document.querySelectorAll('[id^="cols-menu-"]').forEach(m => m.style.display = 'none');
+  }
+});
+
+function rowCheckKey(clientId, taskId) { return clientId + '::' + taskId; }
+
+function toggleSheetRowCheck(clientId, taskId, checked) {
+  const key = rowCheckKey(clientId, taskId);
+  if (checked) checkedSheetRows.add(key); else checkedSheetRows.delete(key);
+  updateBulkBar(clientId);
+  updateSelectAllCheckbox(clientId);
+}
+
+function toggleSelectAllSheetRows(clientId, checked) {
+  const container = document.getElementById(`csheets-${clientId}`);
+  if (!container) return;
+  container.querySelectorAll('.sheet-row-chk').forEach(chk => {
+    chk.checked = checked;
+    const tr = chk.closest('tr.sheet-row');
+    const taskId = tr ? tr.dataset.taskId : null;
+    if (taskId) {
+      const key = rowCheckKey(clientId, taskId);
+      if (checked) checkedSheetRows.add(key); else checkedSheetRows.delete(key);
+    }
+  });
+  updateBulkBar(clientId);
+}
+
+function updateSelectAllCheckbox(clientId) {
+  const container = document.getElementById(`csheets-${clientId}`);
+  if (!container) return;
+  const allBoxes = container.querySelectorAll('.sheet-row-chk');
+  const selectAll = container.querySelector(`#sheet-select-all-${clientId}`);
+  if (!selectAll) return;
+  selectAll.checked = allBoxes.length > 0 && Array.from(allBoxes).every(c => c.checked);
+}
+
+function updateBulkBar(clientId) {
+  const keys = Array.from(checkedSheetRows).filter(k => k.startsWith(clientId + '::'));
+  let bar = document.getElementById('sheet-bulk-bar');
+  if (keys.length === 0) {
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'sheet-bulk-bar';
+    bar.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99998;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);padding:10px 14px;align-items:center;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:.85rem;color:var(--txt);';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `
+    <span>${keys.length} row(s) selected</span>
+    <select id="bulk-status-select" style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);border-radius:6px;padding:6px;">
+      <option value="">Set status…</option>
+      <option value="need_to_start">Need to Start</option>
+      <option value="scheduled">Scheduled</option>
+      <option value="in_progress">In Progress</option>
+      <option value="paused">Paused</option>
+      <option value="posted">Posted</option>
+      <option value="final">Final</option>
+    </select>
+    <button style="background:var(--red);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;">Delete</button>
+    <button style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);padding:6px 12px;border-radius:6px;cursor:pointer;">Clear</button>
+  `;
+  const [statusSelect, deleteBtn, clearBtn] = [bar.querySelector('#bulk-status-select'), ...bar.querySelectorAll('button')];
+  statusSelect.onchange = (e) => { if (e.target.value) bulkSetStatus(clientId, e.target.value); };
+  deleteBtn.onclick = () => bulkDeleteChecked(clientId);
+  clearBtn.onclick = () => clearBulkSelection(clientId);
+  bar.style.display = 'flex';
+}
+
+function clearBulkSelection(clientId) {
+  Array.from(checkedSheetRows).filter(k => k.startsWith(clientId + '::')).forEach(k => checkedSheetRows.delete(k));
+  document.querySelectorAll('.sheet-row-chk').forEach(c => c.checked = false);
+  updateBulkBar(clientId);
+}
+
+async function bulkSetStatus(clientId, status) {
+  const keys = Array.from(checkedSheetRows).filter(k => k.startsWith(clientId + '::'));
+  for (const key of keys) {
+    const taskId = key.split('::')[1];
+    const tr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
+    if (!tr) continue;
+    const select = tr.cells[10].querySelector('select');
+    if (select) {
+      select.value = status;
+      await saveSheetRow(taskId, select, clientId);
+    }
+  }
+  clearBulkSelection(clientId);
+  toast('Status updated for selected rows.');
+}
+
 function renderClientSheets(clientId) {
   const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
   if(!client) return;
   const tasks = client.tasks||[];
-  
+
   // Find social media tasks (either labeled service='Social Media' or start with [Type])
   const socialTasks = tasks.filter(t => t.service === "Social Media" || /\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
-  
+
   const container = document.getElementById(`csheets-${clientId}`);
   if(!container) return;
-  
+
   if (socialTasks.length === 0) {
     container.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:12px;">No social media posts found. Add tasks via "Add Tasks" → Social Media.</div>';
     return;
   }
-  
+
   const existingWrapper = document.getElementById(`sheets-container-${clientId}`);
   const isFullscreen = existingWrapper && existingWrapper.classList.contains('fullscreen-sheets');
-  
+
   let customHeaders = {};
   let globalHeaders = {};
   try { globalHeaders = JSON.parse(localStorage.getItem(`sheetsCols_global`)) || {}; } catch(e){}
   try { customHeaders = JSON.parse(localStorage.getItem(`sheetsCols_${clientId}`)) || {}; } catch(e){}
   const getColName = (def) => customHeaders[def] || globalHeaders[def] || def;
 
-  let html = `
-    <div id="sheets-container-${clientId}" class="${isFullscreen ? 'fullscreen-sheets' : ''}" style="transition: all 0.2s;">
-      <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-        <div style="display: flex; align-items: center;">
-          <button class="btn btn-sm" onclick="exportClientSocialCSV('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
-          <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
-            📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
-          </label>
-          <button class="btn btn-sm" onclick="addSocialSheetRow('${clientId}')" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 12px; font-weight: 600;">➕ Add Row</button>
-        </div>
-        <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
-      </div>
-      <div style="max-height: 65vh; overflow-y: auto; overflow-x: auto; overscroll-behavior-x: none; border: 1px solid var(--bdr); border-radius: var(--rs);">
-        <table class="c-sheets" style="min-width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
-          <thead>
-            <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
-            <th style="border-right: 1px solid var(--bdr); border-left: none; border-top: none; font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 40px; min-width: 40px;">#</div></th>
-            <th style="border-right: 1px solid var(--bdr); border-top: none; font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;" contenteditable="true" onblur="saveColName('${clientId}', 'Creation Date', this.innerText)">${getColName('Creation Date')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;" contenteditable="true" onblur="saveColName('${clientId}', 'Post Day', this.innerText)">${getColName('Post Day')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;" contenteditable="true" onblur="saveColName('${clientId}', 'Post', this.innerText)">${getColName('Post')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 110px; min-width: 110px;" contenteditable="true" onblur="saveColName('${clientId}', 'Type', this.innerText)">${getColName('Type')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 200px; min-width: 200px;" contenteditable="true" onblur="saveColName('${clientId}', 'Content', this.innerText)">${getColName('Content')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;" contenteditable="true" onblur="saveColName('${clientId}', 'Idea', this.innerText)">${getColName('Idea')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;" contenteditable="true" onblur="saveColName('${clientId}', 'Scripts/ Copy', this.innerText)">${getColName('Scripts/ Copy')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px;" contenteditable="true" onblur="saveColName('${clientId}', 'Caption', this.innerText)">${getColName('Caption')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 160px; min-width: 160px;" contenteditable="true" onblur="saveColName('${clientId}', 'Assigned To', this.innerText)">${getColName('Assigned To')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 140px; min-width: 140px;" contenteditable="true" onblur="saveColName('${clientId}', 'Status', this.innerText)">${getColName('Status')}</div></th>
-            <th style="border-right: 1px solid var(--bdr); font-weight: 600;"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 220px; min-width: 220px;" contenteditable="true" onblur="saveColName('${clientId}', 'File (Drive Link)', this.innerText)">${getColName('File (Drive Link)')}</div></th>
-            <th style="font-weight: 600; background: rgba(217, 119, 87, 0.15);"><div style="padding: 10px; resize: horizontal; overflow: hidden; width: 260px; min-width: 260px; color: var(--acc);" contenteditable="true" onblur="saveColName('${clientId}', 'Notes', this.innerText)">${getColName('Notes')}</div></th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-  
-  let rowIndex = 1;
-  let customOrder = [];
-  try { customOrder = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch(e){}
-
-  socialTasks.sort((a,b) => {
-    const idxA = customOrder.indexOf(a.id);
-    const idxB = customOrder.indexOf(b.id);
-    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-    if (idxA !== -1) return -1;
-    if (idxB !== -1) return 1;
-    return (a.due_date||"").localeCompare(b.due_date||"");
-  }).forEach(t => {
+  // ── Derive display fields for every task up front so sort/search/render share one shape ──
+  let records = socialTasks.map(t => {
     let type = "Post";
     let title = t.title;
     const match = t.title.match(/^\[(.*?)\]\s*(.*)$/);
-    if (match) {
-      type = match[1];
-      title = match[2];
-    }
-    
-    // Parse description for Brief, Idea, Caption, Link
-    // Format: Content: xxx | Idea: yyy | Scripts: zzz | Caption: aaa | Link: www
+    if (match) { type = match[1]; title = match[2]; }
+
     const notes = t.description || "";
     let creationDate = t.creation_date || "", content = "", idea = "", scripts = "", caption = "", link = "";
 
@@ -902,76 +1000,138 @@ function renderClientSheets(clientId) {
       const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
       if (crMatch) creationDate = crMatch[1].trim();
     }
-
     const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/);
     if (cntMatch) content = cntMatch[1].trim();
-    
     const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link)\s*:|$)/);
     if (iMatch) idea = iMatch[1].trim();
-    
     const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link)\s*:|$)/);
     if (sMatch) scripts = sMatch[1].trim();
-    
     const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link)\s*:|$)/);
     if (cMatch) caption = cMatch[1].trim();
-    
     const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes)\s*:|$)/);
     if (lMatch) link = lMatch[1].trim();
-    
     let myNotes = "";
     const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link)\s*:|$)/);
     if (nMatch) myNotes = nMatch[1].trim();
-    
-    // Status color (social media statuses)
+
     const rawS = t.status || "need_to_start";
     const s = rawS.toLowerCase().replace(/ /g, '_');
-    
-    let stCol = "var(--muted)";
-    let rowBg = "transparent";
-    
-    if (s === "posted" || s === "done" || s === "approved") {
-      stCol = "var(--grn)";
-      rowBg = "rgba(34, 211, 160, 0.18)";
-    } else if (s === "final") {
-      stCol = "#a855f7"; // Purple
-      rowBg = "rgba(168, 85, 247, 0.18)";
-    } else if (s === "scheduled") {
-      stCol = "var(--blu)"; // Blue
-      rowBg = "rgba(92, 158, 255, 0.18)";
-    } else if (s === "in_progress") {
-      stCol = "var(--acc)"; // Orange
-      rowBg = "rgba(245, 166, 35, 0.18)";
-    } else if (s === "paused") {
-      stCol = "var(--red)"; // Red
-      rowBg = "rgba(255, 92, 92, 0.18)";
-    } else {
-      stCol = "var(--muted)"; // Gray
-      rowBg = "rgba(107, 107, 138, 0.12)";
-    }
-    
+    let stCol = "var(--muted)", rowBg = "rgba(107, 107, 138, 0.12)";
+    if (s === "posted" || s === "done" || s === "approved") { stCol = "var(--grn)"; rowBg = "rgba(34, 211, 160, 0.18)"; }
+    else if (s === "final") { stCol = "#a855f7"; rowBg = "rgba(168, 85, 247, 0.18)"; }
+    else if (s === "scheduled") { stCol = "var(--blu)"; rowBg = "rgba(92, 158, 255, 0.18)"; }
+    else if (s === "in_progress") { stCol = "var(--acc)"; rowBg = "rgba(245, 166, 35, 0.18)"; }
+    else if (s === "paused") { stCol = "var(--red)"; rowBg = "rgba(255, 92, 92, 0.18)"; }
+
     const stLbl = rawS.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
-    
-    const typeCol = type.toLowerCase() === "story" ? "#a855f7" : type.toLowerCase() === "reel" ? "#3b82f6" : "#f43f5e";
-    const typeBadge = `<span style="background:${typeCol}20; color:${typeCol}; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">${type}</span>`;
-    
-    const assigneeName = (t.assigned_to||'').split(',').map(s=> (typeof EMP !== 'undefined' ? EMP[s.trim()] : s.trim()) || s.trim() || '-').join(', ') || '-';
-    
+    const assigneeName = (t.assigned_to||'').split(',').map(x=> (typeof EMP !== 'undefined' ? EMP[x.trim()] : x.trim()) || x.trim() || '-').join(', ') || '-';
+    const searchText = [type,title,content,idea,scripts,caption,assigneeName,stLbl,link,myNotes,creationDate,t.due_date||''].join(' ').toLowerCase();
+
+    return { t, type, title, creationDate, content, idea, scripts, caption, link, myNotes, rawS, s, stCol, rowBg, stLbl, assigneeName, due_date: t.due_date||'', searchText };
+  });
+
+  const query = (sheetSearchState[clientId] || '').trim().toLowerCase();
+  if (query) records = records.filter(r => r.searchText.includes(query));
+
+  let customOrder = [];
+  try { customOrder = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch(e){}
+
+  const activeSort = sheetSortState[clientId];
+  if (activeSort) {
+    const field = SORT_FIELD[activeSort.col];
+    records.sort((a,b) => {
+      const av = (a[field]||'').toString().toLowerCase();
+      const bv = (b[field]||'').toString().toLowerCase();
+      if (av < bv) return activeSort.dir === 'asc' ? -1 : 1;
+      if (av > bv) return activeSort.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  } else {
+    records.sort((a,b) => {
+      const idxA = customOrder.indexOf(a.t.id);
+      const idxB = customOrder.indexOf(b.t.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return (a.due_date||"").localeCompare(b.due_date||"");
+    });
+  }
+
+  const sortHdr = (label, colIndex, defWidth) => `<div style="padding: 10px; resize: horizontal; overflow: hidden; width: ${defWidth}px; min-width: ${defWidth}px; display:flex; align-items:center; justify-content:space-between; gap:4px;"><span contenteditable="true" onblur="saveColName('${clientId}', '${label}', this.innerText)" style="flex:1;outline:none;">${getColName(label)}</span><span onclick="sortSheetBy('${clientId}', ${colIndex})" title="Sort" style="cursor:pointer;opacity:.6;font-size:.7rem;flex-shrink:0;">${sortIndicator(clientId,colIndex)}</span></div>`;
+
+  let html = `
+    <div id="sheets-container-${clientId}" class="${isFullscreen ? 'fullscreen-sheets' : ''}" style="transition: all 0.2s;">
+      <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-sm" onclick="exportClientSocialCSV('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">📤 Export CSV</button>
+          <label class="btn btn-sm" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px; cursor: pointer;">
+            📥 Import CSV/Excel <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importClientSocialCSV(event, '${clientId}')">
+          </label>
+          <button class="btn btn-sm" onclick="addSocialSheetRow('${clientId}')" style="margin-left: 8px; border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 12px; font-weight: 600;">➕ Add Row</button>
+          <div style="position:relative;display:inline-block;margin-left: 8px;">
+            <button class="btn btn-sm" onclick="toggleColumnsMenu('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">☰ Columns</button>
+            <div id="cols-menu-${clientId}" style="display:none;position:absolute;top:110%;left:0;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);padding:8px;z-index:50;min-width:190px;max-height:280px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);">
+              ${COLUMN_LABELS.slice(1).map((label,i)=>{
+                const colIdx = i+1;
+                const hidden = loadHiddenCols(clientId).has(colIdx);
+                return `<label style="display:block;padding:4px 6px;font-size:.8rem;cursor:pointer;color:var(--txt);"><input type="checkbox" ${hidden?'':'checked'} onchange="toggleSheetColumn('${clientId}', ${colIdx})"> ${esc(getColName(label))}</label>`;
+              }).join('')}
+            </div>
+          </div>
+          <input type="text" id="sheet-search-${clientId}" placeholder="🔍 Search rows…" value="${esc(sheetSearchState[clientId]||'')}"
+            oninput="sheetSearchState['${clientId}']=this.value; renderClientSheets('${clientId}')"
+            style="background:var(--s2); border:1px solid var(--bdr); border-radius:6px; padding:8px 12px; color:var(--txt); font-size:.85rem; margin-left:8px; width:180px;">
+          <span id="sheet-save-status-${clientId}" style="font-size:.75rem;color:var(--muted);margin-left:10px;min-width:70px;display:inline-block;"></span>
+        </div>
+        <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
+      </div>
+      <div style="max-height: 65vh; overflow-y: auto; overflow-x: auto; overscroll-behavior-x: none; border: 1px solid var(--bdr); border-radius: var(--rs);">
+        <table class="c-sheets" style="min-width:100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; text-align: left; background: var(--s2);">
+          <thead>
+            <tr style="background: rgba(255,255,255,0.05); color: var(--txt);">
+            <th style="border-right: 1px solid var(--bdr); border-left: none; border-top: none; font-weight: 600; position:sticky; left:0; z-index:11; background:var(--s1);"><div style="padding: 10px; overflow: hidden; width: 50px; min-width: 50px; text-align:center;"><input type="checkbox" id="sheet-select-all-${clientId}" onchange="toggleSelectAllSheetRows('${clientId}', this.checked)" title="Select all rows" style="cursor:pointer;"></div></th>
+            <th class="sheet-col-1" style="border-right: 1px solid var(--bdr); border-top: none; font-weight: 600;">${sortHdr('Creation Date',1,140)}</th>
+            <th class="sheet-col-2" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Post Day',2,140)}</th>
+            <th class="sheet-col-3" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Post',3,200)}</th>
+            <th class="sheet-col-4" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Type',4,110)}</th>
+            <th class="sheet-col-5" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Content',5,200)}</th>
+            <th class="sheet-col-6" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Idea',6,220)}</th>
+            <th class="sheet-col-7" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Scripts/ Copy',7,260)}</th>
+            <th class="sheet-col-8" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Caption',8,260)}</th>
+            <th class="sheet-col-9" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Assigned To',9,160)}</th>
+            <th class="sheet-col-10" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('Status',10,140)}</th>
+            <th class="sheet-col-11" style="border-right: 1px solid var(--bdr); font-weight: 600;">${sortHdr('File (Drive Link)',11,220)}</th>
+            <th class="sheet-col-12" style="font-weight: 600; background: rgba(217, 119, 87, 0.15);">${sortHdr('Notes',12,260)}</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  let rowIndex = 1;
+
+  records.forEach(r => {
+    const t = r.t;
+    const { type, title, creationDate, content, idea, scripts, caption, link, myNotes, s, stCol, rowBg } = r;
+    const rowStickyBg = rowBg === "transparent" ? "var(--s2)" : rowBg;
+    const isChecked = checkedSheetRows.has(rowCheckKey(clientId, t.id));
+
     html += `
-      <tr class="sheet-row" style="background-color: ${rowBg}; transition: background-color 0.3s;" data-task-id="${t.id}">
-        <td title="Click to delete this row (Undo available for 8s)" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" oncontextmenu="event.preventDefault(); deleteSocialSheetRow('${t.id}', '${clientId}');" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--muted); cursor: pointer; text-align: center;">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-             <span>${rowIndex++}</span>
-             <span style="font-size: 0.7rem; color: var(--red); opacity: 0.7;" title="Delete Row">🗑️</span>
+      <tr class="sheet-row" style="background-color: ${rowBg}; transition: background-color 0.3s;" data-task-id="${t.id}" oncontextmenu="showRowContextMenu(event, '${t.id}', '${clientId}')">
+        <td class="sheet-col-0" style="padding: 6px 10px; border-right: 1px solid var(--bdr); color: var(--muted); text-align: center; position:sticky; left:0; z-index:2; background:${rowStickyBg};">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap:4px;">
+             <input type="checkbox" class="sheet-row-chk" ${isChecked?'checked':''} onclick="event.stopPropagation(); toggleSheetRowCheck('${clientId}', '${t.id}', this.checked)" style="cursor:pointer;">
+             <span style="cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Click to delete this row (Undo available for 8s)">${rowIndex++}</span>
+             <span style="font-size: 0.7rem; color: var(--red); opacity: 0.7; cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Delete Row">🗑️</span>
           </div>
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
+        <td class="sheet-col-1" style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
           <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${creationDate}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
+        <td class="sheet-col-2" style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
           <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${t.due_date || ""}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(title)}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr);">
+        <td class="sheet-col-3" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(title)}</td>
+        <td class="sheet-col-4" style="padding: 10px; border-right: 1px solid var(--bdr);">
           <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
             <option value="" ${type===''?'selected':''}></option>
             <option value="Story" ${type.toLowerCase()==='story'?'selected':''}>Story</option>
@@ -981,24 +1141,24 @@ function renderClientSheets(clientId) {
             <option value="Post" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
           </select>
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(content)}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(idea)}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(scripts)}</td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(caption)}</td>
-        <td style="padding: 6px 10px; border-right: 1px solid var(--bdr); position: relative; overflow: visible;">
+        <td class="sheet-col-5" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(content)}</td>
+        <td class="sheet-col-6" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(idea)}</td>
+        <td class="sheet-col-7" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(scripts)}</td>
+        <td class="sheet-col-8" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(caption)}</td>
+        <td class="sheet-col-9" style="padding: 6px 10px; border-right: 1px solid var(--bdr); position: relative; overflow: visible;">
           <div class="ms-wrap sheet-ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
             <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="background:var(--s1); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; font-size:0.82rem; cursor:pointer; min-height:28px;">
-              ${(t.assigned_to||"").split(',').map(s=> (typeof EMP !== 'undefined' ? EMP[s.trim()] : s.trim()) || s.trim()).filter(Boolean).join(', ') || '— Assign —'}
+              ${(t.assigned_to||"").split(',').map(x=> (typeof EMP !== 'undefined' ? EMP[x.trim()] : x.trim()) || x.trim()).filter(Boolean).join(', ') || '— Assign —'}
             </div>
             <div class="ms-dropdown" style="width: 160px; right: 0; left: auto;">
               ${(window.EMPLOYEES||[]).map(e => {
-                 const isSelected = (t.assigned_to||"").split(',').map(s=>s.trim()).some(a => a===String(e.id) || a===e.name);
+                 const isSelected = (t.assigned_to||"").split(',').map(x=>x.trim()).some(a => a===String(e.id) || a===e.name);
                  return `<label><input type="checkbox" value="${e.id}" class="ms-chk" ${isSelected ? 'checked' : ''} onchange="updateSheetMsDisplay(this); saveSheetRow('${t.id}', this, '${clientId}')"> ${e.name}</label>`;
               }).join('')}
             </div>
           </div>
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">
+        <td class="sheet-col-10" style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">
           <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
             <option value="need_to_start" ${['need_to_start','not_started',''].includes(s)?'selected':''}>Need to Start</option>
             <option value="scheduled"     ${s==='scheduled'    ?'selected':''}>Scheduled</option>
@@ -1009,20 +1169,24 @@ function renderClientSheets(clientId) {
             <option value="final"          ${s==='final'        ?'selected':''}>Final</option>
           </select>
         </td>
-        <td style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(link)}</td>
-        <td style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(myNotes)}</td>
+        <td class="sheet-col-11" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(link)}</td>
+        <td class="sheet-col-12" style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(myNotes)}</td>
       </tr>
     `;
   });
-  
+
   html += `</tbody></table></div></div>`;
-  
+
   const scrollWrapper = container.querySelector('div[style*="overflow-y: auto"]');
   const scrollTop = scrollWrapper ? scrollWrapper.scrollTop : 0;
   const scrollLeft = scrollWrapper ? scrollWrapper.scrollLeft : 0;
-  
+
+  const searchInputBefore = container.querySelector(`#sheet-search-${clientId}`);
+  const hadSearchFocus = searchInputBefore && document.activeElement === searchInputBefore;
+  const caretPos = hadSearchFocus ? searchInputBefore.selectionStart : null;
+
   container.innerHTML = html;
-  
+
   const newScrollWrapper = container.querySelector('div[style*="overflow-y: auto"]');
   if (newScrollWrapper) {
     newScrollWrapper.scrollTop = scrollTop;
@@ -1030,17 +1194,28 @@ function renderClientSheets(clientId) {
     preventEdgeSwipeNav(newScrollWrapper);
   }
 
+  if (hadSearchFocus) {
+    const newSearchInput = container.querySelector(`#sheet-search-${clientId}`);
+    if (newSearchInput) { newSearchInput.focus(); newSearchInput.setSelectionRange(caretPos, caretPos); }
+  }
+
+  applyColumnVisibility(clientId);
+  updateSelectAllCheckbox(clientId);
+
   const tbody = container.querySelector('.c-sheets tbody');
   if (tbody && typeof Sortable !== 'undefined') {
     new Sortable(tbody, {
       animation: 150,
       handle: '.sheet-row td:first-child',
+      filter: '.sheet-row-chk',
+      preventOnFilter: false,
       onEnd: function (evt) {
         const newOrder = [];
         tbody.querySelectorAll('.sheet-row').forEach(tr => {
           if (tr.dataset.taskId) newOrder.push(tr.dataset.taskId);
         });
         localStorage.setItem(`sheetsOrder_${clientId}`, JSON.stringify(newOrder));
+        sheetSortState[clientId] = null; // manual drag reorder overrides any active column sort
         renderClientSheets(clientId);
       }
     });
@@ -1105,6 +1280,7 @@ async function addSocialSheetRow(clientId) {
 
 // ── Sheets row delete with Undo (Excel/Gmail-style: delete instantly, ─────────
 // ── undo within a short window instead of a blocking "are you sure?") ─────────
+// pendingRowDelete = { items: [{taskId,clientId,task,idx,isNotionClient}], timeoutId } | null
 let pendingRowDelete = null;
 
 function ensureUndoBar() {
@@ -1131,6 +1307,12 @@ function hideUndoBar() {
   if (bar) bar.style.display = 'none';
 }
 
+function startPendingDelete(items, message) {
+  const timeoutId = setTimeout(commitPendingDelete, 8000);
+  pendingRowDelete = { items, timeoutId };
+  showUndoBar(message, undoRowDelete);
+}
+
 function deleteSocialSheetRow(taskId, clientId) {
   if (pendingRowDelete) commitPendingDelete(); // only one undo slot — flush the previous one for real first
 
@@ -1143,67 +1325,461 @@ function deleteSocialSheetRow(taskId, clientId) {
   renderClientSheets(clientId);
 
   const isNotionClient = notionMode && !!client.notion_id;
-  const timeoutId = setTimeout(commitPendingDelete, 8000);
-  pendingRowDelete = { taskId, clientId, task, idx, isNotionClient, timeoutId };
-  showUndoBar('Row deleted.', undoRowDelete);
+  startPendingDelete([{ taskId, clientId, task, idx, isNotionClient }], 'Row deleted.');
+}
+
+function bulkDeleteChecked(clientId) {
+  const keys = Array.from(checkedSheetRows).filter(k => k.startsWith(clientId + '::'));
+  if (keys.length === 0) return;
+  if (pendingRowDelete) commitPendingDelete();
+
+  const client = allData.clients.find(c => String(c.id) === String(clientId));
+  if (!client) return;
+  const isNotionClient = notionMode && !!client.notion_id;
+  const items = [];
+  keys.forEach(key => {
+    const taskId = key.split('::')[1];
+    const idx = client.tasks.findIndex(t => String(t.id) === String(taskId));
+    if (idx !== -1) {
+      const [task] = client.tasks.splice(idx, 1);
+      items.push({ taskId, clientId, task, idx, isNotionClient });
+    }
+  });
+  if (items.length === 0) return;
+  clearBulkSelection(clientId);
+  renderClientSheets(clientId);
+  startPendingDelete(items, `${items.length} row(s) deleted.`);
 }
 
 function undoRowDelete() {
   if (!pendingRowDelete) return;
   clearTimeout(pendingRowDelete.timeoutId);
-  const { clientId, task, idx } = pendingRowDelete;
+  const { items } = pendingRowDelete;
   pendingRowDelete = null;
   hideUndoBar();
-  const client = allData.clients.find(c => String(c.id) === String(clientId));
-  if (!client) return;
-  client.tasks.splice(Math.min(idx, client.tasks.length), 0, task);
-  renderClientSheets(clientId);
-  toast('Row restored.');
+  // restore in reverse so earlier splices don't shift later insertion indices
+  [...items].reverse().forEach(({ clientId, task, idx }) => {
+    const client = allData.clients.find(c => String(c.id) === String(clientId));
+    if (client) client.tasks.splice(Math.min(idx, client.tasks.length), 0, task);
+  });
+  [...new Set(items.map(i => i.clientId))].forEach(cid => renderClientSheets(cid));
+  toast('Restored.');
 }
 
 async function commitPendingDelete() {
   if (!pendingRowDelete) return;
-  const { taskId, clientId, task, idx, isNotionClient } = pendingRowDelete;
+  const { items } = pendingRowDelete;
   pendingRowDelete = null;
   hideUndoBar();
 
-  const endpoint = isNotionClient ? `${API}/api/notion/tasks/${taskId}` : `${API}/api/sqlite/tasks/${taskId}`;
-  const restoreRowLocally = () => {
-    const client = allData.clients.find(c => String(c.id) === String(clientId));
-    if (client) {
-      client.tasks.splice(Math.min(idx, client.tasks.length), 0, task);
-      renderClientSheets(clientId);
-    }
-  };
-
-  try {
-    const res = await fetch(endpoint, { method: "DELETE", headers: { "Content-Type": "application/json" } });
-    const d = await res.json();
-    if (!d.success) {
+  for (const item of items) {
+    const { taskId, clientId, task, idx, isNotionClient } = item;
+    const endpoint = isNotionClient ? `${API}/api/notion/tasks/${taskId}` : `${API}/api/sqlite/tasks/${taskId}`;
+    const restoreRowLocally = () => {
+      const client = allData.clients.find(c => String(c.id) === String(clientId));
+      if (client) { client.tasks.splice(Math.min(idx, client.tasks.length), 0, task); renderClientSheets(clientId); }
+    };
+    try {
+      const res = await fetch(endpoint, { method: "DELETE", headers: { "Content-Type": "application/json" } });
+      const d = await res.json();
+      if (!d.success) {
+        restoreRowLocally();
+        toast(d.error || "Failed to delete a row — restored", "err");
+        continue;
+      }
+    } catch (err) {
+      console.error(err);
       restoreRowLocally();
-      toast(d.error || "Failed to delete row — row restored", "err");
-      return;
+      toast("Error deleting a row — restored", "err");
+      continue;
     }
-    if (isNotionClient) {
-      setTimeout(() => refreshClientData(clientId, isNotionClient), 1500);
-    } else {
-      refreshClientData(clientId, isNotionClient);
-    }
+  }
+
+  [...new Set(items.map(i => i.clientId))].forEach(cid => {
+    const client = allData.clients.find(c => String(c.id) === String(cid));
+    const isN = notionMode && !!(client && client.notion_id);
+    if (isN) setTimeout(() => refreshClientData(cid, true), 1500);
+    else refreshClientData(cid, false);
+  });
+}
+
+// ── Right-click context menu: insert row above/below, duplicate, clear cell, delete ──
+function ensureContextMenu() {
+  let menu = document.getElementById('sheet-ctx-menu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'sheet-ctx-menu';
+    menu.style.cssText = 'display:none;position:fixed;z-index:100000;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.4);min-width:190px;padding:6px;font-size:.85rem;';
+    document.body.appendChild(menu);
+  }
+  return menu;
+}
+
+function hideContextMenu() {
+  const m = document.getElementById('sheet-ctx-menu');
+  if (m) m.style.display = 'none';
+}
+document.addEventListener('click', hideContextMenu);
+document.addEventListener('scroll', hideContextMenu, true);
+
+function showRowContextMenu(e, taskId, clientId) {
+  e.preventDefault();
+  const menu = ensureContextMenu();
+  const cellTd = e.target.closest('td');
+  const colIndex = cellTd ? cellTd.cellIndex : -1;
+
+  const items = [
+    { label: '⬆ Insert row above', fn: () => insertSheetRow(clientId, taskId, 'above') },
+    { label: '⬇ Insert row below', fn: () => insertSheetRow(clientId, taskId, 'below') },
+    { label: '⧉ Duplicate row', fn: () => duplicateSheetRow(clientId, taskId) },
+  ];
+  if (colIndex > 0) items.push({ label: '✕ Clear cell', fn: () => clearSheetCell(clientId, taskId, colIndex) });
+  items.push({ label: '🗑 Delete row', fn: () => deleteSocialSheetRow(taskId, clientId) });
+
+  menu.innerHTML = items.map((it,i) => `<div class="ctx-item" data-i="${i}" style="padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--txt);">${it.label}</div>`).join('');
+  menu.querySelectorAll('.ctx-item').forEach((el, i) => {
+    el.onclick = (ev) => { ev.stopPropagation(); hideContextMenu(); items[i].fn(); };
+  });
+
+  const x = Math.min(e.clientX, window.innerWidth - 210);
+  const y = Math.min(e.clientY, window.innerHeight - (items.length * 36 + 20));
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.style.display = 'block';
+}
+
+async function insertSheetRow(clientId, refTaskId, position) {
+  const client = allData.clients.find(c => String(c.id) === String(clientId));
+  if (!client) return;
+  const isNotionClient = notionMode && !!client.notion_id;
+  const endpoint = isNotionClient ? `${API}/api/notion/tasks` : `${API}/api/tasks`;
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: UID, client_id: isNotionClient ? client.notion_id : clientId, client_name: client.name,
+        title: "[Post] New Idea", assigned_to: "", due_date: "", service: "Social Media", status: "not_started"
+      })
+    });
+    const d = await res.json();
+    if (!d.success) { toast(d.error || "Failed to add row", "err"); return; }
+    const newId = isNotionClient ? (d.notion_id || Date.now()) : d.task_id;
+    const newTask = { id: newId, notion_id: isNotionClient ? d.notion_id : null, title: "[Post] New Idea", service: "Social Media", status: "not_started" };
+
+    client.tasks = client.tasks || [];
+    const refIdx = client.tasks.findIndex(t => String(t.id) === String(refTaskId));
+    const insertAt = refIdx === -1 ? 0 : (position === 'above' ? refIdx : refIdx + 1);
+    client.tasks.splice(insertAt, 0, newTask);
+
+    let order = [];
+    try { order = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch(e){}
+    const orderIdx = order.indexOf(String(refTaskId));
+    order.splice(orderIdx === -1 ? order.length : (position === 'above' ? orderIdx : orderIdx + 1), 0, String(newId));
+    localStorage.setItem(`sheetsOrder_${clientId}`, JSON.stringify(order));
+
+    toast("Row added");
+    renderClientSheets(clientId);
   } catch (err) {
     console.error(err);
-    restoreRowLocally();
-    toast("Error deleting row — row restored", "err");
+    toast("Error adding row", "err");
   }
+}
+
+async function duplicateSheetRow(clientId, taskId) {
+  const client = allData.clients.find(c => String(c.id) === String(clientId));
+  if (!client) return;
+  const src = (client.tasks||[]).find(t => String(t.id) === String(taskId));
+  if (!src) return;
+  const isNotionClient = notionMode && !!client.notion_id;
+  const createEndpoint = isNotionClient ? `${API}/api/notion/tasks` : `${API}/api/tasks`;
+  try {
+    const res = await fetch(createEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: UID, client_id: isNotionClient ? client.notion_id : clientId, client_name: client.name,
+        title: src.title || "[Post] New Idea", assigned_to: src.assigned_to || "", due_date: src.due_date || "",
+        service: "Social Media", status: src.status || "not_started"
+      })
+    });
+    const d = await res.json();
+    if (!d.success) { toast(d.error || "Failed to duplicate row", "err"); return; }
+    const newId = isNotionClient ? (d.notion_id || Date.now()) : d.task_id;
+
+    if (src.description || src.creation_date) {
+      const patchEndpoint = isNotionClient ? `${API}/api/notion/tasks/${newId}` : `${API}/api/sqlite/tasks/${newId}`;
+      await fetch(patchEndpoint, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submission_note: src.description || "", creation_date: src.creation_date || "" })
+      }).catch(()=>{});
+    }
+
+    const newTask = { id: newId, notion_id: isNotionClient ? d.notion_id : null, title: src.title, service: "Social Media", status: src.status, assigned_to: src.assigned_to, due_date: src.due_date, description: src.description, creation_date: src.creation_date };
+    client.tasks = client.tasks || [];
+    const refIdx = client.tasks.findIndex(t => String(t.id) === String(taskId));
+    client.tasks.splice(refIdx === -1 ? 0 : refIdx + 1, 0, newTask);
+
+    let order = [];
+    try { order = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch(e){}
+    const orderIdx = order.indexOf(String(taskId));
+    order.splice(orderIdx === -1 ? order.length : orderIdx + 1, 0, String(newId));
+    localStorage.setItem(`sheetsOrder_${clientId}`, JSON.stringify(order));
+
+    toast("Row duplicated");
+    renderClientSheets(clientId);
+  } catch (err) {
+    console.error(err);
+    toast("Error duplicating row", "err");
+  }
+}
+
+function applyPastedCellValue(td, value) {
+  value = (value||'').trim();
+  const select = td.querySelector('select');
+  if (select) {
+    const opt = Array.from(select.options).find(o => o.textContent.trim().toLowerCase() === value.toLowerCase() || o.value.toLowerCase() === value.toLowerCase());
+    if (opt) select.value = opt.value; else if (!value) select.selectedIndex = 0;
+    return;
+  }
+  const dateInput = td.querySelector('input[type="date"]');
+  if (dateInput) { dateInput.value = value ? parseFlexibleDate(value) : ''; return; }
+  const msWrap = td.querySelector('.ms-wrap');
+  if (msWrap) {
+    const names = value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+    msWrap.querySelectorAll('.ms-chk').forEach(chk => {
+      const label = chk.parentElement.textContent.trim().toLowerCase();
+      chk.checked = names.length > 0 && names.some(n => label.includes(n) || n.includes(label));
+    });
+    const firstChk = msWrap.querySelector('.ms-chk');
+    if (firstChk) updateSheetMsDisplay(firstChk);
+    return;
+  }
+  if (td.isContentEditable) td.textContent = value;
+}
+
+function parseFlexibleDate(value) {
+  value = (value||'').trim();
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const dm = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dm) return `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`; // assume DD/MM/YYYY (app is India/IST-based)
+  const d = new Date(value);
+  if (!isNaN(d.getTime())) return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  return '';
+}
+
+function clearSheetCell(clientId, taskId, colIndex) {
+  const tr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
+  if (!tr) return;
+  const td = tr.cells[colIndex];
+  if (!td) return;
+  applyPastedCellValue(td, '');
+  const focusEl = td.querySelector('input,select,[contenteditable]') || td;
+  saveSheetRow(taskId, focusEl, clientId);
+}
+
+function sheetTrClientId(tr) {
+  const container = tr.closest('[id^="csheets-"]');
+  return container ? container.id.replace('csheets-','') : null;
+}
+
+// ── Paste from Excel/Google Sheets: tab-separated columns, newline-separated rows ──
+document.addEventListener('paste', (e) => {
+  const td = e.target.closest('.c-sheets td');
+  if (!td) return;
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  if (!text) return;
+  const isMultiCell = /\t|\n/.test(text);
+  if (!td.isContentEditable && !isMultiCell) return; // single-value paste into date/select: let native behavior handle it
+
+  const tr = td.closest('tr.sheet-row');
+  if (!tr) return;
+  e.preventDefault();
+  e.stopImmediatePropagation(); // there's an older, unrelated document-level paste listener further down that force-plain-texts contenteditables — without this it double-processes the same paste
+
+  const clientId = sheetTrClientId(tr);
+  const rows = text.replace(/\r/g,'').split('\n').filter((r,i,arr)=> !(i===arr.length-1 && r===''));
+  const startColIndex = td.cellIndex;
+  let curTr = tr;
+  let rowsFilled = 0;
+
+  for (let r = 0; r < rows.length && curTr; r++) {
+    const cols = rows[r].split('\t');
+    for (let c = 0; c < cols.length; c++) {
+      const colIndex = startColIndex + c;
+      if (colIndex >= curTr.cells.length) break;
+      applyPastedCellValue(curTr.cells[colIndex], cols[c]);
+    }
+    const taskId = curTr.dataset.taskId;
+    if (taskId) {
+      const anchorCell = curTr.cells[startColIndex];
+      const focusEl = anchorCell ? (anchorCell.querySelector('input,select,[contenteditable]') || anchorCell) : null;
+      if (focusEl) saveSheetRow(taskId, focusEl, clientId);
+    }
+    rowsFilled++;
+    curTr = curTr.nextElementSibling;
+  }
+  toast(`Pasted ${rowsFilled} row${rowsFilled===1?'':'s'}.${rows.length>rowsFilled ? ' (Add more rows to paste the rest.)' : ''}`);
+});
+
+function sheetCellTextValue(td) {
+  const select = td.querySelector('select');
+  if (select) return select.options[select.selectedIndex] ? select.options[select.selectedIndex].textContent.trim() : '';
+  const dateInput = td.querySelector('input[type="date"]');
+  if (dateInput) return dateInput.value || '';
+  const msWrap = td.querySelector('.ms-wrap');
+  if (msWrap) return Array.from(msWrap.querySelectorAll('.ms-chk:checked')).map(c => c.parentElement.textContent.trim()).join(', ');
+  return (td.textContent || '').trim();
+}
+
+// ── Cell selection: click-drag or shift-click to select a block, for copy/clear ──
+let sheetSel = null; // { tbody, r1, c1, r2, c2 }
+let sheetSelDragging = false;
+
+function sheetCellPos(td) {
+  const tr = td.closest('tr.sheet-row');
+  if (!tr) return null;
+  const tbody = tr.parentElement;
+  return { tbody, rIdx: Array.from(tbody.children).indexOf(tr), cIdx: td.cellIndex };
+}
+
+function clearSheetSelectionVisual() {
+  document.querySelectorAll('td.sheet-cell-selected').forEach(el => el.classList.remove('sheet-cell-selected'));
+}
+
+function applySheetSelectionVisual() {
+  clearSheetSelectionVisual();
+  if (!sheetSel) return;
+  const { tbody, r1, c1, r2, c2 } = sheetSel;
+  const rowMin = Math.min(r1,r2), rowMax = Math.max(r1,r2), colMin = Math.min(c1,c2), colMax = Math.max(c1,c2);
+  for (let r = rowMin; r <= rowMax; r++) {
+    const tr = tbody.children[r];
+    if (!tr) continue;
+    for (let c = colMin; c <= colMax; c++) { const td = tr.cells[c]; if (td) td.classList.add('sheet-cell-selected'); }
+  }
+}
+
+document.addEventListener('mousedown', (e) => {
+  const td = e.target.closest('.c-sheets td');
+  if (!td || td.cellIndex === 0) { sheetSel = null; clearSheetSelectionVisual(); return; }
+  const pos = sheetCellPos(td);
+  if (!pos) return;
+  sheetSelDragging = true;
+  sheetSel = { tbody: pos.tbody, r1: pos.rIdx, c1: pos.cIdx, r2: pos.rIdx, c2: pos.cIdx };
+  applySheetSelectionVisual();
+});
+document.addEventListener('mouseover', (e) => {
+  if (!sheetSelDragging || !sheetSel) return;
+  const td = e.target.closest('.c-sheets td');
+  if (!td) return;
+  const pos = sheetCellPos(td);
+  if (!pos || pos.tbody !== sheetSel.tbody) return;
+  sheetSel.r2 = pos.rIdx; sheetSel.c2 = pos.cIdx;
+  applySheetSelectionVisual();
+});
+document.addEventListener('mouseup', () => { sheetSelDragging = false; });
+document.addEventListener('click', (e) => {
+  const td = e.target.closest('.c-sheets td');
+  if (!td) { sheetSel = null; clearSheetSelectionVisual(); return; }
+  if (e.shiftKey && sheetSel) {
+    const pos = sheetCellPos(td);
+    if (pos && pos.tbody === sheetSel.tbody) { sheetSel.r2 = pos.rIdx; sheetSel.c2 = pos.cIdx; applySheetSelectionVisual(); }
+  }
+});
+
+document.addEventListener('copy', (e) => {
+  if (!sheetSel) return;
+  const isSingleCell = sheetSel.r1 === sheetSel.r2 && sheetSel.c1 === sheetSel.c2;
+  const active = document.activeElement;
+  if (isSingleCell && active && (active.tagName === 'INPUT' || active.isContentEditable)) {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return; // user has a real text selection mid-cell — let native copy handle it
+  }
+  const { tbody, r1, c1, r2, c2 } = sheetSel;
+  const rowMin = Math.min(r1,r2), rowMax = Math.max(r1,r2), colMin = Math.min(c1,c2), colMax = Math.max(c1,c2);
+  const lines = [];
+  for (let r = rowMin; r <= rowMax; r++) {
+    const tr = tbody.children[r];
+    if (!tr) continue;
+    const cols = [];
+    for (let c = colMin; c <= colMax; c++) { const td = tr.cells[c]; cols.push(td ? sheetCellTextValue(td) : ''); }
+    lines.push(cols.join('\t'));
+  }
+  e.clipboardData.setData('text/plain', lines.join('\n'));
+  e.preventDefault();
+  toast(`Copied ${rowMax-rowMin+1} row(s).`);
+});
+
+function clearSheetSelectionCells() {
+  if (!sheetSel) return;
+  const { tbody, r1, c1, r2, c2 } = sheetSel;
+  const rowMin = Math.min(r1,r2), rowMax = Math.max(r1,r2), colMin = Math.min(c1,c2), colMax = Math.max(c1,c2);
+  const container = tbody.closest('[id^="csheets-"]');
+  const clientId = container ? container.id.replace('csheets-','') : null;
+  for (let r = rowMin; r <= rowMax; r++) {
+    const tr = tbody.children[r];
+    if (!tr) continue;
+    const taskId = tr.dataset.taskId;
+    for (let c = colMin; c <= colMax; c++) {
+      if (c === 0) continue; // never touch the checkbox/# column via bulk clear
+      const td = tr.cells[c];
+      if (td) applyPastedCellValue(td, '');
+    }
+    if (taskId) {
+      const anchorCell = tr.cells[Math.max(colMin,1)];
+      const focusEl = anchorCell ? (anchorCell.querySelector('input,select,[contenteditable]') || anchorCell) : null;
+      if (focusEl) saveSheetRow(taskId, focusEl, clientId);
+    }
+  }
+  toast('Cleared selection.');
+}
+
+// ── Keyboard: Ctrl+Z undo delete, Enter/Shift+Enter move rows, boundary-aware ──
+// ── Left/Right arrow cell nav, Up/Down arrow nav, Delete/Backspace bulk-clear ──
+function focusSheetCellAt(tr, colIndex) {
+  if (!tr) return;
+  const td = tr.cells[colIndex];
+  if (!td) return;
+  const focusable = td.querySelector('input, select, [contenteditable="true"]') || (td.isContentEditable ? td : null);
+  if (focusable) focusable.focus();
 }
 
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && pendingRowDelete) {
     const active = document.activeElement;
     const isEditable = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-    if (!isEditable) {
-      e.preventDefault();
-      undoRowDelete();
-    }
+    if (!isEditable) { e.preventDefault(); undoRowDelete(); return; }
+  }
+
+  const td = e.target.closest('.c-sheets td');
+  if (!td) return;
+  const tr = td.closest('tr.sheet-row');
+  if (!tr) return;
+  const colIndex = td.cellIndex;
+
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    e.target.blur();
+    focusSheetCellAt(tr.nextElementSibling, colIndex);
+  } else if (e.key === 'Enter' && e.shiftKey) {
+    e.preventDefault();
+    e.target.blur();
+    focusSheetCellAt(tr.previousElementSibling, colIndex);
+  } else if (e.target.isContentEditable && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    focusSheetCellAt(e.key === 'ArrowUp' ? tr.previousElementSibling : tr.nextElementSibling, colIndex);
+  } else if (e.target.isContentEditable && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return;
+    const textLen = (e.target.textContent || '').length;
+    if (e.key === 'ArrowLeft' && range.startOffset === 0) { e.preventDefault(); focusSheetCellAt(tr, colIndex - 1); }
+    else if (e.key === 'ArrowRight' && range.startOffset === textLen) { e.preventDefault(); focusSheetCellAt(tr, colIndex + 1); }
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && sheetSel) {
+    const isSingleCell = sheetSel.r1 === sheetSel.r2 && sheetSel.c1 === sheetSel.c2;
+    if (!isSingleCell) { e.preventDefault(); clearSheetSelectionCells(); }
   }
 });
 
@@ -1292,10 +1868,12 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     taskObj.status = status;
 
     cellElem.style.opacity = "0.5";
+    const statusEl = document.getElementById(`sheet-save-status-${clientId}`);
+    if (statusEl) { clearTimeout(statusEl._t); statusEl.style.color = 'var(--muted)'; statusEl.textContent = 'Saving…'; }
 
     try {
-      const endpoint = isNotionClient 
-        ? `${API}/api/notion/tasks/${taskId}` 
+      const endpoint = isNotionClient
+        ? `${API}/api/notion/tasks/${taskId}`
         : `${API}/api/sqlite/tasks/${taskId}`;
 
       const res = await fetch(endpoint, {
@@ -1319,7 +1897,9 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     else if (s === "paused") rowBg = "rgba(255, 92, 92, 0.18)";
     else rowBg = "rgba(107, 107, 138, 0.12)";
     tr.style.backgroundColor = rowBg;
-    
+
+    if (statusEl) { statusEl.style.color = 'var(--grn)'; statusEl.textContent = 'Saved ✓'; statusEl._t = setTimeout(()=>{ statusEl.textContent=''; }, 1500); }
+
     if (clientId) {
       renderClientCalendar(clientId);
       if (typeof renderCalendar === 'function') renderCalendar();
@@ -1327,6 +1907,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     }
   } catch(e) {
     toast(e.message || "Error saving row", "err");
+    if (statusEl) { statusEl.style.color = 'var(--red)'; statusEl.textContent = 'Save failed ✕'; }
   } finally {
     cellElem.style.opacity = "1";
   }
