@@ -1735,8 +1735,8 @@ function clearSheetSelectionCells() {
   toast('Cleared selection.');
 }
 
-// ── Keyboard: Ctrl+Z undo delete, Enter/Shift+Enter move rows, boundary-aware ──
-// ── Left/Right arrow cell nav, Up/Down arrow nav, Delete/Backspace bulk-clear ──
+// ── Keyboard: Ctrl+Z undo delete, boundary-aware Left/Right arrow cell nav, ──
+// ── Up/Down arrow nav, Delete/Backspace bulk-clear (Enter left as native) ──
 function focusSheetCellAt(tr, colIndex) {
   if (!tr) return;
   const td = tr.cells[colIndex];
@@ -1758,15 +1758,7 @@ document.addEventListener('keydown', (e) => {
   if (!tr) return;
   const colIndex = td.cellIndex;
 
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    e.target.blur();
-    focusSheetCellAt(tr.nextElementSibling, colIndex);
-  } else if (e.key === 'Enter' && e.shiftKey) {
-    e.preventDefault();
-    e.target.blur();
-    focusSheetCellAt(tr.previousElementSibling, colIndex);
-  } else if (e.target.isContentEditable && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+  if (e.target.isContentEditable && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
     e.preventDefault();
     focusSheetCellAt(e.key === 'ArrowUp' ? tr.previousElementSibling : tr.nextElementSibling, colIndex);
   } else if (e.target.isContentEditable && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
