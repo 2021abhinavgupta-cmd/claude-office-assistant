@@ -3975,9 +3975,13 @@ document.addEventListener('paste', function(e) {
           const pullLine = d.last_pull_at
             ? `<p>Last pull from Sheet: ${esc(d.last_pull_at)} <span style="color:var(--muted);">(${esc(d.last_pull_summary || '')})</span></p>`
             : `<p style="color:var(--muted);">No pulls yet -- edit the Sheet directly (after installing the trigger below) to trigger one.</p>`;
+          const modeLine = d.multi_tab
+            ? `<p>Sync mode: <strong>one tab per month</strong>. Name each month's tab exactly like <code>"August 2026"</code>; tasks with no due date sync to a tab named exactly <code>"Unscheduled"</code>. Any other tab name is ignored.</p>`
+            : `<p>Sync mode: <strong>single tab</strong> (this Sheet's first tab only).</p>`;
           body.innerHTML = `
             <p><strong>Linked</strong> to spreadsheet <code>${esc(d.spreadsheet_id)}</code></p>
             <p>Linked by ${esc(d.linked_by || 'someone')} on ${esc(d.linked_at || '')}</p>
+            ${modeLine}
             ${pushLine}
             ${pullLine}
             <p>Share the Sheet with: <code>${esc(d.service_account_email)}</code></p>
@@ -3988,6 +3992,7 @@ document.addEventListener('paste', function(e) {
         } else {
           body.innerHTML = `
             <p>Paste the URL of an existing Google Sheet to link it to this client. The Sheet needs a hidden column A (lumina_task_id) and 12 columns after it matching the Sheets tab's fields (Creation Date, Post Day, Post Title, Type, Content, Idea, Scripts/Copy, Caption, File (Drive Link), Notes, Assigned To, Status). Format the Creation Date and Post Day columns as Plain Text so typed YYYY-MM-DD dates round-trip correctly.</p>
+            <p>New connections sync one tab per due-date month. Name each month's tab exactly like <code>"August 2026"</code>; tasks with no due date go in a tab named exactly <code>"Unscheduled"</code>. Any other tab name is ignored.</p>
             <input type="text" id="gsheet-url-input" placeholder="https://docs.google.com/spreadsheets/d/..." style="width:100%;padding:8px;margin-bottom:8px;">
             <button class="btn btn-sm" onclick="submitGoogleSheetLink('${clientId}')" style="border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 16px; font-weight:600;">Connect</button>
           `;
