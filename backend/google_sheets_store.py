@@ -1066,3 +1066,128 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
             "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push}
+
+
+def reconcile_sheet_tabs(link: dict, tabs: dict) -> dict:
+    """Multi-tab (multi_tab=1) equivalent of reconcile_sheet_rows -- tabs is
+    {tab_name: rows}, one entry per synced tab in the incoming Apps Script
+    payload. Same full-snapshot-diff contract, unioned across every tab
+    instead of one flat list: a task's physical tab is just a container,
+    the Post Day cell value in its row is still what sets the task's
+    due_date (same as the single-tab behavior) -- this function does not
+    enforce or correct tab/due_date consistency, only push does that."""
+    with _get_client_sheet_lock(link["client_id"]):
+        return _reconcile_sheet_tabs_locked(link, tabs)
+
+
+def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
+    client_id = link["client_id"]
+    is_notion = link["is_notion"]
+    client_name = link.get("client_name") or ""
+    spreadsheet_id = link["spreadsheet_id"]
+    editor_name = link.get("linked_by") or "Google Sheets"
+
+    current = _current_tasks_by_id(client_id, is_notion)
+    seen_ids = set()
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0
+
+    for tab_name, rows in tabs.items():
+        if not _is_synced_tab_name(tab_name):
+            continue  # defensive -- Apps Script already filters, a hand-edited payload might not
+        for idx, row in enumerate(rows):
+            row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
+            row_label = f"{tab_name} row {row_number}"
+            try:
+                task_id = str(row[0]).strip() if row else ""
+                row_fields = _row_to_fields(row)
+                if not task_id and not any(row_fields.values()):
+                    continue  # fully blank row
+
+                if not task_id:
+                    new_id = _create_task(client_id, client_name, is_notion, row_fields)
+                    if new_id:
+                        ok = _retry(lambda: write_tab_cell(spreadsheet_id, tab_name, f"A{row_number}", new_id))
+                        if not ok:
+                            logger.error(
+                                f"Sheets reconcile (multi-tab): giving up writing back task id {new_id} "
+                                f"for {row_label} (client {client_id}) after retries."
+                            )
+                        _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
+                                     changed_fields=list(row_fields.keys()))
+                        created += 1
+                    continue
+
+                if task_id in seen_ids:
+                    logger.warning(
+                        f"Sheets reconcile (multi-tab): duplicate task_id {task_id} at {row_label} for "
+                        f"client {client_id} -- ignoring, an earlier row already claimed this id this pass."
+                    )
+                    duplicates += 1
+                    continue
+                seen_ids.add(task_id)
+
+                existing = current.get(task_id)
+                if not existing:
+                    if _is_tombstoned(task_id):
+                        logger.info(
+                            f"Sheets reconcile (multi-tab): {row_label} (client {client_id}) references "
+                            f"tombstoned task_id {task_id} -- not recreating."
+                        )
+                        tombstoned += 1
+                        continue
+                    new_id = _create_task(client_id, client_name, is_notion, row_fields)
+                    if new_id:
+                        logger.warning(
+                            f"Sheets reconcile (multi-tab): {row_label} (client {client_id}) referenced "
+                            f"task_id {task_id}, which no longer exists in Lumina -- recreated as {new_id}."
+                        )
+                        ok = _retry(lambda: write_tab_cell(spreadsheet_id, tab_name, f"A{row_number}", new_id))
+                        if not ok:
+                            logger.error(
+                                f"Sheets reconcile (multi-tab): giving up writing back recreated task id "
+                                f"{new_id} for {row_label} (client {client_id}) after retries."
+                            )
+                        _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
+                                     changed_fields=list(row_fields.keys()))
+                        recreated += 1
+                    continue
+
+                old_fields = _task_to_fields(existing)
+                if old_fields == row_fields:
+                    skipped += 1
+                    continue
+                if _recently_pushed(task_id):
+                    logger.info(
+                        f"Sheets reconcile (multi-tab): {row_label} (client {client_id}, task_id {task_id}) "
+                        f"was pushed to recently -- deferring this update to the next pass."
+                    )
+                    skipped_recent_push += 1
+                    continue
+                _update_task(task_id, is_notion, row_fields, editor_name)
+                changed = [k for k in row_fields if row_fields.get(k) != old_fields.get(k)]
+                _log_version(task_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
+                             changed_fields=changed)
+                updated += 1
+            except Exception:
+                logger.exception(f"Sheets reconcile (multi-tab): skipping malformed row at {row_label} for client {client_id}")
+                errored += 1
+
+    if not seen_ids and current:
+        logger.warning(
+            f"Sheets reconcile (multi-tab): snapshot for client {client_id} recognized 0 of "
+            f"{len(current)} known tasks -- skipping delete pass as a safety measure."
+        )
+        return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
+                "errored": errored, "duplicates": duplicates, "recreated": recreated,
+                "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
+                "deletes_skipped_safety": len(current)}
+
+    for existing_id in current:
+        if existing_id not in seen_ids:
+            _delete_task(existing_id, is_notion)
+            deleted += 1
+
+    return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
+            "errored": errored, "duplicates": duplicates, "recreated": recreated,
+            "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push}
