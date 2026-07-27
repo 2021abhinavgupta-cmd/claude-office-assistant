@@ -604,6 +604,14 @@ def _row_to_fields(row: list) -> dict:
     padded = list(row) + [""] * (13 - len(row))
     fields = dict(zip(SHEET_FIELDS, [str(v).strip() for v in padded[1:13]]))
     fields["status"] = fields["status"].lower().replace(" ", "_")
+    # Normalize the same way _create_task/_update_task always normalize
+    # whatever ends up in the stored title -- without this, a Sheet's raw
+    # Type cell (free text, e.g. "TikTok") never equals the normalized
+    # value _task_to_fields() re-derives from an already-created task's
+    # title ("Post"), so old_fields == row_fields would never be true for
+    # that row and every reconcile pass would re-issue a spurious "changed"
+    # update for it forever, even with nothing meaningfully different.
+    fields["type"] = _normalize_type(fields.get("type"))
     return fields
 
 
@@ -654,8 +662,34 @@ def _current_tasks_by_id(client_id: str, is_notion: bool) -> dict:
     return result
 
 
+def _normalize_type(raw_type: str) -> str:
+    """Collapses any Type value to one _SOCIAL_TITLE_RE actually recognizes.
+    The Sheet's Type cell is free text -- Lumina's own Sheets UI only offers
+    Story/Reel/Static/Carousel/Post via a dropdown, but a real Google Sheet
+    has no such constraint, so a user can type anything (or a stray value
+    from a bad paste) directly into that column.
+    This matters beyond cosmetics: _create_task/_update_task always build
+    the task's title as "[Type] Title", and _is_social_task() (used by
+    _current_tasks_by_id, which both the connect-time backfill and every
+    reconcile pass depend on) recognizes a task via EITHER a real "Social
+    Media" service (Notion mode always sets this at creation, immune) OR
+    that exact bracket prefix (the ONLY signal SQLite mode has, since its
+    `tasks` table has no service column at all). Without normalizing here,
+    a SQLite-mode task created from a row with an unrecognized Type (e.g.
+    "TikTok") would build a title like "[TikTok] ..." that _is_social_task
+    can't recognize -- invisible to _current_tasks_by_id on the very next
+    reconcile pass, which (not finding its task_id in `current`, and it's
+    not tombstoned) recreates it again from the same row, write-backs a
+    new id, which itself fires another onChange... an unbounded create
+    loop, one duplicate orphaned task per pass, for as long as that row's
+    Type stays unrecognized. Normalizing at creation/update time instead
+    guarantees the title _is_social_task expects is always produced."""
+    cleaned = (raw_type or "").strip()
+    return cleaned if cleaned.lower() in ("story", "static", "reel", "carousel", "post", "video") else "Post"
+
+
 def _create_task(client_id: str, client_name: str, is_notion: bool, fields: dict):
-    new_title = f"[{fields.get('type') or 'Post'}] {fields.get('title') or 'New Idea'}"
+    new_title = f"[{_normalize_type(fields.get('type'))}] {fields.get('title') or 'New Idea'}"
     notes = _build_sheet_notes(fields)
     if is_notion:
         result = notion_store.create_task(
@@ -679,7 +713,7 @@ def _create_task(client_id: str, client_name: str, is_notion: bool, fields: dict
 
 
 def _update_task(task_id: str, is_notion: bool, fields: dict, editor_name: str) -> bool:
-    new_title = f"[{fields.get('type') or 'Post'}] {fields.get('title') or ''}"
+    new_title = f"[{_normalize_type(fields.get('type'))}] {fields.get('title') or ''}"
     notes = _build_sheet_notes(fields)
     if is_notion:
         last_edited = f"{today_ist()} {now_ist()}|{editor_name}|Google Sheets sync"
