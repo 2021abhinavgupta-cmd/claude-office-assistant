@@ -36,7 +36,7 @@ This file provides essential context for AI coding assistants (System, Copilot, 
 | Deployment | Railway with Nixpacks |
 | Auth | Server-side session tokens (stored in SQLite `sessions` table) |
 
-**Notable deps** (`backend/requirements.txt`): `anthropic`, `flask-cors`, `flask-compress`, `Flask-Limiter`, `apscheduler`, `gevent`, `pypdf`/`python-docx`/`openpyxl` (file parsing), `weasyprint`/`python-pptx`/`reportlab` (export). Notion integration uses raw `requests`, not an SDK.
+**Notable deps** (`backend/requirements.txt`): `anthropic`, `flask-cors`, `flask-compress`, `Flask-Limiter`, `apscheduler`, `gevent`, `pypdf`/`python-docx`/`openpyxl` (file parsing), `weasyprint`/`python-pptx`/`reportlab` (export), `google-auth` (Google Sheets two-way sync, see gotcha #87). Notion integration and Google Sheets sync both use raw `requests`/`AuthorizedSession`, not their respective official SDKs.
 
 ---
 
