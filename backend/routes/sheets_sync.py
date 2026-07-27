@@ -65,20 +65,50 @@ def _base_url() -> str:
     return configured.rstrip("/") if configured else request.host_url.rstrip("/")
 
 
-def _apps_script_snippet(webhook_url: str) -> str:
+def _apps_script_snippet(webhook_url: str, multi_tab: bool = False) -> str:
+    if not multi_tab:
+        return (
+            "function onSheetChange(e) {\n"
+            "  // Always the first tab, not getActiveSheet() -- Lumina only ever\n"
+            "  // reads/writes this spreadsheet's first tab, so if a second tab is\n"
+            "  // ever added and edited, this still targets the one that actually\n"
+            "  // syncs instead of silently sending the wrong tab's data.\n"
+            "  var sheet = SpreadsheetApp.getActive().getSheets()[0];\n"
+            "  var data = sheet.getDataRange().getValues();\n"
+            "  var rows = data.slice(1); // drop header row\n"
+            "  UrlFetchApp.fetch(\"" + webhook_url + "\", {\n"
+            "    method: \"post\",\n"
+            "    contentType: \"application/json\",\n"
+            "    payload: JSON.stringify({ rows: rows }),\n"
+            "    muteHttpExceptions: true\n"
+            "  });\n"
+            "}\n\n"
+            "function installTrigger() {\n"
+            "  ScriptApp.newTrigger(\"onSheetChange\")\n"
+            "    .forSpreadsheet(SpreadsheetApp.getActive())\n"
+            "    .onChange()\n"
+            "    .create();\n"
+            "}\n"
+            "// Run installTrigger() once manually (Run > installTrigger) to activate sync."
+        )
     return (
         "function onSheetChange(e) {\n"
-        "  // Always the first tab, not getActiveSheet() -- Lumina only ever\n"
-        "  // reads/writes this spreadsheet's first tab, so if a second tab is\n"
-        "  // ever added and edited, this still targets the one that actually\n"
-        "  // syncs instead of silently sending the wrong tab's data.\n"
-        "  var sheet = SpreadsheetApp.getActive().getSheets()[0];\n"
-        "  var data = sheet.getDataRange().getValues();\n"
-        "  var rows = data.slice(1); // drop header row\n"
+        "  // Multi-tab mode: sync every tab named like a month (\"August 2026\")\n"
+        "  // plus a tab literally named \"Unscheduled\". Any other tab is ignored.\n"
+        "  var ss = SpreadsheetApp.getActive();\n"
+        "  var monthRe = /^(January|February|March|April|May|June|July|August|September|October|November|December) \\d{4}$/;\n"
+        "  var tabs = {};\n"
+        "  ss.getSheets().forEach(function(sheet) {\n"
+        "    var name = sheet.getName();\n"
+        "    if (name === \"Unscheduled\" || monthRe.test(name)) {\n"
+        "      var data = sheet.getDataRange().getValues();\n"
+        "      tabs[name] = data.slice(1); // drop header row\n"
+        "    }\n"
+        "  });\n"
         "  UrlFetchApp.fetch(\"" + webhook_url + "\", {\n"
         "    method: \"post\",\n"
         "    contentType: \"application/json\",\n"
-        "    payload: JSON.stringify({ rows: rows }),\n"
+        "    payload: JSON.stringify({ tabs: tabs }),\n"
         "    muteHttpExceptions: true\n"
         "  });\n"
         "}\n\n"
@@ -88,20 +118,23 @@ def _apps_script_snippet(webhook_url: str) -> str:
         "    .onChange()\n"
         "    .create();\n"
         "}\n"
-        "// Run installTrigger() once manually (Run > installTrigger) to activate sync."
+        "// Run installTrigger() once manually (Run > installTrigger) to activate sync.\n"
+        "// Name each month tab exactly like \"August 2026\". Tasks with no due date\n"
+        "// go in a tab named exactly \"Unscheduled\". Any other tab name is ignored."
     )
 
 
 def _link_row_to_dict(row) -> dict:
     (client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by,
-     last_push_at, last_push_ok, last_pull_at, last_pull_summary) = row
+     last_push_at, last_push_ok, last_pull_at, last_pull_summary, multi_tab) = row
     webhook_url = f"{_base_url()}/api/sheets/webhook/{link_token}"
     return {
         "linked": True, "client_id": client_id, "spreadsheet_id": spreadsheet_id,
         "is_notion": bool(is_notion), "client_name": client_name,
         "linked_at": linked_at, "linked_by": linked_by,
+        "multi_tab": bool(multi_tab),
         "service_account_email": gs.service_account_email(),
-        "apps_script": _apps_script_snippet(webhook_url),
+        "apps_script": _apps_script_snippet(webhook_url, bool(multi_tab)),
         "last_push_at": last_push_at, "last_push_ok": bool(last_push_ok) if last_push_ok is not None else None,
         "last_pull_at": last_pull_at, "last_pull_summary": last_pull_summary,
     }
@@ -148,7 +181,7 @@ def create_google_sheet_link(client_id: str):
         return jsonify({"error": "is_notion=true but Notion isn't configured on this server"}), 400
 
     try:
-        gs.read_all_rows(spreadsheet_id)
+        gs.list_tabs(spreadsheet_id)
     except Exception:
         return jsonify({
             "error": f"Could not read that sheet -- make sure it's shared (Editor access) with {gs.service_account_email()}"
@@ -193,17 +226,24 @@ def create_google_sheet_link(client_id: str):
     # whatever row number the OLD sheet's snapshot happened to report,
     # silently corrupting an unrelated row there. Minting a fresh token
     # instead makes the old trigger's requests 404 harmlessly.
-    cur.execute("SELECT link_token, spreadsheet_id FROM google_sheet_links WHERE client_id=?", (client_id,))
+    # multi_tab: existing clients keep whatever mode they already had on
+    # any relink (including to a different spreadsheet -- it's a per-client
+    # sync-mode choice, not tied to one physical sheet). A brand-new client
+    # connect always starts multi_tab=1, since monthly-tab sync is now the
+    # primary supported mode -- see CLAUDE.md gotcha #87 and the design spec
+    # at docs/superpowers/specs/2026-08-15-google-sheets-multi-tab-sync-design.md.
+    cur.execute("SELECT link_token, spreadsheet_id, multi_tab FROM google_sheet_links WHERE client_id=?", (client_id,))
     existing = cur.fetchone()
     same_spreadsheet = existing and str(existing[1]) == str(spreadsheet_id)
     link_token = existing[0] if same_spreadsheet else secrets.token_urlsafe(24)
+    multi_tab = existing[2] if existing is not None else 1
     with conn:
         conn.execute(
             "INSERT OR REPLACE INTO google_sheet_links "
-            "(client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "(client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by, multi_tab) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (client_id, spreadsheet_id, link_token, 1 if is_notion else 0, client_name,
-             f"{today_ist()} {now_ist()}", user_id),
+             f"{today_ist()} {now_ist()}", user_id, multi_tab),
         )
     conn.close()
 
@@ -219,9 +259,10 @@ def create_google_sheet_link(client_id: str):
     try:
         existing_tasks = gs._current_tasks_by_id(client_id, is_notion)
         link_for_push = {"spreadsheet_id": spreadsheet_id, "client_id": client_id}
+        push_fn = gs.push_task_to_sheet_multi_tab if multi_tab else gs.push_task_to_sheet
         for tid, task in existing_tasks.items():
             fields = gs._task_to_fields(task)
-            if gs.push_task_to_sheet(link_for_push, tid, fields):
+            if push_fn(link_for_push, tid, fields):
                 backfilled += 1
     except Exception:
         logger.exception(f"Sheets connect: backfill failed for client {client_id}")
@@ -230,7 +271,8 @@ def create_google_sheet_link(client_id: str):
     return jsonify({
         "success": True, "spreadsheet_id": spreadsheet_id,
         "service_account_email": gs.service_account_email(),
-        "apps_script": _apps_script_snippet(webhook_url),
+        "apps_script": _apps_script_snippet(webhook_url, bool(multi_tab)),
+        "multi_tab": bool(multi_tab),
         "backfilled": backfilled,
     })
 
@@ -248,7 +290,7 @@ def get_google_sheet_link(client_id: str):
     cur = conn.cursor()
     cur.execute(
         "SELECT client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by, "
-        "last_push_at, last_push_ok, last_pull_at, last_pull_summary "
+        "last_push_at, last_push_ok, last_pull_at, last_pull_summary, multi_tab "
         "FROM google_sheet_links WHERE client_id=?", (client_id,)
     )
     row = cur.fetchone()
@@ -271,12 +313,13 @@ def delete_google_sheet_link(client_id: str):
 
 def get_link_for_client(client_id: str):
     """Internal helper for the push route below -- returns the plain dict
-    shape google_sheets_store.push_task_to_sheet/reconcile_sheet_rows expect,
-    or None if this client has no linked Sheet."""
+    shape google_sheets_store.push_task_to_sheet(_multi_tab)/
+    reconcile_sheet_rows(_tabs) expect, or None if this client has no linked
+    Sheet."""
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT client_id, spreadsheet_id, is_notion, client_name, linked_by "
+        "SELECT client_id, spreadsheet_id, is_notion, client_name, linked_by, multi_tab "
         "FROM google_sheet_links WHERE client_id=?", (client_id,)
     )
     row = cur.fetchone()
@@ -284,14 +327,14 @@ def get_link_for_client(client_id: str):
     if not row:
         return None
     return {"client_id": row[0], "spreadsheet_id": row[1], "is_notion": bool(row[2]),
-            "client_name": row[3], "linked_by": row[4]}
+            "client_name": row[3], "linked_by": row[4], "multi_tab": bool(row[5])}
 
 
 def get_link_by_token(link_token: str):
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT client_id, spreadsheet_id, is_notion, client_name, linked_by "
+        "SELECT client_id, spreadsheet_id, is_notion, client_name, linked_by, multi_tab "
         "FROM google_sheet_links WHERE link_token=?", (link_token,)
     )
     row = cur.fetchone()
@@ -299,7 +342,7 @@ def get_link_by_token(link_token: str):
     if not row:
         return None
     return {"client_id": row[0], "spreadsheet_id": row[1], "is_notion": bool(row[2]),
-            "client_name": row[3], "linked_by": row[4]}
+            "client_name": row[3], "linked_by": row[4], "multi_tab": bool(row[5])}
 
 
 # Hard cap on rows accepted per webhook call -- generous for this app's real
@@ -346,7 +389,8 @@ def push_sheet_task(task_id: str):
     link = get_link_for_client(client_id)
     if not link:
         return jsonify({"success": True, "linked": False})
-    ok = gs.push_task_to_sheet(link, task_id, fields)
+    push_fn = gs.push_task_to_sheet_multi_tab if link.get("multi_tab") else gs.push_task_to_sheet
+    ok = push_fn(link, task_id, fields)
     _record_push_result(client_id, ok)
     return jsonify({"success": True, "linked": True, "pushed": ok})
 
@@ -369,7 +413,8 @@ def delete_sheet_task(task_id: str):
     link = get_link_for_client(client_id)
     if not link:
         return jsonify({"success": True, "linked": False})
-    deleted = gs.delete_task_from_sheet(link, task_id)
+    delete_fn = gs.delete_task_from_sheet_multi_tab if link.get("multi_tab") else gs.delete_task_from_sheet
+    deleted = delete_fn(link, task_id)
     return jsonify({"success": True, "linked": True, "deleted": deleted})
 
 
@@ -379,14 +424,33 @@ def sheets_pull_webhook(link_token: str):
     """Called by the Apps Script onChange trigger installed in a linked
     Sheet (see _apps_script_snippet). link_token is the sole authenticator --
     unguessable, scoped to exactly one client, never shown outside the
-    one-time setup dialog."""
+    one-time setup dialog. Accepts either payload shape ({"tabs": {...}} for
+    a multi_tab=1 link, {"rows": [...]} for a legacy single-tab link) so an
+    already-installed script keeps working right up until it's reconnected."""
     link = get_link_by_token(link_token)
     if not link:
         return jsonify({"error": "Unknown link"}), 404
     body = request.get_json(silent=True) or {}
+
+    if link.get("multi_tab") and isinstance(body.get("tabs"), dict):
+        tabs = body["tabs"]
+        total_rows = sum(len(v) for v in tabs.values() if isinstance(v, list))
+        if total_rows > MAX_WEBHOOK_ROWS:
+            return jsonify({
+                "error": f"Sheet has more than {MAX_WEBHOOK_ROWS} total rows across its tabs -- "
+                         f"contact the developer to raise this limit"
+            }), 400
+        try:
+            summary = gs.reconcile_sheet_tabs(link, tabs)
+        except Exception:
+            logger.exception(f"Sheets webhook (multi-tab): reconcile failed for link_token={link_token}")
+            return jsonify({"error": "Reconcile failed, see server logs"}), 500
+        _record_pull_result(link_token, summary)
+        return jsonify({"success": True, **summary})
+
     rows = body.get("rows")
     if not isinstance(rows, list):
-        return jsonify({"error": "rows required"}), 400
+        return jsonify({"error": "rows (or tabs, for a multi-tab-linked client) required"}), 400
     if len(rows) > MAX_WEBHOOK_ROWS:
         return jsonify({"error": f"Sheet has more than {MAX_WEBHOOK_ROWS} rows -- contact the developer to raise this limit"}), 400
     try:
