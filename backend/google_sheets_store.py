@@ -113,6 +113,41 @@ def _retry(fn, attempts: int = 3, base_delay: float = 0.4) -> bool:
             time.sleep(base_delay * (i + 1))
     return False
 
+# ── Multi-tab (monthly calendar) support ────────────────────────────────
+# A linked spreadsheet can have one tab per due-date month (e.g. "August
+# 2026") plus a fixed "Unscheduled" tab for tasks with no due date. Only
+# tabs matching this exact naming convention are ever read or written --
+# any other tab (personal notes, scratch work, etc.) is invisible to sync.
+_MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
+                "August", "September", "October", "November", "December"]
+_MONTH_TAB_RE = re.compile(r"^(" + "|".join(_MONTH_NAMES) + r") \d{4}$")
+UNSCHEDULED_TAB_NAME = "Unscheduled"
+
+
+def _is_synced_tab_name(name: str) -> bool:
+    return name == UNSCHEDULED_TAB_NAME or bool(_MONTH_TAB_RE.match(name or ""))
+
+
+def _month_tab_name_for(due_date: str) -> str:
+    """"August 2026"-style tab name for a task's due_date (Post Day), or
+    UNSCHEDULED_TAB_NAME if due_date is blank or unparseable."""
+    if not due_date:
+        return UNSCHEDULED_TAB_NAME
+    try:
+        dt = datetime.strptime(str(due_date)[:10], "%Y-%m-%d")
+    except Exception:
+        return UNSCHEDULED_TAB_NAME
+    return f"{_MONTH_NAMES[dt.month - 1]} {dt.year}"
+
+
+def _a1_quote(sheet_name: str) -> str:
+    """Quotes a tab name for use in A1 range notation, e.g. 'August 2026'.
+    Doubles any literal single quote per A1 notation's own escaping rule --
+    cheap defense-in-depth, the enforced naming convention never actually
+    produces one."""
+    return "'" + sheet_name.replace("'", "''") + "'"
+
+
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 _session = None
 _service_account_email_cache = None
