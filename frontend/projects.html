@@ -1398,7 +1398,7 @@ let hiddenRowsCache = {};   // clientId -> Set(task_id)
 let hiddenRowsMeta = {};    // clientId -> { task_id: {hidden_by, hidden_at} }
 async function loadAllHiddenRowsFromServer() {
   try {
-    const res = await fetch(`${API}/api/sheets/hidden-rows`);
+    const res = await fetch(`${API}/api/sheets/hidden-rows?user_id=${encodeURIComponent(UID)}`);
     const d = await res.json();
     hiddenRowsCache = {};
     hiddenRowsMeta = {};
@@ -1421,7 +1421,7 @@ async function hideSheetRow(clientId, taskId) {
   try {
     await fetch(`${API}/api/sheets/tasks/${taskId}/hide`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, hidden_by: hiddenBy }),
+      body: JSON.stringify({ client_id: clientId, hidden_by: hiddenBy, user_id: UID }),
     });
   } catch(e) { toast("Row hidden locally but failed to sync -- it may reappear for others.", "err"); }
 }
@@ -1431,14 +1431,20 @@ async function unhideSheetRow(clientId, taskId) {
   hiddenRowsCache[clientId] = hidden;
   renderClientSheets(clientId);
   try {
-    await fetch(`${API}/api/sheets/tasks/${taskId}/unhide`, { method: 'POST' });
+    await fetch(`${API}/api/sheets/tasks/${taskId}/unhide`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: UID }),
+    });
   } catch(e) { toast("Row unhidden locally but failed to sync.", "err"); }
 }
 async function unhideAllSheetRows(clientId) {
   hiddenRowsCache[clientId] = new Set();
   renderClientSheets(clientId);
   try {
-    await fetch(`${API}/api/sheets/clients/${clientId}/unhide-all`, { method: 'POST' });
+    await fetch(`${API}/api/sheets/clients/${clientId}/unhide-all`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: UID }),
+    });
   } catch(e) { toast("Unhidden locally but failed to sync.", "err"); }
 }
 function toggleHiddenRowsMenu(clientId) {
@@ -1547,7 +1553,7 @@ async function bulkHideChecked(clientId) {
   const hiddenBy = (window.EMP_DICT && window.EMP_DICT[UID]) || UID;
   await Promise.all(taskIds.map(id => fetch(`${API}/api/sheets/tasks/${id}/hide`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ client_id: clientId, hidden_by: hiddenBy }),
+    body: JSON.stringify({ client_id: clientId, hidden_by: hiddenBy, user_id: UID }),
   }).catch(() => {})));
 }
 

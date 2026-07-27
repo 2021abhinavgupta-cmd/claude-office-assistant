@@ -1837,6 +1837,8 @@ def list_all_hidden_rows():
     the frontend's shared hidden-rows cache loaded once at page load, so
     the row-hide feature is visible to every employee, not just the one
     whose browser hid it."""
+    if not _is_admin(request.args.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute("SELECT task_id, client_id, hidden_by, hidden_at FROM sheet_hidden_rows")
@@ -1853,6 +1855,8 @@ def list_all_hidden_rows():
 @ops_bp.route("/api/sheets/tasks/<string:task_id>/hide", methods=["POST"])
 def hide_sheet_row(task_id: str):
     body = request.get_json(silent=True) or {}
+    if not _is_admin(body.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     client_id = str(body.get("client_id", "")).strip()
     hidden_by = str(body.get("hidden_by", "")).strip() or "Someone"
     if not client_id:
@@ -1869,6 +1873,9 @@ def hide_sheet_row(task_id: str):
 
 @ops_bp.route("/api/sheets/tasks/<string:task_id>/unhide", methods=["POST"])
 def unhide_sheet_row(task_id: str):
+    body = request.get_json(silent=True) or {}
+    if not _is_admin(body.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     with conn:
         conn.execute("DELETE FROM sheet_hidden_rows WHERE task_id=?", (task_id,))
@@ -1878,6 +1885,9 @@ def unhide_sheet_row(task_id: str):
 
 @ops_bp.route("/api/sheets/clients/<string:client_id>/unhide-all", methods=["POST"])
 def unhide_all_sheet_rows(client_id: str):
+    body = request.get_json(silent=True) or {}
+    if not _is_admin(body.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     with conn:
         conn.execute("DELETE FROM sheet_hidden_rows WHERE client_id=?", (client_id,))

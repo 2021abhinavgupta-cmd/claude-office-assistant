@@ -623,14 +623,28 @@ def _row_to_fields(row: list) -> dict:
 # were never meant to appear there at all. Mirrors the exact same detection
 # projects.html already uses for "is this a Sheets row" (its `socialTasks`
 # filter in renderClientSheets(), and the two `isSocial` checks for Kanban
-# column sets) -- must stay in sync with that regex/service check.
-_SOCIAL_TITLE_RE = re.compile(r"^\[(Story|Static|Reel|Carousel|Post|Video)\]", re.I)
+# column sets) -- must stay in sync with that regex/service check. Note:
+# the frontend's regex (/\[(Story|...)\]/i.test(title)) has NO anchor --
+# it matches the bracket anywhere in the title, not just at the start.
+# Anchoring this one to the start (an earlier version of this regex used
+# ^\[...\]) would make the backend STRICTER than the frontend -- under-
+# inclusive relative to what Lumina's own UI already treats as a Sheets
+# row, reopening the exact deletion-risk class of bug this filter exists
+# to close in the first place (see the "mixed workflow" fix elsewhere in
+# this gotcha), just for the narrower case of a title where the bracket
+# isn't at position 0 (e.g. a task manually renamed to "Draft [Story]
+# idea"). Using search() with no ^ makes this at least as inclusive as
+# the frontend, which is the safe direction to err in -- over-inclusion
+# here just means a task with a coincidental bracket substring gets
+# treated as Sheets-eligible (cosmetic at worst), where under-inclusion
+# means real data loss.
+_SOCIAL_TITLE_RE = re.compile(r"\[(Story|Static|Reel|Carousel|Post|Video)\]", re.I)
 
 
 def _is_social_task(task: dict) -> bool:
     if (task.get("service") or "") == "Social Media":
         return True
-    return bool(_SOCIAL_TITLE_RE.match(task.get("title") or ""))
+    return bool(_SOCIAL_TITLE_RE.search(task.get("title") or ""))
 
 
 def _current_tasks_by_id(client_id: str, is_notion: bool) -> dict:
