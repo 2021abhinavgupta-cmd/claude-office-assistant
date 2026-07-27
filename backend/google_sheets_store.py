@@ -983,8 +983,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push = \
-        0, 0, 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
@@ -1112,7 +1112,27 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                 )
                 skipped_recent_push += 1
                 continue
-            _update_task(task_id, is_notion, row_fields, editor_name)
+            # _update_task()'s bool return was previously discarded here --
+            # a failed Notion PATCH (e.g. an unrecognized Status value from
+            # the Sheet getting rejected outright if the workspace's Status
+            # property is Notion's newer `status` type rather than `select`,
+            # which auto-creates new options -- see CLAUDE.md gotcha #43 for
+            # the established "one bad property fails the WHOLE page PATCH"
+            # behavior) still got reported as a success: updated += 1, and a
+            # version-history entry claiming the change happened, even
+            # though Notion still held the old data. Same silent-failure
+            # class already fixed elsewhere in this app for other Notion-
+            # writing flows (gotchas #53/#86) -- check the return value
+            # instead of assuming success.
+            ok = _update_task(task_id, is_notion, row_fields, editor_name)
+            if not ok:
+                logger.warning(
+                    f"Sheets reconcile: update failed for task_id {task_id} (row {row_number}, "
+                    f"client {client_id}) -- not logging a version or counting it as updated, "
+                    f"since Notion/SQLite may not actually hold the new values."
+                )
+                update_failed += 1
+                continue
             changed = [k for k in row_fields if row_fields.get(k) != old_fields.get(k)]
             _log_version(task_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                          changed_fields=changed)
@@ -1137,7 +1157,7 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
                 "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-                "deletes_skipped_safety": len(current)}
+                "update_failed": update_failed, "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in seen_ids:
@@ -1146,7 +1166,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
 
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
-            "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push}
+            "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
+            "update_failed": update_failed}
 
 
 def reconcile_sheet_tabs(link: dict, tabs: dict) -> dict:
@@ -1170,8 +1191,8 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push = \
-        0, 0, 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
     for tab_name, rows in tabs.items():
         if not _is_synced_tab_name(tab_name):
@@ -1252,7 +1273,18 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                     )
                     skipped_recent_push += 1
                     continue
-                _update_task(task_id, is_notion, row_fields, editor_name)
+                # See the matching comment in _reconcile_sheet_rows_locked --
+                # _update_task()'s return was previously discarded, silently
+                # reporting a failed Notion/SQLite write as a success.
+                ok = _update_task(task_id, is_notion, row_fields, editor_name)
+                if not ok:
+                    logger.warning(
+                        f"Sheets reconcile (multi-tab): update failed for task_id {task_id} "
+                        f"({row_label}, client {client_id}) -- not logging a version or counting "
+                        f"it as updated."
+                    )
+                    update_failed += 1
+                    continue
                 changed = [k for k in row_fields if row_fields.get(k) != old_fields.get(k)]
                 _log_version(task_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                              changed_fields=changed)
@@ -1269,6 +1301,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
                 "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
+                "update_failed": update_failed,
                 "deletes_skipped_safety": len(current), "deletes_skipped_missing_tab": 0}
 
     # Per-task guard on top of the all-tabs-empty safety check above: a task
@@ -1307,4 +1340,4 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
             "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-            "deletes_skipped_missing_tab": deletes_skipped_missing_tab}
+            "update_failed": update_failed, "deletes_skipped_missing_tab": deletes_skipped_missing_tab}
