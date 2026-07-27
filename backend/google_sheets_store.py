@@ -348,6 +348,22 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
         _update_task(task_id, is_notion, row_fields, editor_name)
         updated += 1
 
+    # Safety guard: if this snapshot recognized zero existing tasks (empty
+    # `rows`, or every row was a blank/unrecognized/newly-created one) while
+    # Lumina has tasks on file for this client, treat it as a suspicious
+    # payload rather than "the user deleted everything" -- a flaky onChange
+    # firing mid-paste, a momentarily cleared sheet, or a script bug could
+    # otherwise wipe every task for a client in one request. Deleting
+    # everything on purpose should go through an explicit action, not a
+    # webhook payload that happens to recognize nothing.
+    if not seen_ids and current:
+        logger.warning(
+            f"Sheets reconcile: snapshot for client {client_id} recognized 0 of "
+            f"{len(current)} known tasks -- skipping delete pass as a safety measure."
+        )
+        return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
+                "deletes_skipped_safety": len(current)}
+
     for existing_id in current:
         if existing_id not in seen_ids:
             _delete_task(existing_id, is_notion)

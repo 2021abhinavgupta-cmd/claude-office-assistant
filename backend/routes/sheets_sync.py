@@ -60,6 +60,21 @@ def _link_row_to_dict(row) -> dict:
     }
 
 
+@sheets_sync_bp.route("/api/sheets/links", methods=["GET"])
+def list_linked_client_ids():
+    """Just the set of linked client_ids (no tokens) -- powers a lightweight
+    'is this client linked' indicator on the connect button without needing
+    to open every client's modal to check."""
+    if not _is_admin(request.args.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT client_id FROM google_sheet_links")
+    ids = [r[0] for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"linked_client_ids": ids})
+
+
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["POST"])
 def create_google_sheet_link(client_id: str):
     if not gs.is_configured():
@@ -176,6 +191,8 @@ def push_sheet_task(task_id: str):
     every normal Sheets save. No-op (200) for clients with no linked Sheet --
     this must never surface as an error to a user who never opted into sync."""
     body = request.get_json(silent=True) or {}
+    if not _is_admin(body.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     client_id = str(body.get("client_id", "")).strip()
     fields = body.get("fields") or {}
     if not client_id or not isinstance(fields, dict):

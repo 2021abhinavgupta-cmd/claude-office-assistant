@@ -549,6 +549,7 @@ async function load(){
   await loadQuickTasks();
   // Shared Sheets row-hide state (server-backed, see loadAllHiddenRowsFromServer)
   await loadAllHiddenRowsFromServer();
+  await loadLinkedSheetClientIds();
 
   const urlParams = new URLSearchParams(window.location.search);
   const targetNotionId = urlParams.get('notion_id');
@@ -721,7 +722,7 @@ function renderDetail(clients){
         <div><div class="cb-name"> ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
         <div style="display:flex; gap: 8px; align-items: center;">
-          <button class="btn-sm" onclick="event.stopPropagation(); openGoogleSheetLinkModal('${c.id}')" title="Connect a Google Sheet to sync with this client's tasks">🔗 Sheet</button>
+          <button class="btn-sm gsheet-link-btn" data-client-id="${c.id}" onclick="event.stopPropagation(); openGoogleSheetLinkModal('${c.id}')" title="${linkedSheetClientIds.has(String(c.id)) ? 'Google Sheet connected -- click to view/manage' : 'Connect a Google Sheet to sync with this client tasks'}" style="${linkedSheetClientIds.has(String(c.id)) ? 'color:var(--grn, #22d3a0);' : ''}">${linkedSheetClientIds.has(String(c.id)) ? '🔗 Sheet ✓' : '🔗 Sheet'}</button>
           <button class="btn-sm" style="background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25);" onclick="event.stopPropagation(); deleteClient('${c.id}')"> Delete Client</button>
           <span style="color:var(--muted);font-size:.8rem">▼</span>
         </div>
@@ -1301,6 +1302,21 @@ function applyColumnVisibility(clientId) {
 // server (sheet_hidden_rows table) so hiding a row is visible to every
 // employee, not just whoever hid it -- was previously per-browser
 // localStorage, which meant e.g. Palak hiding a row was invisible to Vidit.
+let linkedSheetClientIds = new Set();
+async function loadLinkedSheetClientIds() {
+  try {
+    const res = await fetch(`${API}/api/sheets/links?user_id=${encodeURIComponent(UID)}`);
+    const d = await res.json();
+    linkedSheetClientIds = new Set((d.linked_client_ids || []).map(String));
+  } catch (e) { /* leave empty -- button just shows as unlinked */ }
+  document.querySelectorAll('.gsheet-link-btn').forEach(btn => {
+    const linked = linkedSheetClientIds.has(String(btn.dataset.clientId));
+    btn.textContent = linked ? '🔗 Sheet ✓' : '🔗 Sheet';
+    btn.title = linked ? 'Google Sheet connected -- click to view/manage' : "Connect a Google Sheet to sync with this client's tasks";
+    btn.style.color = linked ? 'var(--grn, #22d3a0)' : '';
+  });
+}
+
 let hiddenRowsCache = {};   // clientId -> Set(task_id)
 let hiddenRowsMeta = {};    // clientId -> { task_id: {hidden_by, hidden_at} }
 async function loadAllHiddenRowsFromServer() {
@@ -2551,6 +2567,7 @@ async function applySheetFields(taskId, clientId, fields, cellElem) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        user_id: UID,
         client_id: clientId,
         fields: { creation_date, due_date, title, type, content, idea, scripts, caption, link, myNotes, assigned_to, status },
       }),
@@ -3884,6 +3901,7 @@ document.addEventListener('paste', function(e) {
         const d = await res.json();
         if (!d.success) { toast(d.error || 'Failed to connect', 'err'); return; }
         toast('Sheet connected');
+        loadLinkedSheetClientIds();
         openGoogleSheetLinkModal(clientId);
       } catch (e) {
         toast('Network error connecting sheet', 'err');
@@ -3895,6 +3913,7 @@ document.addEventListener('paste', function(e) {
       try {
         await fetch(`${API}/api/clients/${clientId}/google-sheet-link?user_id=${encodeURIComponent(UID)}`, { method: 'DELETE' });
         toast('Sheet unlinked');
+        loadLinkedSheetClientIds();
         openGoogleSheetLinkModal(clientId);
       } catch (e) {
         toast('Failed to unlink', 'err');
