@@ -983,8 +983,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed = \
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
@@ -1157,17 +1157,30 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
                 "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-                "update_failed": update_failed, "deletes_skipped_safety": len(current)}
+                "update_failed": update_failed, "delete_failed": 0, "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in seen_ids:
-            _delete_task(existing_id, is_notion)
-            deleted += 1
+            # Same discarded-return-value bug as _update_task above: a
+            # failed archive_notion_page() (Notion mode) still got counted
+            # as a successful delete. The task then stays active in Notion
+            # forever while Lumina believes it's gone, and the next
+            # reconcile pass re-fetches it into `current` and "deletes" it
+            # again -- same false-positive-success shape, just retried
+            # instead of stuck.
+            if _delete_task(existing_id, is_notion):
+                deleted += 1
+            else:
+                logger.warning(
+                    f"Sheets reconcile: delete failed for task_id {existing_id} (client {client_id}) "
+                    f"-- not counting it as deleted, it may still be active in Notion/SQLite."
+                )
+                delete_failed += 1
 
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
             "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-            "update_failed": update_failed}
+            "update_failed": update_failed, "delete_failed": delete_failed}
 
 
 def reconcile_sheet_tabs(link: dict, tabs: dict) -> dict:
@@ -1191,8 +1204,8 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed = \
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
     for tab_name, rows in tabs.items():
         if not _is_synced_tab_name(tab_name):
@@ -1301,7 +1314,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
                 "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-                "update_failed": update_failed,
+                "update_failed": update_failed, "delete_failed": 0,
                 "deletes_skipped_safety": len(current), "deletes_skipped_missing_tab": 0}
 
     # Per-task guard on top of the all-tabs-empty safety check above: a task
@@ -1334,10 +1347,17 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
             )
             deletes_skipped_missing_tab += 1
             continue
-        _delete_task(existing_id, is_notion)
-        deleted += 1
+        if _delete_task(existing_id, is_notion):
+            deleted += 1
+        else:
+            logger.warning(
+                f"Sheets reconcile (multi-tab): delete failed for task_id {existing_id} "
+                f"(client {client_id}) -- not counting it as deleted."
+            )
+            delete_failed += 1
 
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
             "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-            "update_failed": update_failed, "deletes_skipped_missing_tab": deletes_skipped_missing_tab}
+            "update_failed": update_failed, "delete_failed": delete_failed,
+            "deletes_skipped_missing_tab": deletes_skipped_missing_tab}
