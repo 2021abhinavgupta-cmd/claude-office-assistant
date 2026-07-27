@@ -1875,6 +1875,39 @@ async function refreshClientData(clientId, isNotionClient) {
   renderClientSheets(clientId);
 }
 
+// Push a freshly-created row into the client's linked Google Sheet, if any.
+// addSocialSheetRow()/insertSheetRow()/duplicateSheetRow() create tasks via
+// a direct fetch to /api/notion/tasks or /api/tasks -- none of that goes
+// through applySheetFields(), which is the ONLY place that normally pushes.
+// Without this, a newly-added row never reaches an already-linked Sheet,
+// and worse, is at risk of being deleted by the very next Sheet-side edit's
+// reconcile pass (which treats "a task Lumina has that the Sheet's own
+// snapshot doesn't recognize" as a Sheet-initiated delete to mirror).
+// Fire-and-forget, same contract as every other push call in this file.
+function pushNewRowToLinkedSheet(clientId, taskId, task) {
+  if (!linkedSheetClientIds.has(String(clientId))) return; // pure optimization -- the backend also no-ops safely for unlinked clients
+  const m = (task.title || '').match(/^\[(.*?)\]\s*(.*)$/);
+  const type = m ? m[1] : 'Post';
+  const title = m ? m[2] : (task.title || '');
+  const parsed = parseSheetNotes(task.description || '', task.creation_date || '');
+  fetch(`${API}/api/sheets/push/${taskId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_id: UID,
+      client_id: clientId,
+      fields: {
+        creation_date: task.creation_date || '', due_date: task.due_date || '',
+        title, type,
+        content: parsed.content, idea: parsed.idea, scripts: parsed.scripts,
+        caption: parsed.caption, link: parsed.link, myNotes: parsed.myNotes,
+        assigned_to: task.assigned_to || '',
+        status: (task.status || 'not_started').toLowerCase().replace(/ /g, '_'),
+      },
+    }),
+  }).catch(() => {});
+}
+
 async function addSocialSheetRow(clientId) {
   let client = allData.clients.find(c => String(c.id) === String(clientId));
   if (!client) return;
@@ -1901,13 +1934,15 @@ async function addSocialSheetRow(clientId) {
     if (d.success) {
       toast(isNotionClient ? "Saved! Synced with Notion" : "Row added successfully!");
       client.tasks = client.tasks || [];
-      client.tasks.unshift({
+      const newTask = {
         id: isNotionClient ? (d.notion_id || Date.now()) : d.task_id,
         notion_id: isNotionClient ? d.notion_id : null,
         title: "[Post] New Idea",
         service: "Social Media",
         status: "not_started"
-      });
+      };
+      client.tasks.unshift(newTask);
+      pushNewRowToLinkedSheet(clientId, newTask.id, newTask);
       renderClientSheets(clientId);
     } else {
       toast(d.error || "Failed to add row", "err");
@@ -2120,6 +2155,7 @@ async function insertSheetRow(clientId, refTaskId, position) {
     const refIdx = client.tasks.findIndex(t => String(t.id) === String(refTaskId));
     const insertAt = refIdx === -1 ? 0 : (position === 'above' ? refIdx : refIdx + 1);
     client.tasks.splice(insertAt, 0, newTask);
+    pushNewRowToLinkedSheet(clientId, newId, newTask);
 
     let order = [];
     try { order = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch(e){}
@@ -2168,6 +2204,7 @@ async function duplicateSheetRow(clientId, taskId) {
     client.tasks = client.tasks || [];
     const refIdx = client.tasks.findIndex(t => String(t.id) === String(taskId));
     client.tasks.splice(refIdx === -1 ? 0 : refIdx + 1, 0, newTask);
+    pushNewRowToLinkedSheet(clientId, newId, newTask);
 
     let order = [];
     try { order = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch(e){}
