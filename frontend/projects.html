@@ -987,7 +987,7 @@ async function openRowHistory(taskId, clientId) {
   document.getElementById('rh-sidebar').innerHTML = '';
   rhState = { taskId, clientId, versions: [], selectedIndex: 0 };
   try {
-    const res = await fetch(`${API}/api/sheets/tasks/${taskId}/versions`);
+    const res = await fetch(`${API}/api/sheets/tasks/${taskId}/versions?user_id=${encodeURIComponent(UID)}`);
     if (!res.ok) throw new Error('bad status');
     const data = await res.json();
     rhState.versions = data.versions || [];
@@ -1214,7 +1214,7 @@ async function openSheetHistory(clientId) {
   const client = (allData.clients || []).find(c => String(c.id) === String(clientId));
   ghState = { clientId, versions: [], selectedIndex: 0, records: buildSheetRecordsForClient(client) };
   try {
-    const res = await fetch(`${API}/api/sheets/clients/${clientId}/versions`);
+    const res = await fetch(`${API}/api/sheets/clients/${clientId}/versions?user_id=${encodeURIComponent(UID)}`);
     if (!res.ok) throw new Error('bad status');
     const data = await res.json();
     ghState.versions = data.versions || [];
@@ -2703,6 +2703,7 @@ async function applySheetFields(taskId, clientId, fields, cellElem) {
       body: JSON.stringify({
         client_id: clientId,
         editor_name: editorName,
+        user_id: UID,
         snapshot: { creation_date, due_date, title, type, content, idea, scripts, caption, link, myNotes, assigned_to, status },
         changed_fields: changedRawFields,
       }),

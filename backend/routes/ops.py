@@ -1761,6 +1761,8 @@ def log_sheet_version(task_id: str):
     """Appends one full-snapshot version to a Sheets row's history. Fire-and-
     forget from the frontend -- never blocks the actual row save."""
     body = request.get_json(silent=True) or {}
+    if not _is_admin(body.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     client_id = str(body.get("client_id", "")).strip()
     editor_name = str(body.get("editor_name", "")).strip() or "Someone"
     snapshot = body.get("snapshot")
@@ -1782,6 +1784,8 @@ def log_sheet_version(task_id: str):
 @ops_bp.route("/api/sheets/tasks/<string:task_id>/versions", methods=["GET"])
 def list_sheet_versions(task_id: str):
     """Full version history for one Sheets row, newest first."""
+    if not _is_admin(request.args.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
@@ -1809,6 +1813,8 @@ def list_client_sheet_versions(client_id: str):
     """Every version across every row for one client's sheet, newest first --
     powers the global whole-sheet version browser (as opposed to
     list_sheet_versions above, which is scoped to a single row)."""
+    if not _is_admin(request.args.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
