@@ -205,6 +205,9 @@
     .ctab:hover{border-color:var(--acc);color:var(--acc);background:rgba(245,166,35,.07)}
     .ctab.on{background:rgba(245,166,35,.15);border-color:var(--acc);color:var(--acc)}
     .ctab-content{min-height:60px}
+    .smtab{padding:5px 15px;border-radius:100px;font-size:.77rem;font-weight:600;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
+    .smtab:hover{border-color:var(--acc);color:var(--acc);background:rgba(245,166,35,.07)}
+    .smtab.on{background:rgba(245,166,35,.15);border-color:var(--acc);color:var(--acc)}
     .kanban-wrap{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;height:100%}
     /* ── Calendar ─────────────────────────────────────────────── */
     .cal-section{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:20px;margin-bottom:20px;animation:fadeIn .3s ease}
@@ -1600,15 +1603,20 @@ function renderClientSheets(clientId) {
   let records = buildSheetRecordsForClient({ tasks: socialTasks });
 
   // Distinct Post-Day months present, computed before any filter so the
-  // dropdown always lists every month that has data, not just visible rows.
+  // tab strip always lists every month that has data, not just visible rows.
   const allMonths = Array.from(new Set(records.map(r => (r.due_date || '').slice(0, 7)).filter(Boolean))).sort();
+  const hasUnscheduled = records.some(r => !r.due_date);
 
   const hiddenRowIds = loadHiddenRows(clientId);
   const hiddenRecords = records.filter(r => hiddenRowIds.has(String(r.t.id)));
   records = records.filter(r => !hiddenRowIds.has(String(r.t.id)));
 
   const monthFilter = loadMonthFilter(clientId);
-  if (monthFilter) records = records.filter(r => (r.due_date || '').slice(0, 7) === monthFilter);
+  if (monthFilter === '__unscheduled__') {
+    records = records.filter(r => !r.due_date);
+  } else if (monthFilter) {
+    records = records.filter(r => (r.due_date || '').slice(0, 7) === monthFilter);
+  }
 
   const query = (sheetSearchState[clientId] || '').trim().toLowerCase();
   if (query) records = records.filter(r => r.searchText.includes(query));
@@ -1658,11 +1666,11 @@ function renderClientSheets(clientId) {
               }).join('')}
             </div>
           </div>
-          <select id="sheet-month-${clientId}" onchange="saveMonthFilter('${clientId}', this.value)"
-            style="background:var(--s2); border:1px solid var(--bdr); border-radius:6px; padding:8px 10px; color:var(--txt); font-size:.85rem; margin-left:8px;">
-            <option value="">All Months</option>
-            ${allMonths.map(ym => `<option value="${ym}" ${monthFilter===ym?'selected':''}>${monthLabel(ym)}</option>`).join('')}
-          </select>
+          <div id="sheet-month-tabs-${clientId}" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-left:8px;">
+            <button class="smtab ${monthFilter===''?'on':''}" onclick="saveMonthFilter('${clientId}', ''); renderClientSheets('${clientId}')">All</button>
+            ${allMonths.map(ym => `<button class="smtab ${monthFilter===ym?'on':''}" onclick="saveMonthFilter('${clientId}', '${ym}'); renderClientSheets('${clientId}')">${monthLabel(ym)}</button>`).join('')}
+            ${hasUnscheduled ? `<button class="smtab ${monthFilter==='__unscheduled__'?'on':''}" onclick="saveMonthFilter('${clientId}', '__unscheduled__'); renderClientSheets('${clientId}')">Unscheduled</button>` : ''}
+          </div>
           <input type="text" id="sheet-search-${clientId}" placeholder="🔍 Search rows…" value="${esc(sheetSearchState[clientId]||'')}"
             oninput="sheetSearchState['${clientId}']=this.value; renderClientSheets('${clientId}')"
             style="background:var(--s2); border:1px solid var(--bdr); border-radius:6px; padding:8px 12px; color:var(--txt); font-size:.85rem; margin-left:8px; width:180px;">
