@@ -721,6 +721,7 @@ function renderDetail(clients){
         <div><div class="cb-name"> ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
         <div style="display:flex; gap: 8px; align-items: center;">
+          <button class="btn-sm" onclick="event.stopPropagation(); openGoogleSheetLinkModal('${c.id}')" title="Connect a Google Sheet to sync with this client's tasks">🔗 Sheet</button>
           <button class="btn-sm" style="background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25);" onclick="event.stopPropagation(); deleteClient('${c.id}')"> Delete Client</button>
           <span style="color:var(--muted);font-size:.8rem">▼</span>
         </div>
