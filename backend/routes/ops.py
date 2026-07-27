@@ -1516,6 +1516,32 @@ def notion_set_task_client_id(notion_id: str):
     return jsonify({"error": "Failed to set Client ID"}), 500
 
 
+def _unlink_google_sheet_for_client(client_id: str):
+    """Best-effort cleanup, called whenever a client is deleted. Without
+    this, a client's google_sheet_links row (and its still-valid,
+    unguessable link_token) survives the client's own deletion -- the
+    physical Google Sheet and its installed Apps Script trigger are
+    completely outside this app's control, so nothing stops an employee
+    from continuing to edit it after "deleting" the client in Lumina.
+    The next edit fires the webhook, which reconciles against
+    _current_tasks_by_id(client_id, ...) -- now empty, since every task
+    was just archived/deleted -- so EVERY row in that now-orphaned Sheet
+    looks unrecognized and gets recreated as a brand-new task under a
+    client_id that no longer exists anywhere in Lumina's UI, forever, on
+    every future edit to a sheet nobody remembers is still connected.
+    Deleting the link row makes the webhook 404 (get_link_by_token finds
+    nothing) instead of silently resurrecting a "deleted" client's entire
+    task board as orphaned pages. Never allowed to raise -- a failure
+    here must not block the client deletion that already succeeded."""
+    try:
+        conn = _su_conn()
+        with conn:
+            conn.execute("DELETE FROM google_sheet_links WHERE client_id=?", (str(client_id),))
+        conn.close()
+    except Exception:
+        logger.exception(f"Failed to unlink Google Sheet for deleted client {client_id}")
+
+
 @ops_bp.route("/api/notion/clients/<string:notion_id>", methods=["DELETE"])
 def notion_delete_client(notion_id: str):
     all_client_tasks = notion_store.list_tasks(client_notion_id=notion_id)
@@ -1524,6 +1550,7 @@ def notion_delete_client(notion_id: str):
         if tid:
             notion_store.archive_notion_page(tid)
     if notion_store.archive_notion_page(notion_id):
+        _unlink_google_sheet_for_client(notion_id)
         return jsonify({"success": True})
     return jsonify({"error": "Failed to delete client"}), 500
 

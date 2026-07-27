@@ -2595,6 +2595,13 @@ def delete_client(client_id):
             conn.execute("DELETE FROM tasks WHERE client_id=?", (client_id,))
             # Delete the client
             conn.execute("DELETE FROM clients WHERE id=?", (client_id,))
+            # Unlink any Google Sheet -- without this, the link's still-valid
+            # link_token survives the client's deletion, and the next edit to
+            # that now-orphaned physical Sheet resurrects every row as a
+            # brand-new task under a client_id that no longer exists anywhere
+            # in Lumina (see the matching cleanup in notion_delete_client,
+            # routes/ops.py, and CLAUDE.md gotcha #87).
+            conn.execute("DELETE FROM google_sheet_links WHERE client_id=?", (str(client_id),))
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"delete_client error: {e}")
@@ -3092,8 +3099,23 @@ def auto_generate_tasks(client_id):
             caption = post.get("caption", "")
             link = post.get("link", "")
             assignee = post.get("assignee", "")
-            # Build a rich title: "[Type] Title"
-            task_title = f"[{post_type}] {title}" if post_type else title
+            # Build a rich title: "[Type] Title" -- normalized through the
+            # same _normalize_type() google_sheets_store.py's own
+            # _create_task/_update_task use, since post_type here is raw,
+            # unvalidated text straight from an imported Excel/CSV cell
+            # (see importClientSocialCSV() in projects.html: `getCell(row,
+            # 'type') || "Story"`, no constraint on what that cell contains).
+            # An unrecognized bracket type (e.g. a source file using "IG
+            # Reel" instead of "Reel") builds a title _is_social_task()
+            # can't recognize -- invisible to _current_tasks_by_id() on the
+            # very next Sheets reconcile pass for a linked client, which
+            # (task_id present in the Sheet from this row's own push below,
+            # not tombstoned) recreates it again and again: the exact same
+            # infinite-duplicate-creation hazard fixed in google_sheets_store
+            # for direct Sheet edits (CLAUDE.md gotcha #87), just reachable
+            # through CSV import instead.
+            normalized_type = google_sheets_store._normalize_type(post_type)
+            task_title = f"[{normalized_type}] {title}"
             # Pack extra detail into a description-like note via the brief
             creation_date = post.get("creation_date", "")
             detail_parts = []
@@ -3156,7 +3178,11 @@ def auto_generate_tasks(client_id):
             caption = post.get("caption", "")
             link = post.get("link", "")
             assignee = post.get("assignee", "")
-            task_title = f"[{post_type}] {title}" if post_type else title
+            # Same normalization as the Notion-mode branch above, and for
+            # the same reason: post_type is raw, unvalidated text from an
+            # imported Excel/CSV cell. See the comment on that branch.
+            normalized_type = google_sheets_store._normalize_type(post_type)
+            task_title = f"[{normalized_type}] {title}"
             creation_date = post.get("creation_date", "")
             detail_parts = []
             if creation_date: detail_parts.append(f"Creation Date: {creation_date}")
