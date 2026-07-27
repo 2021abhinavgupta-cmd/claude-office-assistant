@@ -3843,7 +3843,7 @@ document.addEventListener('paste', function(e) {
       overlay.style.display = 'block';
       body.innerHTML = 'Loading…';
       try {
-        const res = await fetch(`${API}/api/clients/${clientId}/google-sheet-link`);
+        const res = await fetch(`${API}/api/clients/${clientId}/google-sheet-link?user_id=${encodeURIComponent(UID)}`);
         const d = await res.json();
         if (d.linked) {
           body.innerHTML = `
@@ -3892,7 +3892,7 @@ document.addEventListener('paste', function(e) {
     async function unlinkGoogleSheet(clientId) {
       if (!confirm('Unlink this Google Sheet? Existing tasks in Lumina are unaffected.')) return;
       try {
-        await fetch(`${API}/api/clients/${clientId}/google-sheet-link`, { method: 'DELETE' });
+        await fetch(`${API}/api/clients/${clientId}/google-sheet-link?user_id=${encodeURIComponent(UID)}`, { method: 'DELETE' });
         toast('Sheet unlinked');
         openGoogleSheetLinkModal(clientId);
       } catch (e) {

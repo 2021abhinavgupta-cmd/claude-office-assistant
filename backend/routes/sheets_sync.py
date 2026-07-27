@@ -104,6 +104,13 @@ def create_google_sheet_link(client_id: str):
 
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["GET"])
 def get_google_sheet_link(client_id: str):
+    # Auth required: the response includes the live link_token embedded in
+    # the Apps Script snippet -- that token is the pull webhook's sole
+    # authenticator (see sheets_pull_webhook below), so leaving this
+    # endpoint open would let anyone who knows a client_id (not treated as
+    # secret elsewhere in this app) read it back out and forge webhook calls.
+    if not _is_admin(request.args.get("user_id", "")):
+        return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
@@ -119,6 +126,10 @@ def get_google_sheet_link(client_id: str):
 
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["DELETE"])
 def delete_google_sheet_link(client_id: str):
+    body = request.get_json(silent=True) or {}
+    user_id = body.get("user_id", "") or request.args.get("user_id", "")
+    if not _is_admin(user_id):
+        return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     with conn:
         conn.execute("DELETE FROM google_sheet_links WHERE client_id=?", (client_id,))
