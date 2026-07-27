@@ -345,35 +345,45 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped = 0, 0, 0, 0
+    created, updated, deleted, skipped, errored = 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
-        task_id = str(row[0]).strip() if row else ""
-        row_fields = _row_to_fields(row)
-        if not task_id and not any(row_fields.values()):
-            continue  # fully blank row
+        try:
+            # `rows` is caller-supplied JSON (from Apps Script normally, but
+            # the webhook's only real authenticator is the link_token in the
+            # URL -- anyone holding it can POST anything). A single
+            # malformed entry (not a list, or one that doesn't behave like
+            # one) must not abort every other row's sync, same reasoning as
+            # notion_store.list_tasks()'s per-page isolation (gotcha #52).
+            task_id = str(row[0]).strip() if row else ""
+            row_fields = _row_to_fields(row)
+            if not task_id and not any(row_fields.values()):
+                continue  # fully blank row
 
-        if not task_id:
-            new_id = _create_task(client_id, client_name, is_notion, row_fields)
-            if new_id:
-                try:
-                    write_cell(spreadsheet_id, f"A{row_number}", new_id)
-                except Exception:
-                    logger.exception(f"Sheets reconcile: failed to write back task id for row {row_number}")
-                created += 1
-            continue
+            if not task_id:
+                new_id = _create_task(client_id, client_name, is_notion, row_fields)
+                if new_id:
+                    try:
+                        write_cell(spreadsheet_id, f"A{row_number}", new_id)
+                    except Exception:
+                        logger.exception(f"Sheets reconcile: failed to write back task id for row {row_number}")
+                    created += 1
+                continue
 
-        seen_ids.add(task_id)
-        existing = current.get(task_id)
-        if not existing:
-            # References a task id Lumina no longer has -- nothing to reconcile against.
-            continue
-        if _task_to_fields(existing) == row_fields:
-            skipped += 1
-            continue
-        _update_task(task_id, is_notion, row_fields, editor_name)
-        updated += 1
+            seen_ids.add(task_id)
+            existing = current.get(task_id)
+            if not existing:
+                # References a task id Lumina no longer has -- nothing to reconcile against.
+                continue
+            if _task_to_fields(existing) == row_fields:
+                skipped += 1
+                continue
+            _update_task(task_id, is_notion, row_fields, editor_name)
+            updated += 1
+        except Exception:
+            logger.exception(f"Sheets reconcile: skipping malformed row {row_number} for client {client_id}")
+            errored += 1
 
     # Safety guard: if this snapshot recognized zero existing tasks (empty
     # `rows`, or every row was a blank/unrecognized/newly-created one) while
@@ -389,11 +399,11 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
             f"{len(current)} known tasks -- skipping delete pass as a safety measure."
         )
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
-                "deletes_skipped_safety": len(current)}
+                "errored": errored, "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in seen_ids:
             _delete_task(existing_id, is_notion)
             deleted += 1
 
-    return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped}
+    return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped, "errored": errored}

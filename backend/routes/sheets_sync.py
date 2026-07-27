@@ -4,12 +4,20 @@ client's Google Sheet), push endpoint, and pull webhook.
 Routes: /api/clients/<id>/google-sheet-link, /api/sheets/push/<task_id>, /api/sheets/webhook/<token>
 """
 import logging
+import os
 import re
 import secrets
 
 import google_sheets_store as gs
+import notion_store
+from extensions import limiter
 from flask import Blueprint, jsonify, request
 from utils import today_ist, now_ist, _is_admin
+
+# Real Google Sheets spreadsheet ids are alphanumeric plus -/_, and always
+# well over 20 characters. Rejecting anything else up front means a bad
+# paste can't reach the Sheets API as a malformed/injected path segment.
+_SPREADSHEET_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{20,100}$")
 
 logger = logging.getLogger(__name__)
 sheets_sync_bp = Blueprint("sheets_sync", __name__)
@@ -20,9 +28,41 @@ def _su_conn():
     return get_connection()
 
 
+def _verified_user_id() -> str:
+    """Real session-verified user_id, via the HttpOnly session_token cookie
+    set at login -- NOT a client-supplied user_id field/param. This app's
+    `_is_admin()` is `bool(user_id)` everywhere (a deliberate product
+    decision, see CLAUDE.md gotcha #60), but most other routes in this
+    codebase still take that user_id straight from an unauthenticated
+    request body/query string, meaning literally any non-empty string
+    passes -- combined with this app's CORS(origins="*"), that's forgeable
+    by any external site. Since this feature writes to a client's live
+    Google Sheet and exposes a webhook secret, it uses the real
+    cookie+session-table verification this codebase already has (see
+    routes/auth.py::_verify_session, the pattern app.py::create_client
+    itself uses) instead of repeating that weaker pattern."""
+    from routes.auth import _verify_session
+    token = request.cookies.get("session_token", "")
+    return _verify_session(token) or ""
+
+
 def _extract_spreadsheet_id(url_or_id: str) -> str:
     m = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url_or_id)
     return m.group(1) if m else url_or_id.strip()
+
+
+def _base_url() -> str:
+    """Prefer an explicitly-configured PUBLIC_BASE_URL over request.host_url.
+    Flask reflects the incoming Host header into request.host_url; on most
+    reverse-proxy setups that's the real edge-supplied host, but trusting it
+    for a value embedded in generated setup code (the Apps Script snippet's
+    webhook URL) is one weaker link than necessary -- a forged Host header
+    that reached this app would make the UI hand a user a snippet that POSTs
+    their client's Sheet data to an attacker's domain instead of Lumina's.
+    PUBLIC_BASE_URL is optional; without it this just falls back to the
+    previous behavior, so local dev needs no extra config."""
+    configured = os.getenv("PUBLIC_BASE_URL", "").strip()
+    return configured.rstrip("/") if configured else request.host_url.rstrip("/")
 
 
 def _apps_script_snippet(webhook_url: str) -> str:
@@ -51,7 +91,7 @@ def _apps_script_snippet(webhook_url: str) -> str:
 def _link_row_to_dict(row) -> dict:
     (client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by,
      last_push_at, last_push_ok, last_pull_at, last_pull_summary) = row
-    webhook_url = f"{request.host_url.rstrip('/')}/api/sheets/webhook/{link_token}"
+    webhook_url = f"{_base_url()}/api/sheets/webhook/{link_token}"
     return {
         "linked": True, "client_id": client_id, "spreadsheet_id": spreadsheet_id,
         "is_notion": bool(is_notion), "client_name": client_name,
@@ -68,7 +108,7 @@ def list_linked_client_ids():
     """Just the set of linked client_ids (no tokens) -- powers a lightweight
     'is this client linked' indicator on the connect button without needing
     to open every client's modal to check."""
-    if not _is_admin(request.args.get("user_id", "")):
+    if not _is_admin(_verified_user_id()):
         return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     cur = conn.cursor()
@@ -79,20 +119,29 @@ def list_linked_client_ids():
 
 
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["POST"])
+@limiter.limit("10 per minute")
 def create_google_sheet_link(client_id: str):
     cfg_error = gs.config_error()
     if cfg_error:
         return jsonify({"error": cfg_error}), 400
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id", "")
+    user_id = _verified_user_id()
     if not _is_admin(user_id):
         return jsonify({"error": "Unauthorized"}), 403
+    body = request.get_json(silent=True) or {}
     raw_url = str(body.get("spreadsheet_url", "")).strip()
     is_notion = bool(body.get("is_notion"))
     client_name = str(body.get("client_name", "")).strip()
     if not raw_url:
         return jsonify({"error": "spreadsheet_url required"}), 400
     spreadsheet_id = _extract_spreadsheet_id(raw_url)
+    if not _SPREADSHEET_ID_RE.match(spreadsheet_id):
+        return jsonify({"error": "That doesn't look like a valid Google Sheets URL/ID"}), 400
+    # Sanity check, not a trust decision: is_notion is client-supplied (the
+    # frontend derives it from notionMode && !!client.notion_id) but this
+    # endpoint is already admin-gated, so a mismatch here is a bug/misclick
+    # to catch early, not an attack to defend against.
+    if is_notion and not notion_store.is_configured():
+        return jsonify({"error": "is_notion=true but Notion isn't configured on this server"}), 400
 
     try:
         gs.read_all_rows(spreadsheet_id)
@@ -101,8 +150,18 @@ def create_google_sheet_link(client_id: str):
             "error": f"Could not read that sheet -- make sure it's shared (Editor access) with {gs.service_account_email()}"
         }), 400
 
-    link_token = secrets.token_urlsafe(24)
     conn = _su_conn()
+    # Reuse the existing link_token if this client is already linked, rather
+    # than always minting a new one. INSERT OR REPLACE would otherwise
+    # silently invalidate an already-installed Apps Script trigger (which
+    # POSTs to a URL containing the OLD token) the moment someone re-submits
+    # Connect for any reason -- e.g. to point at a different Sheet -- turning
+    # a routine re-link into a silent sync outage until the new snippet gets
+    # reinstalled.
+    cur = conn.cursor()
+    cur.execute("SELECT link_token FROM google_sheet_links WHERE client_id=?", (client_id,))
+    existing = cur.fetchone()
+    link_token = existing[0] if existing else secrets.token_urlsafe(24)
     with conn:
         conn.execute(
             "INSERT OR REPLACE INTO google_sheet_links "
@@ -113,7 +172,7 @@ def create_google_sheet_link(client_id: str):
         )
     conn.close()
 
-    webhook_url = f"{request.host_url.rstrip('/')}/api/sheets/webhook/{link_token}"
+    webhook_url = f"{_base_url()}/api/sheets/webhook/{link_token}"
     return jsonify({
         "success": True, "spreadsheet_id": spreadsheet_id,
         "service_account_email": gs.service_account_email(),
@@ -128,7 +187,7 @@ def get_google_sheet_link(client_id: str):
     # authenticator (see sheets_pull_webhook below), so leaving this
     # endpoint open would let anyone who knows a client_id (not treated as
     # secret elsewhere in this app) read it back out and forge webhook calls.
-    if not _is_admin(request.args.get("user_id", "")):
+    if not _is_admin(_verified_user_id()):
         return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     cur = conn.cursor()
@@ -146,9 +205,7 @@ def get_google_sheet_link(client_id: str):
 
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["DELETE"])
 def delete_google_sheet_link(client_id: str):
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id", "") or request.args.get("user_id", "")
-    if not _is_admin(user_id):
+    if not _is_admin(_verified_user_id()):
         return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     with conn:
@@ -219,13 +276,14 @@ def _record_pull_result(link_token: str, summary: dict):
 
 
 @sheets_sync_bp.route("/api/sheets/push/<string:task_id>", methods=["POST"])
+@limiter.limit("120 per minute")
 def push_sheet_task(task_id: str):
     """Called fire-and-forget from applySheetFields() in projects.html after
     every normal Sheets save. No-op (200) for clients with no linked Sheet --
     this must never surface as an error to a user who never opted into sync."""
-    body = request.get_json(silent=True) or {}
-    if not _is_admin(body.get("user_id", "")):
+    if not _is_admin(_verified_user_id()):
         return jsonify({"error": "Unauthorized"}), 403
+    body = request.get_json(silent=True) or {}
     client_id = str(body.get("client_id", "")).strip()
     fields = body.get("fields") or {}
     if not client_id or not isinstance(fields, dict):
@@ -239,6 +297,7 @@ def push_sheet_task(task_id: str):
 
 
 @sheets_sync_bp.route("/api/sheets/webhook/<string:link_token>", methods=["POST"])
+@limiter.limit("60 per minute")
 def sheets_pull_webhook(link_token: str):
     """Called by the Apps Script onChange trigger installed in a linked
     Sheet (see _apps_script_snippet). link_token is the sole authenticator --
