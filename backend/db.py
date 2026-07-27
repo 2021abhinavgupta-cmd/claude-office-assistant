@@ -357,6 +357,12 @@ def init_db():
             linked_by      TEXT
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_google_sheet_links_token ON google_sheet_links (link_token)")
+        for col, coltype in [("last_push_at", "TEXT"), ("last_push_ok", "INTEGER"),
+                              ("last_pull_at", "TEXT"), ("last_pull_summary", "TEXT")]:
+            try:
+                conn.execute(f"ALTER TABLE google_sheet_links ADD COLUMN {col} {coltype} DEFAULT NULL")
+            except Exception:
+                pass  # Column already exists
 
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.

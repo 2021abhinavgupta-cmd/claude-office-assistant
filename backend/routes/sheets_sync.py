@@ -49,7 +49,8 @@ def _apps_script_snippet(webhook_url: str) -> str:
 
 
 def _link_row_to_dict(row) -> dict:
-    client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by = row
+    (client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by,
+     last_push_at, last_push_ok, last_pull_at, last_pull_summary) = row
     webhook_url = f"{request.host_url.rstrip('/')}/api/sheets/webhook/{link_token}"
     return {
         "linked": True, "client_id": client_id, "spreadsheet_id": spreadsheet_id,
@@ -57,6 +58,8 @@ def _link_row_to_dict(row) -> dict:
         "linked_at": linked_at, "linked_by": linked_by,
         "service_account_email": gs.service_account_email(),
         "apps_script": _apps_script_snippet(webhook_url),
+        "last_push_at": last_push_at, "last_push_ok": bool(last_push_ok) if last_push_ok is not None else None,
+        "last_pull_at": last_pull_at, "last_pull_summary": last_pull_summary,
     }
 
 
@@ -77,8 +80,9 @@ def list_linked_client_ids():
 
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["POST"])
 def create_google_sheet_link(client_id: str):
-    if not gs.is_configured():
-        return jsonify({"error": "Google Sheets sync is not configured on this server"}), 400
+    cfg_error = gs.config_error()
+    if cfg_error:
+        return jsonify({"error": cfg_error}), 400
     body = request.get_json(silent=True) or {}
     user_id = body.get("user_id", "")
     if not _is_admin(user_id):
@@ -129,7 +133,8 @@ def get_google_sheet_link(client_id: str):
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by "
+        "SELECT client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by, "
+        "last_push_at, last_push_ok, last_pull_at, last_pull_summary "
         "FROM google_sheet_links WHERE client_id=?", (client_id,)
     )
     row = cur.fetchone()
@@ -185,6 +190,34 @@ def get_link_by_token(link_token: str):
             "client_name": row[3], "linked_by": row[4]}
 
 
+# Hard cap on rows accepted per webhook call -- generous for this app's real
+# scale (dozens to low hundreds of rows per client), but stops a garbled or
+# runaway Apps Script payload from hammering the Notion API with hundreds of
+# create/update calls in one request.
+MAX_WEBHOOK_ROWS = 1000
+
+
+def _record_push_result(client_id: str, ok: bool):
+    conn = _su_conn()
+    with conn:
+        conn.execute(
+            "UPDATE google_sheet_links SET last_push_at=?, last_push_ok=? WHERE client_id=?",
+            (f"{today_ist()} {now_ist()}", 1 if ok else 0, client_id),
+        )
+    conn.close()
+
+
+def _record_pull_result(link_token: str, summary: dict):
+    parts = [f"{k}={v}" for k, v in summary.items()]
+    conn = _su_conn()
+    with conn:
+        conn.execute(
+            "UPDATE google_sheet_links SET last_pull_at=?, last_pull_summary=? WHERE link_token=?",
+            (f"{today_ist()} {now_ist()}", ", ".join(parts), link_token),
+        )
+    conn.close()
+
+
 @sheets_sync_bp.route("/api/sheets/push/<string:task_id>", methods=["POST"])
 def push_sheet_task(task_id: str):
     """Called fire-and-forget from applySheetFields() in projects.html after
@@ -200,8 +233,9 @@ def push_sheet_task(task_id: str):
     link = get_link_for_client(client_id)
     if not link:
         return jsonify({"success": True, "linked": False})
-    gs.push_task_to_sheet(link, task_id, fields)
-    return jsonify({"success": True, "linked": True})
+    ok = gs.push_task_to_sheet(link, task_id, fields)
+    _record_push_result(client_id, ok)
+    return jsonify({"success": True, "linked": True, "pushed": ok})
 
 
 @sheets_sync_bp.route("/api/sheets/webhook/<string:link_token>", methods=["POST"])
@@ -217,5 +251,12 @@ def sheets_pull_webhook(link_token: str):
     rows = body.get("rows")
     if not isinstance(rows, list):
         return jsonify({"error": "rows required"}), 400
-    summary = gs.reconcile_sheet_rows(link, rows)
+    if len(rows) > MAX_WEBHOOK_ROWS:
+        return jsonify({"error": f"Sheet has more than {MAX_WEBHOOK_ROWS} rows -- contact the developer to raise this limit"}), 400
+    try:
+        summary = gs.reconcile_sheet_rows(link, rows)
+    except Exception:
+        logger.exception(f"Sheets webhook: reconcile failed for link_token={link_token}")
+        return jsonify({"error": "Reconcile failed, see server logs"}), 500
+    _record_pull_result(link_token, summary)
     return jsonify({"success": True, **summary})

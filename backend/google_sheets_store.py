@@ -23,6 +23,28 @@ def is_configured() -> bool:
     return bool(os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON"))
 
 
+def config_error() -> str:
+    """Empty string if the credential looks usable, otherwise a specific
+    diagnostic message. Distinguishes "not configured at all" from
+    "configured but broken" (invalid JSON, or valid JSON missing the fields
+    a service-account key must have) -- without this, a paste mistake (a
+    stray newline, missing outer quotes) surfaces downstream as "make sure
+    the sheet is shared with ...", which sends whoever's debugging it
+    checking sharing settings that were never the problem."""
+    raw = os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "")
+    if not raw:
+        return "Google Sheets sync is not configured on this server"
+    try:
+        info = json.loads(raw)
+    except Exception:
+        return ("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON is not valid JSON -- check for a missing "
+                "outer quote or an unescaped newline in the pasted private key")
+    missing = [k for k in ("client_email", "private_key") if not info.get(k)]
+    if missing:
+        return f"GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON is missing required field(s): {', '.join(missing)}"
+    return ""
+
+
 def _get_session():
     """Lazily builds and caches an AuthorizedSession from the service-account
     JSON in GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON. google-auth refreshes the
@@ -266,18 +288,21 @@ def _delete_task(task_id: str, is_notion: bool) -> bool:
 
 # ── Push / reconcile ────────────────────────────────────────────────────
 
-def push_task_to_sheet(link: dict, task_id: str, fields: dict):
-    """Lumina -> Sheet. Fire-and-forget from the caller's perspective: a push
-    failure here must never fail the save that already succeeded in
-    Notion/SQLite (same contract as log_sheet_version in routes/ops.py)."""
+def push_task_to_sheet(link: dict, task_id: str, fields: dict) -> bool:
+    """Lumina -> Sheet. Fire-and-forget from the frontend's perspective: a
+    push failure here must never fail the save that already succeeded in
+    Notion/SQLite (same contract as log_sheet_version in routes/ops.py).
+    Returns whether the push itself succeeded, so the caller can record
+    sync-health state (see routes/sheets_sync.py) without changing that
+    fire-and-forget contract from the frontend's point of view."""
     if not is_configured():
-        return
+        return False
     spreadsheet_id = link["spreadsheet_id"]
     try:
         rows = read_all_rows(spreadsheet_id)
     except Exception:
         logger.exception(f"Sheets push: failed to read sheet {spreadsheet_id}")
-        return
+        return False
 
     row_number = None
     for i, row in enumerate(rows):
@@ -293,8 +318,10 @@ def push_task_to_sheet(link: dict, task_id: str, fields: dict):
             write_row(spreadsheet_id, row_number, values)
         else:
             append_row(spreadsheet_id, values)
+        return True
     except Exception:
         logger.exception(f"Sheets push: failed to write row for task {task_id}")
+        return False
 
 
 def reconcile_sheet_rows(link: dict, rows: list) -> dict:
