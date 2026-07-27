@@ -364,6 +364,19 @@ def init_db():
             except Exception:
                 pass  # Column already exists
 
+        # multi_tab -- whether this client's sync targets one tab per
+        # due-date month (see google_sheets_store.py's *_multi_tab
+        # functions / reconcile_sheet_tabs) or the original single-first-tab
+        # sync. Defaults 0 so every already-linked client (existing rows
+        # predate this column and get SQLite's column default on ALTER
+        # TABLE) keeps its current single-tab behavior untouched; new
+        # connects explicitly insert 1 (see
+        # routes/sheets_sync.py::create_google_sheet_link).
+        try:
+            conn.execute("ALTER TABLE google_sheet_links ADD COLUMN multi_tab INTEGER DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
+
         # Sheets tombstones -- one row per task_id deliberately deleted from
         # Lumina while linked to a Google Sheet. reconcile_sheet_rows() checks
         # this before recreating a row whose task_id it doesn't recognize, so
