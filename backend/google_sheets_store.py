@@ -8,11 +8,32 @@ import json
 import logging
 import os
 import re
+import time
 
 import notion_store
 from utils import today_ist, now_ist
 
 logger = logging.getLogger(__name__)
+
+
+def _retry(fn, attempts: int = 3, base_delay: float = 0.4) -> bool:
+    """Runs fn() up to `attempts` times with short backoff between tries.
+    Returns True once fn() completes without raising, False if every
+    attempt failed. Used for the new-task-id write-back in
+    reconcile_sheet_rows -- a transient network/quota blip on that one call
+    otherwise leaves a row permanently id-less, which then gets treated as
+    "new" again (and duplicate-created) on the next unrelated edit anywhere
+    in the sheet. Not used for push_task_to_sheet, which already has its own
+    fire-and-forget contract with the caller."""
+    for i in range(attempts):
+        try:
+            fn()
+            return True
+        except Exception:
+            if i == attempts - 1:
+                return False
+            time.sleep(base_delay * (i + 1))
+    return False
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 _session = None
@@ -345,7 +366,7 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored = 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates = 0, 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
@@ -364,14 +385,30 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
             if not task_id:
                 new_id = _create_task(client_id, client_name, is_notion, row_fields)
                 if new_id:
-                    try:
-                        write_cell(spreadsheet_id, f"A{row_number}", new_id)
-                    except Exception:
-                        logger.exception(f"Sheets reconcile: failed to write back task id for row {row_number}")
+                    ok = _retry(lambda: write_cell(spreadsheet_id, f"A{row_number}", new_id))
+                    if not ok:
+                        logger.error(
+                            f"Sheets reconcile: giving up writing back task id {new_id} for row "
+                            f"{row_number} (client {client_id}) after retries -- row stays id-less "
+                            f"and may get duplicate-created on the next unrelated edit."
+                        )
                     created += 1
                 continue
 
+            if task_id in seen_ids:
+                # Two rows in the same snapshot share a task_id -- almost
+                # always a copy-pasted row where column A wasn't cleared.
+                # Keep whichever occurrence was processed first (the earlier
+                # row, deterministic) and flag it instead of silently
+                # letting the later row's fields overwrite it with no trace.
+                logger.warning(
+                    f"Sheets reconcile: duplicate task_id {task_id} at row {row_number} for client "
+                    f"{client_id} -- ignoring, an earlier row already claimed this id this pass."
+                )
+                duplicates += 1
+                continue
             seen_ids.add(task_id)
+
             existing = current.get(task_id)
             if not existing:
                 # References a task id Lumina no longer has -- nothing to reconcile against.
@@ -399,11 +436,12 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
             f"{len(current)} known tasks -- skipping delete pass as a safety measure."
         )
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
-                "errored": errored, "deletes_skipped_safety": len(current)}
+                "errored": errored, "duplicates": duplicates, "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in seen_ids:
             _delete_task(existing_id, is_notion)
             deleted += 1
 
-    return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped, "errored": errored}
+    return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
+            "errored": errored, "duplicates": duplicates}
