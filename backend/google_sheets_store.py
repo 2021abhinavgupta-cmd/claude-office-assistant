@@ -489,6 +489,43 @@ def _delete_task_from_sheet_locked(link: dict, task_id: str) -> bool:
     return ok
 
 
+def delete_task_from_sheet_multi_tab(link: dict, task_id: str) -> bool:
+    """Multi-tab (multi_tab=1) equivalent of delete_task_from_sheet -- the
+    task's row could be in any month tab now, not just "the" tab, so this
+    searches all synced tabs before removing it. Same tombstone/retry
+    contract as delete_task_from_sheet."""
+    with _get_client_sheet_lock(link.get("client_id", "")):
+        return _delete_task_from_sheet_multi_tab_locked(link, task_id)
+
+
+def _delete_task_from_sheet_multi_tab_locked(link: dict, task_id: str) -> bool:
+    _tombstone_task(task_id, link.get("client_id", ""))
+    if not is_configured():
+        return False
+    spreadsheet_id = link["spreadsheet_id"]
+    try:
+        all_tabs = read_all_synced_tabs(spreadsheet_id)
+    except Exception:
+        logger.exception(f"Sheets delete (multi-tab): failed to read tabs for {spreadsheet_id}")
+        return False
+
+    found_tab, row_number = None, None
+    for tab_name, rows in all_tabs.items():
+        for i, row in enumerate(rows):
+            if row and str(row[0]).strip() == str(task_id):
+                found_tab, row_number = tab_name, i + 2
+                break
+        if found_tab:
+            break
+    if not found_tab:
+        return False  # already gone, or never made it there
+
+    ok = _retry(lambda: delete_tab_row(spreadsheet_id, found_tab, row_number))
+    if not ok:
+        logger.error(f"Sheets delete (multi-tab): giving up removing row for task {task_id} after retries.")
+    return ok
+
+
 # ── Field mapping ────────────────────────────────────────────────────────
 # Column order matches RH_FIELD_LABELS in projects.html (12 Sheets fields),
 # with lumina_task_id prepended as column A -- A:M is 13 columns total.
