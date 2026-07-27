@@ -47,6 +47,7 @@ import file_processor
 import project_store
 import task_scheduler
 import notion_store
+import google_sheets_store
 import skills
 import custom_skills_store
 
@@ -56,7 +57,7 @@ from routes.auth import auth_bp
 from routes.attendance import attendance_bp
 from routes.system import system_bp
 from routes.ops import ops_bp
-from routes.sheets_sync import sheets_sync_bp
+from routes.sheets_sync import sheets_sync_bp, get_link_for_client
 
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
@@ -2999,6 +3000,39 @@ def auto_fill_social_media():
 
 # ── POST /api/clients/<id>/auto-tasks ─────────────────────────────────────────
 @app.route("/api/clients/<client_id>/auto-tasks", methods=["POST"])
+def _push_new_social_task_to_sheet(client_id, task_id, *, creation_date, due_date, title,
+                                    post_type, content, idea, scripts, caption, link_url, assignee):
+    """Best-effort push of a freshly-created social task into its client's
+    linked Google Sheet, if any -- mirrors the push applySheetFields() does
+    for a normal Sheets edit (frontend/projects.html). Without this, tasks
+    created here (auto_generate_tasks -- reached both by the Add Tasks
+    social calendar and by importClientSocialCSV's bulk CSV/Excel import)
+    never reach an already-linked Sheet, and are then at risk of being
+    deleted on the very next Sheet-side edit's reconcile pass, which treats
+    "a task Lumina has that the Sheet's own snapshot doesn't recognize" as a
+    Sheet-initiated delete to mirror. Must never raise -- a sync failure
+    here must not undo or fail the task creation that already succeeded by
+    the time this runs."""
+    if not task_id:
+        return
+    try:
+        sheet_link = get_link_for_client(str(client_id))
+        if not sheet_link:
+            return
+        fields = {
+            "creation_date": creation_date or "", "due_date": due_date or "",
+            "title": title or "", "type": post_type or "Post",
+            "content": content or "", "idea": idea or "", "scripts": scripts or "",
+            "caption": caption or "", "link": link_url or "", "myNotes": "",
+            "assigned_to": assignee or "", "status": "not_started",
+        }
+        push_fn = (google_sheets_store.push_task_to_sheet_multi_tab if sheet_link.get("multi_tab")
+                   else google_sheets_store.push_task_to_sheet)
+        push_fn(sheet_link, str(task_id), fields)
+    except Exception:
+        logger.exception(f"Sheets: failed to push newly-created task {task_id} for client {client_id}")
+
+
 def auto_generate_tasks(client_id):
     """Auto-generate tasks from selected service types. Admin only."""
     body = request.get_json(silent=True) or {}
@@ -3083,6 +3117,11 @@ def auto_generate_tasks(client_id):
             )
             if res:
                 created_ids.append(res["notion_id"])
+                _push_new_social_task_to_sheet(
+                    client_id, res["notion_id"], creation_date=creation_date, due_date=post_day,
+                    title=title, post_type=post_type, content=content, idea=idea, scripts=scripts,
+                    caption=caption, link_url=link, assignee=assignee,
+                )
 
         # Generic template tasks for non-social services
         for tmpl in ordered_tasks:
@@ -3133,6 +3172,11 @@ def auto_generate_tasks(client_id):
                 (client_id, task_title, notes, assignee, post_day)
             )
             created_ids.append(cur.lastrowid)
+            _push_new_social_task_to_sheet(
+                client_id, cur.lastrowid, creation_date=creation_date, due_date=post_day,
+                title=title, post_type=post_type, content=content, idea=idea, scripts=scripts,
+                caption=caption, link_url=link, assignee=assignee,
+            )
 
         # Template tasks for non-social services
         for tmpl in ordered_tasks:
