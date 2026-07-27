@@ -1181,13 +1181,42 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
                 "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-                "deletes_skipped_safety": len(current)}
+                "deletes_skipped_safety": len(current), "deletes_skipped_missing_tab": 0}
 
+    # Per-task guard on top of the all-tabs-empty safety check above: a task
+    # missing from `seen_ids` means SOME tab didn't contain it, but that's
+    # ambiguous between two very different causes --
+    #  (a) the row was genuinely deleted from within its tab (that tab's own
+    #      name IS a key in `tabs`, just with fewer rows) -- a real delete
+    #      signal, safe to mirror.
+    #  (b) the tab this task's own due_date says it belongs in was renamed
+    #      (typo, reorganizing) or deleted outright, so it never appears as
+    #      a key in `tabs` at all -- the Apps Script snippet only sends tabs
+    #      whose NAME still matches the convention, unconditionally
+    #      including an entry (even an empty list) for every one that does.
+    # Treating (b) the same as (a) would mass-delete every task that ever
+    # lived in that tab on the very next unrelated edit anywhere else in the
+    # spreadsheet, off nothing more than a rename typo. Skip (b) instead --
+    # same "defer, don't destroy" reasoning as the tombstone and recent-push
+    # guards elsewhere in this file.
+    payload_tab_names = set(tabs.keys())
+    deletes_skipped_missing_tab = 0
     for existing_id in current:
-        if existing_id not in seen_ids:
-            _delete_task(existing_id, is_notion)
-            deleted += 1
+        if existing_id in seen_ids:
+            continue
+        target_tab = _month_tab_name_for(current[existing_id].get("due_date", ""))
+        if target_tab not in payload_tab_names:
+            logger.warning(
+                f"Sheets reconcile (multi-tab): task {existing_id} (client {client_id}) belongs in tab "
+                f"'{target_tab}', which wasn't present in this sync -- skipping delete instead of "
+                f"assuming it was intentionally removed (renamed or deleted tab?)."
+            )
+            deletes_skipped_missing_tab += 1
+            continue
+        _delete_task(existing_id, is_notion)
+        deleted += 1
 
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
-            "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push}
+            "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
+            "deletes_skipped_missing_tab": deletes_skipped_missing_tab}
