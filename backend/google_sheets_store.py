@@ -609,24 +609,49 @@ def _row_to_fields(row: list) -> dict:
 
 # ── Task adapters (Notion + SQLite) ─────────────────────────────────────
 
+# A client's linked Google Sheet is a social-media content calendar, not a
+# general task board -- but a client can (and often does) also have
+# branding/website/shoot/misc workflow tasks (see CLAUDE.md gotcha #10) that
+# were never meant to appear there at all. Mirrors the exact same detection
+# projects.html already uses for "is this a Sheets row" (its `socialTasks`
+# filter in renderClientSheets(), and the two `isSocial` checks for Kanban
+# column sets) -- must stay in sync with that regex/service check.
+_SOCIAL_TITLE_RE = re.compile(r"^\[(Story|Static|Reel|Carousel|Post|Video)\]", re.I)
+
+
+def _is_social_task(task: dict) -> bool:
+    if (task.get("service") or "") == "Social Media":
+        return True
+    return bool(_SOCIAL_TITLE_RE.match(task.get("title") or ""))
+
+
 def _current_tasks_by_id(client_id: str, is_notion: bool) -> dict:
-    """Snapshot of every task Lumina currently has for this client, keyed by
-    id, fetched once per reconciliation pass rather than once per row -- see
-    reconcile_sheet_rows below for why (avoids an N+1 Notion API call)."""
+    """Snapshot of every SOCIAL-MEDIA task Lumina currently has for this
+    client, keyed by id, fetched once per reconciliation pass rather than
+    once per row -- see reconcile_sheet_rows below for why (avoids an N+1
+    Notion API call). Filtered to _is_social_task() on purpose: without
+    this, a client with any non-social workflow tasks would have ALL of
+    them swept into this snapshot too -- backfilling them into the Sheet
+    as garbage rows on connect, and (far worse) making reconcile's delete
+    pass treat every one of them as "not recognized in this Sheet payload"
+    and delete it on the very next unrelated Sheet edit, since they were
+    never meant to be Sheets rows in the first place."""
     if is_notion:
         tasks = notion_store.list_tasks(client_notion_id=client_id)
-        return {t["notion_id"]: t for t in tasks}
+        return {t["notion_id"]: t for t in tasks if _is_social_task(t)}
     from db import get_connection
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT id,title,description,assigned_to,due_date,status,creation_date FROM tasks WHERE client_id=?", (client_id,))
     rows = cur.fetchall()
     conn.close()
-    return {
-        str(r[0]): {"notion_id": str(r[0]), "title": r[1], "description": r[2],
-                     "assigned_to": r[3], "due_date": r[4], "status": r[5], "creation_date": r[6] or ""}
-        for r in rows
-    }
+    result = {}
+    for r in rows:
+        rec = {"notion_id": str(r[0]), "title": r[1], "description": r[2],
+               "assigned_to": r[3], "due_date": r[4], "status": r[5], "creation_date": r[6] or ""}
+        if _is_social_task(rec):
+            result[str(r[0])] = rec
+    return result
 
 
 def _create_task(client_id: str, client_name: str, is_notion: bool, fields: dict):
