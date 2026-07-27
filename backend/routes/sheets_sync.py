@@ -80,12 +80,20 @@ def _apps_script_snippet(webhook_url: str, multi_tab: bool = False) -> str:
             "  // that regardless of how the column happens to be formatted.\n"
             "  var data = sheet.getDataRange().getDisplayValues();\n"
             "  var rows = data.slice(1); // drop header row\n"
-            "  UrlFetchApp.fetch(\"" + webhook_url + "\", {\n"
+            "  var resp = UrlFetchApp.fetch(\"" + webhook_url + "\", {\n"
             "    method: \"post\",\n"
             "    contentType: \"application/json\",\n"
             "    payload: JSON.stringify({ rows: rows }),\n"
             "    muteHttpExceptions: true\n"
             "  });\n"
+            "  // Throwing on a non-2xx response (instead of silently ignoring it,\n"
+            "  // which muteHttpExceptions alone would do) restores Apps Script's own\n"
+            "  // automatic trigger-failure email -- without this, a sync error had\n"
+            "  // zero visibility anywhere: the trigger 'succeeds' from Apps Script's\n"
+            "  // point of view even though nothing actually synced.\n"
+            "  if (resp.getResponseCode() >= 300) {\n"
+            "    throw new Error(\"Lumina sync failed: HTTP \" + resp.getResponseCode() + \" - \" + resp.getContentText());\n"
+            "  }\n"
             "}\n\n"
             "function installTrigger() {\n"
             "  ScriptApp.newTrigger(\"onSheetChange\")\n"
@@ -113,12 +121,18 @@ def _apps_script_snippet(webhook_url: str, multi_tab: bool = False) -> str:
         "      tabs[name] = data.slice(1); // drop header row\n"
         "    }\n"
         "  });\n"
-        "  UrlFetchApp.fetch(\"" + webhook_url + "\", {\n"
+        "  var resp = UrlFetchApp.fetch(\"" + webhook_url + "\", {\n"
         "    method: \"post\",\n"
         "    contentType: \"application/json\",\n"
         "    payload: JSON.stringify({ tabs: tabs }),\n"
         "    muteHttpExceptions: true\n"
         "  });\n"
+        "  // See the single-tab snippet's comment -- throwing on non-2xx restores\n"
+        "  // Apps Script's own automatic trigger-failure email instead of the sync\n"
+        "  // error going completely unnoticed.\n"
+        "  if (resp.getResponseCode() >= 300) {\n"
+        "    throw new Error(\"Lumina sync failed: HTTP \" + resp.getResponseCode() + \" - \" + resp.getContentText());\n"
+        "  }\n"
         "}\n\n"
         "function installTrigger() {\n"
         "  ScriptApp.newTrigger(\"onSheetChange\")\n"
@@ -441,8 +455,14 @@ def sheets_pull_webhook(link_token: str):
     body = request.get_json(silent=True) or {}
 
     if link.get("multi_tab") and isinstance(body.get("tabs"), dict):
-        tabs = body["tabs"]
-        total_rows = sum(len(v) for v in tabs.values() if isinstance(v, list))
+        # Drop any tab whose value isn't itself a list before doing anything
+        # else with it -- reconcile_sheet_tabs iterates each tab's rows, and
+        # a non-list value (garbled payload) would otherwise reach the same
+        # "silently fakes rows" hazard the isinstance(row, list) guard in
+        # google_sheets_store.py closes for individual rows, just one level
+        # up.
+        tabs = {k: v for k, v in body["tabs"].items() if isinstance(v, list)}
+        total_rows = sum(len(v) for v in tabs.values())
         if total_rows > MAX_WEBHOOK_ROWS:
             return jsonify({
                 "error": f"Sheet has more than {MAX_WEBHOOK_ROWS} total rows across its tabs -- "

@@ -424,6 +424,21 @@ def init_db():
             except Exception:
                 pass  # Column already exists
 
+        # creation_date -- real column for SQLite-mode (is_notion=0) tasks, mirroring
+        # Notion mode's real "Creation Date" property (gotcha #50). Before this, the
+        # only place a SQLite task's creation date lived was text embedded in
+        # `description` ("Creation Date: X | Content: ..."), written by
+        # auto_generate_tasks()'s CSV-import path in app.py -- but
+        # google_sheets_store.py's _build_sheet_notes() (Sheets sync) never included
+        # it in that text, so the very first Sheets-side edit of such a task silently
+        # dropped its creation date, and worse, every reconcile pass afterward saw a
+        # spurious creation_date diff (stored "" vs the Sheet's real value) and kept
+        # re-triggering an update with nothing actually changed. See CLAUDE.md gotcha #87.
+        try:
+            conn.execute("ALTER TABLE tasks ADD COLUMN creation_date TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
         # ── Startup cleanup: remove orphaned client_users ──────────────
         # Removes portal credentials for clients that no longer exist in the DB.
         # This fixes stuck "username already taken" errors after a client is deleted.

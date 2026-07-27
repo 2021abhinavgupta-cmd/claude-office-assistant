@@ -619,12 +619,12 @@ def _current_tasks_by_id(client_id: str, is_notion: bool) -> dict:
     from db import get_connection
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id,title,description,assigned_to,due_date,status FROM tasks WHERE client_id=?", (client_id,))
+    cur.execute("SELECT id,title,description,assigned_to,due_date,status,creation_date FROM tasks WHERE client_id=?", (client_id,))
     rows = cur.fetchall()
     conn.close()
     return {
         str(r[0]): {"notion_id": str(r[0]), "title": r[1], "description": r[2],
-                     "assigned_to": r[3], "due_date": r[4], "status": r[5], "creation_date": ""}
+                     "assigned_to": r[3], "due_date": r[4], "status": r[5], "creation_date": r[6] or ""}
         for r in rows
     }
 
@@ -644,9 +644,9 @@ def _create_task(client_id: str, client_name: str, is_notion: bool, fields: dict
     conn = get_connection()
     with conn:
         cur = conn.execute(
-            "INSERT INTO tasks (client_id,title,description,assigned_to,due_date,status,progress) VALUES (?,?,?,?,?,?,0)",
+            "INSERT INTO tasks (client_id,title,description,assigned_to,due_date,status,progress,creation_date) VALUES (?,?,?,?,?,?,0,?)",
             (client_id, new_title, notes, fields.get("assigned_to", ""), fields.get("due_date", ""),
-             fields.get("status") or "not_started"),
+             fields.get("status") or "not_started", fields.get("creation_date", "")),
         )
         task_id = cur.lastrowid
     conn.close()
@@ -668,11 +668,11 @@ def _update_task(task_id: str, is_notion: bool, fields: dict, editor_name: str) 
     conn = get_connection()
     with conn:
         conn.execute(
-            "UPDATE tasks SET title=?, description=?, assigned_to=?, due_date=?, status=?, "
+            "UPDATE tasks SET title=?, description=?, assigned_to=?, due_date=?, status=?, creation_date=?, "
             "last_edited_by=?, last_edited_at=?, last_edited_summary=? WHERE id=?",
             (new_title, notes, fields.get("assigned_to", ""), fields.get("due_date", ""),
-             fields.get("status") or "not_started", editor_name, f"{today_ist()} {now_ist()}",
-             "Google Sheets sync", task_id),
+             fields.get("status") or "not_started", fields.get("creation_date", ""),
+             editor_name, f"{today_ist()} {now_ist()}", "Google Sheets sync", task_id),
         )
     conn.close()
     return True
@@ -922,6 +922,14 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
             # malformed entry (not a list, or one that doesn't behave like
             # one) must not abort every other row's sync, same reasoning as
             # notion_store.list_tasks()'s per-page isolation (gotcha #52).
+            # Explicit isinstance check, not just `if row:` -- a JSON string
+            # element (e.g. a garbled payload's row entry being "garbage"
+            # instead of a list) is truthy and `row[0]` on it doesn't throw
+            # (string indexing), so without this it silently falls through
+            # as one fake near-blank row per character instead of erroring.
+            if not isinstance(row, list):
+                errored += 1
+                continue
             task_id = str(row[0]).strip() if row else ""
             row_fields = _row_to_fields(row)
             if not task_id and not any(row_fields.values()):
@@ -1099,6 +1107,13 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
             row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
             row_label = f"{tab_name} row {row_number}"
             try:
+                # See the matching guard in _reconcile_sheet_rows_locked --
+                # a non-list row (e.g. a bare string) is truthy and doesn't
+                # throw on row[0], so without this it silently fakes rows
+                # instead of erroring.
+                if not isinstance(row, list):
+                    errored += 1
+                    continue
                 task_id = str(row[0]).strip() if row else ""
                 row_fields = _row_to_fields(row)
                 if not task_id and not any(row_fields.values()):
