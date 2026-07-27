@@ -787,6 +787,62 @@ def _push_task_to_sheet_locked(link: dict, task_id: str, fields: dict) -> bool:
         return False
 
 
+def push_task_to_sheet_multi_tab(link: dict, task_id: str, fields: dict) -> bool:
+    """Multi-tab (multi_tab=1) equivalent of push_task_to_sheet -- routes by
+    the task's due_date into the matching month tab (or "Unscheduled"),
+    moving the row between tabs if its due_date's month changed since the
+    last push. Same fire-and-forget contract and locking as
+    push_task_to_sheet."""
+    with _get_client_sheet_lock(link.get("client_id", "")):
+        return _push_task_to_sheet_multi_tab_locked(link, task_id, fields)
+
+
+def _push_task_to_sheet_multi_tab_locked(link: dict, task_id: str, fields: dict) -> bool:
+    if _is_tombstoned(task_id):
+        logger.info(f"Sheets push (multi-tab): skipping push for tombstoned task {task_id}.")
+        return False
+    if not is_configured():
+        return False
+    spreadsheet_id = link["spreadsheet_id"]
+    target_tab = _month_tab_name_for(fields.get("due_date"))
+    try:
+        all_tabs = read_all_synced_tabs(spreadsheet_id)
+    except Exception:
+        logger.exception(f"Sheets push (multi-tab): failed to read tabs for {spreadsheet_id}")
+        return False
+
+    found_tab, row_number = None, None
+    for tab_name, rows in all_tabs.items():
+        for i, row in enumerate(rows):
+            if row and str(row[0]).strip() == str(task_id):
+                found_tab, row_number = tab_name, i + 2  # +1 header, +1 to 1-index
+                break
+        if found_tab:
+            break
+
+    values = _fields_to_row(task_id, fields)
+    try:
+        if found_tab == target_tab:
+            write_tab_row(spreadsheet_id, target_tab, row_number, values)
+        elif found_tab:
+            # due_date moved this task into a different month since the
+            # last push -- append to the new tab BEFORE deleting the old
+            # row, so a failure mid-move leaves a harmless duplicate (self-
+            # heals via reconcile_sheet_tabs' existing duplicate-id dedup)
+            # rather than losing the row outright.
+            ensure_tab_exists(spreadsheet_id, target_tab)
+            append_tab_row(spreadsheet_id, target_tab, values)
+            delete_tab_row(spreadsheet_id, found_tab, row_number)
+        else:
+            ensure_tab_exists(spreadsheet_id, target_tab)
+            append_tab_row(spreadsheet_id, target_tab, values)
+        _mark_pushed(task_id)
+        return True
+    except Exception:
+        logger.exception(f"Sheets push (multi-tab): failed to write row for task {task_id}")
+        return False
+
+
 def reconcile_sheet_rows(link: dict, rows: list) -> dict:
     """Public entry point -- serializes against any other Sheet-touching
     operation for the same client (see _get_client_sheet_lock) before
