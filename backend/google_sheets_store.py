@@ -11,6 +11,7 @@ import re
 import threading
 import time
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 import notion_store
 from utils import today_ist, now_ist, IST
@@ -291,6 +292,141 @@ def delete_row(spreadsheet_id: str, row_number: int):
     }
     r = session.post(url, json=body)
     r.raise_for_status()
+
+
+# ── Multi-tab I/O ────────────────────────────────────────────────────────
+# Parallel to read_all_rows/write_row/append_row/write_cell/delete_row/
+# _first_sheet_id above, which stay untouched and keep addressing an
+# unqualified (first-tab) range for every already-linked single-tab client.
+# These take an explicit sheet_name and are only ever called for a
+# multi_tab=1 link.
+
+def list_tabs(spreadsheet_id: str) -> list:
+    """Every tab in the spreadsheet as [{"name": str, "sheet_id": int}, ...],
+    in the spreadsheet's own tab order."""
+    session = _get_session()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
+    r = session.get(url, params={"fields": "sheets.properties"})
+    r.raise_for_status()
+    sheets = r.json().get("sheets", [])
+    return [{"name": s["properties"]["title"], "sheet_id": s["properties"]["sheetId"]} for s in sheets]
+
+
+def _sheet_id_for_tab(spreadsheet_id: str, sheet_name: str) -> int:
+    """The spreadsheet-internal numeric sheetId (gid) for one named tab --
+    needed for a physical row delete via batchUpdate, which addresses rows
+    by sheetId, not by the A1 range names the read/write helpers use. Falls
+    back to the first tab's sheetId if sheet_name isn't found."""
+    tabs = list_tabs(spreadsheet_id)
+    for t in tabs:
+        if t["name"] == sheet_name:
+            return t["sheet_id"]
+    return tabs[0]["sheet_id"] if tabs else 0
+
+
+def ensure_tab_exists(spreadsheet_id: str, sheet_name: str):
+    """Creates sheet_name as a new tab (with the standard header row) if it
+    doesn't already exist. Idempotent -- safe to call on every push."""
+    tabs = list_tabs(spreadsheet_id)
+    if any(t["name"] == sheet_name for t in tabs):
+        return
+    session = _get_session()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
+    body = {"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
+    r = session.post(url, json=body)
+    r.raise_for_status()
+    write_tab_row(spreadsheet_id, sheet_name, 1, SHEET_HEADER_ROW)
+
+
+def read_tab_rows(spreadsheet_id: str, sheet_name: str) -> list:
+    """Every row (including the header) in one tab, as a list of lists.
+    Short rows are NOT padded -- callers must not assume every row has all
+    13 columns."""
+    session = _get_session()
+    rng = quote(f"{_a1_quote(sheet_name)}!A:M", safe="")
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}"
+    r = session.get(url)
+    r.raise_for_status()
+    return r.json().get("values", [])
+
+
+def write_tab_row(spreadsheet_id: str, sheet_name: str, row_number: int, values: list):
+    """Overwrites one full row in one tab, 1-indexed to match the tab's own
+    row numbers."""
+    session = _get_session()
+    rng = quote(f"{_a1_quote(sheet_name)}!A{row_number}:M{row_number}", safe="")
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}"
+    r = session.put(url, params={"valueInputOption": "RAW"}, json={"values": [values]})
+    r.raise_for_status()
+
+
+def append_tab_row(spreadsheet_id: str, sheet_name: str, values: list) -> int:
+    """Appends a new row after one tab's last row with data. Returns the new
+    row's 1-indexed row number, parsed out of the API's updatedRange."""
+    session = _get_session()
+    rng = quote(f"{_a1_quote(sheet_name)}!A:M", safe="")
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}:append"
+    r = session.post(
+        url,
+        params={"valueInputOption": "RAW", "insertDataOption": "INSERT_ROWS"},
+        json={"values": [values]},
+    )
+    r.raise_for_status()
+    updated_range = r.json().get("updates", {}).get("updatedRange", "")
+    m = re.search(r"!A(\d+)", updated_range)
+    return int(m.group(1)) if m else -1
+
+
+def write_tab_cell(spreadsheet_id: str, sheet_name: str, a1_cell: str, value):
+    session = _get_session()
+    rng = quote(f"{_a1_quote(sheet_name)}!{a1_cell}", safe="")
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}"
+    r = session.put(url, params={"valueInputOption": "RAW"}, json={"values": [[value]]})
+    r.raise_for_status()
+
+
+def delete_tab_row(spreadsheet_id: str, sheet_name: str, row_number: int):
+    """Physically removes one row from one tab (1-indexed), shifting
+    everything below it up -- not a blank-out."""
+    session = _get_session()
+    sheet_id = _sheet_id_for_tab(spreadsheet_id, sheet_name)
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
+    body = {
+        "requests": [{
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_number - 1,
+                    "endIndex": row_number,
+                }
+            }
+        }]
+    }
+    r = session.post(url, json=body)
+    r.raise_for_status()
+
+
+def read_all_synced_tabs(spreadsheet_id: str) -> dict:
+    """One batchGet across every currently-synced tab (month-named or
+    "Unscheduled"), so push/delete can locate a task_id without an
+    N-tabs-worth of separate round trips. Returns {tab_name: rows}, rows
+    being data rows only (header stripped, matching read_tab_rows' raw
+    per-row shape minus row 1)."""
+    tabs = [t["name"] for t in list_tabs(spreadsheet_id) if _is_synced_tab_name(t["name"])]
+    if not tabs:
+        return {}
+    session = _get_session()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values:batchGet"
+    ranges = [f"{_a1_quote(name)}!A:M" for name in tabs]
+    r = session.get(url, params={"ranges": ranges})
+    r.raise_for_status()
+    value_ranges = r.json().get("valueRanges", [])
+    result = {}
+    for name, vr in zip(tabs, value_ranges):
+        rows = vr.get("values", [])
+        result[name] = rows[1:] if rows else []
+    return result
 
 
 def delete_task_from_sheet(link: dict, task_id: str) -> bool:
