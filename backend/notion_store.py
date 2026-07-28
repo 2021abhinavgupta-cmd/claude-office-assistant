@@ -248,8 +248,18 @@ def get_schema_report() -> dict:
 # ── Low-level helpers ─────────────────────────────────────────────────────────
 
 def _text(value: str) -> dict:
-    """Notion rich_text property value."""
-    return {"rich_text": [{"text": {"content": str(value or "")}}]}
+    """Notion rich_text property value. Notion caps a single text object's
+    `content` at 2000 characters and rejects the ENTIRE page-update request
+    if it's exceeded (not just that property) -- long composite Sheets notes
+    (Content/Idea/Scripts/Caption/Notes joined together) routinely blow past
+    this, silently failing the whole save. Chunk into multiple rich_text
+    array entries instead; _get_text() already joins all of them back
+    together on read, so this is fully symmetric."""
+    s = str(value or "")
+    if not s:
+        return {"rich_text": []}
+    chunks = [s[i:i + 2000] for i in range(0, len(s), 2000)]
+    return {"rich_text": [{"text": {"content": c}} for c in chunks]}
 
 
 def _title(value: str) -> dict:
