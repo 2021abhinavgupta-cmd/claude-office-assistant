@@ -15,6 +15,7 @@ If NOTION_TOKEN is not set, all functions return empty results gracefully (no cr
 """
 
 import os
+import re
 import time
 import logging
 import requests
@@ -712,13 +713,23 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
 
 
 def get_task_type(notion_id: str) -> str:
-    """Fetches a single task and returns its Type or Task Type."""
+    """Fetches a single task and returns its Type or Task Type. Falls back to
+    detecting a [Story]/[Reel]/etc bracket prefix in the title when neither
+    property is populated -- Sheets-created rows don't always get Task Type
+    set (same "Task" title as the app's own social-media detection uses),
+    so this mirrors that fallback instead of silently returning empty."""
     if not is_configured() or not notion_id:
         return ""
     try:
         r = _notion_request("GET", f"https://api.notion.com/v1/pages/{notion_id}", headers=_headers())
         props = r.json().get("properties", {})
-        return _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {}))
+        ptype = _get_select(props.get("Type", {})) or _get_select(props.get("Task Type", {}))
+        if ptype:
+            return ptype
+        title = _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})) or _get_text(props.get("Post", {}))
+        if title and re.match(r'^\[(Story|Static|Reel|Carousel|Post|Video)\]', title, re.IGNORECASE):
+            return "Social Media"
+        return ""
     except Exception:
         logger.exception(f"Notion get_task_type failed for {notion_id}")
         return ""
