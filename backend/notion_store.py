@@ -557,7 +557,7 @@ def update_client_status(notion_id: str, status: str) -> bool:
 def create_task(title: str, client_name: str, client_notion_id: str,
                 assigned_to: str = "", due_date: str = "",
                 status: str = "not_started", progress: int = 0,
-                service: str = "", notes: str = "") -> Optional[dict]:
+                service: str = "", notes: str = "", creation_date: str = "") -> Optional[dict]:
     """
     Creates a new page in the Tasks Notion DB.
     Returns: { notion_id, title } or None on failure.
@@ -585,6 +585,8 @@ def create_task(title: str, client_name: str, client_notion_id: str,
     }
     if notes:
         payload["properties"]["Notes"] = _text(notes)
+    if creation_date and _ensure_creation_date_property():
+        payload["properties"]["Creation Date"] = _date(creation_date)
 
     try:
         r = _notion_request(

@@ -924,7 +924,8 @@ Respond ONLY in valid JSON format:
             client_notion_id="",
             assigned_to=assigned_to,
             due_date=due_date,
-            status="in_progress"
+            status="in_progress",
+            creation_date=today_ist()
         )
         if created and "id" in created:
             notion_id = created["id"]
@@ -981,7 +982,8 @@ def push_to_notion(task_id):
         client_notion_id="",
         assigned_to=assigned_to,
         due_date=due_date,
-        status="in_progress"
+        status="in_progress",
+        creation_date=due_date
     )
     if created and "id" in created:
         notion_id = created["id"]
