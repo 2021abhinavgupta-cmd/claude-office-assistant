@@ -45,6 +45,23 @@ def _su_conn():
     return get_connection()
 
 
+_EMP_NAMES_FALLBACK = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
+                       "emp004":"Kshitij","emp006":"Mohit",
+                       "emp007":"Palak","emp008":"Happy"}
+
+def _load_emp_names() -> dict:
+    """id -> display name, read live from employees.json so new hires are picked
+    up automatically. Falls back to a stale hardcoded list only if the file
+    can't be read at all (this fallback is deliberately NOT kept in sync with
+    employees.json — don't add new hires here, fix the read instead)."""
+    try:
+        data = _load_employees()
+        names = {e["id"]: e["name"] for e in data.get("employees", [])}
+        return names or _EMP_NAMES_FALLBACK
+    except Exception:
+        return _EMP_NAMES_FALLBACK
+
+
 def _task_creation_is_future(notion_id: str, today_str: str) -> bool:
     """True if the live Notion Creation Date for this task is after today.
     Mirrors the property-then-text-fallback logic used in auto_fill_standup()."""
@@ -183,16 +200,7 @@ def get_standups_today():
     for uid in tasks_by_user:
         tasks_by_user[uid].sort(key=lambda x: (parse_date_for_sort(x["due_date"]), x["id"]))
 
-    # Load employee names dynamically from employees.json
-    try:
-        _emp_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "employees.json")
-        with open(_emp_path, "r", encoding="utf-8") as _f:
-            _emp_data = json.load(_f)
-        EMP_NAMES = {e["id"]: e["name"] for e in _emp_data.get("employees", [])}
-    except Exception:
-        EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                     "emp004":"Kshitij","emp006":"Mohit",
-                     "emp007":"Palak","emp008":"Happy"}
+    EMP_NAMES = _load_emp_names()
     standups = [{"user_id":r[0],"name":EMP_NAMES.get(r[0],r[0]),"date":r[1],
                  "yesterday":r[2],"today":r[3],"blockers":r[4],"submitted_at":r[5]} for r in rows]
                  
@@ -444,11 +452,8 @@ def delegate_task(task_id):
         return jsonify({"error": "Task not found"}), 404
         
     orig_user_id, old_date_str, title, blocker = row
-    
-    EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                 "emp004":"Kshitij","emp006":"Mohit",
-                 "emp007":"Palak","emp008":"Happy"}
-    orig_user_name = EMP_NAMES.get(orig_user_id, orig_user_id)
+
+    orig_user_name = _load_emp_names().get(orig_user_id, orig_user_id)
     
     today_str = today_ist()
     
@@ -1250,11 +1255,7 @@ def notion_create_client():
         except Exception as e:
             logger.error(f"Failed to create client user: {e}")
 
-    EMP_NAMES = {
-        "emp001": "Vidit", "emp002": "Nupur", "emp003": "Abhinav",
-        "emp004": "Kshitij", "emp006": "Mohit",
-        "emp007": "Tanaya", "emp008": "Happy",
-    }
+    EMP_NAMES = _load_emp_names()
     SVC_TASKS = {
         "content":  [("Content Brief & Research", "emp006"), ("Write Copy / Content Draft", "emp006"), ("Content Review & Approval", "emp004")],
         "video":    [("Video Script Writing", "emp006"), ("Video Shoot / Production", "emp005"), ("Video Editing & Post", "emp005"), ("AI Video Enhancements", "emp008")],
@@ -1346,11 +1347,9 @@ def notion_list_or_create_tasks():
 @ops_bp.route("/api/notion/tasks/<string:notion_id>", methods=["PATCH"])
 def notion_update_task(notion_id: str):
     body   = request.get_json(silent=True) or {}
-    
-    EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                 "emp004":"Kshitij","emp006":"Mohit",
-                 "emp007":"Palak","emp008":"Happy"}
-                 
+
+    EMP_NAMES = _load_emp_names()
+
     raw_assigned = body.get("assigned_to")
     raw_assigned_ids = [a.strip() for a in raw_assigned.split(",") if a.strip()] if raw_assigned is not None else []
     mapped_assigned = ",".join(EMP_NAMES.get(a, a) for a in raw_assigned_ids) if raw_assigned is not None else None
@@ -1582,13 +1581,10 @@ def sqlite_patch_task(task_id: int):
     if old_row and new_status and new_status != old_status:
         try:
             from notifications import notify_task_status_changed
-            EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                         "emp004":"Kshitij","emp006":"Mohit",
-                         "emp007":"Palak","emp008":"Happy"}
-            
+
             task_title = body.get("new_title", old_row[0])
             raw_assignee = body.get("assigned_to", old_row[1])
-            assignee_name = EMP_NAMES.get(raw_assignee, raw_assignee)
+            assignee_name = _load_emp_names().get(raw_assignee, raw_assignee)
             client_id = old_row[3]
             client_name = "Internal"
             

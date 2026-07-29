@@ -3184,9 +3184,8 @@ def get_blockers():
     deps = cur.fetchall()
     conn.close()
 
-    EMP_NAMES = {"emp001":"Vidit","emp002":"Nupur","emp003":"Abhinav",
-                 "emp004":"Kshitij","emp006":"Mohit",
-                 "emp007":"Tanaya","emp008":"Happy"}
+    _emp_data = _load_employees()
+    EMP_NAMES = {e["id"]: e["name"] for e in _emp_data.get("employees", [])}
 
     blockers = []
     for (task_id, blocker_id) in deps:
