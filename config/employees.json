@@ -87,6 +87,17 @@
       "pin": "0000",
       "tone_profile": "Professional, clear, and people-focused.",
       "checkins": []
+    },
+    {
+      "id": "emp010",
+      "name": "Anagha",
+      "role": "Designer",
+      "whatsapp": "",
+      "department": "Design",
+      "status": "active",
+      "pin": "2104",
+      "tone_profile": "Creative, visual, and detail-oriented.",
+      "checkins": []
     }
   ]
 }
