@@ -1585,7 +1585,71 @@ function sheetTrClientId(tr) {
 }
 
 // ── Paste from Excel/Google Sheets: tab-separated columns, newline-separated rows ──
-document.addEventListener('paste', (e) => {
+// If the paste has more rows than exist below the cursor, new rows are created
+// (like real Excel/Sheets) instead of silently dropping the overflow.
+async function createBlankSheetRow(clientId) {
+  const client = allData.clients.find(c => String(c.id) === String(clientId));
+  if (!client) return null;
+  const isNotionClient = notionMode && !!client.notion_id;
+  const endpoint = isNotionClient ? `${API}/api/notion/tasks` : `${API}/api/tasks`;
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: UID, client_id: isNotionClient ? client.notion_id : clientId, client_name: client.name,
+        title: "[Post] New Idea", assigned_to: "", due_date: "", service: "Social Media", status: "not_started"
+      })
+    });
+    const d = await res.json();
+    if (!d.success) return null;
+    const newId = isNotionClient ? (d.notion_id || Date.now()) : d.task_id;
+    return { id: newId, notion_id: isNotionClient ? d.notion_id : null, title: "[Post] New Idea", service: "Social Media", status: "not_started", isNotionClient };
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+}
+
+let pendingPasteUndo = null; // { clientId, cellSnapshots: [{taskId,colIndex,oldValue}], newTaskIds: [{taskId,isNotionClient}], timeoutId }
+
+function startPendingPasteUndo(clientId, cellSnapshots, newTaskIds) {
+  if (pendingPasteUndo) clearTimeout(pendingPasteUndo.timeoutId);
+  const timeoutId = setTimeout(() => { pendingPasteUndo = null; hideUndoBar(); }, 8000);
+  pendingPasteUndo = { clientId, cellSnapshots, newTaskIds, timeoutId };
+  showUndoBar(newTaskIds.length > 0 ? `Pasted (${newTaskIds.length} new row(s) created).` : 'Pasted.', undoPaste);
+}
+
+async function undoPaste() {
+  if (!pendingPasteUndo) return;
+  clearTimeout(pendingPasteUndo.timeoutId);
+  const { clientId, cellSnapshots, newTaskIds } = pendingPasteUndo;
+  pendingPasteUndo = null;
+  hideUndoBar();
+
+  cellSnapshots.forEach(({ taskId, colIndex, oldValue }) => {
+    const rowTr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
+    const td = rowTr ? rowTr.cells[colIndex] : null;
+    if (!td) return;
+    applyPastedCellValue(td, oldValue);
+    const anchorEl = td.querySelector('input,select,[contenteditable]') || td;
+    saveSheetRow(taskId, anchorEl, clientId);
+  });
+
+  const client = allData.clients.find(c => String(c.id) === String(clientId));
+  for (const { taskId, isNotionClient } of newTaskIds) {
+    const endpoint = isNotionClient ? `${API}/api/notion/tasks/${taskId}` : `${API}/api/sqlite/tasks/${taskId}`;
+    try { await fetch(endpoint, { method: 'DELETE' }); } catch (e) {}
+    if (client) {
+      const idx = client.tasks.findIndex(t => String(t.id) === String(taskId));
+      if (idx !== -1) client.tasks.splice(idx, 1);
+    }
+  }
+  if (client) renderClientSheets(clientId);
+  toast('Paste undone.');
+}
+
+document.addEventListener('paste', async (e) => {
   const td = e.target.closest('.c-sheets td');
   if (!td) return;
   const text = (e.clipboardData || window.clipboardData).getData('text/plain');
@@ -1601,26 +1665,55 @@ document.addEventListener('paste', (e) => {
   const clientId = sheetTrClientId(tr);
   const rows = text.replace(/\r/g,'').split('\n').filter((r,i,arr)=> !(i===arr.length-1 && r===''));
   const startColIndex = td.cellIndex;
-  let curTr = tr;
-  let rowsFilled = 0;
 
-  for (let r = 0; r < rows.length && curTr; r++) {
+  // Collect taskIds for rows that already exist below the cursor.
+  const existingTaskIds = [];
+  let curTr = tr;
+  while (curTr && existingTaskIds.length < rows.length) {
+    existingTaskIds.push(curTr.dataset.taskId);
+    curTr = curTr.nextElementSibling;
+  }
+
+  const newTaskIds = [];
+  const missing = rows.length - existingTaskIds.length;
+  if (missing > 0) {
+    toast(`Creating ${missing} new row${missing===1?'':'s'} for the rest of the paste…`);
+    const client = allData.clients.find(c => String(c.id) === String(clientId));
+    let order = [];
+    try { order = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch (err) {}
+    for (let i = 0; i < missing; i++) {
+      const newTask = await createBlankSheetRow(clientId);
+      if (!newTask) break;
+      if (client) { client.tasks = client.tasks || []; client.tasks.push(newTask); }
+      order.push(String(newTask.id));
+      existingTaskIds.push(String(newTask.id));
+      newTaskIds.push({ taskId: String(newTask.id), isNotionClient: newTask.isNotionClient });
+    }
+    localStorage.setItem(`sheetsOrder_${clientId}`, JSON.stringify(order));
+    renderClientSheets(clientId);
+  }
+
+  const cellSnapshots = [];
+  let rowsFilled = 0;
+  for (let r = 0; r < rows.length; r++) {
+    const taskId = existingTaskIds[r];
+    if (!taskId) break;
+    const rowTr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
+    if (!rowTr) break;
     const cols = rows[r].split('\t');
     for (let c = 0; c < cols.length; c++) {
       const colIndex = startColIndex + c;
-      if (colIndex >= curTr.cells.length) break;
-      applyPastedCellValue(curTr.cells[colIndex], cols[c]);
+      if (colIndex >= rowTr.cells.length) break;
+      cellSnapshots.push({ taskId, colIndex, oldValue: sheetCellTextValue(rowTr.cells[colIndex]) });
+      applyPastedCellValue(rowTr.cells[colIndex], cols[c]);
     }
-    const taskId = curTr.dataset.taskId;
-    if (taskId) {
-      const anchorCell = curTr.cells[startColIndex];
-      const focusEl = anchorCell ? (anchorCell.querySelector('input,select,[contenteditable]') || anchorCell) : null;
-      if (focusEl) saveSheetRow(taskId, focusEl, clientId);
-    }
+    const anchorCell = rowTr.cells[startColIndex];
+    const focusEl = anchorCell ? (anchorCell.querySelector('input,select,[contenteditable]') || anchorCell) : null;
+    if (focusEl) saveSheetRow(taskId, focusEl, clientId);
     rowsFilled++;
-    curTr = curTr.nextElementSibling;
   }
-  toast(`Pasted ${rowsFilled} row${rowsFilled===1?'':'s'}.${rows.length>rowsFilled ? ' (Add more rows to paste the rest.)' : ''}`);
+  startPendingPasteUndo(clientId, cellSnapshots, newTaskIds);
+  toast(`Pasted ${rowsFilled} row${rowsFilled===1?'':'s'}.${newTaskIds.length ? ` (${newTaskIds.length} new row(s) added.)` : ''}`);
 });
 
 function sheetCellTextValue(td) {
@@ -1746,10 +1839,17 @@ function focusSheetCellAt(tr, colIndex) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && pendingRowDelete) {
-    const active = document.activeElement;
-    const isEditable = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-    if (!isEditable) { e.preventDefault(); undoRowDelete(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    // Paste-undo takes priority and isn't gated on focus: the pasted values were
+    // written programmatically (not via execCommand), so the cell's own native
+    // undo history never learns about them — Ctrl+Z would otherwise do nothing
+    // while focus is still sitting in the just-pasted cell.
+    if (pendingPasteUndo) { e.preventDefault(); undoPaste(); return; }
+    if (pendingRowDelete) {
+      const active = document.activeElement;
+      const isEditable = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+      if (!isEditable) { e.preventDefault(); undoRowDelete(); return; }
+    }
   }
 
   const td = e.target.closest('.c-sheets td');
