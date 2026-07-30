@@ -115,6 +115,49 @@ def _ensure_creation_date_property() -> bool:
         return False
 
 
+_last_edited_prop_ready = False
+
+
+def _ensure_last_edited_property() -> bool:
+    """One-time, cached schema patch: adds 'Last Edited' (rich_text) to the
+    Tasks DB if it doesn't already exist. Stores a single pipe-delimited
+    string 'ISO_TIMESTAMP|editor name|comma-separated changed fields' -- one
+    property instead of three, same tradeoff Notes/other free-text fields in
+    this file already make. Not to be confused with Notion's own built-in
+    'Last edited time'/'Last edited by' property types: those would always
+    attribute the edit to this app's single integration token, not to
+    whichever employee actually clicked Save in our UI."""
+    global _last_edited_prop_ready
+    if _last_edited_prop_ready:
+        return True
+    try:
+        _notion_request(
+            "PATCH",
+            f"https://api.notion.com/v1/databases/{_tasks_db()}",
+            headers=_headers(),
+            json={"properties": {"Last Edited": {"rich_text": {}}}},
+        )
+        _last_edited_prop_ready = True
+        return True
+    except Exception:
+        logger.exception("Failed to ensure Notion 'Last Edited' property exists")
+        return False
+
+
+def _parse_last_edited(raw: str) -> dict:
+    """Splits the 'ISO_TIMESTAMP|editor name|changed fields' string written by
+    update_task() back into its three parts. Returns empty strings for legacy
+    tasks that predate this property existing."""
+    if not raw:
+        return {"at": "", "by": "", "summary": ""}
+    parts = raw.split("|", 2)
+    return {
+        "at": parts[0] if len(parts) > 0 else "",
+        "by": parts[1] if len(parts) > 1 else "",
+        "summary": parts[2] if len(parts) > 2 else "",
+    }
+
+
 # ── Schema health check ──────────────────────────────────────────────────────
 # This codebase's most common recurring bug this session was a Notion
 # property being renamed/missing/never-created and the code silently
@@ -671,6 +714,7 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                             elif pt_lower.startswith("file:"): file_link = pt[5:].strip()
 
                     client_name_val = _get_string_val(props.get("Customer Name")) or _get_string_val(props.get("Client Name")) or _get_string_val(props.get("Client")) or _get_string_val(props.get("Brand")) or _get_string_val(props.get("Customer")) or _get_string_val(props.get("Account"))
+                    last_edited = _parse_last_edited(_get_string_val(props.get("Last Edited", {})))
 
                     tasks.append({
                         "notion_id":   p["id"],
@@ -692,7 +736,10 @@ def list_tasks(assigned_to: str = "", client_notion_id: str = "",
                         "scripts_copy": scripts_copy,
                         "caption":      caption,
                         "file_link":    file_link,
-                        "created_time": p.get("created_time", "")
+                        "created_time": p.get("created_time", ""),
+                        "last_edited_by":      last_edited["by"],
+                        "last_edited_at":      last_edited["at"],
+                        "last_edited_summary": last_edited["summary"],
                     })
                 except Exception:
                     logger.exception(f"Notion list_tasks: skipping malformed page {p.get('id')}")
@@ -770,7 +817,8 @@ def get_task_summary(notion_id: str) -> dict:
 def update_task(notion_id: str, status: str = None, progress: int = None,
                 submission_note: str = None, assigned_to: str = None,
                 new_title: str = None, due_date: str = None, creation_date: str = None,
-                task_title: str = "", assignee: str = "", client_name: str = "") -> bool:
+                task_title: str = "", assignee: str = "", client_name: str = "",
+                last_edited: str = None) -> bool:
     """
     Update Status, Progress, SubmissionNote, AssignedTo, Title, DueDate, and/or CreationDate on a task page.
     Pass only the fields you want to change.
@@ -811,6 +859,8 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
         props["Due Date"] = _date(due_date)
     if creation_date is not None and _ensure_creation_date_property():
         props["Creation Date"] = _date(creation_date)
+    if last_edited is not None and _ensure_last_edited_property():
+        props["Last Edited"] = _text(last_edited)
 
     if not props:
         return True  # nothing to update

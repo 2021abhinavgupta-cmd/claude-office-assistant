@@ -336,6 +336,13 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
+        # Add last-edited tracking columns to tasks (Sheets "who/when/what changed" indicator)
+        for col in ("last_edited_by TEXT", "last_edited_at TEXT", "last_edited_summary TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE tasks ADD COLUMN {col}")
+            except Exception:
+                pass  # Column already exists
+
         # ── Startup cleanup: remove orphaned client_users ──────────────
         # Removes portal credentials for clients that no longer exist in the DB.
         # This fixes stuck "username already taken" errors after a client is deleted.

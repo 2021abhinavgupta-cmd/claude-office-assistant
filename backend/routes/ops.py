@@ -62,6 +62,20 @@ def _load_emp_names() -> dict:
         return _EMP_NAMES_FALLBACK
 
 
+_EDIT_FIELD_LABELS = {
+    "new_title": "Title/Type", "assigned_to": "Assigned To", "due_date": "Post Day",
+    "status": "Status", "progress": "Progress", "submission_note": "Content/Notes",
+    "creation_date": "Creation Date",
+}
+
+
+def _edit_summary_from_body(body: dict) -> str:
+    """Human-readable list of which Sheets fields a PATCH touched, e.g.
+    'Status, Assigned To' -- built straight from the request body's own keys
+    so it always matches what was actually changed, no separate diff needed."""
+    return ", ".join(label for key, label in _EDIT_FIELD_LABELS.items() if key in body)
+
+
 def _task_creation_is_future(notion_id: str, today_str: str) -> bool:
     """True if the live Notion Creation Date for this task is after today.
     Mirrors the property-then-text-fallback logic used in auto_fill_standup()."""
@@ -1356,6 +1370,12 @@ def notion_update_task(notion_id: str):
     raw_assigned_ids = [a.strip() for a in raw_assigned.split(",") if a.strip()] if raw_assigned is not None else []
     mapped_assigned = ",".join(EMP_NAMES.get(a, a) for a in raw_assigned_ids) if raw_assigned is not None else None
 
+    edit_summary = _edit_summary_from_body(body)
+    last_edited = None
+    if edit_summary:
+        editor_name = EMP_NAMES.get(body.get("user_id", ""), body.get("user_id", "")) or "Someone"
+        last_edited = f"{today_ist()} {now_ist()}|{editor_name}|{edit_summary}"
+
     result = notion_store.update_task(
         notion_id=notion_id, status=body.get("status"),
         progress=body.get("progress"), submission_note=body.get("submission_note"),
@@ -1363,6 +1383,7 @@ def notion_update_task(notion_id: str):
         due_date=body.get("due_date"), creation_date=body.get("creation_date"),
         task_title=body.get("task_title", ""),
         assignee=body.get("assignee", ""), client_name=body.get("client_name", ""),
+        last_edited=last_edited,
     )
     
     # ── Auto-sync assignment to standup_tasks ─────────────────────────────────
@@ -1564,6 +1585,15 @@ def sqlite_patch_task(task_id: int):
             updates.append(f"{col}=?"); vals.append(body[field])
     if not updates:
         return jsonify({"error": "Nothing to update"}), 400
+
+    editor_summary = _edit_summary_from_body(body)
+    if editor_summary:
+        editor_id = body.get("user_id", "")
+        editor_name = _load_emp_names().get(editor_id, editor_id) or "Someone"
+        updates.append("last_edited_by=?"); vals.append(editor_name)
+        updates.append("last_edited_at=?"); vals.append(f"{today_ist()} {now_ist()}")
+        updates.append("last_edited_summary=?"); vals.append(editor_summary)
+
     vals.append(task_id)
     # ── Fetch old state for WhatsApp notifications ────────────────────────
     conn = _pt_conn()

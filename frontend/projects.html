@@ -819,6 +819,32 @@ function preventEdgeSwipeNav(el) {
 // ── Sheets state: sort / search / column visibility / row selection ──────────
 const COLUMN_LABELS = ['#','Creation Date','Post Day','Post','Type','Content','Idea','Scripts/ Copy','Caption','Assigned To','Status','File (Drive Link)','Notes'];
 const SORT_FIELD = {1:'creationDate',2:'due_date',3:'title',4:'type',5:'content',6:'idea',7:'scripts',8:'caption',9:'assigneeName',10:'rawS',11:'link',12:'myNotes'};
+
+// Relative-time display for the "Last Edited" row indicator (🕓 icon, click to see detail).
+// last_edited_at is stored as an IST wall-clock string ("YYYY-MM-DD HH:MM:SS"),
+// same convention as every other date in this app (see CLAUDE.md gotcha #36) --
+// parsed as local time, not UTC, consistent with how the rest of the app treats it.
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr.replace(' ', 'T'));
+  if (isNaN(d.getTime())) return '';
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
+function showLastEditedInfo(taskId, clientId) {
+  const client = (allData.clients||[]).find(c => String(c.id) === String(clientId));
+  const t = client && (client.tasks||[]).find(x => String(x.id) === String(taskId));
+  if (!t || !t.last_edited_by) { toast('No edits tracked yet for this row.'); return; }
+  const summary = t.last_edited_summary ? ` · Changed: ${t.last_edited_summary}` : '';
+  toast(`${t.last_edited_by} · ${timeAgo(t.last_edited_at)} (${t.last_edited_at})${summary}`);
+}
 let sheetSortState = {};
 let sheetSearchState = {};
 let checkedSheetRows = new Set();
@@ -1121,6 +1147,7 @@ function renderClientSheets(clientId) {
           <div style="display: flex; align-items: center; justify-content: space-between; gap:4px;">
              <input type="checkbox" class="sheet-row-chk" ${isChecked?'checked':''} onclick="event.stopPropagation(); toggleSheetRowCheck('${clientId}', '${t.id}', this.checked)" style="cursor:pointer;">
              <span style="cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Click to delete this row (Undo available for 8s)">${rowIndex++}</span>
+             ${t.last_edited_by ? `<span style="font-size: 0.7rem; opacity: 0.6; cursor:pointer;" onclick="event.stopPropagation(); showLastEditedInfo('${t.id}', '${clientId}')" title="${esc(t.last_edited_by)} · ${esc(t.last_edited_at||'')}${t.last_edited_summary ? ' · Changed: '+esc(t.last_edited_summary) : ''}">🕓</span>` : ''}
              <span style="font-size: 0.7rem; color: var(--red); opacity: 0.7; cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Delete Row">🗑️</span>
           </div>
         </td>
@@ -1944,6 +1971,15 @@ function saveColName(clientId, defaultName, newName) {
   toast("Column name updated");
 }
 
+// Mirrors backend/routes/ops.py::_EDIT_FIELD_LABELS -- used only for the
+// optimistic "Last Edited" cell update right after a save; the backend's
+// own copy is authoritative and wins on the next full reload.
+const EDIT_FIELD_LABELS = {
+  new_title: 'Title/Type', assigned_to: 'Assigned To', due_date: 'Post Day',
+  status: 'Status', progress: 'Progress', submission_note: 'Content/Notes',
+  creation_date: 'Creation Date',
+};
+
 async function saveSheetRow(taskId, cellElem, clientId) {
   const tr = cellElem.closest('tr');
   const creation_date = tr.cells[1].querySelector('input').value;
@@ -1997,6 +2033,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     if (taskObj.status !== status) changedPayload.status = status;
 
     if (Object.keys(changedPayload).length === 0) return;
+    changedPayload.user_id = UID;
 
     taskObj.description = notes;
     taskObj.creation_date = creation_date;
@@ -2035,6 +2072,27 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     else if (s === "paused") rowBg = "rgba(255, 92, 92, 0.18)";
     else rowBg = "rgba(107, 107, 138, 0.12)";
     tr.style.backgroundColor = rowBg;
+
+    const editedLabels = Object.keys(changedPayload).filter(k => EDIT_FIELD_LABELS[k]).map(k => EDIT_FIELD_LABELS[k]);
+    if (editedLabels.length) {
+      const editorName = (window.EMP_DICT && window.EMP_DICT[UID]) || UID;
+      const nowStr = new Date().toISOString().slice(0,19).replace('T',' ');
+      taskObj.last_edited_by = editorName;
+      taskObj.last_edited_at = nowStr;
+      taskObj.last_edited_summary = editedLabels.join(', ');
+      const tipText = `${editorName} · ${nowStr} · Changed: ${editedLabels.join(', ')}`;
+      let editIcon = tr.querySelector('.sheet-last-edited-icon');
+      if (!editIcon) {
+        editIcon = document.createElement('span');
+        editIcon.className = 'sheet-last-edited-icon';
+        editIcon.style.cssText = 'font-size:0.7rem;opacity:0.6;cursor:pointer;';
+        editIcon.textContent = '🕓';
+        editIcon.onclick = (e) => { e.stopPropagation(); showLastEditedInfo(taskId, clientId); };
+        const rowNumSpan = tr.cells[0].querySelector('span');
+        if (rowNumSpan) rowNumSpan.insertAdjacentElement('afterend', editIcon);
+      }
+      editIcon.title = tipText;
+    }
 
     if (statusEl) { statusEl.style.color = 'var(--grn)'; statusEl.textContent = 'Saved ✓'; statusEl._t = setTimeout(()=>{ statusEl.textContent=''; }, 1500); }
 
