@@ -1611,6 +1611,38 @@ async function createBlankSheetRow(clientId) {
   }
 }
 
+// Quote-aware TSV parser: a field wrapped in double quotes may itself contain
+// literal tabs/newlines (Excel/Sheets write cells with internal line breaks
+// this way) without those being mistaken for extra columns/rows. Without this,
+// pasting a single multi-line cell (e.g. copied whole from another Sheets cell)
+// gets split into one row per line instead of landing as one cell's value.
+function parseTsvClipboard(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false, i = 0;
+  const s = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  while (i < s.length) {
+    const ch = s[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (s[i+1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += ch; i++; continue;
+    }
+    if (ch === '"' && field === '') { inQuotes = true; i++; continue; }
+    if (ch === '\t') { row.push(field); field = ''; i++; continue; }
+    if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+    field += ch; i++;
+  }
+  row.push(field);
+  rows.push(row);
+  if (rows.length > 1) {
+    const last = rows[rows.length - 1];
+    if (last.length === 1 && last[0] === '') rows.pop(); // trailing blank line from copied text ending in \n
+  }
+  return rows;
+}
+
 let pendingPasteUndo = null; // { clientId, cellSnapshots: [{taskId,colIndex,oldValue}], newTaskIds: [{taskId,isNotionClient}], timeoutId }
 
 function startPendingPasteUndo(clientId, cellSnapshots, newTaskIds) {
@@ -1663,7 +1695,7 @@ document.addEventListener('paste', async (e) => {
   e.stopImmediatePropagation(); // there's an older, unrelated document-level paste listener further down that force-plain-texts contenteditables — without this it double-processes the same paste
 
   const clientId = sheetTrClientId(tr);
-  const rows = text.replace(/\r/g,'').split('\n').filter((r,i,arr)=> !(i===arr.length-1 && r===''));
+  const rows = parseTsvClipboard(text); // array of arrays: rows[r] is already split into columns
   const startColIndex = td.cellIndex;
 
   // Collect taskIds for rows that already exist below the cursor.
@@ -1700,7 +1732,7 @@ document.addEventListener('paste', async (e) => {
     if (!taskId) break;
     const rowTr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
     if (!rowTr) break;
-    const cols = rows[r].split('\t');
+    const cols = rows[r];
     for (let c = 0; c < cols.length; c++) {
       const colIndex = startColIndex + c;
       if (colIndex >= rowTr.cells.length) break;
@@ -1781,13 +1813,27 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Quote a field the same way Excel/Google Sheets do when writing TSV to the
+// clipboard: wrap in double quotes (doubling any literal quotes) whenever the
+// value itself contains a tab or newline, so a single cell's multi-line text
+// round-trips as ONE field instead of looking like multiple pasted rows.
+function tsvQuoteField(value) {
+  value = value == null ? '' : String(value);
+  if (/[\t\n"]/.test(value)) return '"' + value.replace(/"/g, '""') + '"';
+  return value;
+}
+
 document.addEventListener('copy', (e) => {
   if (!sheetSel) return;
   const isSingleCell = sheetSel.r1 === sheetSel.r2 && sheetSel.c1 === sheetSel.c2;
   const active = document.activeElement;
   if (isSingleCell && active && (active.tagName === 'INPUT' || active.isContentEditable)) {
     const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) return; // user has a real text selection mid-cell — let native copy handle it
+    // Only defer to native copy for a genuine PARTIAL selection inside the cell.
+    // A full-cell selection (select-all, triple-click) must still go through our
+    // quoting logic below, or a multi-line cell's newlines get copied raw and
+    // look like separate rows when pasted elsewhere in the sheet.
+    if (sel && !sel.isCollapsed && sel.toString() !== (active.textContent || '')) return;
   }
   const { tbody, r1, c1, r2, c2 } = sheetSel;
   const rowMin = Math.min(r1,r2), rowMax = Math.max(r1,r2), colMin = Math.min(c1,c2), colMax = Math.max(c1,c2);
@@ -1796,7 +1842,7 @@ document.addEventListener('copy', (e) => {
     const tr = tbody.children[r];
     if (!tr) continue;
     const cols = [];
-    for (let c = colMin; c <= colMax; c++) { const td = tr.cells[c]; cols.push(td ? sheetCellTextValue(td) : ''); }
+    for (let c = colMin; c <= colMax; c++) { const td = tr.cells[c]; cols.push(td ? tsvQuoteField(sheetCellTextValue(td)) : ''); }
     lines.push(cols.join('\t'));
   }
   e.clipboardData.setData('text/plain', lines.join('\n'));
