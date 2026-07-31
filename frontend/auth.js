@@ -39,6 +39,13 @@ document.documentElement.style.visibility = 'hidden';
     // Auth passed — reveal the page
     document.documentElement.style.visibility = 'visible';
 
+    // Presence ping: immediate + every 60s. Self-heals a checkout fired by
+    // the pagehide listener below on internal navigation, or by a sibling
+    // tab closing while this tab stays open. See docs/superpowers/specs/
+    // 2026-07-31-tab-close-checkout-design.md for the full rationale.
+    sendAttendancePing(authApi, user.user_id);
+    setInterval(() => sendAttendancePing(authApi, user.user_id), 60000);
+
   } catch (e) {
     // Network error — reveal page then redirect to login
     document.documentElement.style.visibility = 'visible';
@@ -47,9 +54,31 @@ document.documentElement.style.visibility = 'hidden';
   }
 })();
 
-/**
- * (Removed beforeunload checkout logic to prevent aggressive mid-session checkouts)
- */
+function sendAttendancePing(authApi, userId) {
+  fetch(`${authApi}/api/attendance/ping`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  }).catch(() => {});
+}
+
+// Checkout on tab close / internal navigation. pagehide fires identically on
+// a real tab close and on clicking a link to another Lumina page (separate
+// .html files, not an SPA) — the browser gives no way to tell them apart
+// here. The presence ping above self-heals the internal-navigation case
+// within ~90s; a real close has nothing left to self-heal it, so the
+// checkout sticks.
+window.addEventListener("pagehide", function () {
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+  if (!user.user_id) return;
+  const authApi = getAuthApiBase();
+  const blob = new Blob(
+    [JSON.stringify({ user_id: user.user_id })],
+    { type: "application/json" }
+  );
+  navigator.sendBeacon(`${authApi}/api/attendance/checkout`, blob);
+});
+
 /**
  * Logout helper — call window.authLogout() from any page.
  */
