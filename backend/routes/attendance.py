@@ -96,6 +96,39 @@ def _attendance_checkout(user_id: str):
     return d, stored_checkout
 
 
+def _attendance_ping(user_id: str) -> bool:
+    """Self-heal a checkout that happened in the last ~90s (internal nav /
+    multi-tab close). Returns True if a checkout was cancelled, False if
+    this was a no-op (no recent checkout to cancel)."""
+    d = today_ist()
+    conn = _attendance_conn()
+    cancelled = False
+    with conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT checkout_time FROM daily_attendance WHERE user_id=? AND date=?",
+            (user_id, d),
+        )
+        row = cur.fetchone()
+        checkout_time = row[0] if row else None
+        if checkout_time:
+            delta = None
+            try:
+                checkout_dt = datetime.strptime(checkout_time, "%H:%M:%S")
+                now_dt = datetime.strptime(now_ist(), "%H:%M:%S")
+                delta = (now_dt - checkout_dt).total_seconds()
+            except ValueError:
+                delta = None
+            if delta is not None and 0 <= delta <= 90:
+                conn.execute(
+                    "UPDATE daily_attendance SET checkout_time = NULL WHERE user_id=? AND date=?",
+                    (user_id, d),
+                )
+                cancelled = True
+    conn.close()
+    return cancelled
+
+
 # ── Attendance routes ─────────────────────────────────────────────────────────
 
 @attendance_bp.route("/api/attendance/checkin", methods=["POST"])
@@ -128,6 +161,16 @@ def attendance_checkout():
         "checkout_time": checkout_time,
         "timezone": "IST",
     })
+
+
+@attendance_bp.route("/api/attendance/ping", methods=["POST"])
+def attendance_ping():
+    body = _attendance_payload()
+    user_id = str(body.get("user_id", "")).strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    cancelled = _attendance_ping(user_id)
+    return jsonify({"success": True, "cancelled": cancelled})
 
 
 @attendance_bp.route("/api/attendance/summary", methods=["GET"])
