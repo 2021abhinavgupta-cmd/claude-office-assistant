@@ -285,8 +285,8 @@
     .gh-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
     .gh-table th { position: sticky; top: 0; background: var(--s1); padding: 8px; text-align: left; border-bottom: 1px solid var(--bdr); white-space: nowrap; }
     .gh-table td { padding: 8px; border-bottom: 1px solid var(--bdr); color: var(--txt); vertical-align: top; }
-    .gh-table td.gh-highlight { background: rgba(245, 166, 35, 0.22); }
-    .gh-table tr.gh-highlight-row td { background: rgba(245, 166, 35, 0.06); }
+    .gh-table td.gh-highlight { background: rgba(245, 166, 35, 0.35); box-shadow: inset 0 0 0 2px var(--acc); }
+    .gh-table tr.gh-highlight-row td { background: rgba(245, 166, 35, 0.1); border-top: 1px solid rgba(245, 166, 35, 0.4); border-bottom: 1px solid rgba(245, 166, 35, 0.4); }
     /* Mobile Responsive */
     @media (max-width: 768px) {
       .wrap { padding: 12px 16px; }
@@ -1194,6 +1194,9 @@ function renderSheetHistoryMain() {
   html += '</tbody></table>';
   document.getElementById('gh-main').innerHTML = html;
 
+  const highlightedRow = document.querySelector('#gh-main tr.gh-highlight-row');
+  if (highlightedRow) highlightedRow.scrollIntoView({ block: 'center' });
+
   const restoreBtn = document.getElementById('gh-restore-btn');
   restoreBtn.onclick = () => restoreSheetHistoryVersion(v);
 }
@@ -1220,27 +1223,6 @@ async function restoreSheetHistoryVersion(version) {
   closeSheetHistory();
 }
 
-// Rolls up the existing per-row "last edited" tracking into one list for the
-// Edit History panel. Row numbers reflect the sheet's current display order
-// (same order as the table body), independent of this list's own most-recent-
-// first sort.
-function renderEditHistoryList(records, clientId) {
-  const entries = records
-    .map((r, i) => ({ rowNum: i + 1, t: r.t, title: r.title }))
-    .filter(e => e.t && e.t.last_edited_by);
-  if (entries.length === 0) {
-    return `<div style="padding:8px 6px;font-size:.8rem;color:var(--muted);">No edits tracked yet.</div>`;
-  }
-  entries.sort((a, b) => (b.t.last_edited_at || '').localeCompare(a.t.last_edited_at || ''));
-  return entries.map(e => {
-    const label = e.title ? esc(e.title) : `Row ${e.rowNum}`;
-    const summary = e.t.last_edited_summary ? ` · ${esc(e.t.last_edited_summary)}` : '';
-    return `<div style="padding:6px;border-bottom:1px solid var(--bdr);font-size:.78rem;cursor:pointer;" onclick="openRowHistory('${e.t.id}', '${clientId}')">
-      <div style="font-weight:600;color:var(--txt);">${label}</div>
-      <div style="color:var(--muted);">${esc(e.t.last_edited_by)} · ${timeAgo(e.t.last_edited_at)}${summary}</div>
-    </div>`;
-  }).join('');
-}
 let sheetSortState = {};
 let sheetSearchState = {};
 let checkedSheetRows = new Set();
@@ -1288,19 +1270,9 @@ function toggleColumnsMenu(clientId) {
   document.querySelectorAll('[id^="cols-menu-"]').forEach(m => m.style.display = 'none');
   menu.style.display = willOpen ? 'block' : 'none';
 }
-function toggleEditHistoryMenu(clientId) {
-  const menu = document.getElementById(`edit-history-menu-${clientId}`);
-  if (!menu) return;
-  const willOpen = menu.style.display !== 'block';
-  document.querySelectorAll('[id^="edit-history-menu-"]').forEach(m => m.style.display = 'none');
-  menu.style.display = willOpen ? 'block' : 'none';
-}
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[id^="cols-menu-"]') && !e.target.closest('[onclick^="toggleColumnsMenu"]')) {
     document.querySelectorAll('[id^="cols-menu-"]').forEach(m => m.style.display = 'none');
-  }
-  if (!e.target.closest('[id^="edit-history-menu-"]') && !e.target.closest('[onclick^="toggleEditHistoryMenu"]')) {
-    document.querySelectorAll('[id^="edit-history-menu-"]').forEach(m => m.style.display = 'none');
   }
 });
 
@@ -1475,13 +1447,7 @@ function renderClientSheets(clientId) {
           <span id="sheet-save-status-${clientId}" style="font-size:.75rem;color:var(--muted);margin-left:10px;min-width:70px;display:inline-block;"></span>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <div style="position:relative;display:inline-block;">
-            <button class="btn btn-sm" onclick="toggleEditHistoryMenu('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕓 Edit History</button>
-            <div id="edit-history-menu-${clientId}" style="display:none;position:absolute;top:110%;right:0;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);padding:0;z-index:50;min-width:260px;max-height:320px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);">
-              ${renderEditHistoryList(records, clientId)}
-            </div>
-          </div>
-          <button class="btn btn-sm" onclick="openSheetHistory('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕐 Version History</button>
+          <button class="btn btn-sm" onclick="openSheetHistory('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕓 Edit History</button>
           <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
         </div>
       </div>
