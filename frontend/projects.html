@@ -954,11 +954,15 @@ function renderRowHistoryMain() {
   const prev = rhState.versions[rhState.selectedIndex + 1]; // one older, since list is DESC
   document.getElementById('rh-header-info').textContent = `${v.editor_name} · ${v.edited_at}`;
   const main = document.getElementById('rh-main');
+  // Prefer the exact changed-field list captured at save time (correct even
+  // for a row's very first-ever version, which has no prior to diff against);
+  // fall back to a snapshot-vs-previous-version diff for older log entries.
+  const changedFields = Array.isArray(v.changed_fields) ? v.changed_fields
+    : (prev ? Object.keys(RH_FIELD_LABELS).filter(key => ((v.snapshot && v.snapshot[key]) || '') !== ((prev.snapshot && prev.snapshot[key]) || '')) : []);
   let html = '';
   for (const key of Object.keys(RH_FIELD_LABELS)) {
     const val = (v.snapshot && v.snapshot[key]) || '';
-    const prevVal = prev ? ((prev.snapshot && prev.snapshot[key]) || '') : val;
-    const changed = prev ? (val !== prevVal) : false;
+    const changed = changedFields.includes(key);
     html += `<div class="rh-field-row ${changed ? 'changed' : ''}">
       <div class="rh-field-label">${esc(RH_FIELD_LABELS[key])}</div>
       <div class="rh-field-value">${esc(val) || '<span style="color:var(--muted);">(empty)</span>'}</div>
@@ -1015,6 +1019,33 @@ async function restoreRowHistoryVersion(snapshot) {
   closeRowHistory();
 }
 
+// Parses the composite " | "-joined Notes/description string back into its
+// labeled fields. Shared by buildSheetRecordsForClient() (below) and
+// applySheetFields()'s pre-save diff, so both read the exact same "what does
+// this row currently look like" logic instead of two copies drifting apart.
+function parseSheetNotes(notes, existingCreationDate) {
+  notes = notes || "";
+  let creationDate = existingCreationDate || "", content = "", idea = "", scripts = "", caption = "", link = "";
+  if (!creationDate) {
+    const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
+    if (crMatch) creationDate = crMatch[1].trim();
+  }
+  const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/);
+  if (cntMatch) content = cntMatch[1].trim();
+  const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link)\s*:|$)/);
+  if (iMatch) idea = iMatch[1].trim();
+  const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link)\s*:|$)/);
+  if (sMatch) scripts = sMatch[1].trim();
+  const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link)\s*:|$)/);
+  if (cMatch) caption = cMatch[1].trim();
+  const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes)\s*:|$)/);
+  if (lMatch) link = lMatch[1].trim();
+  let myNotes = "";
+  const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link)\s*:|$)/);
+  if (nMatch) myNotes = nMatch[1].trim();
+  return { creationDate, content, idea, scripts, caption, link, myNotes };
+}
+
 // Extracted from renderClientSheets() so both the live sheet table and the
 // global version browser (below) parse a client's tasks into row records
 // through one shared implementation instead of two copies drifting apart.
@@ -1025,26 +1056,7 @@ function buildSheetRecordsForClient(client) {
     const match = t.title.match(/^\[(.*?)\]\s*(.*)$/);
     if (match) { type = match[1]; title = match[2]; }
 
-    const notes = t.description || "";
-    let creationDate = t.creation_date || "", content = "", idea = "", scripts = "", caption = "", link = "";
-
-    if (!creationDate) {
-      const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
-      if (crMatch) creationDate = crMatch[1].trim();
-    }
-    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/);
-    if (cntMatch) content = cntMatch[1].trim();
-    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link)\s*:|$)/);
-    if (iMatch) idea = iMatch[1].trim();
-    const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link)\s*:|$)/);
-    if (sMatch) scripts = sMatch[1].trim();
-    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link)\s*:|$)/);
-    if (cMatch) caption = cMatch[1].trim();
-    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes)\s*:|$)/);
-    if (lMatch) link = lMatch[1].trim();
-    let myNotes = "";
-    const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link)\s*:|$)/);
-    if (nMatch) myNotes = nMatch[1].trim();
+    const { creationDate, content, idea, scripts, caption, link, myNotes } = parseSheetNotes(t.description, t.creation_date);
 
     const rawS = t.status || "need_to_start";
     const s = rawS.toLowerCase().replace(/ /g, '_');
@@ -1098,18 +1110,19 @@ function ghRowFieldsAtVersion(taskId, uptoEditedAt) {
   return r ? ghFieldsFromCurrentRecord(r) : null;
 }
 
-// Which field (if any) changed in `version` compared to that same row's
-// immediately-prior version -- same diffing idea as the per-row overlay's
-// renderRowHistoryMain, reused here to highlight the one changed cell.
+// Which field(s) changed in `version`. Prefers the exact list captured at
+// save time (version.changed_fields -- see applySheetFields' oldRaw/newRaw
+// diff), which is correct even for a row's very first-ever logged version
+// (nothing to compare against). Falls back to diffing against that same
+// row's immediately-prior version, for versions logged before changed_fields
+// existed.
 function ghChangedFieldFor(version) {
+  if (Array.isArray(version.changed_fields)) return version.changed_fields;
   const sameRow = ghState.versions.filter(v => v.task_id === version.task_id);
   const idx = sameRow.findIndex(v => v.id === version.id);
   const prev = sameRow[idx + 1];
-  if (!prev) return null;
-  for (const key of Object.keys(RH_FIELD_LABELS)) {
-    if ((version.snapshot[key] || '') !== (prev.snapshot[key] || '')) return key;
-  }
-  return null;
+  if (!prev) return [];
+  return Object.keys(RH_FIELD_LABELS).filter(key => (version.snapshot[key] || '') !== (prev.snapshot[key] || ''));
 }
 
 async function openSheetHistory(clientId) {
@@ -1166,7 +1179,7 @@ function selectSheetHistoryVersion(i) {
 function renderSheetHistoryMain() {
   const v = ghState.versions[ghState.selectedIndex];
   document.getElementById('gh-header-info').textContent = `${v.editor_name} · ${v.edited_at}`;
-  const changedField = ghChangedFieldFor(v);
+  const changedFields = ghChangedFieldFor(v);
 
   // Union of every row currently in the sheet plus any row referenced by a
   // version but no longer present (deleted since) -- the latter render from
@@ -1186,7 +1199,7 @@ function renderSheetHistoryMain() {
       let display = fields[key] || '';
       if (key === 'assigned_to') display = ghResolveAssignees(display);
       if (key === 'status') display = ghStatusLabel(display);
-      const isHighlightCell = isHighlightRow && key === changedField;
+      const isHighlightCell = isHighlightRow && changedFields.includes(key);
       html += `<td class="${isHighlightCell ? 'gh-highlight' : ''}">${esc(display) || ''}</td>`;
     });
     html += `</tr>`;
@@ -2375,6 +2388,23 @@ async function applySheetFields(taskId, clientId, fields, cellElem) {
   }
   if (!taskObj) return false;
 
+  // Snapshot of the row's raw field values *before* this save, used below to
+  // compute exactly which of the 12 fields changed -- captured here (not
+  // reconstructed later from sibling version diffs) so even a row's very
+  // first-ever logged edit can be highlighted correctly.
+  const oldMatch = (taskObj.title || '').match(/^\[(.*?)\]\s*(.*)$/);
+  const oldType = oldMatch ? oldMatch[1] : 'Post';
+  const oldTitle = oldMatch ? oldMatch[2] : (taskObj.title || '');
+  const oldParsed = parseSheetNotes(taskObj.description, taskObj.creation_date);
+  const oldRaw = {
+    creation_date: taskObj.creation_date || '', due_date: taskObj.due_date || '', title: oldTitle, type: oldType,
+    content: oldParsed.content, idea: oldParsed.idea, scripts: oldParsed.scripts, caption: oldParsed.caption,
+    link: oldParsed.link, myNotes: oldParsed.myNotes, assigned_to: taskObj.assigned_to || '',
+    status: (taskObj.status || '').toLowerCase().replace(/ /g, '_'),
+  };
+  const newRaw = { creation_date, due_date, title, type, content, idea, scripts, caption, link, myNotes, assigned_to, status };
+  const changedRawFields = Object.keys(RH_FIELD_LABELS).filter(k => (oldRaw[k] || '') !== (newRaw[k] || ''));
+
   const newTitle = `[${type}] ${title.replace(/^\[.*?\]\s*/, '')}`;
 
   const changedPayload = {};
@@ -2460,6 +2490,7 @@ async function applySheetFields(taskId, clientId, fields, cellElem) {
         client_id: clientId,
         editor_name: editorName,
         snapshot: { creation_date, due_date, title, type, content, idea, scripts, caption, link, myNotes, assigned_to, status },
+        changed_fields: changedRawFields,
       }),
     }).catch(() => {});
 

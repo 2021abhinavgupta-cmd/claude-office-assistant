@@ -1685,14 +1685,16 @@ def log_sheet_version(task_id: str):
     client_id = str(body.get("client_id", "")).strip()
     editor_name = str(body.get("editor_name", "")).strip() or "Someone"
     snapshot = body.get("snapshot")
+    changed_fields = body.get("changed_fields")
     if not client_id or not isinstance(snapshot, dict):
         return jsonify({"error": "client_id and snapshot required"}), 400
 
     conn = _su_conn()
     with conn:
         conn.execute(
-            "INSERT INTO sheet_edit_log (task_id, client_id, editor_name, edited_at, snapshot) VALUES (?,?,?,?,?)",
-            (task_id, client_id, editor_name, f"{today_ist()} {now_ist()}", json.dumps(snapshot)),
+            "INSERT INTO sheet_edit_log (task_id, client_id, editor_name, edited_at, snapshot, changed_fields) VALUES (?,?,?,?,?,?)",
+            (task_id, client_id, editor_name, f"{today_ist()} {now_ist()}", json.dumps(snapshot),
+             json.dumps(changed_fields) if isinstance(changed_fields, list) else None),
         )
     conn.close()
     return jsonify({"success": True})
@@ -1704,7 +1706,7 @@ def list_sheet_versions(task_id: str):
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, editor_name, edited_at, snapshot FROM sheet_edit_log WHERE task_id=? ORDER BY edited_at DESC, id DESC",
+        "SELECT id, editor_name, edited_at, snapshot, changed_fields FROM sheet_edit_log WHERE task_id=? ORDER BY edited_at DESC, id DESC",
         (task_id,),
     )
     rows = cur.fetchall()
@@ -1715,7 +1717,11 @@ def list_sheet_versions(task_id: str):
             snapshot = json.loads(r[3])
         except Exception:
             snapshot = {}
-        versions.append({"id": r[0], "editor_name": r[1], "edited_at": r[2], "snapshot": snapshot})
+        try:
+            changed_fields = json.loads(r[4]) if r[4] else None
+        except Exception:
+            changed_fields = None
+        versions.append({"id": r[0], "editor_name": r[1], "edited_at": r[2], "snapshot": snapshot, "changed_fields": changed_fields})
     return jsonify({"versions": versions})
 
 
@@ -1727,7 +1733,7 @@ def list_client_sheet_versions(client_id: str):
     conn = _su_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, task_id, editor_name, edited_at, snapshot FROM sheet_edit_log WHERE client_id=? ORDER BY edited_at DESC, id DESC",
+        "SELECT id, task_id, editor_name, edited_at, snapshot, changed_fields FROM sheet_edit_log WHERE client_id=? ORDER BY edited_at DESC, id DESC",
         (client_id,),
     )
     rows = cur.fetchall()
@@ -1738,7 +1744,11 @@ def list_client_sheet_versions(client_id: str):
             snapshot = json.loads(r[4])
         except Exception:
             snapshot = {}
-        versions.append({"id": r[0], "task_id": r[1], "editor_name": r[2], "edited_at": r[3], "snapshot": snapshot})
+        try:
+            changed_fields = json.loads(r[5]) if r[5] else None
+        except Exception:
+            changed_fields = None
+        versions.append({"id": r[0], "task_id": r[1], "editor_name": r[2], "edited_at": r[3], "snapshot": snapshot, "changed_fields": changed_fields})
     return jsonify({"versions": versions})
 
 

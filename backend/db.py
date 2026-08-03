@@ -326,6 +326,10 @@ def init_db():
             snapshot    TEXT NOT NULL
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sheet_edit_log_task ON sheet_edit_log (task_id)")
+        try:
+            conn.execute("ALTER TABLE sheet_edit_log ADD COLUMN changed_fields TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
 
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
