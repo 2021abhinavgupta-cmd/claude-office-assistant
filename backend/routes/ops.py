@@ -276,6 +276,10 @@ def get_velocity():
         days = int(request.args.get("days", 14))
         since = (datetime.now(IST) - timedelta(days=days)).strftime("%Y-%m-%d")
 
+    # strftime('%w', date) is 0=Sunday..6=Saturday in SQLite -- excludes
+    # weekends from the chart, since carry-over still runs on Sat/Sun
+    # (gotcha #8) even though nobody's actually working those days, which
+    # otherwise shows up as misleading "carried over" spikes.
     if user_id:
         cur.execute("""
             SELECT date,
@@ -283,7 +287,7 @@ def get_velocity():
                    SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END)   AS pending,
                    SUM(CASE WHEN carried_from IS NOT NULL AND status='pending' THEN 1 ELSE 0 END) AS carried
             FROM standup_tasks
-            WHERE user_id=? AND date >= ? AND status != 'deleted'
+            WHERE user_id=? AND date >= ? AND status != 'deleted' AND strftime('%w', date) NOT IN ('0','6')
             GROUP BY date ORDER BY date ASC
         """, (user_id, since))
     else:
@@ -293,7 +297,7 @@ def get_velocity():
                    SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END)   AS pending,
                    SUM(CASE WHEN carried_from IS NOT NULL AND status='pending' THEN 1 ELSE 0 END) AS carried
             FROM standup_tasks
-            WHERE date >= ? AND status != 'deleted'
+            WHERE date >= ? AND status != 'deleted' AND strftime('%w', date) NOT IN ('0','6')
             GROUP BY date ORDER BY date ASC
         """, (since,))
 
