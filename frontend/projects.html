@@ -950,6 +950,54 @@ function renderRowHistoryMain() {
     </div>`;
   }
   main.innerHTML = html;
+
+  const restoreBtn = document.getElementById('rh-restore-btn');
+  restoreBtn.onclick = () => restoreRowHistoryVersion(v.snapshot);
+}
+
+// Writes a restored snapshot's values into the sheet's actual visible cells
+// so the table reflects the restore immediately -- unlike a normal edit
+// (where the DOM already shows what the user just typed), restore changes
+// data the DOM isn't currently displaying, so this step is restore-only.
+function writeSnapshotToRowCells(tr, snapshot) {
+  const dateInput1 = tr.cells[1].querySelector('input'); if (dateInput1) dateInput1.value = snapshot.creation_date || '';
+  const dateInput2 = tr.cells[2].querySelector('input'); if (dateInput2) dateInput2.value = snapshot.due_date || '';
+  tr.cells[3].innerText = snapshot.title || '';
+  const typeSelect = tr.cells[4].querySelector('select'); if (typeSelect) typeSelect.value = snapshot.type || '';
+  tr.cells[5].innerText = snapshot.content || '';
+  tr.cells[6].innerText = snapshot.idea || '';
+  tr.cells[7].innerText = snapshot.scripts || '';
+  tr.cells[8].innerText = snapshot.caption || '';
+  const assignWrap = tr.cells[9].querySelector('.ms-wrap');
+  if (assignWrap) {
+    const ids = (snapshot.assigned_to || '').split(',').map(s => s.trim()).filter(Boolean);
+    assignWrap.querySelectorAll('.ms-chk').forEach(chk => { chk.checked = ids.includes(chk.value); });
+    if (typeof updateSheetMsDisplay === 'function') updateSheetMsDisplay(assignWrap.querySelector('.ms-chk'));
+  } else {
+    const assignSelect = tr.cells[9].querySelector('select');
+    if (assignSelect) assignSelect.value = snapshot.assigned_to || '';
+  }
+  const statusSelect = tr.cells[10].querySelector('select'); if (statusSelect) statusSelect.value = snapshot.status || '';
+  tr.cells[11].innerText = snapshot.link || '';
+  tr.cells[12].innerText = snapshot.myNotes || '';
+}
+
+async function restoreRowHistoryVersion(snapshot) {
+  const { taskId, clientId } = rhState;
+  const restoreBtn = document.getElementById('rh-restore-btn');
+  restoreBtn.disabled = true;
+  restoreBtn.textContent = 'Restoring…';
+  const ok = await applySheetFields(taskId, clientId, snapshot, null);
+  restoreBtn.disabled = false;
+  restoreBtn.textContent = 'Restore this version';
+  if (!ok) {
+    toast('Nothing to restore -- row already matches this version, or the save failed.', 'err');
+    return;
+  }
+  const tr = document.querySelector(`tr[data-task-id="${taskId}"]`);
+  if (tr) writeSnapshotToRowCells(tr, snapshot);
+  toast('Version restored', 'ok');
+  closeRowHistory();
 }
 
 // Rolls up the existing per-row "last edited" tracking into one list for the
