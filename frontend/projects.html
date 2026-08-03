@@ -1198,6 +1198,28 @@ function renderSheetHistoryMain() {
   restoreBtn.onclick = () => restoreSheetHistoryVersion(v);
 }
 
+// Restores only the ONE row the selected version actually changed
+// (version.task_id) -- deliberately never touches any other row shown in
+// this whole-sheet view, even though the view itself is global. Re-confirmed
+// explicitly during design: a shared team sheet must never have a restore
+// silently discard someone else's edits to unrelated rows.
+async function restoreSheetHistoryVersion(version) {
+  const restoreBtn = document.getElementById('gh-restore-btn');
+  restoreBtn.disabled = true;
+  restoreBtn.textContent = 'Restoring…';
+  const ok = await applySheetFields(version.task_id, ghState.clientId, version.snapshot, null);
+  restoreBtn.disabled = false;
+  restoreBtn.textContent = 'Restore this version';
+  if (!ok) {
+    toast('Nothing to restore -- row already matches this version, or the save failed.', 'err');
+    return;
+  }
+  const tr = document.querySelector(`tr[data-task-id="${version.task_id}"]`);
+  if (tr) writeSnapshotToRowCells(tr, version.snapshot);
+  toast('Version restored', 'ok');
+  closeSheetHistory();
+}
+
 // Rolls up the existing per-row "last edited" tracking into one list for the
 // Edit History panel. Row numbers reflect the sheet's current display order
 // (same order as the table body), independent of this list's own most-recent-
