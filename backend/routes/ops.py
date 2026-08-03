@@ -1719,6 +1719,29 @@ def list_sheet_versions(task_id: str):
     return jsonify({"versions": versions})
 
 
+@ops_bp.route("/api/sheets/clients/<string:client_id>/versions", methods=["GET"])
+def list_client_sheet_versions(client_id: str):
+    """Every version across every row for one client's sheet, newest first --
+    powers the global whole-sheet version browser (as opposed to
+    list_sheet_versions above, which is scoped to a single row)."""
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, task_id, editor_name, edited_at, snapshot FROM sheet_edit_log WHERE client_id=? ORDER BY edited_at DESC, id DESC",
+        (client_id,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    versions = []
+    for r in rows:
+        try:
+            snapshot = json.loads(r[4])
+        except Exception:
+            snapshot = {}
+        versions.append({"id": r[0], "task_id": r[1], "editor_name": r[2], "edited_at": r[3], "snapshot": snapshot})
+    return jsonify({"versions": versions})
+
+
 @ops_bp.route("/api/sqlite/tasks/<int:task_id>", methods=["DELETE"])
 def sqlite_delete_task(task_id: int):
     conn = _pt_conn()
