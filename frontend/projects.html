@@ -272,6 +272,21 @@
     .rh-version-item.selected { border-left-color: var(--acc); background: rgba(245, 166, 35, 0.08); }
     .rh-version-time { font-weight: 600; font-size: 0.85rem; color: var(--txt); }
     .rh-version-editor { font-size: 0.75rem; color: var(--muted); }
+    #sheet-history-overlay {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      width: 100vw; height: 100vh; z-index: 10000;
+      background: var(--s1); padding: 24px; overflow: hidden;
+    }
+    #sheet-history-overlay.open { display: flex; flex-direction: column; }
+    .gh-body { flex: 1; display: flex; gap: 16px; overflow: hidden; margin-top: 16px; }
+    .gh-main { flex: 1; overflow: auto; border: 1px solid var(--bdr); border-radius: var(--rs); background: var(--s2); }
+    .gh-sidebar { width: 320px; flex-shrink: 0; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs); background: var(--s2); }
+    .gh-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+    .gh-table th { position: sticky; top: 0; background: var(--s1); padding: 8px; text-align: left; border-bottom: 1px solid var(--bdr); white-space: nowrap; }
+    .gh-table td { padding: 8px; border-bottom: 1px solid var(--bdr); color: var(--txt); vertical-align: top; }
+    .gh-table td.gh-highlight { background: rgba(245, 166, 35, 0.22); }
+    .gh-table tr.gh-highlight-row td { background: rgba(245, 166, 35, 0.06); }
     /* Mobile Responsive */
     @media (max-width: 768px) {
       .wrap { padding: 12px 16px; }
@@ -1000,6 +1015,189 @@ async function restoreRowHistoryVersion(snapshot) {
   closeRowHistory();
 }
 
+// Extracted from renderClientSheets() so both the live sheet table and the
+// global version browser (below) parse a client's tasks into row records
+// through one shared implementation instead of two copies drifting apart.
+function buildSheetRecordsForClient(client) {
+  return (client.tasks || []).map(t => {
+    let type = "Post";
+    let title = t.title;
+    const match = t.title.match(/^\[(.*?)\]\s*(.*)$/);
+    if (match) { type = match[1]; title = match[2]; }
+
+    const notes = t.description || "";
+    let creationDate = t.creation_date || "", content = "", idea = "", scripts = "", caption = "", link = "";
+
+    if (!creationDate) {
+      const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
+      if (crMatch) creationDate = crMatch[1].trim();
+    }
+    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/);
+    if (cntMatch) content = cntMatch[1].trim();
+    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link)\s*:|$)/);
+    if (iMatch) idea = iMatch[1].trim();
+    const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link)\s*:|$)/);
+    if (sMatch) scripts = sMatch[1].trim();
+    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link)\s*:|$)/);
+    if (cMatch) caption = cMatch[1].trim();
+    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes)\s*:|$)/);
+    if (lMatch) link = lMatch[1].trim();
+    let myNotes = "";
+    const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link)\s*:|$)/);
+    if (nMatch) myNotes = nMatch[1].trim();
+
+    const rawS = t.status || "need_to_start";
+    const s = rawS.toLowerCase().replace(/ /g, '_');
+    let stCol = "var(--muted)", rowBg = "rgba(107, 107, 138, 0.12)";
+    if (s === "posted" || s === "done" || s === "approved") { stCol = "var(--grn)"; rowBg = "rgba(34, 211, 160, 0.18)"; }
+    else if (s === "final") { stCol = "#a855f7"; rowBg = "rgba(168, 85, 247, 0.18)"; }
+    else if (s === "scheduled") { stCol = "var(--blu)"; rowBg = "rgba(92, 158, 255, 0.18)"; }
+    else if (s === "in_progress") { stCol = "var(--acc)"; rowBg = "rgba(245, 166, 35, 0.18)"; }
+    else if (s === "paused") { stCol = "var(--red)"; rowBg = "rgba(255, 92, 92, 0.18)"; }
+
+    const stLbl = rawS.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+    const assigneeName = (t.assigned_to||'').split(',').map(x=> (typeof EMP !== 'undefined' ? EMP[x.trim()] : x.trim()) || x.trim() || '-').join(', ') || '-';
+    const searchText = [type,title,content,idea,scripts,caption,assigneeName,stLbl,link,myNotes,creationDate,t.due_date||''].join(' ').toLowerCase();
+
+    return { t, type, title, creationDate, content, idea, scripts, caption, link, myNotes, rawS, s, stCol, rowBg, stLbl, assigneeName, due_date: t.due_date||'', searchText };
+  });
+}
+
+// ── Global whole-sheet version browser ──────────────────────────────────────
+let ghState = { clientId: null, versions: [], selectedIndex: 0, records: [] };
+
+function ghResolveAssignees(rawIds) {
+  return (rawIds || '').split(',').map(x => x.trim()).filter(Boolean)
+    .map(x => (typeof EMP !== 'undefined' ? EMP[x] : x) || x).join(', ') || '-';
+}
+
+function ghStatusLabel(rawS) {
+  return (rawS || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Fields object for a row that has no logged snapshot before the selected
+// version's time -- built from the live `records` entry, in the same raw
+// shape a snapshot uses, so both sources render through one code path.
+function ghFieldsFromCurrentRecord(r) {
+  return {
+    creation_date: r.creationDate, due_date: r.due_date, title: r.title, type: r.type,
+    content: r.content, idea: r.idea, scripts: r.scripts, caption: r.caption,
+    link: r.link, myNotes: r.myNotes, assigned_to: r.t.assigned_to || '', status: r.rawS,
+  };
+}
+
+// Latest snapshot for taskId at or before uptoEditedAt, or the row's current
+// live value if it was never edited before then (no history exists prior to
+// when this feature shipped). ghState.versions is sorted DESC by edited_at,
+// so the first match walking in order is the correct "latest at or before".
+function ghRowFieldsAtVersion(taskId, uptoEditedAt) {
+  for (const v of ghState.versions) {
+    if (v.task_id === taskId && v.edited_at <= uptoEditedAt) return v.snapshot;
+  }
+  const r = ghState.records.find(rec => String(rec.t.id) === String(taskId));
+  return r ? ghFieldsFromCurrentRecord(r) : null;
+}
+
+// Which field (if any) changed in `version` compared to that same row's
+// immediately-prior version -- same diffing idea as the per-row overlay's
+// renderRowHistoryMain, reused here to highlight the one changed cell.
+function ghChangedFieldFor(version) {
+  const sameRow = ghState.versions.filter(v => v.task_id === version.task_id);
+  const idx = sameRow.findIndex(v => v.id === version.id);
+  const prev = sameRow[idx + 1];
+  if (!prev) return null;
+  for (const key of Object.keys(RH_FIELD_LABELS)) {
+    if ((version.snapshot[key] || '') !== (prev.snapshot[key] || '')) return key;
+  }
+  return null;
+}
+
+async function openSheetHistory(clientId) {
+  const overlay = document.getElementById('sheet-history-overlay');
+  overlay.classList.add('open');
+  document.getElementById('gh-main').innerHTML = '<div style="padding:16px;color:var(--muted);">Loading…</div>';
+  document.getElementById('gh-sidebar').innerHTML = '';
+  const client = (allData.clients || []).find(c => String(c.id) === String(clientId));
+  ghState = { clientId, versions: [], selectedIndex: 0, records: buildSheetRecordsForClient(client) };
+  try {
+    const res = await fetch(`${API}/api/sheets/clients/${clientId}/versions`);
+    if (!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    ghState.versions = data.versions || [];
+  } catch (e) {
+    document.getElementById('gh-main').innerHTML = '<div style="padding:16px;color:var(--red);">Couldn\'t load history.</div>';
+    toast("Couldn't load version history", "err");
+    return;
+  }
+  if (ghState.versions.length === 0) {
+    document.getElementById('gh-main').innerHTML = '<div style="padding:16px;color:var(--muted);">No history yet for this sheet.</div>';
+    return;
+  }
+  renderSheetHistorySidebar();
+  renderSheetHistoryMain();
+}
+
+function closeSheetHistory() {
+  document.getElementById('sheet-history-overlay').classList.remove('open');
+}
+
+function renderSheetHistorySidebar() {
+  const sidebar = document.getElementById('gh-sidebar');
+  let html = '';
+  let lastDay = null;
+  ghState.versions.forEach((v, i) => {
+    const day = rhDayLabel(v.edited_at);
+    if (day !== lastDay) { html += `<div class="rh-day-group">${esc(day)}</div>`; lastDay = day; }
+    const timePart = (v.edited_at || '').split(' ')[1] || '';
+    html += `<div class="rh-version-item ${i === ghState.selectedIndex ? 'selected' : ''}" onclick="selectSheetHistoryVersion(${i})">
+      <div class="rh-version-time">${esc(timePart)}</div>
+      <div class="rh-version-editor">${esc(v.editor_name)}</div>
+    </div>`;
+  });
+  sidebar.innerHTML = html;
+}
+
+function selectSheetHistoryVersion(i) {
+  ghState.selectedIndex = i;
+  renderSheetHistorySidebar();
+  renderSheetHistoryMain();
+}
+
+function renderSheetHistoryMain() {
+  const v = ghState.versions[ghState.selectedIndex];
+  document.getElementById('gh-header-info').textContent = `${v.editor_name} · ${v.edited_at}`;
+  const changedField = ghChangedFieldFor(v);
+
+  // Union of every row currently in the sheet plus any row referenced by a
+  // version but no longer present (deleted since) -- the latter render from
+  // their last known snapshot only, since there's no "current" to fall back to.
+  const idsInOrder = ghState.records.map(r => String(r.t.id));
+  ghState.versions.forEach(ver => { if (!idsInOrder.includes(String(ver.task_id))) idsInOrder.push(String(ver.task_id)); });
+
+  const cols = Object.keys(RH_FIELD_LABELS);
+  let html = `<table class="gh-table"><thead><tr><th>Row</th>${cols.map(k => `<th>${esc(RH_FIELD_LABELS[k])}</th>`).join('')}</tr></thead><tbody>`;
+  idsInOrder.forEach(taskId => {
+    const fields = ghRowFieldsAtVersion(taskId, v.edited_at);
+    if (!fields) return; // deleted row with no history before this moment -- nothing to show
+    const isHighlightRow = String(taskId) === String(v.task_id);
+    const label = fields.title || `Row`;
+    html += `<tr class="${isHighlightRow ? 'gh-highlight-row' : ''}"><td>${esc(label)}</td>`;
+    cols.forEach(key => {
+      let display = fields[key] || '';
+      if (key === 'assigned_to') display = ghResolveAssignees(display);
+      if (key === 'status') display = ghStatusLabel(display);
+      const isHighlightCell = isHighlightRow && key === changedField;
+      html += `<td class="${isHighlightCell ? 'gh-highlight' : ''}">${esc(display) || ''}</td>`;
+    });
+    html += `</tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('gh-main').innerHTML = html;
+
+  const restoreBtn = document.getElementById('gh-restore-btn');
+  restoreBtn.onclick = () => restoreSheetHistoryVersion(v);
+}
+
 // Rolls up the existing per-row "last edited" tracking into one list for the
 // Edit History panel. Row numbers reflect the sheet's current display order
 // (same order as the table body), independent of this list's own most-recent-
@@ -1199,48 +1397,7 @@ function renderClientSheets(clientId) {
   const getColName = (def) => customHeaders[def] || globalHeaders[def] || def;
 
   // ── Derive display fields for every task up front so sort/search/render share one shape ──
-  let records = socialTasks.map(t => {
-    let type = "Post";
-    let title = t.title;
-    const match = t.title.match(/^\[(.*?)\]\s*(.*)$/);
-    if (match) { type = match[1]; title = match[2]; }
-
-    const notes = t.description || "";
-    let creationDate = t.creation_date || "", content = "", idea = "", scripts = "", caption = "", link = "";
-
-    if (!creationDate) {
-      const crMatch = notes.match(/Creation Date\s*:\s*([\s\S]*?)(?=\s*\|\s*(?:Content|Idea|Scripts|Caption|Link)\s*:|$)/i);
-      if (crMatch) creationDate = crMatch[1].trim();
-    }
-    const cntMatch = notes.match(/Content:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Idea|Scripts|Caption|Link)\s*:|$)/);
-    if (cntMatch) content = cntMatch[1].trim();
-    const iMatch = notes.match(/Idea:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Scripts|Caption|Link)\s*:|$)/);
-    if (iMatch) idea = iMatch[1].trim();
-    const sMatch = notes.match(/Scripts:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Caption|Link)\s*:|$)/);
-    if (sMatch) scripts = sMatch[1].trim();
-    const cMatch = notes.match(/Caption:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Link)\s*:|$)/);
-    if (cMatch) caption = cMatch[1].trim();
-    const lMatch = notes.match(/Link:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Notes)\s*:|$)/);
-    if (lMatch) link = lMatch[1].trim();
-    let myNotes = "";
-    const nMatch = notes.match(/Notes:\s*([\s\S]*?)(?=\s*\|\s*(?:Creation Date|Content|Idea|Scripts|Caption|Link)\s*:|$)/);
-    if (nMatch) myNotes = nMatch[1].trim();
-
-    const rawS = t.status || "need_to_start";
-    const s = rawS.toLowerCase().replace(/ /g, '_');
-    let stCol = "var(--muted)", rowBg = "rgba(107, 107, 138, 0.12)";
-    if (s === "posted" || s === "done" || s === "approved") { stCol = "var(--grn)"; rowBg = "rgba(34, 211, 160, 0.18)"; }
-    else if (s === "final") { stCol = "#a855f7"; rowBg = "rgba(168, 85, 247, 0.18)"; }
-    else if (s === "scheduled") { stCol = "var(--blu)"; rowBg = "rgba(92, 158, 255, 0.18)"; }
-    else if (s === "in_progress") { stCol = "var(--acc)"; rowBg = "rgba(245, 166, 35, 0.18)"; }
-    else if (s === "paused") { stCol = "var(--red)"; rowBg = "rgba(255, 92, 92, 0.18)"; }
-
-    const stLbl = rawS.replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
-    const assigneeName = (t.assigned_to||'').split(',').map(x=> (typeof EMP !== 'undefined' ? EMP[x.trim()] : x.trim()) || x.trim() || '-').join(', ') || '-';
-    const searchText = [type,title,content,idea,scripts,caption,assigneeName,stLbl,link,myNotes,creationDate,t.due_date||''].join(' ').toLowerCase();
-
-    return { t, type, title, creationDate, content, idea, scripts, caption, link, myNotes, rawS, s, stCol, rowBg, stLbl, assigneeName, due_date: t.due_date||'', searchText };
-  });
+  let records = buildSheetRecordsForClient({ tasks: socialTasks });
 
   const query = (sheetSearchState[clientId] || '').trim().toLowerCase();
   if (query) records = records.filter(r => r.searchText.includes(query));
@@ -1302,6 +1459,7 @@ function renderClientSheets(clientId) {
               ${renderEditHistoryList(records, clientId)}
             </div>
           </div>
+          <button class="btn btn-sm" onclick="openSheetHistory('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕐 Version History</button>
           <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
         </div>
       </div>
@@ -3551,6 +3709,17 @@ document.addEventListener('paste', function(e) {
   }
 });
 </script>
+  <div id="sheet-history-overlay">
+    <div style="display:flex; align-items:center; gap:16px;">
+      <button class="btn btn-sm" onclick="closeSheetHistory()" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">← Back</button>
+      <div id="gh-header-info" style="flex:1; font-weight:600;"></div>
+      <button class="btn btn-sm" id="gh-restore-btn" style="border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 16px; font-weight:600;">Restore this version</button>
+    </div>
+    <div class="gh-body">
+      <div class="gh-main" id="gh-main"></div>
+      <div class="gh-sidebar" id="gh-sidebar"></div>
+    </div>
+  </div>
   <div id="row-history-overlay">
     <div style="display:flex; align-items:center; gap:16px;">
       <button class="btn btn-sm" onclick="closeRowHistory()" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">← Back</button>
