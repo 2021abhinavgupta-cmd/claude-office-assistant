@@ -2022,14 +2022,6 @@ const EDIT_FIELD_LABELS = {
 
 async function saveSheetRow(taskId, cellElem, clientId) {
   const tr = cellElem.closest('tr');
-  const creation_date = tr.cells[1].querySelector('input').value;
-  const due_date = tr.cells[2].querySelector('input').value;
-  const title = tr.cells[3].innerText.trim();
-  const type = tr.cells[4].querySelector('select').value;
-  const content = tr.cells[5].innerText.trim();
-  const idea = tr.cells[6].innerText.trim();
-  const scripts = tr.cells[7].innerText.trim();
-  const caption = tr.cells[8].innerText.trim();
   const assignWrap = tr.cells[9].querySelector('.ms-wrap');
   let assigned_to = "";
   if (assignWrap) {
@@ -2038,10 +2030,31 @@ async function saveSheetRow(taskId, cellElem, clientId) {
     const assignSelect = tr.cells[9].querySelector('select');
     assigned_to = assignSelect ? assignSelect.value : tr.cells[9].innerText.trim();
   }
-  const status = tr.cells[10].querySelector('select').value;
-  const link = tr.cells[11].innerText.trim();
-  const myNotes = tr.cells[12].innerText.trim();
-  
+  const fields = {
+    creation_date: tr.cells[1].querySelector('input').value,
+    due_date: tr.cells[2].querySelector('input').value,
+    title: tr.cells[3].innerText.trim(),
+    type: tr.cells[4].querySelector('select').value,
+    content: tr.cells[5].innerText.trim(),
+    idea: tr.cells[6].innerText.trim(),
+    scripts: tr.cells[7].innerText.trim(),
+    caption: tr.cells[8].innerText.trim(),
+    assigned_to,
+    status: tr.cells[10].querySelector('select').value,
+    link: tr.cells[11].innerText.trim(),
+    myNotes: tr.cells[12].innerText.trim(),
+  };
+  await applySheetFields(taskId, clientId, fields, cellElem);
+}
+
+// Shared by saveSheetRow() (fields read live from the DOM) and, from Task 4,
+// the version-history Restore button (fields read from a stored snapshot).
+// Returns true on a successful save with real changes, false on a no-op or
+// failure -- callers that need to know whether anything actually changed
+// (Task 4's restore) check this return value.
+async function applySheetFields(taskId, clientId, fields, cellElem) {
+  const { creation_date, due_date, title, type, content, idea, scripts, caption, link, myNotes, assigned_to, status } = fields;
+
   const detailParts = [];
   if (content) detailParts.push(`Content: ${content}`);
   if (idea) detailParts.push(`Idea: ${idea}`);
@@ -2050,7 +2063,7 @@ async function saveSheetRow(taskId, cellElem, clientId) {
   if (link) detailParts.push(`Link: ${link}`);
   if (myNotes) detailParts.push(`Notes: ${myNotes}`);
   const notes = detailParts.join(" | ");
-  
+
   let taskObj = null;
   let isNotionClient = false;
   for (const c of allData.clients || []) {
@@ -2060,62 +2073,65 @@ async function saveSheetRow(taskId, cellElem, clientId) {
       break;
     }
   }
-  if (!taskObj) return;
-  
+  if (!taskObj) return false;
+
   const newTitle = `[${type}] ${title.replace(/^\[.*?\]\s*/, '')}`;
-  
+
   const changedPayload = {};
-    if (taskObj.description !== notes) changedPayload.submission_note = notes;
-    if ((taskObj.creation_date || "") !== creation_date) changedPayload.creation_date = creation_date;
-    if (taskObj.due_date !== due_date) changedPayload.due_date = due_date;
-    if (taskObj.title !== newTitle) changedPayload.new_title = newTitle;
-    if (taskObj.assigned_to !== assigned_to) changedPayload.assigned_to = assigned_to;
-    if (taskObj.status !== status) changedPayload.status = status;
+  if (taskObj.description !== notes) changedPayload.submission_note = notes;
+  if ((taskObj.creation_date || "") !== creation_date) changedPayload.creation_date = creation_date;
+  if (taskObj.due_date !== due_date) changedPayload.due_date = due_date;
+  if (taskObj.title !== newTitle) changedPayload.new_title = newTitle;
+  if (taskObj.assigned_to !== assigned_to) changedPayload.assigned_to = assigned_to;
+  const normTaskStatus = (taskObj.status || "").toLowerCase().replace(/ /g, '_');
+  if (normTaskStatus !== status) changedPayload.status = status;
 
-    if (Object.keys(changedPayload).length === 0) return;
-    changedPayload.user_id = UID;
+  if (Object.keys(changedPayload).length === 0) return false;
+  changedPayload.user_id = UID;
 
-    taskObj.description = notes;
-    taskObj.creation_date = creation_date;
-    taskObj.due_date = due_date;
-    taskObj.title = newTitle;
-    taskObj.assigned_to = assigned_to;
-    taskObj.status = status;
+  taskObj.description = notes;
+  taskObj.creation_date = creation_date;
+  taskObj.due_date = due_date;
+  taskObj.title = newTitle;
+  taskObj.assigned_to = assigned_to;
+  taskObj.status = status;
 
-    cellElem.style.opacity = "0.5";
-    const statusEl = document.getElementById(`sheet-save-status-${clientId}`);
-    if (statusEl) { clearTimeout(statusEl._t); statusEl.style.color = 'var(--muted)'; statusEl.textContent = 'Saving…'; }
+  const tr = document.querySelector(`tr[data-task-id="${taskId}"]`);
+  if (cellElem) cellElem.style.opacity = "0.5";
+  const statusEl = document.getElementById(`sheet-save-status-${clientId}`);
+  if (statusEl) { clearTimeout(statusEl._t); statusEl.style.color = 'var(--muted)'; statusEl.textContent = 'Saving…'; }
 
-    try {
-      const endpoint = isNotionClient
-        ? `${API}/api/notion/tasks/${taskId}`
-        : `${API}/api/sqlite/tasks/${taskId}`;
+  try {
+    const endpoint = isNotionClient
+      ? `${API}/api/notion/tasks/${taskId}`
+      : `${API}/api/sqlite/tasks/${taskId}`;
 
-      const res = await fetch(endpoint, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(changedPayload)
-      });
+    const res = await fetch(endpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(changedPayload)
+    });
     if (!res.ok) {
       let msg = "Row didn't save";
       try { const d = await res.json(); if (d.error) msg = d.error; } catch(_) {}
       throw new Error(msg);
     }
 
-    // Dynamically update row background based on status without re-rendering the whole table
-    const s = status.toLowerCase().replace(/ /g, '_');
-    let rowBg = "transparent";
-    if (s === "posted" || s === "done" || s === "approved") rowBg = "rgba(34, 211, 160, 0.18)";
-    else if (s === "final") rowBg = "rgba(168, 85, 247, 0.18)";
-    else if (s === "scheduled") rowBg = "rgba(92, 158, 255, 0.18)";
-    else if (s === "in_progress") rowBg = "rgba(245, 166, 35, 0.18)";
-    else if (s === "paused") rowBg = "rgba(255, 92, 92, 0.18)";
-    else rowBg = "rgba(107, 107, 138, 0.12)";
-    tr.style.backgroundColor = rowBg;
+    if (tr) {
+      const s = status.toLowerCase().replace(/ /g, '_');
+      let rowBg = "transparent";
+      if (s === "posted" || s === "done" || s === "approved") rowBg = "rgba(34, 211, 160, 0.18)";
+      else if (s === "final") rowBg = "rgba(168, 85, 247, 0.18)";
+      else if (s === "scheduled") rowBg = "rgba(92, 158, 255, 0.18)";
+      else if (s === "in_progress") rowBg = "rgba(245, 166, 35, 0.18)";
+      else if (s === "paused") rowBg = "rgba(255, 92, 92, 0.18)";
+      else rowBg = "rgba(107, 107, 138, 0.12)";
+      tr.style.backgroundColor = rowBg;
+    }
 
     const editedLabels = Object.keys(changedPayload).filter(k => EDIT_FIELD_LABELS[k]).map(k => EDIT_FIELD_LABELS[k]);
-    if (editedLabels.length) {
-      const editorName = (window.EMP_DICT && window.EMP_DICT[UID]) || UID;
+    const editorName = (window.EMP_DICT && window.EMP_DICT[UID]) || UID;
+    if (editedLabels.length && tr) {
       const nowStr = new Date().toISOString().slice(0,19).replace('T',' ');
       taskObj.last_edited_by = editorName;
       taskObj.last_edited_at = nowStr;
@@ -2134,6 +2150,19 @@ async function saveSheetRow(taskId, cellElem, clientId) {
       editIcon.title = tipText;
     }
 
+    // Log this save as a new version in the row's full history. Fire-and-
+    // forget: a missed log entry must never block or fail the actual save
+    // that already succeeded above.
+    fetch(`${API}/api/sheets/tasks/${taskId}/log-version`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        editor_name: editorName,
+        snapshot: { creation_date, due_date, title, type, content, idea, scripts, caption, link, myNotes, assigned_to, status },
+      }),
+    }).catch(() => {});
+
     if (statusEl) { statusEl.style.color = 'var(--grn)'; statusEl.textContent = 'Saved ✓'; statusEl._t = setTimeout(()=>{ statusEl.textContent=''; }, 1500); }
 
     if (clientId) {
@@ -2141,11 +2170,13 @@ async function saveSheetRow(taskId, cellElem, clientId) {
       if (typeof renderCalendar === 'function') renderCalendar();
       // intentionally NOT calling renderClientSheets(clientId) to prevent focus loss and scroll jumping
     }
+    return true;
   } catch(e) {
     toast(e.message || "Error saving row", "err");
     if (statusEl) { statusEl.style.color = 'var(--red)'; statusEl.textContent = 'Save failed ✕'; }
+    return false;
   } finally {
-    cellElem.style.opacity = "1";
+    if (cellElem) cellElem.style.opacity = "1";
   }
 }
 
