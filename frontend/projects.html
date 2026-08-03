@@ -252,6 +252,26 @@
     .fullscreen-sheets > div:nth-child(2) {
       max-height: calc(100vh - 80px) !important;
     }
+    #row-history-overlay {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      width: 100vw; height: 100vh; z-index: 10000;
+      background: var(--s1); padding: 24px; overflow: hidden;
+    }
+    #row-history-overlay.open { display: flex; flex-direction: column; }
+    .rh-body { flex: 1; display: flex; gap: 16px; overflow: hidden; margin-top: 16px; }
+    .rh-main { flex: 1; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs); padding: 16px; background: var(--s2); }
+    .rh-sidebar { width: 320px; flex-shrink: 0; overflow-y: auto; border: 1px solid var(--bdr); border-radius: var(--rs); background: var(--s2); }
+    .rh-field-row { padding: 10px 0; border-bottom: 1px solid var(--bdr); }
+    .rh-field-row.changed { background: rgba(245, 166, 35, 0.12); border-radius: 6px; padding: 10px; }
+    .rh-field-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+    .rh-field-value { font-size: 0.85rem; color: var(--txt); white-space: pre-wrap; word-break: break-word; }
+    .rh-day-group { padding: 8px 12px; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .rh-version-item { padding: 10px 12px; cursor: pointer; border-left: 3px solid transparent; }
+    .rh-version-item:hover { background: rgba(255,255,255,0.04); }
+    .rh-version-item.selected { border-left-color: var(--acc); background: rgba(245, 166, 35, 0.08); }
+    .rh-version-time { font-weight: 600; font-size: 0.85rem; color: var(--txt); }
+    .rh-version-editor { font-size: 0.75rem; color: var(--muted); }
     /* Mobile Responsive */
     @media (max-width: 768px) {
       .wrap { padding: 12px 16px; }
@@ -846,11 +866,97 @@ function showLastEditedInfo(taskId, clientId) {
   toast(`${t.last_edited_by} · ${timeAgo(t.last_edited_at)} (${t.last_edited_at})${summary}`);
 }
 
+const RH_FIELD_LABELS = {
+  creation_date: 'Creation Date', due_date: 'Post Day', title: 'Post', type: 'Type',
+  content: 'Content', idea: 'Idea', scripts: 'Scripts/ Copy', caption: 'Caption',
+  link: 'File (Drive Link)', myNotes: 'Notes', assigned_to: 'Assigned To', status: 'Status',
+};
+let rhState = { taskId: null, clientId: null, versions: [], selectedIndex: 0 };
+
+function rhDayLabel(editedAt) {
+  const d = new Date((editedAt || '').replace(' ', 'T'));
+  if (isNaN(d.getTime())) return 'Earlier';
+  const now = new Date();
+  const startOf = (dt) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const diffDays = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
+}
+
+async function openRowHistory(taskId, clientId) {
+  const overlay = document.getElementById('row-history-overlay');
+  overlay.classList.add('open');
+  document.getElementById('rh-main').innerHTML = '<div style="padding:16px;color:var(--muted);">Loading…</div>';
+  document.getElementById('rh-sidebar').innerHTML = '';
+  rhState = { taskId, clientId, versions: [], selectedIndex: 0 };
+  try {
+    const res = await fetch(`${API}/api/sheets/tasks/${taskId}/versions`);
+    if (!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    rhState.versions = data.versions || [];
+  } catch (e) {
+    document.getElementById('rh-main').innerHTML = '<div style="padding:16px;color:var(--red);">Couldn\'t load history.</div>';
+    toast("Couldn't load version history", "err");
+    return;
+  }
+  if (rhState.versions.length === 0) {
+    document.getElementById('rh-main').innerHTML = '<div style="padding:16px;color:var(--muted);">No history yet for this row.</div>';
+    return;
+  }
+  renderRowHistorySidebar();
+  renderRowHistoryMain();
+}
+
+function closeRowHistory() {
+  document.getElementById('row-history-overlay').classList.remove('open');
+}
+
+function renderRowHistorySidebar() {
+  const sidebar = document.getElementById('rh-sidebar');
+  let html = '';
+  let lastDay = null;
+  rhState.versions.forEach((v, i) => {
+    const day = rhDayLabel(v.edited_at);
+    if (day !== lastDay) { html += `<div class="rh-day-group">${esc(day)}</div>`; lastDay = day; }
+    const timePart = (v.edited_at || '').split(' ')[1] || '';
+    html += `<div class="rh-version-item ${i === rhState.selectedIndex ? 'selected' : ''}" onclick="selectRowHistoryVersion(${i})">
+      <div class="rh-version-time">${esc(timePart)}</div>
+      <div class="rh-version-editor">${esc(v.editor_name)}</div>
+    </div>`;
+  });
+  sidebar.innerHTML = html;
+}
+
+function selectRowHistoryVersion(i) {
+  rhState.selectedIndex = i;
+  renderRowHistorySidebar();
+  renderRowHistoryMain();
+}
+
+function renderRowHistoryMain() {
+  const v = rhState.versions[rhState.selectedIndex];
+  const prev = rhState.versions[rhState.selectedIndex + 1]; // one older, since list is DESC
+  document.getElementById('rh-header-info').textContent = `${v.editor_name} · ${v.edited_at}`;
+  const main = document.getElementById('rh-main');
+  let html = '';
+  for (const key of Object.keys(RH_FIELD_LABELS)) {
+    const val = (v.snapshot && v.snapshot[key]) || '';
+    const prevVal = prev ? ((prev.snapshot && prev.snapshot[key]) || '') : val;
+    const changed = prev ? (val !== prevVal) : false;
+    html += `<div class="rh-field-row ${changed ? 'changed' : ''}">
+      <div class="rh-field-label">${esc(RH_FIELD_LABELS[key])}</div>
+      <div class="rh-field-value">${esc(val) || '<span style="color:var(--muted);">(empty)</span>'}</div>
+    </div>`;
+  }
+  main.innerHTML = html;
+}
+
 // Rolls up the existing per-row "last edited" tracking into one list for the
 // Edit History panel. Row numbers reflect the sheet's current display order
 // (same order as the table body), independent of this list's own most-recent-
 // first sort.
-function renderEditHistoryList(records) {
+function renderEditHistoryList(records, clientId) {
   const entries = records
     .map((r, i) => ({ rowNum: i + 1, t: r.t, title: r.title }))
     .filter(e => e.t && e.t.last_edited_by);
@@ -861,7 +967,7 @@ function renderEditHistoryList(records) {
   return entries.map(e => {
     const label = e.title ? esc(e.title) : `Row ${e.rowNum}`;
     const summary = e.t.last_edited_summary ? ` · ${esc(e.t.last_edited_summary)}` : '';
-    return `<div style="padding:6px;border-bottom:1px solid var(--bdr);font-size:.78rem;">
+    return `<div style="padding:6px;border-bottom:1px solid var(--bdr);font-size:.78rem;cursor:pointer;" onclick="openRowHistory('${e.t.id}', '${clientId}')">
       <div style="font-weight:600;color:var(--txt);">${label}</div>
       <div style="color:var(--muted);">${esc(e.t.last_edited_by)} · ${timeAgo(e.t.last_edited_at)}${summary}</div>
     </div>`;
@@ -1145,7 +1251,7 @@ function renderClientSheets(clientId) {
           <div style="position:relative;display:inline-block;">
             <button class="btn btn-sm" onclick="toggleEditHistoryMenu('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕓 Edit History</button>
             <div id="edit-history-menu-${clientId}" style="display:none;position:absolute;top:110%;right:0;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);padding:0;z-index:50;min-width:260px;max-height:320px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);">
-              ${renderEditHistoryList(records)}
+              ${renderEditHistoryList(records, clientId)}
             </div>
           </div>
           <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
@@ -1187,7 +1293,7 @@ function renderClientSheets(clientId) {
           <div style="display: flex; align-items: center; justify-content: space-between; gap:4px;">
              <input type="checkbox" class="sheet-row-chk" ${isChecked?'checked':''} onclick="event.stopPropagation(); toggleSheetRowCheck('${clientId}', '${t.id}', this.checked)" style="cursor:pointer;">
              <span style="cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Click to delete this row (Undo available for 8s)">${rowIndex++}</span>
-             ${t.last_edited_by ? `<span style="font-size: 0.7rem; opacity: 0.6; cursor:pointer;" onclick="event.stopPropagation(); showLastEditedInfo('${t.id}', '${clientId}')" title="${esc(t.last_edited_by)} · ${esc(t.last_edited_at||'')}${t.last_edited_summary ? ' · Changed: '+esc(t.last_edited_summary) : ''}">🕓</span>` : ''}
+             ${t.last_edited_by ? `<span style="font-size: 0.7rem; opacity: 0.6; cursor:pointer;" onclick="event.stopPropagation(); openRowHistory('${t.id}', '${clientId}')" title="${esc(t.last_edited_by)} · ${esc(t.last_edited_at||'')}${t.last_edited_summary ? ' · Changed: '+esc(t.last_edited_summary) : ''}">🕓</span>` : ''}
              <span style="font-size: 0.7rem; color: var(--red); opacity: 0.7; cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Delete Row">🗑️</span>
           </div>
         </td>
@@ -2143,7 +2249,7 @@ async function applySheetFields(taskId, clientId, fields, cellElem) {
         editIcon.className = 'sheet-last-edited-icon';
         editIcon.style.cssText = 'font-size:0.7rem;opacity:0.6;cursor:pointer;';
         editIcon.textContent = '🕓';
-        editIcon.onclick = (e) => { e.stopPropagation(); showLastEditedInfo(taskId, clientId); };
+        editIcon.onclick = (e) => { e.stopPropagation(); openRowHistory(taskId, clientId); };
         const rowNumSpan = tr.cells[0].querySelector('span');
         if (rowNumSpan) rowNumSpan.insertAdjacentElement('afterend', editIcon);
       }
@@ -3397,5 +3503,16 @@ document.addEventListener('paste', function(e) {
   }
 });
 </script>
+  <div id="row-history-overlay">
+    <div style="display:flex; align-items:center; gap:16px;">
+      <button class="btn btn-sm" onclick="closeRowHistory()" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">← Back</button>
+      <div id="rh-header-info" style="flex:1; font-weight:600;"></div>
+      <button class="btn btn-sm" id="rh-restore-btn" style="border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 16px; font-weight:600;">Restore this version</button>
+    </div>
+    <div class="rh-body">
+      <div class="rh-main" id="rh-main"></div>
+      <div class="rh-sidebar" id="rh-sidebar"></div>
+    </div>
+  </div>
 </body>
 </html>
