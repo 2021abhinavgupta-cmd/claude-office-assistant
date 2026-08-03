@@ -265,12 +265,16 @@ def get_velocity():
     If user_id is omitted, returns team-wide aggregates.
     """
     user_id = request.args.get("user_id", "").strip()
-    days    = int(request.args.get("days", 14))
+    range_param = request.args.get("range", "").strip()
 
     conn = _su_conn()
     cur  = conn.cursor()
 
-    since = (datetime.now(IST) - timedelta(days=days)).strftime("%Y-%m-%d")
+    if range_param == "month":
+        since = datetime.now(IST).replace(day=1).strftime("%Y-%m-%d")
+    else:
+        days = int(request.args.get("days", 14))
+        since = (datetime.now(IST) - timedelta(days=days)).strftime("%Y-%m-%d")
 
     if user_id:
         cur.execute("""
@@ -298,6 +302,55 @@ def get_velocity():
 
     data = [{"date": r[0], "completed": r[1] or 0, "pending": r[2] or 0, "carried": r[3] or 0} for r in rows]
     return jsonify({"velocity": data})
+
+
+@ops_bp.route("/api/standup/velocity-summary", methods=["GET"])
+def get_velocity_summary():
+    """
+    GET /api/standup/velocity-summary?user_id=
+    Month-to-date totals: distinct tasks completed this month, distinct tasks
+    that went overdue this month. Always scoped to the current calendar
+    month, independent of the /velocity chart's day-range selector.
+
+    A task rolls forward as a NEW standup_tasks row each day it stays
+    pending (see the carry-over INSERTs elsewhere in this file), all sharing
+    the same `carried_from` (the date it first went unfinished) and `title`.
+    Counting distinct (user_id, title, carried_from) avoids counting the same
+    overdue task once per day it was carried.
+    """
+    user_id = request.args.get("user_id", "").strip()
+    month_start = datetime.now(IST).replace(day=1).strftime("%Y-%m-%d")
+
+    conn = _su_conn()
+    cur = conn.cursor()
+
+    if user_id:
+        cur.execute(
+            "SELECT COUNT(*) FROM standup_tasks WHERE user_id=? AND status='done' AND date >= ?",
+            (user_id, month_start),
+        )
+        completed = cur.fetchone()[0] or 0
+        cur.execute(
+            """SELECT COUNT(DISTINCT user_id || '|' || title || '|' || carried_from)
+               FROM standup_tasks WHERE user_id=? AND carried_from IS NOT NULL AND carried_from >= ?""",
+            (user_id, month_start),
+        )
+        overdue = cur.fetchone()[0] or 0
+    else:
+        cur.execute(
+            "SELECT COUNT(*) FROM standup_tasks WHERE status='done' AND date >= ?",
+            (month_start,),
+        )
+        completed = cur.fetchone()[0] or 0
+        cur.execute(
+            """SELECT COUNT(DISTINCT user_id || '|' || title || '|' || carried_from)
+               FROM standup_tasks WHERE carried_from IS NOT NULL AND carried_from >= ?""",
+            (month_start,),
+        )
+        overdue = cur.fetchone()[0] or 0
+
+    conn.close()
+    return jsonify({"completed": completed, "overdue": overdue, "month_start": month_start})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
