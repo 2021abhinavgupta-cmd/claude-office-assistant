@@ -238,6 +238,7 @@ function toast(m,t="ok"){
 
 (async()=>{
   await loadEmployees();
+  populateVelocityEmployeeOptions();
   const hour = new Date().getHours();
   const greet = hour<12?"Good morning":hour<17?"Good afternoon":"Good evening";
   document.getElementById("greeting-line").textContent = `${greet}, ${window.EMP_DICT[UID]||UID}! Your task list is ready.`;
@@ -855,9 +856,38 @@ async function runCheck(){
 // ── Velocity Tracking ─────────────────────────────────────────────────────────
 let _velocityChart = null;
 
+// Adds one option per employee to the scope dropdown (after "My Tasks" /
+// "Team") so any individual's daily velocity can be viewed, not just your
+// own or the whole-team aggregate. Values are the employee's real id, same
+// as what "My Tasks" already sends as user_id -- velocityUserIdFor() below
+// treats them identically.
+function populateVelocityEmployeeOptions() {
+  const sel = document.getElementById("velocity-scope");
+  if (!sel || !window.EMPLOYEES || !window.EMPLOYEES.length) return;
+  if (sel.querySelector("optgroup")) return; // already populated
+  const group = document.createElement("optgroup");
+  group.label = "Individual";
+  [...window.EMPLOYEES].sort((a, b) => (a.name || "").localeCompare(b.name || "")).forEach(e => {
+    const opt = document.createElement("option");
+    opt.value = e.id;
+    opt.textContent = e.name;
+    group.appendChild(opt);
+  });
+  sel.appendChild(group);
+}
+
+// "me" -> current user, "team" -> no filter (aggregate), anything else is
+// treated as a specific employee id selected from populateVelocityEmployeeOptions().
+function velocityUserIdFor(scope) {
+  if (scope === "team") return "";
+  if (scope === "me") return UID;
+  return scope;
+}
+
 async function loadVelocitySummary() {
   const scope = document.getElementById("velocity-scope")?.value || "me";
-  const qs    = scope === "me" ? `?user_id=${UID}` : "";
+  const uid   = velocityUserIdFor(scope);
+  const qs    = uid ? `?user_id=${uid}` : "";
   const el    = document.getElementById("velocity-summary");
   if (!el) return;
   try {
@@ -874,16 +904,21 @@ async function loadVelocitySummary() {
   }
 }
 
+function velocityWeekdayShort(dateStr) {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
+}
+
 async function loadVelocity() {
   const scope    = document.getElementById("velocity-scope")?.value || "me";
   const daysVal  = document.getElementById("velocity-days")?.value  || 14;
-  const uid      = scope === "me" ? `&user_id=${UID}` : "";
+  const uid      = velocityUserIdFor(scope);
+  const uidQs    = uid ? `&user_id=${uid}` : "";
   const rangeQs  = daysVal === "month" ? `range=month` : `days=${daysVal}`;
 
   loadVelocitySummary();
 
   try {
-    const r = await fetch(`${API}/api/standup/velocity?${rangeQs}${uid}`);
+    const r = await fetch(`${API}/api/standup/velocity?${rangeQs}${uidQs}`);
     const d = await r.json();
     const data = d.velocity || [];
 
@@ -898,7 +933,7 @@ async function loadVelocity() {
     canvas.style.display = "block";
     emptyEl.style.display = "none";
 
-    const labels    = data.map(d => d.date.slice(5));   // MM-DD
+    const labels    = data.map(d => [d.date.slice(5), velocityWeekdayShort(d.date)]);   // ["MM-DD", "Mon"] -- Chart.js renders each array entry as its own tick line
     const completed = data.map(d => d.completed);
     const carried   = data.map(d => d.carried);
 
