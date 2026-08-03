@@ -312,6 +312,21 @@ def init_db():
             added_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
 
+        # Sheets row version history -- one row per real edit, storing a full
+        # 12-field snapshot (not a diff) so restore is a single re-apply and
+        # the UI can diff consecutive snapshots for display. Lives in our own
+        # SQLite regardless of whether the task itself is Notion- or
+        # SQLite-backed -- Notion has no changelog concept to build on.
+        conn.execute("""CREATE TABLE IF NOT EXISTS sheet_edit_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id     TEXT NOT NULL,
+            client_id   TEXT NOT NULL,
+            editor_name TEXT NOT NULL,
+            edited_at   TEXT NOT NULL,
+            snapshot    TEXT NOT NULL
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sheet_edit_log_task ON sheet_edit_log (task_id)")
+
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
         try:

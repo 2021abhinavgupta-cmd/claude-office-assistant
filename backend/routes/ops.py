@@ -1677,6 +1677,48 @@ def sqlite_patch_task(task_id: int):
     return jsonify({"success": True})
 
 
+@ops_bp.route("/api/sheets/tasks/<string:task_id>/log-version", methods=["POST"])
+def log_sheet_version(task_id: str):
+    """Appends one full-snapshot version to a Sheets row's history. Fire-and-
+    forget from the frontend -- never blocks the actual row save."""
+    body = request.get_json(silent=True) or {}
+    client_id = str(body.get("client_id", "")).strip()
+    editor_name = str(body.get("editor_name", "")).strip() or "Someone"
+    snapshot = body.get("snapshot")
+    if not client_id or not isinstance(snapshot, dict):
+        return jsonify({"error": "client_id and snapshot required"}), 400
+
+    conn = _su_conn()
+    with conn:
+        conn.execute(
+            "INSERT INTO sheet_edit_log (task_id, client_id, editor_name, edited_at, snapshot) VALUES (?,?,?,?,?)",
+            (task_id, client_id, editor_name, f"{today_ist()} {now_ist()}", json.dumps(snapshot)),
+        )
+    conn.close()
+    return jsonify({"success": True})
+
+
+@ops_bp.route("/api/sheets/tasks/<string:task_id>/versions", methods=["GET"])
+def list_sheet_versions(task_id: str):
+    """Full version history for one Sheets row, newest first."""
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, editor_name, edited_at, snapshot FROM sheet_edit_log WHERE task_id=? ORDER BY edited_at DESC, id DESC",
+        (task_id,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    versions = []
+    for r in rows:
+        try:
+            snapshot = json.loads(r[3])
+        except Exception:
+            snapshot = {}
+        versions.append({"id": r[0], "editor_name": r[1], "edited_at": r[2], "snapshot": snapshot})
+    return jsonify({"versions": versions})
+
+
 @ops_bp.route("/api/sqlite/tasks/<int:task_id>", methods=["DELETE"])
 def sqlite_delete_task(task_id: int):
     conn = _pt_conn()
