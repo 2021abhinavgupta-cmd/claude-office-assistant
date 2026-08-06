@@ -2264,13 +2264,27 @@ function focusSheetCellAt(tr, colIndex) {
   if (focusable) focusable.focus();
 }
 
+// Ctrl+Z immediately after a paste needs to bypass the normal isEditable
+// guard below (the pasted values were written programmatically, not via
+// execCommand, so the cell's own native undo history never learns about
+// them) -- but ONLY while focus is still actually inside one of the rows
+// that paste touched. Without this scoping, pressing Ctrl+Z for a
+// completely unrelated reason (e.g. fixing a typo somewhere else on the
+// page) within the 8s window silently deleted the just-pasted/created
+// rows with no visible connection to what the user actually undid --
+// a real data-loss incident this exact bug caused, 2026-08-06.
+function isFocusInPastedRows() {
+  if (!pendingPasteUndo) return false;
+  const tr = document.activeElement && document.activeElement.closest ? document.activeElement.closest('tr.sheet-row') : null;
+  if (!tr) return false;
+  const taskId = String(tr.dataset.taskId);
+  return pendingPasteUndo.cellSnapshots.some(s => String(s.taskId) === taskId)
+      || pendingPasteUndo.newTaskIds.some(n => String(n.taskId) === taskId);
+}
+
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-    // Paste-undo takes priority and isn't gated on focus: the pasted values were
-    // written programmatically (not via execCommand), so the cell's own native
-    // undo history never learns about them — Ctrl+Z would otherwise do nothing
-    // while focus is still sitting in the just-pasted cell.
-    if (pendingPasteUndo) { e.preventDefault(); undoPaste(); return; }
+    if (pendingPasteUndo && isFocusInPastedRows()) { e.preventDefault(); undoPaste(); return; }
     if (pendingRowDelete) {
       const active = document.activeElement;
       const isEditable = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
@@ -3601,53 +3615,62 @@ async function importClientSocialCSV(event, clientId) {
       });
     }
 
+    // Sort chronologically (Post Day, falling back to Creation Date) before
+    // sending -- rows with no date at all sort last, keeping their relative
+    // order. No AI step here: the columns already match what this app
+    // expects 1:1, so there's nothing for Claude to clean up, and skipping
+    // it removes an extra failure point (and cost) from a plain import.
+    const sortKey = r => r.postDay || r.creationDate || "";
+    parsedRows = parsedRows.slice().sort((a, b) => {
+      const ka = sortKey(a), kb = sortKey(b);
+      if (!ka && !kb) return 0;
+      if (!ka) return 1;
+      if (!kb) return -1;
+      return ka.localeCompare(kb);
+    });
+
     const btn = event.target.parentElement;
     const oldText = btn.innerHTML;
-    btn.innerHTML = "⏳ Auto-filling with Claude...";
+    btn.innerHTML = "⏳ Importing…";
 
     try {
-      const ar = await fetch(`${API}/api/social-media/auto-fill`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ posts: parsedRows }),
-      });
-      const data = await ar.json();
-      if (data.error) {
-        toast("Claude Error: " + data.error, "err");
-      } else if (data.posts) {
-        // Find client
-        const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
-        if (client) {
-          const res = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              user_id: UID,
-              client_name: client.name,
-              services: ["social"],
-              social_posts: data.posts.map(p => ({
-                title: p.post,
-                type: p.type,
-                content: p.content,
-                idea: p.idea,
-                scripts: p.scripts,
-                caption: p.caption,
-                link: p.link,
-                assignee: p.assignee,
-                post_day: p.postDay,
-                creation_date: p.creationDate,
-                status: p.status
-              }))
-            })
-          });
-          if (res.ok) {
-            toast("Successfully imported tasks.");
-            load(); // reload dashboard
-          }
+      // POST /api/clients/<id>/auto-tasks only ever creates new tasks -- it
+      // never deletes or touches existing ones, so this is safe to run
+      // against a client that already has rows in its sheet.
+      const client = (allData.clients||[]).find(c=>String(c.id)===String(clientId));
+      if (client) {
+        const res = await fetch(`${API}/api/clients/${clientId}/auto-tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: UID,
+            client_name: client.name,
+            services: ["social"],
+            social_posts: parsedRows.map(p => ({
+              title: p.post,
+              type: p.type,
+              content: p.content,
+              idea: p.idea,
+              scripts: p.scripts,
+              caption: p.caption,
+              link: p.link,
+              assignee: p.assignee,
+              post_day: p.postDay,
+              creation_date: p.creationDate,
+              status: p.status
+            }))
+          })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) {
+          toast(`Imported ${d.tasks_created ?? parsedRows.length} row(s), added below existing tasks.`);
+          load(); // reload dashboard
+        } else {
+          toast(d.error || "Import failed", "err");
         }
       }
     } catch (err) {
-      toast("Error Auto-filling with Claude.", "err");
+      toast("Error importing file.", "err");
       console.error(err);
     } finally {
       btn.innerHTML = oldText;
