@@ -651,7 +651,16 @@ async function updateTaskTitle(id, newTitle) {
 
 // ── Team standups panel ───────────────────────────────────────────────────────
 
-async function loadTeamStandups(dateStr = ""){
+// dateStr omitted (not just "") means "whatever's currently selected" -- the
+// 30s auto-refresh and a couple of other call sites call this with zero
+// arguments, which used to always mean "today" and silently snapped the
+// history-date picker back to today out from under the user a few seconds
+// after they picked a past date.
+async function loadTeamStandups(dateStr){
+  if (dateStr === undefined) {
+    const dateInput = document.getElementById("history-date");
+    dateStr = (dateInput && dateInput.value) || "";
+  }
   if (!window.EMPLOYEES || window.EMPLOYEES.length === 0) {
     await loadEmployees();
   }
