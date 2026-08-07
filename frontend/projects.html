@@ -1276,6 +1276,45 @@ function applyColumnVisibility(clientId) {
     container.querySelectorAll(`.sheet-col-${i}`).forEach(el => { el.style.display = hidden.has(i) ? 'none' : ''; });
   }
 }
+
+// Row hiding: a pure display filter local to the Sheets grid, same
+// localStorage-per-client pattern as hidden columns above. Hidden rows stay
+// completely untouched everywhere else (Calendar, Kanban, Task List) --
+// those tabs read from allData directly and never call this filter.
+function loadHiddenRows(clientId) {
+  try { return new Set(JSON.parse(localStorage.getItem(`sheetsHiddenRows_${clientId}`)) || []); } catch(e) { return new Set(); }
+}
+function saveHiddenRows(clientId, set) {
+  localStorage.setItem(`sheetsHiddenRows_${clientId}`, JSON.stringify([...set]));
+}
+function hideSheetRow(clientId, taskId) {
+  const hidden = loadHiddenRows(clientId);
+  hidden.add(String(taskId));
+  saveHiddenRows(clientId, hidden);
+  renderClientSheets(clientId);
+}
+function unhideSheetRow(clientId, taskId) {
+  const hidden = loadHiddenRows(clientId);
+  hidden.delete(String(taskId));
+  saveHiddenRows(clientId, hidden);
+  renderClientSheets(clientId);
+}
+function unhideAllSheetRows(clientId) {
+  saveHiddenRows(clientId, new Set());
+  renderClientSheets(clientId);
+}
+function toggleHiddenRowsMenu(clientId) {
+  const menu = document.getElementById(`hidden-rows-menu-${clientId}`);
+  if (!menu) return;
+  const willOpen = menu.style.display !== 'block';
+  document.querySelectorAll('[id^="hidden-rows-menu-"]').forEach(m => m.style.display = 'none');
+  menu.style.display = willOpen ? 'block' : 'none';
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[id^="hidden-rows-menu-"]') && !e.target.closest('[onclick^="toggleHiddenRowsMenu"]')) {
+    document.querySelectorAll('[id^="hidden-rows-menu-"]').forEach(m => m.style.display = 'none');
+  }
+});
 function toggleColumnsMenu(clientId) {
   const menu = document.getElementById(`cols-menu-${clientId}`);
   if (!menu) return;
@@ -1346,14 +1385,26 @@ function updateBulkBar(clientId) {
       <option value="posted">Posted</option>
       <option value="final">Final</option>
     </select>
+    <button style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);padding:6px 12px;border-radius:6px;cursor:pointer;">🙈 Hide</button>
     <button style="background:var(--red);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;">Delete</button>
     <button style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);padding:6px 12px;border-radius:6px;cursor:pointer;">Clear</button>
   `;
-  const [statusSelect, deleteBtn, clearBtn] = [bar.querySelector('#bulk-status-select'), ...bar.querySelectorAll('button')];
+  const [statusSelect, hideBtn, deleteBtn, clearBtn] = [bar.querySelector('#bulk-status-select'), ...bar.querySelectorAll('button')];
   statusSelect.onchange = (e) => { if (e.target.value) bulkSetStatus(clientId, e.target.value); };
+  hideBtn.onclick = () => bulkHideChecked(clientId);
   deleteBtn.onclick = () => bulkDeleteChecked(clientId);
   clearBtn.onclick = () => clearBulkSelection(clientId);
   bar.style.display = 'flex';
+}
+
+function bulkHideChecked(clientId) {
+  const keys = Array.from(checkedSheetRows).filter(k => k.startsWith(clientId + '::'));
+  const hidden = loadHiddenRows(clientId);
+  keys.forEach(k => hidden.add(k.split('::')[1]));
+  saveHiddenRows(clientId, hidden);
+  clearBulkSelection(clientId);
+  toast(`Hid ${keys.length} row(s). Use "🙈 Hidden" in the toolbar to bring them back.`);
+  renderClientSheets(clientId);
 }
 
 function clearBulkSelection(clientId) {
@@ -1405,6 +1456,10 @@ function renderClientSheets(clientId) {
 
   // ── Derive display fields for every task up front so sort/search/render share one shape ──
   let records = buildSheetRecordsForClient({ tasks: socialTasks });
+
+  const hiddenRowIds = loadHiddenRows(clientId);
+  const hiddenRecords = records.filter(r => hiddenRowIds.has(String(r.t.id)));
+  records = records.filter(r => !hiddenRowIds.has(String(r.t.id)));
 
   const query = (sheetSearchState[clientId] || '').trim().toLowerCase();
   if (query) records = records.filter(r => r.searchText.includes(query));
@@ -1460,6 +1515,24 @@ function renderClientSheets(clientId) {
           <span id="sheet-save-status-${clientId}" style="font-size:.75rem;color:var(--muted);margin-left:10px;min-width:70px;display:inline-block;"></span>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
+          <div style="position:relative;display:inline-block;">
+            <button class="btn btn-sm" onclick="toggleHiddenRowsMenu('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🙈 Hidden${hiddenRecords.length ? ` (${hiddenRecords.length})` : ''}</button>
+            <div id="hidden-rows-menu-${clientId}" style="display:none;position:absolute;top:110%;right:0;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);padding:8px;z-index:50;min-width:240px;max-height:320px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);">
+              ${hiddenRecords.length === 0
+                ? `<div style="padding:6px;font-size:.8rem;color:var(--muted);">No hidden rows. Right-click a row or select rows and use the bulk bar to hide them.</div>`
+                : `<div style="padding:4px 6px 8px;display:flex;justify-content:space-between;align-items:center;">
+                     <span style="font-size:.78rem;color:var(--muted);">${hiddenRecords.length} hidden</span>
+                     <span onclick="unhideAllSheetRows('${clientId}')" style="font-size:.75rem;color:var(--acc);cursor:pointer;">Unhide all</span>
+                   </div>
+                   ${hiddenRecords.map(r => `
+                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px;border-top:1px solid var(--bdr);font-size:.8rem;">
+                       <span style="color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.title || 'Row')}</span>
+                       <span onclick="unhideSheetRow('${clientId}', '${r.t.id}')" style="color:var(--acc);cursor:pointer;flex-shrink:0;">Unhide</span>
+                     </div>
+                   `).join('')}`
+              }
+            </div>
+          </div>
           <button class="btn btn-sm" onclick="openSheetHistory('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕓 Edit History</button>
           <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
         </div>
@@ -1814,6 +1887,7 @@ function showRowContextMenu(e, taskId, clientId) {
     { label: '⧉ Duplicate row', fn: () => duplicateSheetRow(clientId, taskId) },
   ];
   if (colIndex > 0) items.push({ label: '✕ Clear cell', fn: () => clearSheetCell(clientId, taskId, colIndex) });
+  items.push({ label: '🙈 Hide row', fn: () => hideSheetRow(clientId, taskId) });
   items.push({ label: '🗑 Delete row', fn: () => deleteSocialSheetRow(taskId, clientId) });
 
   menu.innerHTML = items.map((it,i) => `<div class="ctx-item" data-i="${i}" style="padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--txt);">${it.label}</div>`).join('');
