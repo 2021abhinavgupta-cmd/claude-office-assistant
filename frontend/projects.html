@@ -1385,7 +1385,7 @@ function updateBulkBar(clientId) {
       <option value="posted">Posted</option>
       <option value="final">Final</option>
     </select>
-    <button style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);padding:6px 12px;border-radius:6px;cursor:pointer;">🙈 Hide</button>
+    <button style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);padding:6px 12px;border-radius:6px;cursor:pointer;">Hide</button>
     <button style="background:var(--red);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;">Delete</button>
     <button style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);padding:6px 12px;border-radius:6px;cursor:pointer;">Clear</button>
   `;
@@ -1403,7 +1403,7 @@ function bulkHideChecked(clientId) {
   keys.forEach(k => hidden.add(k.split('::')[1]));
   saveHiddenRows(clientId, hidden);
   clearBulkSelection(clientId);
-  toast(`Hid ${keys.length} row(s). Use "🙈 Hidden" in the toolbar to bring them back.`);
+  toast(`Hid ${keys.length} row(s). Use "Hidden" in the toolbar to bring them back.`);
   renderClientSheets(clientId);
 }
 
@@ -1516,7 +1516,7 @@ function renderClientSheets(clientId) {
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
           <div style="position:relative;display:inline-block;">
-            <button class="btn btn-sm" onclick="toggleHiddenRowsMenu('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🙈 Hidden${hiddenRecords.length ? ` (${hiddenRecords.length})` : ''}</button>
+            <button class="btn btn-sm" onclick="toggleHiddenRowsMenu('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Hidden${hiddenRecords.length ? ` (${hiddenRecords.length})` : ''}</button>
             <div id="hidden-rows-menu-${clientId}" style="display:none;position:absolute;top:110%;right:0;background:var(--s1);border:1px solid var(--bdr);border-radius:var(--rs);padding:8px;z-index:50;min-width:240px;max-height:320px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);">
               ${hiddenRecords.length === 0
                 ? `<div style="padding:6px;font-size:.8rem;color:var(--muted);">No hidden rows. Right-click a row or select rows and use the bulk bar to hide them.</div>`
@@ -1887,7 +1887,7 @@ function showRowContextMenu(e, taskId, clientId) {
     { label: '⧉ Duplicate row', fn: () => duplicateSheetRow(clientId, taskId) },
   ];
   if (colIndex > 0) items.push({ label: '✕ Clear cell', fn: () => clearSheetCell(clientId, taskId, colIndex) });
-  items.push({ label: '🙈 Hide row', fn: () => hideSheetRow(clientId, taskId) });
+  items.push({ label: 'Hide row', fn: () => hideSheetRow(clientId, taskId) });
   items.push({ label: '🗑 Delete row', fn: () => deleteSocialSheetRow(taskId, clientId) });
 
   menu.innerHTML = items.map((it,i) => `<div class="ctx-item" data-i="${i}" style="padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--txt);">${it.label}</div>`).join('');
