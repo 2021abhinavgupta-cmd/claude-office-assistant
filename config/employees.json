@@ -90,13 +90,13 @@
     },
     {
       "id": "emp010",
-      "name": "Anagha",
-      "role": "Designer",
+      "name": "Sid",
+      "role": "Founder",
       "whatsapp": "",
-      "department": "Design",
+      "department": "General",
       "status": "active",
-      "pin": "2104",
-      "tone_profile": "Creative, visual, and detail-oriented.",
+      "pin": "0000",
+      "tone_profile": "Direct, strategic, and high-level.",
       "checkins": []
     }
   ]
