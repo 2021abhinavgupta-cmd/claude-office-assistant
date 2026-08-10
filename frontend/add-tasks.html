@@ -885,7 +885,7 @@
         <div class="fg"><label>Client Name</label>
           <div id="r-name" style="font-weight:600;font-size:.95rem;padding:6px 0"></div>
         </div>
-        <div class="fg"><label>Target Deadline</label><input type="date" id="deadline" /></div>
+        <div class="fg"><label>Target Deadline</label><input type="date" lang="en-GB" id="deadline" /></div>
       </div>
 
       <!-- Social Media: Spreadsheet / Content Calendar -->
@@ -1276,8 +1276,8 @@
       ).join("");
       tr.innerHTML = `
     <td class="st-num">${tbody.children.length + 1}</td>
-    <td><input class="st-input" type="date" value="${postDay}" style="width:100%;height:36px"/></td>
-    <td><input class="st-input" type="date" value="${creationDate}" style="width:100%;height:36px"/></td>
+    <td><input class="st-input" type="date" lang="en-GB" value="${postDay}" style="width:100%;height:36px"/></td>
+    <td><input class="st-input" type="date" lang="en-GB" value="${creationDate}" style="width:100%;height:36px"/></td>
     <td>
       <div class="ta-wrap">
         <textarea class="st-input" placeholder="Post title…" style="width:100%;height:90px;resize:none;overflow-y:auto">${title}</textarea>
@@ -1390,7 +1390,7 @@
       <div class="ms-display" onclick="this.parentElement.classList.toggle('open')">Unassigned</div>
       <div class="ms-dropdown">${EMP_OPTS}</div>
     </div>
-    <input class="tp-date-input" type="date" value="${dueDate}" title="Task due date" />
+    <input class="tp-date-input" type="date" lang="en-GB" value="${dueDate}" title="Task due date" />
     <button class="tp-del" onclick="removeTask(this)" title="Remove task">✕</button>`;
 
       const whoArr = (who || "").split(',').map(s => s.trim());

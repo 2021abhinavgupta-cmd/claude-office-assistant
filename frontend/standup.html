@@ -143,7 +143,7 @@
         <div style="display:flex; align-items:center; gap: 8px; margin-top: 10px; margin-bottom: 24px; margin-left: 4px;">
           <input type="checkbox" id="add-post-date-check" onchange="document.getElementById('post-date-picker').style.display=this.checked?'block':'none'" style="cursor:pointer;" />
           <label for="add-post-date-check" style="font-size:0.75rem; color:var(--muted); cursor:pointer; user-select:none;">Add Post Date</label>
-          <input type="date" id="post-date-picker" style="display:none; background:var(--s2); border:1px solid var(--bdr); border-radius:4px; color:var(--txt); padding:3px 8px; font-size:0.75rem; outline:none; font-family:'DM Sans',sans-serif;" />
+          <input type="date" lang="en-GB" id="post-date-picker" style="display:none; background:var(--s2); border:1px solid var(--bdr); border-radius:4px; color:var(--txt); padding:3px 8px; font-size:0.75rem; outline:none; font-family:'DM Sans',sans-serif;" />
         </div>
 
         <div class="task-stats" id="task-stats" style="display:none">
@@ -185,7 +185,7 @@
         <p class="card-sub">See what everyone is working on</p>
         
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:14px">
-           <input type="date" id="history-date" style="background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:0.8rem;outline:none;cursor:pointer;" onchange="loadTeamStandups(this.value)" />
+           <input type="date" lang="en-GB" id="history-date" style="background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:0.8rem;outline:none;cursor:pointer;" onchange="loadTeamStandups(this.value)" />
         </div>
         
         <div id="team-standups"><div class="empty">Loading…</div></div>

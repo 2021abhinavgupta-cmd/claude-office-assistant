@@ -377,7 +377,7 @@
     </div>
     <div class="qt-field">
       <label>Due date</label>
-      <input id="qt-due" type="date" />
+      <input id="qt-due" type="date" lang="en-GB" />
     </div>
     <div class="qt-field">
       <label>Note (optional)</label>
@@ -410,7 +410,7 @@
     </div>
     <div class="qt-field">
       <label>Due date</label>
-      <input id="et-due" type="date" />
+      <input id="et-due" type="date" lang="en-GB" />
     </div>
     <div class="qt-btns">
       <button class="btn" style="background:var(--s2);border:1px solid var(--bdr);color:var(--muted)" onclick="closeEditTaskModal()">Cancel</button>
@@ -742,7 +742,7 @@ function renderDetail(clients){
             <div class="add-task-row">
               <input type="text" id="nt-${c.id}" placeholder="New task..." />
               <select id="na-${c.id}"><option value="">Assign...</option>${Object.entries(EMP).map(([id,n])=>`<option value="${id}">${n}</option>`).join("")}</select>
-              <input type="date" id="nd-${c.id}" />
+              <input type="date" lang="en-GB" id="nd-${c.id}" />
               <button class="btn btn-sm btn-acc" style="padding:7px 14px" onclick="addTask(${c.id})">Add</button>
             </div>` : `<p style="color:var(--muted);font-size:.75rem;padding:8px 0">✦ Manage tasks directly in <a href="${c.url||'https://notion.so'}" target="_blank" style="color:var(--acc)">Notion ↗</a></p>`}
           </div>
@@ -1643,10 +1643,10 @@ function renderClientSheets(clientId) {
           </div>
         </td>
         <td class="sheet-col-1" style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
-          <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${creationDate}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+          <input type="date" lang="en-GB" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${creationDate}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
         <td class="sheet-col-2" style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
-          <input type="date" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${t.due_date || ""}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+          <input type="date" lang="en-GB" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${t.due_date || ""}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
         <td class="sheet-col-3" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(title)}</td>
         <td class="sheet-col-4" style="padding: 10px; border-right: 1px solid var(--bdr);">
