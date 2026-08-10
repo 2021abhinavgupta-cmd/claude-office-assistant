@@ -547,6 +547,8 @@ async function load(){
   }
   // Load shared quick tasks from backend (task 3)
   await loadQuickTasks();
+  // Shared Sheets row-hide state (server-backed, see loadAllHiddenRowsFromServer)
+  await loadAllHiddenRowsFromServer();
 
   const urlParams = new URLSearchParams(window.location.search);
   const targetNotionId = urlParams.get('notion_id');
@@ -1256,6 +1258,21 @@ function sortSheetBy(clientId, colIndex) {
   renderClientSheets(clientId);
 }
 
+// Month view filter -- a pure display filter (like hidden columns), remembered
+// per-client per-browser since it's a view preference, not shared data.
+function loadMonthFilter(clientId) {
+  return localStorage.getItem(`sheetsMonthFilter_${clientId}`) || '';
+}
+function saveMonthFilter(clientId, ym) {
+  if (ym) localStorage.setItem(`sheetsMonthFilter_${clientId}`, ym);
+  else localStorage.removeItem(`sheetsMonthFilter_${clientId}`);
+  renderClientSheets(clientId);
+}
+function monthLabel(ym) {
+  const [y, m] = ym.split('-');
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
 function loadHiddenCols(clientId) {
   try { return new Set(JSON.parse(localStorage.getItem(`sheetsHiddenCols_${clientId}`)) || []); } catch(e) { return new Set(); }
 }
@@ -1277,31 +1294,58 @@ function applyColumnVisibility(clientId) {
   }
 }
 
-// Row hiding: a pure display filter local to the Sheets grid, same
-// localStorage-per-client pattern as hidden columns above. Hidden rows stay
-// completely untouched everywhere else (Calendar, Kanban, Task List) --
-// those tabs read from allData directly and never call this filter.
+// Row hiding: a pure display filter for the Sheets grid -- hidden rows stay
+// completely untouched everywhere else (Calendar, Kanban, Task List), those
+// tabs read from allData directly and never call this filter. Backed by the
+// server (sheet_hidden_rows table) so hiding a row is visible to every
+// employee, not just whoever hid it -- was previously per-browser
+// localStorage, which meant e.g. Palak hiding a row was invisible to Vidit.
+let hiddenRowsCache = {};   // clientId -> Set(task_id)
+let hiddenRowsMeta = {};    // clientId -> { task_id: {hidden_by, hidden_at} }
+async function loadAllHiddenRowsFromServer() {
+  try {
+    const res = await fetch(`${API}/api/sheets/hidden-rows`);
+    const d = await res.json();
+    hiddenRowsCache = {};
+    hiddenRowsMeta = {};
+    Object.entries(d.hidden || {}).forEach(([clientId, rows]) => {
+      hiddenRowsCache[clientId] = new Set(rows.map(r => String(r.task_id)));
+      hiddenRowsMeta[clientId] = {};
+      rows.forEach(r => { hiddenRowsMeta[clientId][String(r.task_id)] = { hidden_by: r.hidden_by, hidden_at: r.hidden_at }; });
+    });
+  } catch(e) { /* leave cache empty -- rows just render unhidden until next load */ }
+}
 function loadHiddenRows(clientId) {
-  try { return new Set(JSON.parse(localStorage.getItem(`sheetsHiddenRows_${clientId}`)) || []); } catch(e) { return new Set(); }
+  return hiddenRowsCache[clientId] || new Set();
 }
-function saveHiddenRows(clientId, set) {
-  localStorage.setItem(`sheetsHiddenRows_${clientId}`, JSON.stringify([...set]));
-}
-function hideSheetRow(clientId, taskId) {
+async function hideSheetRow(clientId, taskId) {
   const hidden = loadHiddenRows(clientId);
   hidden.add(String(taskId));
-  saveHiddenRows(clientId, hidden);
+  hiddenRowsCache[clientId] = hidden;
   renderClientSheets(clientId);
+  const hiddenBy = (window.EMP_DICT && window.EMP_DICT[UID]) || UID;
+  try {
+    await fetch(`${API}/api/sheets/tasks/${taskId}/hide`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId, hidden_by: hiddenBy }),
+    });
+  } catch(e) { toast("Row hidden locally but failed to sync -- it may reappear for others.", "err"); }
 }
-function unhideSheetRow(clientId, taskId) {
+async function unhideSheetRow(clientId, taskId) {
   const hidden = loadHiddenRows(clientId);
   hidden.delete(String(taskId));
-  saveHiddenRows(clientId, hidden);
+  hiddenRowsCache[clientId] = hidden;
   renderClientSheets(clientId);
+  try {
+    await fetch(`${API}/api/sheets/tasks/${taskId}/unhide`, { method: 'POST' });
+  } catch(e) { toast("Row unhidden locally but failed to sync.", "err"); }
 }
-function unhideAllSheetRows(clientId) {
-  saveHiddenRows(clientId, new Set());
+async function unhideAllSheetRows(clientId) {
+  hiddenRowsCache[clientId] = new Set();
   renderClientSheets(clientId);
+  try {
+    await fetch(`${API}/api/sheets/clients/${clientId}/unhide-all`, { method: 'POST' });
+  } catch(e) { toast("Unhidden locally but failed to sync.", "err"); }
 }
 function toggleHiddenRowsMenu(clientId) {
   const menu = document.getElementById(`hidden-rows-menu-${clientId}`);
@@ -1397,14 +1441,20 @@ function updateBulkBar(clientId) {
   bar.style.display = 'flex';
 }
 
-function bulkHideChecked(clientId) {
+async function bulkHideChecked(clientId) {
   const keys = Array.from(checkedSheetRows).filter(k => k.startsWith(clientId + '::'));
   const hidden = loadHiddenRows(clientId);
-  keys.forEach(k => hidden.add(k.split('::')[1]));
-  saveHiddenRows(clientId, hidden);
+  const taskIds = keys.map(k => k.split('::')[1]);
+  taskIds.forEach(id => hidden.add(id));
+  hiddenRowsCache[clientId] = hidden;
   clearBulkSelection(clientId);
   toast(`Hid ${keys.length} row(s). Use "Hidden" in the toolbar to bring them back.`);
   renderClientSheets(clientId);
+  const hiddenBy = (window.EMP_DICT && window.EMP_DICT[UID]) || UID;
+  await Promise.all(taskIds.map(id => fetch(`${API}/api/sheets/tasks/${id}/hide`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, hidden_by: hiddenBy }),
+  }).catch(() => {})));
 }
 
 function clearBulkSelection(clientId) {
@@ -1457,9 +1507,16 @@ function renderClientSheets(clientId) {
   // ── Derive display fields for every task up front so sort/search/render share one shape ──
   let records = buildSheetRecordsForClient({ tasks: socialTasks });
 
+  // Distinct Post-Day months present, computed before any filter so the
+  // dropdown always lists every month that has data, not just visible rows.
+  const allMonths = Array.from(new Set(records.map(r => (r.due_date || '').slice(0, 7)).filter(Boolean))).sort();
+
   const hiddenRowIds = loadHiddenRows(clientId);
   const hiddenRecords = records.filter(r => hiddenRowIds.has(String(r.t.id)));
   records = records.filter(r => !hiddenRowIds.has(String(r.t.id)));
+
+  const monthFilter = loadMonthFilter(clientId);
+  if (monthFilter) records = records.filter(r => (r.due_date || '').slice(0, 7) === monthFilter);
 
   const query = (sheetSearchState[clientId] || '').trim().toLowerCase();
   if (query) records = records.filter(r => r.searchText.includes(query));
@@ -1509,6 +1566,11 @@ function renderClientSheets(clientId) {
               }).join('')}
             </div>
           </div>
+          <select id="sheet-month-${clientId}" onchange="saveMonthFilter('${clientId}', this.value)"
+            style="background:var(--s2); border:1px solid var(--bdr); border-radius:6px; padding:8px 10px; color:var(--txt); font-size:.85rem; margin-left:8px;">
+            <option value="">All Months</option>
+            ${allMonths.map(ym => `<option value="${ym}" ${monthFilter===ym?'selected':''}>${monthLabel(ym)}</option>`).join('')}
+          </select>
           <input type="text" id="sheet-search-${clientId}" placeholder="🔍 Search rows…" value="${esc(sheetSearchState[clientId]||'')}"
             oninput="sheetSearchState['${clientId}']=this.value; renderClientSheets('${clientId}')"
             style="background:var(--s2); border:1px solid var(--bdr); border-radius:6px; padding:8px 12px; color:var(--txt); font-size:.85rem; margin-left:8px; width:180px;">
@@ -1524,12 +1586,15 @@ function renderClientSheets(clientId) {
                      <span style="font-size:.78rem;color:var(--muted);">${hiddenRecords.length} hidden</span>
                      <span onclick="unhideAllSheetRows('${clientId}')" style="font-size:.75rem;color:var(--acc);cursor:pointer;">Unhide all</span>
                    </div>
-                   ${hiddenRecords.map(r => `
-                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px;border-top:1px solid var(--bdr);font-size:.8rem;">
+                   ${hiddenRecords.map(r => {
+                     const meta = (hiddenRowsMeta[clientId] || {})[String(r.t.id)];
+                     const metaTitle = meta ? `Hidden by ${meta.hidden_by || 'someone'} · ${meta.hidden_at || ''}` : '';
+                     return `
+                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px;border-top:1px solid var(--bdr);font-size:.8rem;" title="${esc(metaTitle)}">
                        <span style="color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.title || 'Row')}</span>
                        <span onclick="unhideSheetRow('${clientId}', '${r.t.id}')" style="color:var(--acc);cursor:pointer;flex-shrink:0;">Unhide</span>
                      </div>
-                   `).join('')}`
+                   `;}).join('')}`
               }
             </div>
           </div>

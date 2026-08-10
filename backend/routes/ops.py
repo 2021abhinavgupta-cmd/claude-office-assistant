@@ -1809,6 +1809,60 @@ def list_client_sheet_versions(client_id: str):
     return jsonify({"versions": versions})
 
 
+@ops_bp.route("/api/sheets/hidden-rows", methods=["GET"])
+def list_all_hidden_rows():
+    """Every hidden Sheets row across every client, in one shot -- powers
+    the frontend's shared hidden-rows cache loaded once at page load, so
+    the row-hide feature is visible to every employee, not just the one
+    whose browser hid it."""
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT task_id, client_id, hidden_by, hidden_at FROM sheet_hidden_rows")
+    rows = cur.fetchall()
+    conn.close()
+    hidden = {}
+    for task_id, client_id, hidden_by, hidden_at in rows:
+        hidden.setdefault(client_id, []).append(
+            {"task_id": task_id, "hidden_by": hidden_by, "hidden_at": hidden_at}
+        )
+    return jsonify({"hidden": hidden})
+
+
+@ops_bp.route("/api/sheets/tasks/<string:task_id>/hide", methods=["POST"])
+def hide_sheet_row(task_id: str):
+    body = request.get_json(silent=True) or {}
+    client_id = str(body.get("client_id", "")).strip()
+    hidden_by = str(body.get("hidden_by", "")).strip() or "Someone"
+    if not client_id:
+        return jsonify({"error": "client_id required"}), 400
+    conn = _su_conn()
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO sheet_hidden_rows (task_id, client_id, hidden_by, hidden_at) VALUES (?,?,?,?)",
+            (task_id, client_id, hidden_by, f"{today_ist()} {now_ist()}"),
+        )
+    conn.close()
+    return jsonify({"success": True})
+
+
+@ops_bp.route("/api/sheets/tasks/<string:task_id>/unhide", methods=["POST"])
+def unhide_sheet_row(task_id: str):
+    conn = _su_conn()
+    with conn:
+        conn.execute("DELETE FROM sheet_hidden_rows WHERE task_id=?", (task_id,))
+    conn.close()
+    return jsonify({"success": True})
+
+
+@ops_bp.route("/api/sheets/clients/<string:client_id>/unhide-all", methods=["POST"])
+def unhide_all_sheet_rows(client_id: str):
+    conn = _su_conn()
+    with conn:
+        conn.execute("DELETE FROM sheet_hidden_rows WHERE client_id=?", (client_id,))
+    conn.close()
+    return jsonify({"success": True})
+
+
 @ops_bp.route("/api/sqlite/tasks/<int:task_id>", methods=["DELETE"])
 def sqlite_delete_task(task_id: int):
     conn = _pt_conn()

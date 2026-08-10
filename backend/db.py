@@ -331,6 +331,17 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
+        # Sheets row hide/show -- shared across every employee (was previously
+        # per-browser localStorage, which meant one person hiding a row was
+        # invisible to everyone else). One row per hidden task; presence = hidden.
+        conn.execute("""CREATE TABLE IF NOT EXISTS sheet_hidden_rows (
+            task_id    TEXT PRIMARY KEY,
+            client_id  TEXT NOT NULL,
+            hidden_by  TEXT,
+            hidden_at  TEXT
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sheet_hidden_rows_client ON sheet_hidden_rows (client_id)")
+
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
         try:
