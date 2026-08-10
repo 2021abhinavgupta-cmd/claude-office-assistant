@@ -2103,168 +2103,66 @@ function sheetTrClientId(tr) {
   return container ? container.id.replace('csheets-','') : null;
 }
 
-// ── Paste from Excel/Google Sheets: tab-separated columns, newline-separated rows ──
-// If the paste has more rows than exist below the cursor, new rows are created
-// (like real Excel/Sheets) instead of silently dropping the overflow.
-async function createBlankSheetRow(clientId) {
-  const client = allData.clients.find(c => String(c.id) === String(clientId));
-  if (!client) return null;
-  const isNotionClient = notionMode && !!client.notion_id;
-  const endpoint = isNotionClient ? `${API}/api/notion/tasks` : `${API}/api/tasks`;
-  try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: UID, client_id: isNotionClient ? client.notion_id : clientId, client_name: client.name,
-        title: "[Post] New Idea", assigned_to: "", due_date: "", service: "Social Media", status: "not_started"
-      })
-    });
-    const d = await res.json();
-    if (!d.success) return null;
-    const newId = isNotionClient ? (d.notion_id || Date.now()) : d.task_id;
-    return { id: newId, notion_id: isNotionClient ? d.notion_id : null, title: "[Post] New Idea", service: "Social Media", status: "not_started", isNotionClient };
-  } catch (err) {
-    console.error(err);
-    return null;
-  }
-}
+// ── Paste into Sheets: always fills only the single targeted cell ──
+// Deliberately not a multi-cell/Excel-style paste (that used to split
+// tab/newline-separated clipboard text across rows and columns, and could
+// create new rows) -- pasting a paragraph copied from anywhere else (a
+// website, Word, chat) with its own line breaks was landing split across
+// multiple rows instead of staying in the one cell being edited. Bulk
+// multi-row data entry has its own dedicated path: the Import CSV/Excel
+// button. Internal line breaks within the pasted text are preserved (cells
+// render with white-space:pre-wrap), just never treated as row separators.
+let pendingPasteUndo = null; // { clientId, taskId, colIndex, oldValue, timeoutId }
 
-// Quote-aware TSV parser: a field wrapped in double quotes may itself contain
-// literal tabs/newlines (Excel/Sheets write cells with internal line breaks
-// this way) without those being mistaken for extra columns/rows. Without this,
-// pasting a single multi-line cell (e.g. copied whole from another Sheets cell)
-// gets split into one row per line instead of landing as one cell's value.
-function parseTsvClipboard(text) {
-  const rows = [];
-  let row = [], field = '', inQuotes = false, i = 0;
-  const s = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  while (i < s.length) {
-    const ch = s[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (s[i+1] === '"') { field += '"'; i += 2; continue; }
-        inQuotes = false; i++; continue;
-      }
-      field += ch; i++; continue;
-    }
-    if (ch === '"' && field === '') { inQuotes = true; i++; continue; }
-    if (ch === '\t') { row.push(field); field = ''; i++; continue; }
-    if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
-    field += ch; i++;
-  }
-  row.push(field);
-  rows.push(row);
-  if (rows.length > 1) {
-    const last = rows[rows.length - 1];
-    if (last.length === 1 && last[0] === '') rows.pop(); // trailing blank line from copied text ending in \n
-  }
-  return rows;
-}
-
-let pendingPasteUndo = null; // { clientId, cellSnapshots: [{taskId,colIndex,oldValue}], newTaskIds: [{taskId,isNotionClient}], timeoutId }
-
-function startPendingPasteUndo(clientId, cellSnapshots, newTaskIds) {
+function startPendingPasteUndo(clientId, taskId, colIndex, oldValue) {
   if (pendingPasteUndo) clearTimeout(pendingPasteUndo.timeoutId);
   const timeoutId = setTimeout(() => { pendingPasteUndo = null; hideUndoBar(); }, 8000);
-  pendingPasteUndo = { clientId, cellSnapshots, newTaskIds, timeoutId };
-  showUndoBar(newTaskIds.length > 0 ? `Pasted (${newTaskIds.length} new row(s) created).` : 'Pasted.', undoPaste);
+  pendingPasteUndo = { clientId, taskId, colIndex, oldValue, timeoutId };
+  showUndoBar('Pasted.', undoPaste);
 }
 
-async function undoPaste() {
+function undoPaste() {
   if (!pendingPasteUndo) return;
   clearTimeout(pendingPasteUndo.timeoutId);
-  const { clientId, cellSnapshots, newTaskIds } = pendingPasteUndo;
+  const { clientId, taskId, colIndex, oldValue } = pendingPasteUndo;
   pendingPasteUndo = null;
   hideUndoBar();
 
-  cellSnapshots.forEach(({ taskId, colIndex, oldValue }) => {
-    const rowTr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
-    const td = rowTr ? rowTr.cells[colIndex] : null;
-    if (!td) return;
-    applyPastedCellValue(td, oldValue);
-    const anchorEl = td.querySelector('input,select,[contenteditable]') || td;
-    saveSheetRow(taskId, anchorEl, clientId);
-  });
-
-  const client = allData.clients.find(c => String(c.id) === String(clientId));
-  for (const { taskId, isNotionClient } of newTaskIds) {
-    const endpoint = isNotionClient ? `${API}/api/notion/tasks/${taskId}` : `${API}/api/sqlite/tasks/${taskId}`;
-    try { await fetch(endpoint, { method: 'DELETE' }); } catch (e) {}
-    if (client) {
-      const idx = client.tasks.findIndex(t => String(t.id) === String(taskId));
-      if (idx !== -1) client.tasks.splice(idx, 1);
-    }
-  }
-  if (client) renderClientSheets(clientId);
+  const rowTr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
+  const td = rowTr ? rowTr.cells[colIndex] : null;
+  if (!td) return;
+  applyPastedCellValue(td, oldValue);
+  saveSheetRow(taskId, td, clientId);
   toast('Paste undone.');
 }
 
-document.addEventListener('paste', async (e) => {
+document.addEventListener('paste', (e) => {
   const td = e.target.closest('.c-sheets td');
-  if (!td) return;
-  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-  if (!text) return;
-  const isMultiCell = /\t|\n/.test(text);
-  if (!td.isContentEditable && !isMultiCell) return; // single-value paste into date/select: let native behavior handle it
-
+  if (!td || !td.isContentEditable) return; // date/select cells: let native paste behavior handle them
+  const rawText = (e.clipboardData || window.clipboardData).getData('text/plain');
+  if (!rawText) return;
   const tr = td.closest('tr.sheet-row');
   if (!tr) return;
   e.preventDefault();
   e.stopImmediatePropagation(); // there's an older, unrelated document-level paste listener further down that force-plain-texts contenteditables — without this it double-processes the same paste
 
+  // Text copied from outside the app (Word, a website, a chat app) almost
+  // always carries \r\n line endings. Left as-is, the \r sits invisibly in
+  // the cell's text node and survives the round trip to the backend and
+  // back -- so a later diff (e.g. version-history Restore comparing this
+  // cell's current value against an older snapshot) can see a mismatch
+  // that isn't visually there, since \r renders invisibly. Normalize to
+  // plain \n up front, matching what typing/Enter in the cell produces.
+  const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
   const clientId = sheetTrClientId(tr);
-  const rows = parseTsvClipboard(text); // array of arrays: rows[r] is already split into columns
-  const startColIndex = td.cellIndex;
-
-  // Collect taskIds for rows that already exist below the cursor.
-  const existingTaskIds = [];
-  let curTr = tr;
-  while (curTr && existingTaskIds.length < rows.length) {
-    existingTaskIds.push(curTr.dataset.taskId);
-    curTr = curTr.nextElementSibling;
-  }
-
-  const newTaskIds = [];
-  const missing = rows.length - existingTaskIds.length;
-  if (missing > 0) {
-    toast(`Creating ${missing} new row${missing===1?'':'s'} for the rest of the paste…`);
-    const client = allData.clients.find(c => String(c.id) === String(clientId));
-    let order = [];
-    try { order = JSON.parse(localStorage.getItem(`sheetsOrder_${clientId}`)) || []; } catch (err) {}
-    for (let i = 0; i < missing; i++) {
-      const newTask = await createBlankSheetRow(clientId);
-      if (!newTask) break;
-      if (client) { client.tasks = client.tasks || []; client.tasks.push(newTask); }
-      order.push(String(newTask.id));
-      existingTaskIds.push(String(newTask.id));
-      newTaskIds.push({ taskId: String(newTask.id), isNotionClient: newTask.isNotionClient });
-    }
-    localStorage.setItem(`sheetsOrder_${clientId}`, JSON.stringify(order));
-    renderClientSheets(clientId);
-  }
-
-  const cellSnapshots = [];
-  let rowsFilled = 0;
-  for (let r = 0; r < rows.length; r++) {
-    const taskId = existingTaskIds[r];
-    if (!taskId) break;
-    const rowTr = document.querySelector(`tr.sheet-row[data-task-id="${CSS.escape(String(taskId))}"]`);
-    if (!rowTr) break;
-    const cols = rows[r];
-    for (let c = 0; c < cols.length; c++) {
-      const colIndex = startColIndex + c;
-      if (colIndex >= rowTr.cells.length) break;
-      cellSnapshots.push({ taskId, colIndex, oldValue: sheetCellTextValue(rowTr.cells[colIndex]) });
-      applyPastedCellValue(rowTr.cells[colIndex], cols[c]);
-    }
-    const anchorCell = rowTr.cells[startColIndex];
-    const focusEl = anchorCell ? (anchorCell.querySelector('input,select,[contenteditable]') || anchorCell) : null;
-    if (focusEl) saveSheetRow(taskId, focusEl, clientId);
-    rowsFilled++;
-  }
-  startPendingPasteUndo(clientId, cellSnapshots, newTaskIds);
-  toast(`Pasted ${rowsFilled} row${rowsFilled===1?'':'s'}.${newTaskIds.length ? ` (${newTaskIds.length} new row(s) added.)` : ''}`);
+  const taskId = tr.dataset.taskId;
+  const colIndex = td.cellIndex;
+  const oldValue = sheetCellTextValue(td);
+  applyPastedCellValue(td, text);
+  saveSheetRow(taskId, td, clientId);
+  startPendingPasteUndo(clientId, taskId, colIndex, oldValue);
+  toast('Pasted.');
 });
 
 function sheetCellTextValue(td) {
@@ -2404,26 +2302,23 @@ function focusSheetCellAt(tr, colIndex) {
 }
 
 // Ctrl+Z immediately after a paste needs to bypass the normal isEditable
-// guard below (the pasted values were written programmatically, not via
+// guard below (the pasted value was written programmatically, not via
 // execCommand, so the cell's own native undo history never learns about
-// them) -- but ONLY while focus is still actually inside one of the rows
-// that paste touched. Without this scoping, pressing Ctrl+Z for a
-// completely unrelated reason (e.g. fixing a typo somewhere else on the
-// page) within the 8s window silently deleted the just-pasted/created
-// rows with no visible connection to what the user actually undid --
-// a real data-loss incident this exact bug caused, 2026-08-06.
-function isFocusInPastedRows() {
+// it) -- but ONLY while focus is still actually inside the exact cell that
+// paste touched. Without this scoping, pressing Ctrl+Z for a completely
+// unrelated reason (e.g. fixing a typo elsewhere) within the 8s window
+// would silently revert the pasted cell with no visible connection to
+// what the user actually undid.
+function isFocusInPastedCell() {
   if (!pendingPasteUndo) return false;
   const tr = document.activeElement && document.activeElement.closest ? document.activeElement.closest('tr.sheet-row') : null;
   if (!tr) return false;
-  const taskId = String(tr.dataset.taskId);
-  return pendingPasteUndo.cellSnapshots.some(s => String(s.taskId) === taskId)
-      || pendingPasteUndo.newTaskIds.some(n => String(n.taskId) === taskId);
+  return String(tr.dataset.taskId) === String(pendingPasteUndo.taskId);
 }
 
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-    if (pendingPasteUndo && isFocusInPastedRows()) { e.preventDefault(); undoPaste(); return; }
+    if (pendingPasteUndo && isFocusInPastedCell()) { e.preventDefault(); undoPaste(); return; }
     if (pendingRowDelete) {
       const active = document.activeElement;
       const isEditable = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
