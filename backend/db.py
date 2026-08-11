@@ -342,6 +342,22 @@ def init_db():
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sheet_hidden_rows_client ON sheet_hidden_rows (client_id)")
 
+        # Google Sheets two-way sync -- one linked spreadsheet per client.
+        # link_token authenticates the inbound pull webhook (see routes/sheets_sync.py);
+        # is_notion records whether this client's tasks live in Notion or the local
+        # SQLite `clients`/`tasks` tables, decided once at link time from the same
+        # `notionMode && !!client.notion_id` check the frontend already uses.
+        conn.execute("""CREATE TABLE IF NOT EXISTS google_sheet_links (
+            client_id      TEXT PRIMARY KEY,
+            spreadsheet_id TEXT NOT NULL,
+            link_token     TEXT NOT NULL UNIQUE,
+            is_notion      INTEGER NOT NULL DEFAULT 0,
+            client_name    TEXT,
+            linked_at      TEXT,
+            linked_by      TEXT
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_google_sheet_links_token ON google_sheet_links (link_token)")
+
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
         try:
