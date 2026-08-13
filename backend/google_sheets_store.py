@@ -389,7 +389,7 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored, duplicates = 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated = 0, 0, 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
@@ -436,7 +436,35 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
 
             existing = current.get(task_id)
             if not existing:
-                # References a task id Lumina no longer has -- nothing to reconcile against.
+                # References a task id Lumina no longer has. Most commonly:
+                # the row was deleted (which correctly deleted the Lumina
+                # task, by design), then the delete was undone with Ctrl+Z in
+                # Sheets -- the row comes back with its old task_id still in
+                # column A, but that id is gone for good (Notion/SQLite have
+                # no "undelete" this code uses). Silently skipping would
+                # leave that row permanently dead: it looks normal, but every
+                # future edit to it also hits this same branch and does
+                # nothing, forever, with no error anywhere. Instead, treat it
+                # like a blank-id row -- recreate as a new task from the
+                # row's current data and overwrite column A with the new id,
+                # so undo-after-delete recovers a working (if new-id) task
+                # instead of a silently dead row.
+                new_id = _create_task(client_id, client_name, is_notion, row_fields)
+                if new_id:
+                    logger.warning(
+                        f"Sheets reconcile: row {row_number} (client {client_id}) referenced task_id "
+                        f"{task_id}, which no longer exists in Lumina -- recreated as {new_id} "
+                        f"(likely a Sheets undo after a row delete)."
+                    )
+                    ok = _retry(lambda: write_cell(spreadsheet_id, f"A{row_number}", new_id))
+                    if not ok:
+                        logger.error(
+                            f"Sheets reconcile: giving up writing back recreated task id {new_id} for "
+                            f"row {row_number} (client {client_id}) after retries."
+                        )
+                    _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
+                                 changed_fields=list(row_fields.keys()))
+                    recreated += 1
                 continue
             old_fields = _task_to_fields(existing)
             if old_fields == row_fields:
@@ -465,7 +493,8 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
             f"{len(current)} known tasks -- skipping delete pass as a safety measure."
         )
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
-                "errored": errored, "duplicates": duplicates, "deletes_skipped_safety": len(current)}
+                "errored": errored, "duplicates": duplicates, "recreated": recreated,
+                "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in seen_ids:
@@ -473,4 +502,4 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
             deleted += 1
 
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
-            "errored": errored, "duplicates": duplicates}
+            "errored": errored, "duplicates": duplicates, "recreated": recreated}
