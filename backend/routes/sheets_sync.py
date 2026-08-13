@@ -68,7 +68,11 @@ def _base_url() -> str:
 def _apps_script_snippet(webhook_url: str) -> str:
     return (
         "function onSheetChange(e) {\n"
-        "  var sheet = SpreadsheetApp.getActiveSheet();\n"
+        "  // Always the first tab, not getActiveSheet() -- Lumina only ever\n"
+        "  // reads/writes this spreadsheet's first tab, so if a second tab is\n"
+        "  // ever added and edited, this still targets the one that actually\n"
+        "  // syncs instead of silently sending the wrong tab's data.\n"
+        "  var sheet = SpreadsheetApp.getActive().getSheets()[0];\n"
         "  var data = sheet.getDataRange().getValues();\n"
         "  var rows = data.slice(1); // drop header row\n"
         "  UrlFetchApp.fetch(\"" + webhook_url + "\", {\n"

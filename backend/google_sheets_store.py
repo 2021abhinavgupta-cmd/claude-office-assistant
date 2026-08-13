@@ -296,6 +296,29 @@ def _update_task(task_id: str, is_notion: bool, fields: dict, editor_name: str) 
     return True
 
 
+def _log_version(task_id: str, client_id: str, editor_name: str, fields: dict, changed_fields=None):
+    """Records one sheet_edit_log entry for a Sheet-originated create/update,
+    same table/shape routes/ops.py's log_sheet_version writes for Lumina-
+    originated edits (see gotcha #74). Without this, a task's Version
+    History only ever showed edits made through Lumina's own UI -- any edit
+    made directly in the linked Google Sheet was invisible there, even
+    though it changed the task. Best-effort: a logging failure must never
+    break the actual sync it's recording."""
+    try:
+        from db import get_connection
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO sheet_edit_log (task_id, client_id, editor_name, edited_at, snapshot, changed_fields) "
+                "VALUES (?,?,?,?,?,?)",
+                (task_id, client_id, editor_name, f"{today_ist()} {now_ist()}", json.dumps(fields),
+                 json.dumps(changed_fields) if changed_fields is not None else None),
+            )
+        conn.close()
+    except Exception:
+        logger.exception(f"Sheets reconcile: failed to log version for task {task_id}")
+
+
 def _delete_task(task_id: str, is_notion: bool) -> bool:
     if is_notion:
         return notion_store.archive_notion_page(task_id)
@@ -392,6 +415,8 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
                             f"{row_number} (client {client_id}) after retries -- row stays id-less "
                             f"and may get duplicate-created on the next unrelated edit."
                         )
+                    _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
+                                 changed_fields=list(row_fields.keys()))
                     created += 1
                 continue
 
@@ -413,10 +438,14 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
             if not existing:
                 # References a task id Lumina no longer has -- nothing to reconcile against.
                 continue
-            if _task_to_fields(existing) == row_fields:
+            old_fields = _task_to_fields(existing)
+            if old_fields == row_fields:
                 skipped += 1
                 continue
             _update_task(task_id, is_notion, row_fields, editor_name)
+            changed = [k for k in row_fields if row_fields.get(k) != old_fields.get(k)]
+            _log_version(task_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
+                         changed_fields=changed)
             updated += 1
         except Exception:
             logger.exception(f"Sheets reconcile: skipping malformed row {row_number} for client {client_id}")
