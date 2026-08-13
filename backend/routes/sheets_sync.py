@@ -172,11 +172,31 @@ def create_google_sheet_link(client_id: str):
         )
     conn.close()
 
+    # One-time backfill: push every task Lumina already has for this client
+    # into the newly-linked Sheet. Without this, connecting a client with
+    # pre-existing tasks leaves the Sheet empty until each row happens to be
+    # individually edited in Lumina (which is what triggers a push) -- not
+    # discoverable, and impractical for a client with a dozen+ existing
+    # tasks. push_task_to_sheet is safe to call repeatedly (it looks up the
+    # row by task_id and overwrites in place, or appends if missing), so
+    # this is also safe to re-run on a re-link.
+    backfilled = 0
+    try:
+        existing_tasks = gs._current_tasks_by_id(client_id, is_notion)
+        link_for_push = {"spreadsheet_id": spreadsheet_id}
+        for tid, task in existing_tasks.items():
+            fields = gs._task_to_fields(task)
+            if gs.push_task_to_sheet(link_for_push, tid, fields):
+                backfilled += 1
+    except Exception:
+        logger.exception(f"Sheets connect: backfill failed for client {client_id}")
+
     webhook_url = f"{_base_url()}/api/sheets/webhook/{link_token}"
     return jsonify({
         "success": True, "spreadsheet_id": spreadsheet_id,
         "service_account_email": gs.service_account_email(),
         "apps_script": _apps_script_snippet(webhook_url),
+        "backfilled": backfilled,
     })
 
 

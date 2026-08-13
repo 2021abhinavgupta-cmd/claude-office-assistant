@@ -3908,7 +3908,7 @@ document.addEventListener('paste', function(e) {
         });
         const d = await res.json();
         if (!d.success) { toast(d.error || 'Failed to connect', 'err'); return; }
-        toast('Sheet connected');
+        toast(d.backfilled ? `Sheet connected -- ${d.backfilled} existing task(s) pushed in` : 'Sheet connected');
         loadLinkedSheetClientIds();
         openGoogleSheetLinkModal(clientId);
       } catch (e) {
