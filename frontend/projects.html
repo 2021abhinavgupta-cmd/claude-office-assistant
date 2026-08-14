@@ -1731,8 +1731,6 @@ function renderClientSheets(clientId) {
           <div style="display: flex; align-items: center; justify-content: space-between; gap:4px;">
              <input type="checkbox" class="sheet-row-chk" ${isChecked?'checked':''} onclick="event.stopPropagation(); toggleSheetRowCheck('${clientId}', '${t.id}', this.checked)" style="cursor:pointer;">
              <span style="cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Click to delete this row (Undo available for 8s)">${rowIndex++}</span>
-             ${t.last_edited_by ? `<span style="font-size: 0.7rem; opacity: 0.6; cursor:pointer;" onclick="event.stopPropagation(); openRowHistory('${t.id}', '${clientId}')" title="${esc(t.last_edited_by)} · ${esc(t.last_edited_at||'')}${t.last_edited_summary ? ' · Changed: '+esc(t.last_edited_summary) : ''}">🕓</span>` : ''}
-             <span style="font-size: 0.7rem; color: var(--red); opacity: 0.7; cursor:pointer;" onclick="deleteSocialSheetRow('${t.id}', '${clientId}')" title="Delete Row">🗑️</span>
           </div>
         </td>
         <td class="sheet-col-1" style="padding: 10px; border-right: 1px solid var(--bdr); white-space: nowrap; color: var(--txt);">
@@ -2628,21 +2626,13 @@ async function applySheetFields(taskId, clientId, fields, cellElem) {
     const editorName = (window.EMP_DICT && window.EMP_DICT[UID]) || UID;
     if (editedLabels.length && tr) {
       const nowStr = new Date().toISOString().slice(0,19).replace('T',' ');
+      // last_edited_* is still tracked (feeds the toolbar "Edit History" /
+      // global Version History browser and the per-row history overlay) --
+      // only the inline per-row 🕓 icon in the row-number cell was removed
+      // per user request, the underlying edit tracking itself was not.
       taskObj.last_edited_by = editorName;
       taskObj.last_edited_at = nowStr;
       taskObj.last_edited_summary = editedLabels.join(', ');
-      const tipText = `${editorName} · ${nowStr} · Changed: ${editedLabels.join(', ')}`;
-      let editIcon = tr.querySelector('.sheet-last-edited-icon');
-      if (!editIcon) {
-        editIcon = document.createElement('span');
-        editIcon.className = 'sheet-last-edited-icon';
-        editIcon.style.cssText = 'font-size:0.7rem;opacity:0.6;cursor:pointer;';
-        editIcon.textContent = '🕓';
-        editIcon.onclick = (e) => { e.stopPropagation(); openRowHistory(taskId, clientId); };
-        const rowNumSpan = tr.cells[0].querySelector('span');
-        if (rowNumSpan) rowNumSpan.insertAdjacentElement('afterend', editIcon);
-      }
-      editIcon.title = tipText;
     }
 
     // Log this save as a new version in the row's full history. Fire-and-
