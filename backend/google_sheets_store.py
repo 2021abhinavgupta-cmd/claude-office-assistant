@@ -46,6 +46,54 @@ def _get_client_sheet_lock(client_id: str) -> threading.Lock:
         return lock
 
 
+# The per-client lock above makes push/delete/reconcile take turns instead
+# of literally overlapping, but that alone doesn't stop a genuine field-level
+# conflict: Apps Script reads the live sheet at trigger time, OUTSIDE any
+# lock we control, then POSTs it. If a push writes a field's new value into
+# the Sheet in the gap between that read and this webhook's payload actually
+# arriving and acquiring the lock, the payload reconcile ends up processing
+# still holds the OLD value for that field -- and since updates are applied
+# as a whole-row overwrite (deliberately, see reconcile's own docstring on
+# why this codebase avoids diff-only payloads), the stale payload would
+# silently stomp the value push just wrote, with no error and no signal that
+# anything was lost.
+#
+# PUSH_FRESHNESS_WINDOW_SECONDS below closes the common case: if this
+# task_id was pushed within the last few seconds, reconcile treats an
+# incoming update for it as possibly-stale and skips applying it THIS pass,
+# rather than blindly overwriting. Nothing is lost by skipping -- the Sheet
+# row itself is untouched (we didn't write anything), so the very next edit
+# anywhere in the sheet re-triggers onChange and reconcile re-evaluates this
+# row with a fresh read that, by then, reflects the push. Worst case a
+# same-instant Sheet edit applies on the next trigger instead of instantly;
+# best case (the much more common one) it correctly defers to whichever
+# side's write actually happened last. In-memory only (matches the lock
+# dicts above) -- a restart just resets to the pre-fix behavior for the
+# handful of tasks mid-edit at that exact moment, never worse than before
+# this existed.
+_recent_pushes: dict = {}
+_recent_pushes_guard = threading.Lock()
+PUSH_FRESHNESS_WINDOW_SECONDS = 8
+
+
+def _mark_pushed(task_id: str):
+    with _recent_pushes_guard:
+        _recent_pushes[task_id] = time.monotonic()
+        # Opportunistic prune, piggybacked on the same write -- keeps this
+        # dict from growing unbounded over the life of the process without
+        # needing a scheduled job (same reasoning as the tombstone table's
+        # prune-on-insert).
+        cutoff = time.monotonic() - (PUSH_FRESHNESS_WINDOW_SECONDS * 10)
+        for tid in [t for t, ts in _recent_pushes.items() if ts < cutoff]:
+            del _recent_pushes[tid]
+
+
+def _recently_pushed(task_id: str) -> bool:
+    with _recent_pushes_guard:
+        ts = _recent_pushes.get(task_id)
+    return ts is not None and (time.monotonic() - ts) < PUSH_FRESHNESS_WINDOW_SECONDS
+
+
 def _retry(fn, attempts: int = 3, base_delay: float = 0.4) -> bool:
     """Runs fn() up to `attempts` times with short backoff between tries.
     Returns True once fn() completes without raising, False if every
@@ -561,6 +609,7 @@ def _push_task_to_sheet_locked(link: dict, task_id: str, fields: dict) -> bool:
             write_row(spreadsheet_id, row_number, values)
         else:
             append_row(spreadsheet_id, values)
+        _mark_pushed(task_id)
         return True
     except Exception:
         logger.exception(f"Sheets push: failed to write row for task {task_id}")
@@ -597,7 +646,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned = 0, 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
@@ -702,6 +752,21 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
             if old_fields == row_fields:
                 skipped += 1
                 continue
+            if _recently_pushed(task_id):
+                # `existing` (fetched fresh, after this pass acquired the
+                # per-client lock) already reflects that recent push. Since
+                # it still differs from row_fields, this payload's view of
+                # this row predates the push -- applying it would silently
+                # overwrite the field(s) that push just wrote. Skip this
+                # task for this pass only; see PUSH_FRESHNESS_WINDOW_SECONDS
+                # above for why nothing is lost by doing so.
+                logger.info(
+                    f"Sheets reconcile: row {row_number} (client {client_id}, task_id {task_id}) was "
+                    f"pushed to within the last {PUSH_FRESHNESS_WINDOW_SECONDS}s -- deferring this "
+                    f"update to the next pass instead of risking a stale overwrite."
+                )
+                skipped_recent_push += 1
+                continue
             _update_task(task_id, is_notion, row_fields, editor_name)
             changed = [k for k in row_fields if row_fields.get(k) != old_fields.get(k)]
             _log_version(task_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
@@ -726,7 +791,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
         )
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
-                "tombstoned": tombstoned, "deletes_skipped_safety": len(current)}
+                "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
+                "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in seen_ids:
@@ -734,4 +800,5 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
             deleted += 1
 
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
-            "errored": errored, "duplicates": duplicates, "recreated": recreated, "tombstoned": tombstoned}
+            "errored": errored, "duplicates": duplicates, "recreated": recreated,
+            "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push}
