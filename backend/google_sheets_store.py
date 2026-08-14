@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime, timedelta
 
@@ -15,6 +16,29 @@ import notion_store
 from utils import today_ist, now_ist, IST
 
 logger = logging.getLogger(__name__)
+
+# Per-client lock for reconcile_sheet_rows. Deployment is a single gunicorn
+# worker (gevent, see Procfile) -- gunicorn's gevent worker monkey-patches
+# stdlib threading on startup, so a plain threading.Lock here is genuinely
+# gevent-cooperative and correctly serializes two webhook requests for the
+# SAME client that land close together (e.g. Apps Script firing onChange
+# more than once for one paste/bulk-edit action). Without this, two
+# concurrent passes can both read the same stale `current` snapshot, both
+# see the same blank-task_id row, and both call _create_task for it --
+# duplicate task, and a second write_cell racing the first for which new id
+# actually lands in column A. Scoped per-client (not global) since different
+# clients' reconciles touch disjoint data and shouldn't block each other.
+_reconcile_locks: dict = {}
+_reconcile_locks_guard = threading.Lock()
+
+
+def _get_reconcile_lock(client_id: str) -> threading.Lock:
+    with _reconcile_locks_guard:
+        lock = _reconcile_locks.get(client_id)
+        if lock is None:
+            lock = threading.Lock()
+            _reconcile_locks[client_id] = lock
+        return lock
 
 
 def _retry(fn, attempts: int = 3, base_delay: float = 0.4) -> bool:
@@ -478,6 +502,19 @@ def push_task_to_sheet(link: dict, task_id: str, fields: dict) -> bool:
     Returns whether the push itself succeeded, so the caller can record
     sync-health state (see routes/sheets_sync.py) without changing that
     fire-and-forget contract from the frontend's point of view."""
+    if _is_tombstoned(task_id):
+        # A push that lands after this task was already deleted from Lumina
+        # (slow request, retry, or just unlucky ordering with the delete)
+        # would otherwise write the row straight back into the Sheet --
+        # undoing the delete from the OPPOSITE direction the tombstone in
+        # reconcile_sheet_rows() guards against. And it's worse than a
+        # simple resurrection: once TOMBSTONE_TTL_MINUTES elapses, that
+        # phantom row stops being tombstoned too, so the next unrelated
+        # Sheet edit's reconcile would treat it as a normal "Sheets undo"
+        # and recreate the task in Lumina as well -- a delayed push alone
+        # would eventually resurrect the task on both sides.
+        logger.info(f"Sheets push: skipping push for tombstoned task {task_id} (deleted from Lumina).")
+        return False
     if not is_configured():
         return False
     spreadsheet_id = link["spreadsheet_id"]
@@ -508,6 +545,15 @@ def push_task_to_sheet(link: dict, task_id: str, fields: dict) -> bool:
 
 
 def reconcile_sheet_rows(link: dict, rows: list) -> dict:
+    """Public entry point -- serializes concurrent reconcile passes for the
+    same client (see _get_reconcile_lock) before handing off to the real
+    implementation below. Two webhook calls for different clients run fully
+    in parallel; two for the SAME client run one after the other."""
+    with _get_reconcile_lock(link["client_id"]):
+        return _reconcile_sheet_rows_locked(link, rows)
+
+
+def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
     """Sheet -> Lumina. `rows` is data rows only (the Apps Script snippet
     strips the header before posting). Full-snapshot diff against the
     client's current tasks, not incremental per-cell events -- chosen to
