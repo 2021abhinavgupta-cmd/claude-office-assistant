@@ -959,16 +959,28 @@ def get_dashboard_data() -> dict:
         return {"configured": False, "clients": []}
 
     clients = list_clients()
-    all_tasks = list_tasks()  # fetch all tasks once
 
+    # Per-client filtered queries (server-side "Client ID equals" filter),
+    # not one big unfiltered fetch-everything-then-match-in-Python. This
+    # workspace has 350+ tasks -- a single unfiltered list_tasks() call
+    # paginates at 200/page, and Notion's cursor pagination has no snapshot
+    # isolation: a task created/edited by someone else while page 2 is being
+    # fetched can shift the sort order enough to skip a row entirely near
+    # the page boundary. That looked exactly like "a task silently
+    # disappeared from Lumina" for a real task on 2026-08-14, in a workspace
+    # that's edited live throughout the day. Each per-client query here
+    # returns far fewer rows (usually well under 200, single page), so it's
+    # not exposed to that race the way one giant cross-client fetch is.
     assigned_task_ids = set()
     for client in clients:
-        client["tasks"] = [
-            t for t in all_tasks
-            if t.get("client_notion_id") == client["notion_id"]
-        ]
+        client["tasks"] = list_tasks(client_notion_id=client["notion_id"])
         assigned_task_ids.update(t["notion_id"] for t in client["tasks"])
-        
+
+    # Still need one unfiltered pass to find genuinely unassigned tasks
+    # (no client_notion_id at all) -- this bucket keeps the same residual
+    # pagination-race exposure the per-client lists no longer have, but it's
+    # a much smaller blast radius (a misc bucket, not every client's task list).
+    all_tasks = list_tasks()
     unassigned_tasks = [t for t in all_tasks if t["notion_id"] not in assigned_task_ids]
     if unassigned_tasks:
         clients.append({
