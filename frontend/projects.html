@@ -1438,13 +1438,13 @@ function updateBulkBar(clientId) {
   bar.innerHTML = `
     <span>${keys.length} row(s) selected</span>
     <select id="bulk-status-select" style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);border-radius:6px;padding:6px;">
-      <option value="">Set status…</option>
-      <option value="need_to_start">Need to Start</option>
-      <option value="scheduled">Scheduled</option>
-      <option value="in_progress">In Progress</option>
-      <option value="paused">Paused</option>
-      <option value="posted">Posted</option>
-      <option value="final">Final</option>
+      <option value="" style="color:#000;background:#fff;">Set status…</option>
+      <option value="need_to_start" style="color:#000;background:#fff;">Need to Start</option>
+      <option value="scheduled" style="color:#000;background:#fff;">Scheduled</option>
+      <option value="in_progress" style="color:#000;background:#fff;">In Progress</option>
+      <option value="paused" style="color:#000;background:#fff;">Paused</option>
+      <option value="posted" style="color:#000;background:#fff;">Posted</option>
+      <option value="final" style="color:#000;background:#fff;">Final</option>
     </select>
     <button style="background:var(--s2);color:var(--txt);border:1px solid var(--bdr);padding:6px 12px;border-radius:6px;cursor:pointer;">Hide</button>
     <button style="background:var(--red);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;">Delete</button>
@@ -1669,12 +1669,12 @@ function renderClientSheets(clientId) {
         <td class="sheet-col-3" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(title)}</td>
         <td class="sheet-col-4" style="padding: 10px; border-right: 1px solid var(--bdr);">
           <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
-            <option value="" ${type===''?'selected':''}></option>
-            <option value="Story" ${type.toLowerCase()==='story'?'selected':''}>Story</option>
-            <option value="Reel" ${type.toLowerCase()==='reel'?'selected':''}>Reel</option>
-            <option value="Static" ${type.toLowerCase()==='static'?'selected':''}>Static</option>
-            <option value="Carousel" ${type.toLowerCase()==='carousel'?'selected':''}>Carousel</option>
-            <option value="Post" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
+            <option value="" style="color:#000;background:#fff;" ${type===''?'selected':''}></option>
+            <option value="Story" style="color:#000;background:#fff;" ${type.toLowerCase()==='story'?'selected':''}>Story</option>
+            <option value="Reel" style="color:#000;background:#fff;" ${type.toLowerCase()==='reel'?'selected':''}>Reel</option>
+            <option value="Static" style="color:#000;background:#fff;" ${type.toLowerCase()==='static'?'selected':''}>Static</option>
+            <option value="Carousel" style="color:#000;background:#fff;" ${type.toLowerCase()==='carousel'?'selected':''}>Carousel</option>
+            <option value="Post" style="color:#000;background:#fff;" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
           </select>
         </td>
         <td class="sheet-col-5" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(content)}</td>
@@ -1696,13 +1696,13 @@ function renderClientSheets(clientId) {
         </td>
         <td class="sheet-col-10" style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">
           <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
-            <option value="need_to_start" ${['need_to_start','not_started',''].includes(s)?'selected':''}>Need to Start</option>
-            <option value="scheduled"     ${s==='scheduled'    ?'selected':''}>Scheduled</option>
-            <option value="in_progress"   ${s==='in_progress'  ?'selected':''}>In Progress</option>
-            <option value="paused"         ${s==='paused'       ?'selected':''}>Paused</option>
-            <option value="need_for_approval" ${['need_for_approval','Need for approval'].includes(s)?'selected':''}>Need for approval</option>
-            <option value="posted"         ${['posted','approved','done'].includes(s)?'selected':''}>Posted</option>
-            <option value="final"          ${s==='final'        ?'selected':''}>Final</option>
+            <option value="need_to_start" style="color:#000;background:#fff;" ${['need_to_start','not_started',''].includes(s)?'selected':''}>Need to Start</option>
+            <option value="scheduled"     style="color:#000;background:#fff;" ${s==='scheduled'    ?'selected':''}>Scheduled</option>
+            <option value="in_progress"   style="color:#000;background:#fff;" ${s==='in_progress'  ?'selected':''}>In Progress</option>
+            <option value="paused"        style="color:#000;background:#fff;" ${s==='paused'       ?'selected':''}>Paused</option>
+            <option value="need_for_approval" style="color:#000;background:#fff;" ${['need_for_approval','Need for approval'].includes(s)?'selected':''}>Need for approval</option>
+            <option value="posted"        style="color:#000;background:#fff;" ${['posted','approved','done'].includes(s)?'selected':''}>Posted</option>
+            <option value="final"         style="color:#000;background:#fff;" ${s==='final'        ?'selected':''}>Final</option>
           </select>
         </td>
         <td class="sheet-col-11" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(link)}</td>
