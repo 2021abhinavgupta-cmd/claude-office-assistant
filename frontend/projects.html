@@ -870,6 +870,48 @@ function syncSheetSingleDisplay(select) {
   });
 }
 
+// Ctrl/Cmd+Click a URL inside a Sheets text cell (Content/Idea/Scripts/
+// Caption/Link/Notes) to open it in a new tab -- same convention real
+// Google Sheets uses for cells that aren't dedicated link fields. These
+// cells store plain text (not <a> tags -- contenteditable with real
+// anchors makes editing/cursor placement unreliable), so there's nothing
+// for the browser's own link-hover/middle-click handling to act on; this
+// gives predictable click-to-open behavior without depending on the OS,
+// browser, or a third-party extension to auto-detect the URL text.
+const SHEET_CELL_URL_RE = /(https?:\/\/[^\s<>"']+)/g;
+function openUrlOnCtrlClick(e) {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const cell = e.currentTarget;
+  const text = cell.innerText || '';
+  const matches = [...text.matchAll(SHEET_CELL_URL_RE)];
+  if (!matches.length) return;
+
+  // Prefer the URL under the actual click point (cells can contain more
+  // than one link, e.g. Content/Scripts often list several IG links) --
+  // falls back to the first URL in the cell if the exact offset can't be
+  // resolved (older browsers, or a click that lands outside any text node).
+  let offset = null;
+  try {
+    let range;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(e.clientX, e.clientY);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+      if (pos) { range = document.createRange(); range.setStart(pos.offsetNode, pos.offset); }
+    }
+    if (range) {
+      const preRange = document.createRange();
+      preRange.selectNodeContents(cell);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      offset = preRange.toString().length;
+    }
+  } catch (_) { /* fall through to first-match */ }
+
+  const hit = (offset != null && matches.find(m => offset >= m.index && offset <= m.index + m[0].length)) || matches[0];
+  e.preventDefault();
+  window.open(hit[0], '_blank', 'noopener');
+}
+
 // Stops a fast 2-finger trackpad swipe from triggering the browser's
 // back/forward navigation gesture once a horizontally-scrollable element
 // hits its scroll boundary. overscroll-behavior-x:none alone doesn't
@@ -1721,10 +1763,10 @@ function renderClientSheets(clientId) {
             </select>
           </div>
         </td>
-        <td class="sheet-col-5" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(content)}</td>
-        <td class="sheet-col-6" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(idea)}</td>
-        <td class="sheet-col-7" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(scripts)}</td>
-        <td class="sheet-col-8" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(caption)}</td>
+        <td class="sheet-col-5" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')" onclick="openUrlOnCtrlClick(event)">${esc(content)}</td>
+        <td class="sheet-col-6" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')" onclick="openUrlOnCtrlClick(event)">${esc(idea)}</td>
+        <td class="sheet-col-7" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')" onclick="openUrlOnCtrlClick(event)">${esc(scripts)}</td>
+        <td class="sheet-col-8" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')" onclick="openUrlOnCtrlClick(event)">${esc(caption)}</td>
         <td class="sheet-col-9" style="padding: 6px 10px; border-right: 1px solid var(--bdr); position: relative; overflow: visible;">
           <div class="ms-wrap sheet-ms-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
             <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="background:var(--s1); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; font-size:0.82rem; cursor:pointer; min-height:28px;">
@@ -1761,8 +1803,8 @@ function renderClientSheets(clientId) {
             </select>
           </div>
         </td>
-        <td class="sheet-col-11" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(link)}</td>
-        <td class="sheet-col-12" style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(myNotes)}</td>
+        <td class="sheet-col-11" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')" onclick="openUrlOnCtrlClick(event)">${esc(link)}</td>
+        <td class="sheet-col-12" style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')" onclick="openUrlOnCtrlClick(event)">${esc(myNotes)}</td>
       </tr>
     `;
   });
