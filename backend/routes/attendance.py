@@ -6,7 +6,7 @@ import csv
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from io import StringIO
 from pathlib import Path
 
@@ -17,6 +17,28 @@ from utils import (IST, _is_admin, _load_employees, _save_employees,
 
 logger = logging.getLogger(__name__)
 attendance_bp = Blueprint("attendance", __name__)
+
+# Work-day window for the daily_attendance summary (checkin_time/checkout_time
+# -- what the Live Attendance dashboard cards and "Total" hours are computed
+# from). A login/logout outside this window (e.g. checking Lumina at
+# midnight) still happened and is still logged verbatim in the raw
+# `attendance` audit table, but must not be allowed to stretch the day's
+# recorded work window earlier/later than the business day actually runs.
+WORK_START = dt_time(9, 0, 0)
+WORK_END = dt_time(22, 30, 0)
+
+
+def _clamp_work_time(hhmmss: str) -> str:
+    try:
+        h, m, s = (int(p) for p in hhmmss.split(":"))
+        actual = dt_time(h, m, s)
+    except Exception:
+        return hhmmss
+    if actual < WORK_START:
+        return WORK_START.strftime("%H:%M:%S")
+    if actual > WORK_END:
+        return WORK_END.strftime("%H:%M:%S")
+    return hhmmss
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -40,9 +62,11 @@ def _attendance_payload():
 
 
 def _attendance_checkin(user_id: str):
-    """First IST login of day wins; ON CONFLICT DO NOTHING prevents overwriting."""
+    """First IST login of day wins; ON CONFLICT DO NOTHING prevents overwriting.
+    checkin_time is clamped to the work-day window (see WORK_START/WORK_END)
+    so a login before 9am doesn't record the day as having started at 2am."""
     d = today_ist()
-    t = now_ist()
+    t = _clamp_work_time(now_ist())
     ts = datetime.now(IST).isoformat(timespec="seconds")
     conn = _attendance_conn()
     with conn:
@@ -69,9 +93,11 @@ def _attendance_checkin(user_id: str):
 
 
 def _attendance_checkout(user_id: str):
-    """Always updates checkout_time to latest IST logout (UPSERT)."""
+    """Always updates checkout_time to latest IST logout (UPSERT).
+    checkout_time is clamped to the work-day window (see WORK_START/WORK_END)
+    so a logout after 10:30pm doesn't stretch the recorded work day later."""
     d = today_ist()
-    t = now_ist()
+    t = _clamp_work_time(now_ist())
     ts = datetime.now(IST).isoformat(timespec="seconds")
     conn = _attendance_conn()
     with conn:
