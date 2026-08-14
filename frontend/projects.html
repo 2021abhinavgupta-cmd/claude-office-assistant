@@ -184,6 +184,7 @@
     .ms-wrap.open .ms-dropdown { display:block; }
     .ms-dropdown label { display:flex; align-items:center; gap:6px; padding:6px 10px; cursor:pointer; font-size:.85rem; text-transform:none; margin-bottom:2px; color:var(--txt); font-weight:400; border-radius:4px; }
     .ms-dropdown label:hover { background:var(--s2); }
+    .ms-dropdown label.active { background:var(--acc); color:#000; font-weight:600; }
     /* Quick tasks column special style */
     .kcard.qt-card .kcard-client{color:var(--blu)}
     /* Assignee picker */
@@ -838,6 +839,37 @@ function updateSheetMsDisplay(chk) {
   }
 }
 
+// Single-select version of the ms-wrap/ms-dropdown pattern (Type, Status
+// columns in Sheets) -- a real <select> stays in the DOM as the source of
+// truth (hidden, not removed) so every existing read site that does
+// td.querySelector('select').value keeps working unchanged; this just
+// drives that hidden select from a dark-themed custom dropdown matching
+// the Assign column's look instead of the browser's native (always
+// white-background) <select> popup.
+function pickSheetSingleOption(labelEl, value) {
+  const wrap = labelEl.closest('.ms-wrap');
+  const select = wrap.querySelector('select');
+  select.value = value;
+  syncSheetSingleDisplay(select);
+  wrap.classList.remove('open');
+  select.dispatchEvent(new Event('change'));
+}
+
+// Re-syncs the visible ms-display text + active label whenever the hidden
+// select's value is set programmatically (paste, version restore, bulk
+// status apply) instead of via pickSheetSingleOption above.
+function syncSheetSingleDisplay(select) {
+  const wrap = select.closest('.ms-wrap');
+  if (!wrap) return;
+  const display = wrap.querySelector('.ms-display');
+  const opt = select.options[select.selectedIndex];
+  const label = (opt && opt.textContent.trim()) || '';
+  if (display) display.textContent = label || 'Select';
+  wrap.querySelectorAll('.ms-dropdown label').forEach(l => {
+    l.classList.toggle('active', l.textContent.trim() === label);
+  });
+}
+
 // Stops a fast 2-finger trackpad swipe from triggering the browser's
 // back/forward navigation gesture once a horizontally-scrollable element
 // hits its scroll boundary. overscroll-behavior-x:none alone doesn't
@@ -986,7 +1018,7 @@ function writeSnapshotToRowCells(tr, snapshot) {
   const dateInput1 = tr.cells[1].querySelector('input'); if (dateInput1) dateInput1.value = snapshot.creation_date || '';
   const dateInput2 = tr.cells[2].querySelector('input'); if (dateInput2) dateInput2.value = snapshot.due_date || '';
   tr.cells[3].innerText = snapshot.title || '';
-  const typeSelect = tr.cells[4].querySelector('select'); if (typeSelect) typeSelect.value = snapshot.type || '';
+  const typeSelect = tr.cells[4].querySelector('select'); if (typeSelect) { typeSelect.value = snapshot.type || ''; syncSheetSingleDisplay(typeSelect); }
   tr.cells[5].innerText = snapshot.content || '';
   tr.cells[6].innerText = snapshot.idea || '';
   tr.cells[7].innerText = snapshot.scripts || '';
@@ -1000,7 +1032,7 @@ function writeSnapshotToRowCells(tr, snapshot) {
     const assignSelect = tr.cells[9].querySelector('select');
     if (assignSelect) assignSelect.value = snapshot.assigned_to || '';
   }
-  const statusSelect = tr.cells[10].querySelector('select'); if (statusSelect) statusSelect.value = snapshot.status || '';
+  const statusSelect = tr.cells[10].querySelector('select'); if (statusSelect) { statusSelect.value = snapshot.status || ''; syncSheetSingleDisplay(statusSelect); }
   tr.cells[11].innerText = snapshot.link || '';
   tr.cells[12].innerText = snapshot.myNotes || '';
 }
@@ -1489,6 +1521,7 @@ async function bulkSetStatus(clientId, status) {
     const select = tr.cells[10].querySelector('select');
     if (select) {
       select.value = status;
+      syncSheetSingleDisplay(select);
       await saveSheetRow(taskId, select, clientId);
     }
   }
@@ -1667,15 +1700,26 @@ function renderClientSheets(clientId) {
           <input type="date" lang="en-GB" style="background:transparent; color:inherit; border:none; outline:none; font-family:inherit; font-size:inherit; width:100%; cursor:pointer;" value="${t.due_date || ""}" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
         </td>
         <td class="sheet-col-3" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-weight: 500; outline:none; cursor:text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(title)}</td>
-        <td class="sheet-col-4" style="padding: 10px; border-right: 1px solid var(--bdr);">
-          <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
-            <option value="" style="color:#000;background:#fff;" ${type===''?'selected':''}></option>
-            <option value="Story" style="color:#000;background:#fff;" ${type.toLowerCase()==='story'?'selected':''}>Story</option>
-            <option value="Reel" style="color:#000;background:#fff;" ${type.toLowerCase()==='reel'?'selected':''}>Reel</option>
-            <option value="Static" style="color:#000;background:#fff;" ${type.toLowerCase()==='static'?'selected':''}>Static</option>
-            <option value="Carousel" style="color:#000;background:#fff;" ${type.toLowerCase()==='carousel'?'selected':''}>Carousel</option>
-            <option value="Post" style="color:#000;background:#fff;" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
-          </select>
+        <td class="sheet-col-4" style="padding: 6px 10px; border-right: 1px solid var(--bdr); position: relative; overflow: visible;">
+          <div class="ms-wrap sheet-single-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
+            <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="background:var(--s1); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; font-size:0.82rem; cursor:pointer; min-height:28px;">${esc(type) || 'Select'}</div>
+            <div class="ms-dropdown">
+              <label class="${type===''?'active':''}" onclick="pickSheetSingleOption(this, '')">—</label>
+              <label class="${type.toLowerCase()==='story'?'active':''}" onclick="pickSheetSingleOption(this, 'Story')">Story</label>
+              <label class="${type.toLowerCase()==='reel'?'active':''}" onclick="pickSheetSingleOption(this, 'Reel')">Reel</label>
+              <label class="${type.toLowerCase()==='static'?'active':''}" onclick="pickSheetSingleOption(this, 'Static')">Static</label>
+              <label class="${type.toLowerCase()==='carousel'?'active':''}" onclick="pickSheetSingleOption(this, 'Carousel')">Carousel</label>
+              <label class="${type.toLowerCase()==='post'?'active':''}" onclick="pickSheetSingleOption(this, 'Post')">Post</label>
+            </div>
+            <select style="display:none;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+              <option value="" ${type===''?'selected':''}></option>
+              <option value="Story" ${type.toLowerCase()==='story'?'selected':''}>Story</option>
+              <option value="Reel" ${type.toLowerCase()==='reel'?'selected':''}>Reel</option>
+              <option value="Static" ${type.toLowerCase()==='static'?'selected':''}>Static</option>
+              <option value="Carousel" ${type.toLowerCase()==='carousel'?'selected':''}>Carousel</option>
+              <option value="Post" ${type.toLowerCase()==='post'?'selected':''}>Post</option>
+            </select>
+          </div>
         </td>
         <td class="sheet-col-5" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(content)}</td>
         <td class="sheet-col-6" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(idea)}</td>
@@ -1694,16 +1738,28 @@ function renderClientSheets(clientId) {
             </div>
           </div>
         </td>
-        <td class="sheet-col-10" style="padding: 10px; border-right: 1px solid var(--bdr); color: ${stCol}; font-size: 0.8rem;">
-          <select style="background:transparent; color:inherit; border:none; outline:none; cursor:pointer;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
-            <option value="need_to_start" style="color:#000;background:#fff;" ${['need_to_start','not_started',''].includes(s)?'selected':''}>Need to Start</option>
-            <option value="scheduled"     style="color:#000;background:#fff;" ${s==='scheduled'    ?'selected':''}>Scheduled</option>
-            <option value="in_progress"   style="color:#000;background:#fff;" ${s==='in_progress'  ?'selected':''}>In Progress</option>
-            <option value="paused"        style="color:#000;background:#fff;" ${s==='paused'       ?'selected':''}>Paused</option>
-            <option value="need_for_approval" style="color:#000;background:#fff;" ${['need_for_approval','Need for approval'].includes(s)?'selected':''}>Need for approval</option>
-            <option value="posted"        style="color:#000;background:#fff;" ${['posted','approved','done'].includes(s)?'selected':''}>Posted</option>
-            <option value="final"         style="color:#000;background:#fff;" ${s==='final'        ?'selected':''}>Final</option>
-          </select>
+        <td class="sheet-col-10" style="padding: 6px 10px; border-right: 1px solid var(--bdr); font-size: 0.8rem; position: relative; overflow: visible;">
+          <div class="ms-wrap sheet-single-wrap" tabindex="0" onblur="setTimeout(()=>this.classList.remove('open'), 150)">
+            <div class="ms-display" onclick="this.parentElement.classList.toggle('open')" style="background:var(--s1); border:1px solid var(--bdr); border-radius:4px; padding:4px 6px; font-size:0.82rem; cursor:pointer; min-height:28px; color:${stCol};">${{need_to_start:'Need to Start',not_started:'Need to Start','':'Need to Start',scheduled:'Scheduled',in_progress:'In Progress',paused:'Paused',need_for_approval:'Need for approval','Need for approval':'Need for approval',posted:'Posted',approved:'Posted',done:'Posted',final:'Final'}[s] || 'Need to Start'}</div>
+            <div class="ms-dropdown">
+              <label class="${['need_to_start','not_started',''].includes(s)?'active':''}" onclick="pickSheetSingleOption(this, 'need_to_start')">Need to Start</label>
+              <label class="${s==='scheduled'?'active':''}" onclick="pickSheetSingleOption(this, 'scheduled')">Scheduled</label>
+              <label class="${s==='in_progress'?'active':''}" onclick="pickSheetSingleOption(this, 'in_progress')">In Progress</label>
+              <label class="${s==='paused'?'active':''}" onclick="pickSheetSingleOption(this, 'paused')">Paused</label>
+              <label class="${['need_for_approval','Need for approval'].includes(s)?'active':''}" onclick="pickSheetSingleOption(this, 'need_for_approval')">Need for approval</label>
+              <label class="${['posted','approved','done'].includes(s)?'active':''}" onclick="pickSheetSingleOption(this, 'posted')">Posted</label>
+              <label class="${s==='final'?'active':''}" onclick="pickSheetSingleOption(this, 'final')">Final</label>
+            </div>
+            <select style="display:none;" onchange="saveSheetRow('${t.id}', this, '${clientId}')">
+              <option value="need_to_start" ${['need_to_start','not_started',''].includes(s)?'selected':''}>Need to Start</option>
+              <option value="scheduled"     ${s==='scheduled'    ?'selected':''}>Scheduled</option>
+              <option value="in_progress"   ${s==='in_progress'  ?'selected':''}>In Progress</option>
+              <option value="paused"        ${s==='paused'       ?'selected':''}>Paused</option>
+              <option value="need_for_approval" ${['need_for_approval','Need for approval'].includes(s)?'selected':''}>Need for approval</option>
+              <option value="posted"        ${['posted','approved','done'].includes(s)?'selected':''}>Posted</option>
+              <option value="final"         ${s==='final'        ?'selected':''}>Final</option>
+            </select>
+          </div>
         </td>
         <td class="sheet-col-11" style="padding: 10px; border-right: 1px solid var(--bdr); color: var(--txt); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(link)}</td>
         <td class="sheet-col-12" style="padding: 10px; background: rgba(217, 119, 87, 0.08); color: var(--acc); font-size: 0.8rem; white-space: pre-wrap; outline: none; cursor: text;" contenteditable="true" onblur="saveSheetRow('${t.id}', this, '${clientId}')">${esc(myNotes)}</td>
@@ -2077,6 +2133,7 @@ function applyPastedCellValue(td, value) {
   if (select) {
     const opt = Array.from(select.options).find(o => o.textContent.trim().toLowerCase() === value.toLowerCase() || o.value.toLowerCase() === value.toLowerCase());
     if (opt) select.value = opt.value; else if (!value) select.selectedIndex = 0;
+    syncSheetSingleDisplay(select);
     return;
   }
   const dateInput = td.querySelector('input[type="date"]');
