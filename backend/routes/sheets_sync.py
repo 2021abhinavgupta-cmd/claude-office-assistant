@@ -155,17 +155,48 @@ def create_google_sheet_link(client_id: str):
         }), 400
 
     conn = _su_conn()
-    # Reuse the existing link_token if this client is already linked, rather
-    # than always minting a new one. INSERT OR REPLACE would otherwise
-    # silently invalidate an already-installed Apps Script trigger (which
-    # POSTs to a URL containing the OLD token) the moment someone re-submits
-    # Connect for any reason -- e.g. to point at a different Sheet -- turning
-    # a routine re-link into a silent sync outage until the new snippet gets
-    # reinstalled.
     cur = conn.cursor()
-    cur.execute("SELECT link_token FROM google_sheet_links WHERE client_id=?", (client_id,))
+
+    # Guard against the same physical spreadsheet being linked to two
+    # DIFFERENT clients. Nothing about read_all_rows/reconcile is scoped
+    # per-client beyond "whatever client_id this spreadsheet_id's link row
+    # says" -- if a second client claimed the same spreadsheet, both
+    # clients' reconciles would read the exact same rows and each treat the
+    # other's tasks as unrecognized ids to create/delete, a mutual data-
+    # corruption loop rather than a one-off mistake. This can only happen
+    # via a copy-pasted URL mistake (each client's own Connect flow always
+    # points at a sheet the employee just created for that client), so
+    # rejecting it outright is safe -- there's no legitimate reason for two
+    # clients to intentionally share one spreadsheet_id.
+    cur.execute("SELECT client_id, client_name FROM google_sheet_links WHERE spreadsheet_id=?", (spreadsheet_id,))
+    other = cur.fetchone()
+    if other and str(other[0]) != str(client_id):
+        return jsonify({
+            "error": f"That Google Sheet is already linked to a different client"
+                     f"{' (' + other[1] + ')' if other[1] else ''}. "
+                     f"Unlink it there first, or use a different Sheet for this client."
+        }), 409
+
+    # Reuse the existing link_token only when relinking the SAME spreadsheet
+    # (e.g. reconnecting after a credential fix) -- that's the one case
+    # where whatever trigger is already installed in that physical sheet is
+    # still the right one, and reusing the token avoids invalidating it.
+    # Relinking to a genuinely DIFFERENT spreadsheet must mint a fresh token:
+    # Apps Script triggers are bound to the spreadsheet they were installed
+    # in, so the user has to open the NEW sheet's script editor and paste
+    # the snippet again regardless -- there's no reinstall being saved by
+    # keeping the old token. Reusing it here would instead leave the OLD
+    # (still-installed, now orphaned) sheet's trigger POSTing to a webhook
+    # URL that this client's link row now resolves to the NEW spreadsheet_id
+    # -- every edit in the old sheet would still update Lumina, and any
+    # write-back (e.g. a new task's id) would land in the NEW sheet at
+    # whatever row number the OLD sheet's snapshot happened to report,
+    # silently corrupting an unrelated row there. Minting a fresh token
+    # instead makes the old trigger's requests 404 harmlessly.
+    cur.execute("SELECT link_token, spreadsheet_id FROM google_sheet_links WHERE client_id=?", (client_id,))
     existing = cur.fetchone()
-    link_token = existing[0] if existing else secrets.token_urlsafe(24)
+    same_spreadsheet = existing and str(existing[1]) == str(spreadsheet_id)
+    link_token = existing[0] if same_spreadsheet else secrets.token_urlsafe(24)
     with conn:
         conn.execute(
             "INSERT OR REPLACE INTO google_sheet_links "
@@ -187,7 +218,7 @@ def create_google_sheet_link(client_id: str):
     backfilled = 0
     try:
         existing_tasks = gs._current_tasks_by_id(client_id, is_notion)
-        link_for_push = {"spreadsheet_id": spreadsheet_id}
+        link_for_push = {"spreadsheet_id": spreadsheet_id, "client_id": client_id}
         for tid, task in existing_tasks.items():
             fields = gs._task_to_fields(task)
             if gs.push_task_to_sheet(link_for_push, tid, fields):

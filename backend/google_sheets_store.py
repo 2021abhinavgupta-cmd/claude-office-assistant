@@ -17,27 +17,32 @@ from utils import today_ist, now_ist, IST
 
 logger = logging.getLogger(__name__)
 
-# Per-client lock for reconcile_sheet_rows. Deployment is a single gunicorn
-# worker (gevent, see Procfile) -- gunicorn's gevent worker monkey-patches
-# stdlib threading on startup, so a plain threading.Lock here is genuinely
-# gevent-cooperative and correctly serializes two webhook requests for the
-# SAME client that land close together (e.g. Apps Script firing onChange
-# more than once for one paste/bulk-edit action). Without this, two
-# concurrent passes can both read the same stale `current` snapshot, both
-# see the same blank-task_id row, and both call _create_task for it --
-# duplicate task, and a second write_cell racing the first for which new id
-# actually lands in column A. Scoped per-client (not global) since different
-# clients' reconciles touch disjoint data and shouldn't block each other.
-_reconcile_locks: dict = {}
-_reconcile_locks_guard = threading.Lock()
+# Per-client lock guarding every Sheet-touching operation -- push, delete,
+# and reconcile alike. Deployment is a single gunicorn worker (gevent, see
+# Procfile) -- gunicorn's gevent worker monkey-patches stdlib threading on
+# startup, so a plain threading.Lock here is genuinely gevent-cooperative.
+# Started out scoped to reconcile only (two webhook requests for the same
+# client landing close together, e.g. Apps Script firing onChange more than
+# once for one paste, could both read the same stale snapshot and both
+# create a task for the same blank row) but a Lumina-side save/delete for
+# that same client can just as easily land mid-reconcile: push_task_to_sheet
+# might read/write a row the same instant reconcile is diffing the sheet
+# against Notion/SQLite, or delete_task_from_sheet's tombstone write could
+# race a reconcile pass that read the sheet just before it. Widening this
+# to cover all three closes that whole class at once instead of only the
+# one instance already observed. Scoped per-client (not global) since
+# different clients' sync operations touch disjoint data and shouldn't
+# block each other.
+_client_sheet_locks: dict = {}
+_client_sheet_locks_guard = threading.Lock()
 
 
-def _get_reconcile_lock(client_id: str) -> threading.Lock:
-    with _reconcile_locks_guard:
-        lock = _reconcile_locks.get(client_id)
+def _get_client_sheet_lock(client_id: str) -> threading.Lock:
+    with _client_sheet_locks_guard:
+        lock = _client_sheet_locks.get(client_id)
         if lock is None:
             lock = threading.Lock()
-            _reconcile_locks[client_id] = lock
+            _client_sheet_locks[client_id] = lock
         return lock
 
 
@@ -206,6 +211,17 @@ def delete_row(spreadsheet_id: str, row_number: int):
 
 
 def delete_task_from_sheet(link: dict, task_id: str) -> bool:
+    """Public entry point -- serializes against any other Sheet-touching
+    operation for the same client (see _get_client_sheet_lock). Note the
+    tombstone write below happens INSIDE this lock, same as the physical
+    delete -- so a reconcile pass that's waiting on this same client's lock
+    will always see the tombstone already recorded once it gets to run,
+    never a half-done delete."""
+    with _get_client_sheet_lock(link.get("client_id", "")):
+        return _delete_task_from_sheet_locked(link, task_id)
+
+
+def _delete_task_from_sheet_locked(link: dict, task_id: str) -> bool:
     """Lumina -> Sheet, delete direction. Fire-and-forget from the frontend's
     perspective, same contract as push_task_to_sheet -- a failure here must
     never fail the Lumina-side delete that already succeeded. Returns
@@ -496,6 +512,13 @@ def _delete_task(task_id: str, is_notion: bool) -> bool:
 # ── Push / reconcile ────────────────────────────────────────────────────
 
 def push_task_to_sheet(link: dict, task_id: str, fields: dict) -> bool:
+    """Public entry point -- serializes against any other Sheet-touching
+    operation for the same client (see _get_client_sheet_lock)."""
+    with _get_client_sheet_lock(link.get("client_id", "")):
+        return _push_task_to_sheet_locked(link, task_id, fields)
+
+
+def _push_task_to_sheet_locked(link: dict, task_id: str, fields: dict) -> bool:
     """Lumina -> Sheet. Fire-and-forget from the frontend's perspective: a
     push failure here must never fail the save that already succeeded in
     Notion/SQLite (same contract as log_sheet_version in routes/ops.py).
@@ -545,11 +568,11 @@ def push_task_to_sheet(link: dict, task_id: str, fields: dict) -> bool:
 
 
 def reconcile_sheet_rows(link: dict, rows: list) -> dict:
-    """Public entry point -- serializes concurrent reconcile passes for the
-    same client (see _get_reconcile_lock) before handing off to the real
-    implementation below. Two webhook calls for different clients run fully
-    in parallel; two for the SAME client run one after the other."""
-    with _get_reconcile_lock(link["client_id"]):
+    """Public entry point -- serializes against any other Sheet-touching
+    operation for the same client (see _get_client_sheet_lock) before
+    handing off to the real implementation below. Different clients run
+    fully in parallel; same client runs one operation at a time."""
+    with _get_client_sheet_lock(link["client_id"]):
         return _reconcile_sheet_rows_locked(link, rows)
 
 
