@@ -1494,6 +1494,27 @@ def notion_delete_task(notion_id: str):
     return jsonify({"error": "Failed to delete task"}), 500
 
 
+@ops_bp.route("/api/notion/tasks/<string:notion_id>/set-client-id", methods=["POST"])
+def notion_set_task_client_id(notion_id: str):
+    """Manual repair tool for a task whose Client ID rich_text property is
+    blank/wrong -- makes it invisible to per-client views (Sheets tab,
+    dashboard) even though it displays a correct client name everywhere
+    else (that comes from a different property). See notion_store.
+    set_client_id() and CLAUDE.md gotcha #79. Admin-only, not linked from
+    any UI -- meant to be called directly when this specific symptom is
+    diagnosed, not a general-purpose bulk tool."""
+    body = request.get_json(silent=True) or {}
+    user_id = str(body.get("user_id", "")).strip()
+    if not _is_admin(user_id):
+        return jsonify({"error": "Unauthorized"}), 403
+    client_notion_id = str(body.get("client_notion_id", "")).strip()
+    if not client_notion_id:
+        return jsonify({"error": "client_notion_id required"}), 400
+    if notion_store.set_client_id(notion_id, client_notion_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to set Client ID"}), 500
+
+
 @ops_bp.route("/api/notion/clients/<string:notion_id>", methods=["DELETE"])
 def notion_delete_client(notion_id: str):
     all_client_tasks = notion_store.list_tasks(client_notion_id=notion_id)

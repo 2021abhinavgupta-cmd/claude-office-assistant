@@ -902,6 +902,31 @@ def update_task(notion_id: str, status: str = None, progress: int = None,
         return False
 
 
+def set_client_id(notion_id: str, client_notion_id: str) -> bool:
+    """Repairs a task's Client ID rich_text property -- the property
+    list_tasks(client_notion_id=...) filters on, separate from the
+    Customer Name/Client Name/etc properties client_name is derived from.
+    A task can display the right client name everywhere while still being
+    invisible to per-client views (Sheets tab, dashboard) if Client ID is
+    blank or wrong -- see CLAUDE.md gotcha #79's "possible future feature"
+    note and its live occurrence on 2026-08-14. One-off manual repair tool,
+    not wired into any automatic flow -- confirm the target task/client
+    before calling."""
+    if not is_configured() or not notion_id or not client_notion_id:
+        return False
+    try:
+        _notion_request(
+            "PATCH",
+            f"https://api.notion.com/v1/pages/{notion_id}",
+            headers=_headers(),
+            json={"properties": {"Client ID": _text(client_notion_id)}},
+        )
+        return True
+    except Exception:
+        logger.exception(f"Notion set_client_id failed for {notion_id}")
+        return False
+
+
 def archive_notion_page(page_id: str) -> bool:
     """
     Archives a Notion page (moves it to trash). Used for deleting clients/tasks.
