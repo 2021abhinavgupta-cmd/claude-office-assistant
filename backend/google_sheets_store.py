@@ -144,6 +144,74 @@ def write_cell(spreadsheet_id: str, a1_cell: str, value):
     r.raise_for_status()
 
 
+def _first_sheet_id(spreadsheet_id: str) -> int:
+    """The spreadsheet-internal numeric sheetId (gid) of the first tab --
+    needed for a physical row delete via batchUpdate, which addresses rows
+    by sheetId, not by the A1 range names read_all_rows/write_row use."""
+    session = _get_session()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
+    r = session.get(url, params={"fields": "sheets.properties"})
+    r.raise_for_status()
+    sheets = r.json().get("sheets", [])
+    return sheets[0]["properties"]["sheetId"] if sheets else 0
+
+
+def delete_row(spreadsheet_id: str, row_number: int):
+    """Physically removes one row (1-indexed, matching the Sheet's own row
+    numbers), shifting everything below it up -- not a blank-out. Mirrors
+    what a Sheet-side row delete already does to a Lumina task, so a
+    Lumina-side delete now does the equivalent to the Sheet."""
+    session = _get_session()
+    sheet_id = _first_sheet_id(spreadsheet_id)
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
+    body = {
+        "requests": [{
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_number - 1,
+                    "endIndex": row_number,
+                }
+            }
+        }]
+    }
+    r = session.post(url, json=body)
+    r.raise_for_status()
+
+
+def delete_task_from_sheet(link: dict, task_id: str) -> bool:
+    """Lumina -> Sheet, delete direction. Fire-and-forget from the frontend's
+    perspective, same contract as push_task_to_sheet -- a failure here must
+    never fail the Lumina-side delete that already succeeded. Returns
+    whether a matching row was found and removed."""
+    if not is_configured():
+        return False
+    spreadsheet_id = link["spreadsheet_id"]
+    try:
+        rows = read_all_rows(spreadsheet_id)
+    except Exception:
+        logger.exception(f"Sheets delete: failed to read sheet {spreadsheet_id}")
+        return False
+
+    row_number = None
+    for i, row in enumerate(rows):
+        if i == 0:
+            continue  # header
+        if row and str(row[0]).strip() == str(task_id):
+            row_number = i + 1
+            break
+    if not row_number:
+        return False  # already gone from the Sheet, or never made it there
+
+    try:
+        delete_row(spreadsheet_id, row_number)
+        return True
+    except Exception:
+        logger.exception(f"Sheets delete: failed to remove row for task {task_id}")
+        return False
+
+
 # ── Field mapping ────────────────────────────────────────────────────────
 # Column order matches RH_FIELD_LABELS in projects.html (12 Sheets fields),
 # with lumina_task_id prepended as column A -- A:M is 13 columns total.

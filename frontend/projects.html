@@ -2019,6 +2019,14 @@ async function commitPendingDelete() {
         toast(d.error || "Failed to delete a row — restored", "err");
         continue;
       }
+      // Mirror the delete out to the client's linked Google Sheet, if any.
+      // Fire-and-forget: a missed sync here must never fail or roll back
+      // the Lumina-side delete that already succeeded above.
+      fetch(`${API}/api/sheets/delete/${taskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId }),
+      }).catch(() => {});
     } catch (err) {
       console.error(err);
       restoreRowLocally();

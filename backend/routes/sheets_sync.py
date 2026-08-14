@@ -320,6 +320,28 @@ def push_sheet_task(task_id: str):
     return jsonify({"success": True, "linked": True, "pushed": ok})
 
 
+@sheets_sync_bp.route("/api/sheets/delete/<string:task_id>", methods=["POST"])
+@limiter.limit("120 per minute")
+def delete_sheet_task(task_id: str):
+    """Called fire-and-forget from projects.html after a Lumina-side row
+    delete actually commits (past the undo window). No-op (200) for clients
+    with no linked Sheet. Only the Sheet-side "row deleted -> Lumina task
+    deleted" direction existed before this -- a Lumina-side delete never
+    touched the linked Sheet at all, leaving a dead row referencing a task
+    that no longer existed (see CLAUDE.md gotcha #87, 2026-08-14)."""
+    if not _is_admin(_verified_user_id()):
+        return jsonify({"error": "Unauthorized"}), 403
+    body = request.get_json(silent=True) or {}
+    client_id = str(body.get("client_id", "")).strip()
+    if not client_id:
+        return jsonify({"error": "client_id required"}), 400
+    link = get_link_for_client(client_id)
+    if not link:
+        return jsonify({"success": True, "linked": False})
+    deleted = gs.delete_task_from_sheet(link, task_id)
+    return jsonify({"success": True, "linked": True, "deleted": deleted})
+
+
 @sheets_sync_bp.route("/api/sheets/webhook/<string:link_token>", methods=["POST"])
 @limiter.limit("60 per minute")
 def sheets_pull_webhook(link_token: str):
