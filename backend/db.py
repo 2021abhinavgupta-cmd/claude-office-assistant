@@ -364,6 +364,22 @@ def init_db():
             except Exception:
                 pass  # Column already exists
 
+        # Sheets tombstones -- one row per task_id deliberately deleted from
+        # Lumina while linked to a Google Sheet. reconcile_sheet_rows() checks
+        # this before recreating a row whose task_id it doesn't recognize, so
+        # a delete_row() failure or a racing/stale webhook payload can't
+        # resurrect a task that was actually deleted on purpose. Short-lived
+        # by design (see TOMBSTONE_TTL_MINUTES in google_sheets_store.py) --
+        # rows older than the TTL are pruned opportunistically, not kept
+        # forever, so this table never grows unbounded and a genuine Ctrl+Z
+        # undo of a Sheet-side delete (the original, still-desired use of the
+        # recreate path) still works once the TTL has passed.
+        conn.execute("""CREATE TABLE IF NOT EXISTS sheet_task_tombstones (
+            task_id    TEXT PRIMARY KEY,
+            client_id  TEXT NOT NULL,
+            deleted_at TEXT NOT NULL
+        )""")
+
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
         try:

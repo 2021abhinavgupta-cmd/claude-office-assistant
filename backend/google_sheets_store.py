@@ -9,9 +9,10 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timedelta
 
 import notion_store
-from utils import today_ist, now_ist
+from utils import today_ist, now_ist, IST
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,11 @@ def delete_task_from_sheet(link: dict, task_id: str) -> bool:
     perspective, same contract as push_task_to_sheet -- a failure here must
     never fail the Lumina-side delete that already succeeded. Returns
     whether a matching row was found and removed."""
+    # Tombstone unconditionally, before anything below can fail -- this is
+    # exactly the record reconcile_sheet_rows() needs to avoid resurrecting
+    # this task if the physical Sheet delete below fails, races, or the
+    # client turns out not to be configured at all.
+    _tombstone_task(task_id, link.get("client_id", ""))
     if not is_configured():
         return False
     spreadsheet_id = link["spreadsheet_id"]
@@ -204,12 +210,24 @@ def delete_task_from_sheet(link: dict, task_id: str) -> bool:
     if not row_number:
         return False  # already gone from the Sheet, or never made it there
 
-    try:
-        delete_row(spreadsheet_id, row_number)
-        return True
-    except Exception:
-        logger.exception(f"Sheets delete: failed to remove row for task {task_id}")
-        return False
+    # Retry like write_cell's id-write-back (see _retry) -- a transient
+    # failure here leaves a row in the Sheet whose task_id no longer exists
+    # in Lumina. That's the exact shape reconcile_sheet_rows() treats as
+    # "undo after a Sheet-side delete" (see its `existing = current.get(...)`
+    # branch below) and will RECREATE the task on the next unrelated Sheet
+    # edit -- i.e. a plain network blip here can resurrect a task the user
+    # deliberately deleted in Lumina. Retrying shrinks that window a lot;
+    # it does not close it (a sustained outage still leaves the row orphaned
+    # and eventually recreated) -- there's no tombstone table to suppress
+    # recreation for a specific task_id, by design, not yet built.
+    ok = _retry(lambda: delete_row(spreadsheet_id, row_number))
+    if not ok:
+        logger.error(
+            f"Sheets delete: giving up removing row for task {task_id} after retries -- "
+            f"row will linger in the Sheet and may get recreated as a new task on the next "
+            f"unrelated edit."
+        )
+    return ok
 
 
 # ── Field mapping ────────────────────────────────────────────────────────
@@ -387,6 +405,59 @@ def _log_version(task_id: str, client_id: str, editor_name: str, fields: dict, c
         logger.exception(f"Sheets reconcile: failed to log version for task {task_id}")
 
 
+# How long a deliberate Lumina-side delete blocks reconcile_sheet_rows() from
+# recreating that task_id. Long enough to cover a delete_row() outage (well
+# past its 3-attempt retry) and a stale/racing webhook payload settling; short
+# enough that a genuine Ctrl+Z in Sheets to undo a *Sheet-initiated* delete
+# (the original, still-desired use of that recreate path -- see its own
+# comment below) keeps working almost always, since that's a different
+# task_id history with no tombstone at all. A deliberate "undo my Lumina
+# delete via Sheets" within this window is the one case this intentionally
+# blocks -- Lumina's own 8s undo bar (commitPendingDelete) is the sanctioned
+# way to do that, and has already closed by the time a Sheet delete can even
+# fire.
+TOMBSTONE_TTL_MINUTES = 15
+
+
+def _tombstone_task(task_id: str, client_id: str):
+    """Marks task_id as deliberately deleted from Lumina. Best-effort, same
+    contract as _log_version -- a logging failure here must never break the
+    actual delete it's recording."""
+    try:
+        from db import get_connection
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO sheet_task_tombstones (task_id, client_id, deleted_at) VALUES (?,?,?)",
+                (task_id, client_id, datetime.now(IST).isoformat()),
+            )
+            # Opportunistic prune, piggybacked on the same write -- keeps this
+            # table from growing unbounded without needing a scheduled job.
+            cutoff = (datetime.now(IST) - timedelta(minutes=TOMBSTONE_TTL_MINUTES)).isoformat()
+            conn.execute("DELETE FROM sheet_task_tombstones WHERE deleted_at < ?", (cutoff,))
+        conn.close()
+    except Exception:
+        logger.exception(f"Sheets delete: failed to tombstone task {task_id}")
+
+
+def _is_tombstoned(task_id: str) -> bool:
+    """True if task_id was deliberately deleted from Lumina within the TTL."""
+    try:
+        from db import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT deleted_at FROM sheet_task_tombstones WHERE task_id=?", (task_id,))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return False
+        deleted_at = datetime.fromisoformat(row[0])
+        return datetime.now(IST) - deleted_at < timedelta(minutes=TOMBSTONE_TTL_MINUTES)
+    except Exception:
+        logger.exception(f"Sheets reconcile: failed to check tombstone for task {task_id}")
+        return False
+
+
 def _delete_task(task_id: str, is_notion: bool) -> bool:
     if is_notion:
         return notion_store.archive_notion_page(task_id)
@@ -457,7 +528,7 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated = 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned = 0, 0, 0, 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
@@ -504,19 +575,43 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
 
             existing = current.get(task_id)
             if not existing:
-                # References a task id Lumina no longer has. Most commonly:
-                # the row was deleted (which correctly deleted the Lumina
-                # task, by design), then the delete was undone with Ctrl+Z in
-                # Sheets -- the row comes back with its old task_id still in
-                # column A, but that id is gone for good (Notion/SQLite have
-                # no "undelete" this code uses). Silently skipping would
-                # leave that row permanently dead: it looks normal, but every
-                # future edit to it also hits this same branch and does
-                # nothing, forever, with no error anywhere. Instead, treat it
-                # like a blank-id row -- recreate as a new task from the
-                # row's current data and overwrite column A with the new id,
-                # so undo-after-delete recovers a working (if new-id) task
-                # instead of a silently dead row.
+                # References a task id Lumina no longer has. Two different
+                # things produce this exact shape, and they need opposite
+                # handling:
+                #  (a) the row was deleted in Sheets (correctly deleting the
+                #      Lumina task), then the delete was undone with Ctrl+Z in
+                #      Sheets -- recreate it, see below.
+                #  (b) the task was deliberately deleted from LUMINA, whose
+                #      delete_task_from_sheet() failed/raced to remove the
+                #      Sheet row in time -- recreating here would silently
+                #      resurrect a task the user just deleted on purpose.
+                # _is_tombstoned() is how (b) is told apart from (a): only a
+                # Lumina-initiated delete writes a tombstone (see
+                # _tombstone_task, called from delete_task_from_sheet).
+                if _is_tombstoned(task_id):
+                    # Deliberately not physically deleting this row here: row
+                    # numbers in this loop are positions in the static `rows`
+                    # snapshot, and every other branch's row_number-addressed
+                    # write (write_cell for a create/recreate elsewhere in
+                    # this same pass) assumes the Sheet hasn't shifted under
+                    # it mid-loop. A row-removing batchUpdate here would
+                    # invalidate every row_number computed after it. Simplest
+                    # safe fix: leave the stale row in place and just skip it
+                    # -- it'll either get physically cleaned up by a later
+                    # delete_task_from_sheet retry, or naturally fall through
+                    # to the ordinary recreate path once TOMBSTONE_TTL_MINUTES
+                    # passes, which is the existing (accepted) behavior for a
+                    # reference this old.
+                    logger.info(
+                        f"Sheets reconcile: row {row_number} (client {client_id}) references tombstoned "
+                        f"task_id {task_id} -- not recreating (deliberately deleted from Lumina)."
+                    )
+                    tombstoned += 1
+                    continue
+                # (a): recreate as a new task from the row's current data and
+                # overwrite column A with the new id, so undo-after-delete
+                # recovers a working (if new-id) task instead of a silently
+                # dead row that every future edit also hits this branch for.
                 new_id = _create_task(client_id, client_name, is_notion, row_fields)
                 if new_id:
                     logger.warning(
@@ -562,7 +657,7 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
         )
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
-                "deletes_skipped_safety": len(current)}
+                "tombstoned": tombstoned, "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in seen_ids:
@@ -570,4 +665,4 @@ def reconcile_sheet_rows(link: dict, rows: list) -> dict:
             deleted += 1
 
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
-            "errored": errored, "duplicates": duplicates, "recreated": recreated}
+            "errored": errored, "duplicates": duplicates, "recreated": recreated, "tombstoned": tombstoned}
