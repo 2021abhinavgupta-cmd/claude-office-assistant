@@ -929,6 +929,7 @@ def debug_tasks():
             "original_title": vt.get("title"),
             "computed_title": title,
             "client_name": client,
+            "client_notion_id": vt.get("client_notion_id"),
             "content": content
         })
         
