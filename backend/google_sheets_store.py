@@ -622,14 +622,34 @@ def _column_validation_requests(sheet_id: int) -> list:
     return requests
 
 
+class TypedColumnError(Exception):
+    """Raised when Google Sheets rejects a setDataValidation call because
+    the target tab uses the newer "Table" feature (right-click a range ->
+    Convert to table), whose columns get a distinct "typed column"
+    designation that classic per-range data validation cannot touch. Real,
+    live-confirmed API error: "This operation is not allowed on cells in
+    typed columns." (INVALID_ARGUMENT, 400). Not fixable by retrying or
+    adjusting the request shape -- the user has to convert the table back
+    to a normal range in the Sheets UI first."""
+
+
 def apply_dropdown_validation(spreadsheet_id: str, sheet_id: int):
     """Applies the Type/Assigned To/Status dropdowns to one tab. Safe to
     call repeatedly -- setDataValidation replaces whatever rule (if any)
-    was already on that range."""
+    was already on that range. Raises TypedColumnError (see above) instead
+    of a generic HTTPError for that one specific, real, non-retryable
+    cause, so callers can surface an actionable message instead of a
+    silent failure."""
     session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
     body = {"requests": _column_validation_requests(sheet_id)}
     r = session.post(url, json=body)
+    if r.status_code == 400 and "typed column" in r.text.lower():
+        raise TypedColumnError(
+            "This tab uses Google Sheets' 'Table' feature, which blocks classic dropdown "
+            "validation. In Google Sheets, right-click the table and choose 'Convert to range', "
+            "then try formatting again."
+        )
     r.raise_for_status()
 
 
@@ -677,7 +697,14 @@ def initialize_blank_spreadsheet(spreadsheet_id: str, multi_tab: bool) -> dict:
     else:
         target_name = default_tab["name"]
     write_tab_row(spreadsheet_id, target_name, 1, SHEET_HEADER_ROW)
-    apply_dropdown_validation(spreadsheet_id, default_tab["sheet_id"])
+    try:
+        apply_dropdown_validation(spreadsheet_id, default_tab["sheet_id"])
+    except Exception:
+        # Non-fatal -- e.g. TypedColumnError if the source spreadsheet's
+        # default tab somehow inherited a Table format. A brand-new blank
+        # sheet should never hit this, but the header row/tab creation
+        # above is the part that actually matters; dropdowns are a nicety.
+        logger.exception(f"Dropdown validation failed on blank-init for '{target_name}' ({spreadsheet_id})")
     created = [target_name]
     if multi_tab:
         ensure_tab_exists(spreadsheet_id, UNSCHEDULED_TAB_NAME)
@@ -685,23 +712,36 @@ def initialize_blank_spreadsheet(spreadsheet_id: str, multi_tab: bool) -> dict:
     return {"initialized": True, "tabs": created}
 
 
-def apply_dropdown_validation_to_all_tabs(spreadsheet_id: str) -> int:
+def apply_dropdown_validation_to_all_tabs(spreadsheet_id: str) -> dict:
     """Applies dropdowns to every tab in the spreadsheet (not just synced
     month tabs -- a stray tab getting dropdowns too is harmless, and this
-    keeps the retroactive/connect-time call simple). Returns how many tabs
-    were formatted. Best-effort per tab: one tab's failure (e.g. a weird
-    sheetId edge case) shouldn't abort the rest."""
+    keeps the retroactive/connect-time call simple). Best-effort per tab:
+    one tab's failure (e.g. a weird sheetId edge case) shouldn't abort the
+    rest. Returns {"formatted": N, "typed_column_tabs": [...], "other_failures": N}
+    -- TypedColumnError (a real, common, non-retryable Google Sheets
+    "Table" conflict -- see that class' docstring) is tracked by name
+    separately from any other failure, since it's the one case with an
+    actual actionable fix a user can apply themselves."""
     formatted = 0
+    typed_column_tabs = []
+    other_failures = 0
     for t in list_tabs(spreadsheet_id):
         try:
             apply_dropdown_validation(spreadsheet_id, t["sheet_id"])
             formatted += 1
+        except TypedColumnError:
+            logger.warning(
+                f"Tab '{t['name']}' (spreadsheet {spreadsheet_id}) uses Google Sheets' Table "
+                f"feature -- dropdown validation skipped, not retryable without user action."
+            )
+            typed_column_tabs.append(t["name"])
         except Exception:
             logger.exception(
                 f"Failed to apply dropdown validation to tab '{t['name']}' "
                 f"(spreadsheet {spreadsheet_id})"
             )
-    return formatted
+            other_failures += 1
+    return {"formatted": formatted, "typed_column_tabs": typed_column_tabs, "other_failures": other_failures}
 
 
 def _parse_sheet_notes(desc: str, existing_creation_date: str = "") -> dict:

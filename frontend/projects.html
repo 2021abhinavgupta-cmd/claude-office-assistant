@@ -4091,6 +4091,9 @@ document.addEventListener('paste', function(e) {
         if (d.initialized_blank) msg += ` -- built tab(s): ${(d.initialized_tabs || []).join(', ')}`;
         if (d.backfilled) msg += ` -- ${d.backfilled} existing task(s) pushed in`;
         toast(msg);
+        if (d.typed_column_tabs && d.typed_column_tabs.length) {
+          toast(`Dropdowns couldn't be added to: ${d.typed_column_tabs.join(', ')} -- these use Google Sheets' Table feature. Right-click the table there and choose "Convert to range" first.`, 'err');
+        }
         loadLinkedSheetClientIds();
         openGoogleSheetLinkModal(clientId);
       } catch (e) {
@@ -4107,7 +4110,11 @@ document.addEventListener('paste', function(e) {
         const res = await fetch(`${API}/api/clients/${clientId}/google-sheet-link/format?user_id=${encodeURIComponent(UID)}`, { method: 'POST' });
         const d = await res.json();
         if (!d.success) { toast(d.error || 'Failed to format sheet', 'err'); return; }
-        toast(`Dropdowns applied to ${d.tabs_formatted} tab(s)`);
+        if (d.typed_column_tabs && d.typed_column_tabs.length) {
+          toast(`Dropdowns applied to ${d.tabs_formatted} tab(s). ${d.typed_column_tabs.join(', ')} use Google Sheets' Table feature -- right-click the table there and choose "Convert to range" first, then format again.`, 'err');
+        } else {
+          toast(`Dropdowns applied to ${d.tabs_formatted} tab(s)`);
+        }
       } catch (e) {
         toast('Network error formatting sheet', 'err');
       } finally {
