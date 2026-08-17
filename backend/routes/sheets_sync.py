@@ -351,6 +351,35 @@ def get_google_sheet_link(client_id: str):
     return jsonify(_link_row_to_dict(row))
 
 
+@sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link/debug-format", methods=["POST"])
+def debug_format_google_sheet_dropdowns(client_id: str):
+    """TEMPORARY diagnostic route -- apply_dropdown_validation_to_all_tabs()
+    swallows the real Google API error per-tab (logged server-side only, no
+    log access this session). This calls apply_dropdown_validation() for
+    just the first tab WITHOUT catching the exception, so the real error
+    text reaches the HTTP response instead of only a server log. Remove
+    once the live "tabs_formatted: 0" mystery (CLAUDE.md gotcha #87) is
+    root-caused."""
+    if not _is_admin(_verified_user_id()):
+        return jsonify({"error": "Unauthorized"}), 403
+    link = get_link_for_client(client_id)
+    if not link:
+        return jsonify({"error": "Client has no linked Google Sheet"}), 404
+    try:
+        tabs = gs.list_tabs(link["spreadsheet_id"])
+        if not tabs:
+            return jsonify({"tabs": tabs, "note": "list_tabs returned zero tabs"})
+        gs.apply_dropdown_validation(link["spreadsheet_id"], tabs[0]["sheet_id"])
+        return jsonify({"tabs": tabs, "note": "apply_dropdown_validation succeeded for first tab"})
+    except Exception as e:
+        import traceback
+        resp_text = getattr(getattr(e, "response", None), "text", None)
+        return jsonify({
+            "error": str(e), "response_body": resp_text,
+            "traceback": traceback.format_exc(),
+        }), 500
+
+
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link/format", methods=["POST"])
 def format_google_sheet_dropdowns(client_id: str):
     """Retroactively applies the Type/Assigned To/Status dropdowns to every
