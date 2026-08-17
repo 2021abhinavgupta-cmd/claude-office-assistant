@@ -269,6 +269,19 @@ def create_google_sheet_link(client_id: str):
         )
     conn.close()
 
+    # Auto-build a brand-new, completely empty spreadsheet into an
+    # immediately usable one instead of leaving it inert -- renames the
+    # default tab to the current month (multi-tab clients) or just formats
+    # the existing tab (single-tab clients), writes the header row, and
+    # applies the Type/Assigned To/Status dropdowns. No-ops harmlessly if
+    # the sheet already has any tabs/data (never touches a sheet someone
+    # already started setting up by hand). Must not fail the connect itself.
+    init_result = {"initialized": False}
+    try:
+        init_result = gs.initialize_blank_spreadsheet(spreadsheet_id, bool(multi_tab))
+    except Exception:
+        logger.exception(f"Sheets connect: blank-spreadsheet init failed for client {client_id}")
+
     # One-time backfill: push every task Lumina already has for this client
     # into the newly-linked Sheet. Without this, connecting a client with
     # pre-existing tasks leaves the Sheet empty until each row happens to be
@@ -306,6 +319,8 @@ def create_google_sheet_link(client_id: str):
         "apps_script": _apps_script_snippet(webhook_url, bool(multi_tab)),
         "multi_tab": bool(multi_tab),
         "backfilled": backfilled,
+        "initialized_blank": init_result.get("initialized", False),
+        "initialized_tabs": init_result.get("tabs", []),
     })
 
 

@@ -616,6 +616,58 @@ def apply_dropdown_validation(spreadsheet_id: str, sheet_id: int):
     r.raise_for_status()
 
 
+def _is_effectively_blank(spreadsheet_id: str) -> bool:
+    """True only for a genuinely fresh spreadsheet: exactly one tab (the
+    default "Sheet1" every new Google Sheet starts with) and zero non-empty
+    cells anywhere in it. False the moment there's more than one tab or any
+    data at all -- this must never fire on a sheet someone has already
+    started setting up by hand, even partially."""
+    tabs = list_tabs(spreadsheet_id)
+    if len(tabs) != 1:
+        return False
+    rows = read_tab_rows(spreadsheet_id, tabs[0]["name"])
+    return not any(any(str(c).strip() for c in row) for row in rows)
+
+
+def initialize_blank_spreadsheet(spreadsheet_id: str, multi_tab: bool) -> dict:
+    """For a brand-new, completely empty spreadsheet handed to Connect: sets
+    it up the same way a user would by hand, so it's immediately usable
+    instead of silently doing nothing until the first task happens to sync.
+    multi_tab=True: renames the default tab to the current month (the
+    synced-tab-name convention -- see _month_tab_name_for) and creates a
+    sibling "Unscheduled" tab, both with the standard header row and
+    Type/Assigned To/Status dropdown validation. multi_tab=False: just adds
+    the header row and dropdowns to the existing single tab, no renaming
+    (single-tab mode reads whatever the first tab is called, regardless of
+    name). No-op ({"initialized": False}) if the spreadsheet isn't blank by
+    _is_effectively_blank()'s definition -- never touches an already-started
+    sheet."""
+    if not _is_effectively_blank(spreadsheet_id):
+        return {"initialized": False}
+    default_tab = list_tabs(spreadsheet_id)[0]
+    if multi_tab:
+        target_name = _month_tab_name_for(today_ist())
+        session = _get_session()
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
+        body = {"requests": [{
+            "updateSheetProperties": {
+                "properties": {"sheetId": default_tab["sheet_id"], "title": target_name},
+                "fields": "title",
+            }
+        }]}
+        r = session.post(url, json=body)
+        r.raise_for_status()
+    else:
+        target_name = default_tab["name"]
+    write_tab_row(spreadsheet_id, target_name, 1, SHEET_HEADER_ROW)
+    apply_dropdown_validation(spreadsheet_id, default_tab["sheet_id"])
+    created = [target_name]
+    if multi_tab:
+        ensure_tab_exists(spreadsheet_id, UNSCHEDULED_TAB_NAME)
+        created.append(UNSCHEDULED_TAB_NAME)
+    return {"initialized": True, "tabs": created}
+
+
 def apply_dropdown_validation_to_all_tabs(spreadsheet_id: str) -> int:
     """Applies dropdowns to every tab in the spreadsheet (not just synced
     month tabs -- a stray tab getting dropdowns too is harmless, and this

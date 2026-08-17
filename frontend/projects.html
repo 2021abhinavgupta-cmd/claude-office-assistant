@@ -4068,7 +4068,10 @@ document.addEventListener('paste', function(e) {
         });
         const d = await res.json();
         if (!d.success) { toast(d.error || 'Failed to connect', 'err'); return; }
-        toast(d.backfilled ? `Sheet connected -- ${d.backfilled} existing task(s) pushed in` : 'Sheet connected');
+        let msg = 'Sheet connected';
+        if (d.initialized_blank) msg += ` -- built tab(s): ${(d.initialized_tabs || []).join(', ')}`;
+        if (d.backfilled) msg += ` -- ${d.backfilled} existing task(s) pushed in`;
+        toast(msg);
         loadLinkedSheetClientIds();
         openGoogleSheetLinkModal(clientId);
       } catch (e) {
