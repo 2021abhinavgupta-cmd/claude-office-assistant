@@ -4003,6 +4003,29 @@ document.addEventListener('paste', function(e) {
       document.getElementById('gsheet-link-overlay').style.display = 'none';
     }
 
+    function sheetsProUsageGuideHtml() {
+      return `
+        <details style="margin:12px 0;">
+          <summary style="cursor:pointer;color:var(--muted);">Using it day to day (columns, monthly tabs, dos and don'ts)</summary>
+          <div style="color:var(--muted);font-size:0.85rem;margin-top:8px;line-height:1.6;">
+            <p><strong style="color:var(--txt);">Columns.</strong> 13 total: hidden column A is the task's internal Lumina id (never type into it by hand), then 12 real columns in this order -- Creation Date, Post Day, Post Title, Type, Content, Idea, Scripts/Copy, Caption, File (Drive Link), Notes, Assigned To, Status. Format Creation Date and Post Day as <strong>Plain Text</strong>, not Date -- a real Date-formatted cell renders per your browser's locale and can round-trip a day off.</p>
+            <p><strong style="color:var(--txt);">Dropdowns.</strong> Type, Assigned To, and Status show a click-to-pick dropdown with the same options Lumina's own Sheets UI offers (Story/Reel/Static/Carousel for Type; the 6 social statuses for Status; your teammates' names for Assigned To). These are suggestions, not hard locks -- you can still type something else, it just won't show the dropdown checkmark. Stick to the list for the cleanest sync.</p>
+            <p><strong style="color:var(--txt);">Monthly tabs.</strong> One tab per due-date month, named exactly like <code>"August 2026"</code> (full month name, space, 4-digit year). Tasks with no due date live in a tab named exactly <code>"Unscheduled"</code>. Any other tab name is completely ignored by sync -- safe to keep scratch/notes tabs alongside, they just never sync either direction. Lumina auto-creates a month's tab (with header + dropdowns already set up) the first time a task with that due date gets pushed from Lumina's side. If you want to add tasks in the Sheet for a future month that doesn't have a tab yet, create that tab yourself first with the exact name -- Lumina won't pre-create empty future tabs on its own.</p>
+            <p><strong style="color:var(--txt);">Adding a task directly in the Sheet.</strong> Add a new row, leave column A blank, fill in the rest, save. Lumina creates the task and writes a real id back into column A within moments (as long as the Apps Script trigger below is installed). Never hand-type something into column A -- it has to be a real id Lumina generated.</p>
+            <p><strong style="color:var(--txt);">Editing / deleting.</strong> Edit any column except A and save -- syncs automatically. Delete the whole row to delete the task in Lumina too (undo with Ctrl+Z right after works, within a few seconds).</p>
+            <p><strong style="color:var(--txt);">Don't:</strong></p>
+            <ul style="margin:4px 0 8px 18px;padding:0;">
+              <li>Don't use Google Sheets' <strong>"Convert to table"</strong> feature on a synced tab -- it locks the columns into Google's newer "typed column" mode, which blocks Lumina's dropdown formatting entirely. Already converted? Right-click the table &gt; <strong>Convert to range</strong> to undo, then hit "Format columns" again.</li>
+              <li>Don't link the same spreadsheet to two different clients.</li>
+              <li>Don't hand-type an id into column A, or copy a row from another tab without clearing it first.</li>
+            </ul>
+            <p><strong style="color:var(--txt);">Timing.</strong> Lumina &rarr; Sheet (editing a task in Lumina) is near-instant. Sheet &rarr; Lumina needs the trigger installed below and usually lands within a few seconds of saving a cell, governed by Google's own trigger latency.</p>
+            <p><strong style="color:var(--txt);">Multiple people at once.</strong> Safe -- editing the same client's Sheet and Lumina simultaneously (even the same task) won't corrupt anything; a short internal safety window makes sure a save that just happened in Lumina doesn't get overwritten by a stale read from the Sheet a moment later.</p>
+          </div>
+        </details>
+      `;
+    }
+
     async function openGoogleSheetLinkModal(clientId) {
       gsheetLinkClientId = clientId;
       const overlay = document.getElementById('gsheet-link-overlay');
@@ -4043,6 +4066,7 @@ document.addEventListener('paste', function(e) {
               <button id="gsheet-format-btn" class="btn btn-sm" onclick="formatGoogleSheetDropdowns('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Adds/refreshes the Type, Assigned To, and Status column dropdowns on every tab -- matches Lumina's own Sheets UI options">Format columns (dropdowns)</button>
               <button class="btn btn-sm" onclick="unlinkGoogleSheet('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Unlink</button>
             </div>
+            ${sheetsProUsageGuideHtml()}
           `;
         } else {
           body.innerHTML = `
@@ -4055,10 +4079,7 @@ document.addEventListener('paste', function(e) {
                 <li>After connecting, this box will show an Apps Script snippet and the last two steps to paste it in and turn sync on -- come back to this same "🔗 Google Sheet" button any time to see that again.</li>
               </ol>
             </div>
-            <details style="margin-bottom:12px;">
-              <summary style="cursor:pointer;color:var(--muted);">Column/tab naming details (only matters if you're setting the Sheet up yourself instead of letting Lumina build it)</summary>
-              <p style="color:var(--muted);font-size:0.85rem;margin-top:8px;">The Sheet needs a hidden column A (lumina_task_id) and 12 columns after it matching the Sheets tab's fields (Creation Date, Post Day, Post Title, Type, Content, Idea, Scripts/Copy, Caption, File (Drive Link), Notes, Assigned To, Status). Format the Creation Date and Post Day columns as Plain Text so typed YYYY-MM-DD dates round-trip correctly. Sync is one tab per due-date month -- name each month's tab exactly like <code>"August 2026"</code>; tasks with no due date go in a tab named exactly <code>"Unscheduled"</code>. Any other tab name is ignored.</p>
-            </details>
+            ${sheetsProUsageGuideHtml()}
             <input type="text" id="gsheet-url-input" placeholder="https://docs.google.com/spreadsheets/d/..." style="width:100%;padding:8px;margin-bottom:8px;">
             <button id="gsheet-connect-btn" class="btn btn-sm" onclick="submitGoogleSheetLink('${clientId}')" style="border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 16px; font-weight:600;">Connect</button>
           `;
