@@ -336,6 +336,11 @@ def ensure_tab_exists(spreadsheet_id: str, sheet_name: str):
     r = session.post(url, json=body)
     r.raise_for_status()
     write_tab_row(spreadsheet_id, sheet_name, 1, SHEET_HEADER_ROW)
+    new_sheet_id = r.json()["replies"][0]["addSheet"]["properties"]["sheetId"]
+    try:
+        apply_dropdown_validation(spreadsheet_id, new_sheet_id)
+    except Exception:
+        logger.exception(f"Failed to apply dropdown validation to newly-created tab '{sheet_name}' ({spreadsheet_id})")
 
 
 def read_tab_rows(spreadsheet_id: str, sheet_name: str) -> list:
@@ -535,6 +540,99 @@ SHEET_FIELDS = ["creation_date", "due_date", "title", "type", "content", "idea",
 SHEET_HEADER_ROW = ["lumina_task_id", "Creation Date", "Post Day", "Post Title", "Type",
                      "Content", "Idea", "Scripts/Copy", "Caption", "File (Drive Link)",
                      "Notes", "Assigned To", "Status"]
+
+# Column indices (0-based) of SHEET_HEADER_ROW's Type/Assigned To/Status
+# columns -- used below to build data validation ranges. Kept as named
+# constants rather than inline magic numbers since a future header reorder
+# would otherwise silently misplace the dropdowns onto the wrong column.
+_COL_TYPE = 4
+_COL_ASSIGNED_TO = 11
+_COL_STATUS = 12
+
+# Exactly the same option sets as Lumina's own Sheets UI dropdowns
+# (projects.html's Type <select>/pill-picker and Status <select>/pill-picker)
+# -- see gotcha #87. Type intentionally excludes "Post"/"Video": those are
+# accepted by _normalize_type() as legacy/detection fallbacks but were never
+# real options in Lumina's own dropdown, so they're not offered here either.
+TYPE_DROPDOWN_OPTIONS = ["Story", "Reel", "Static", "Carousel"]
+STATUS_DROPDOWN_OPTIONS = ["Need to Start", "Scheduled", "In Progress", "Paused", "Posted", "Final"]
+
+
+def _employee_names() -> list:
+    from utils import _load_employees
+    return [e["name"] for e in _load_employees().get("employees", []) if e.get("status") == "active"]
+
+
+def _column_validation_requests(sheet_id: int) -> list:
+    """setDataValidation requests for one tab's Type/Assigned To/Status
+    columns. Type and Status are strict ONE_OF_LIST -- they're genuinely
+    single-value fields in Lumina, so rejecting anything outside the exact
+    option set at the Sheets level prevents the free-text-typo class of bug
+    _normalize_type() had to be built to paper over (a stray "IG Reel" or
+    "TikTok" in the Type column used to reach the backend at all -- see
+    gotcha #87's fourth/sixth audit rounds). Assigned To is NOT strict:
+    Lumina stores it as a comma-separated list of employee names (multiple
+    assignees in one cell, see the checkbox picker in projects.html), which
+    a single-value strict dropdown would reject outright -- so this is a
+    non-blocking suggestion list instead, giving autocomplete without
+    breaking multi-assignee entries."""
+    def _rule(col_index, options, strict):
+        return {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,  # skip header row
+                    "startColumnIndex": col_index,
+                    "endColumnIndex": col_index + 1,
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [{"userEnteredValue": v} for v in options],
+                    },
+                    "showCustomUi": True,
+                    "strict": strict,
+                },
+            }
+        }
+    requests = [
+        _rule(_COL_TYPE, TYPE_DROPDOWN_OPTIONS, True),
+        _rule(_COL_STATUS, STATUS_DROPDOWN_OPTIONS, True),
+    ]
+    names = _employee_names()
+    if names:
+        requests.append(_rule(_COL_ASSIGNED_TO, names, False))
+    return requests
+
+
+def apply_dropdown_validation(spreadsheet_id: str, sheet_id: int):
+    """Applies the Type/Assigned To/Status dropdowns to one tab. Safe to
+    call repeatedly -- setDataValidation replaces whatever rule (if any)
+    was already on that range."""
+    session = _get_session()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
+    body = {"requests": _column_validation_requests(sheet_id)}
+    r = session.post(url, json=body)
+    r.raise_for_status()
+
+
+def apply_dropdown_validation_to_all_tabs(spreadsheet_id: str) -> int:
+    """Applies dropdowns to every tab in the spreadsheet (not just synced
+    month tabs -- a stray tab getting dropdowns too is harmless, and this
+    keeps the retroactive/connect-time call simple). Returns how many tabs
+    were formatted. Best-effort per tab: one tab's failure (e.g. a weird
+    sheetId edge case) shouldn't abort the rest."""
+    formatted = 0
+    for t in list_tabs(spreadsheet_id):
+        try:
+            apply_dropdown_validation(spreadsheet_id, t["sheet_id"])
+            formatted += 1
+        except Exception:
+            logger.exception(
+                f"Failed to apply dropdown validation to tab '{t['name']}' "
+                f"(spreadsheet {spreadsheet_id})"
+            )
+    return formatted
 
 
 def _parse_sheet_notes(desc: str, existing_creation_date: str = "") -> dict:

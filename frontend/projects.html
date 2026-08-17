@@ -4031,7 +4031,10 @@ document.addEventListener('paste', function(e) {
             <p>Share the Sheet with: <code>${esc(d.service_account_email)}</code></p>
             <p>Apps Script (paste into the Sheet's Apps Script editor, then run <code>installTrigger</code> once):</p>
             <textarea readonly style="width:100%;height:180px;font-family:monospace;font-size:0.8rem;">${esc(d.apps_script)}</textarea>
-            <div style="margin-top:12px;"><button class="btn btn-sm" onclick="unlinkGoogleSheet('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Unlink</button></div>
+            <div style="margin-top:12px;display:flex;gap:8px;">
+              <button class="btn btn-sm" onclick="formatGoogleSheetDropdowns('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Adds/refreshes the Type, Assigned To, and Status column dropdowns on every tab -- matches Lumina's own Sheets UI options">Format columns (dropdowns)</button>
+              <button class="btn btn-sm" onclick="unlinkGoogleSheet('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Unlink</button>
+            </div>
           `;
         } else {
           body.innerHTML = `
@@ -4067,6 +4070,17 @@ document.addEventListener('paste', function(e) {
         openGoogleSheetLinkModal(clientId);
       } catch (e) {
         toast('Network error connecting sheet', 'err');
+      }
+    }
+
+    async function formatGoogleSheetDropdowns(clientId) {
+      try {
+        const res = await fetch(`${API}/api/clients/${clientId}/google-sheet-link/format?user_id=${encodeURIComponent(UID)}`, { method: 'POST' });
+        const d = await res.json();
+        if (!d.success) { toast(d.error || 'Failed to format sheet', 'err'); return; }
+        toast(`Dropdowns applied to ${d.tabs_formatted} tab(s)`);
+      } catch (e) {
+        toast('Network error formatting sheet', 'err');
       }
     }
 

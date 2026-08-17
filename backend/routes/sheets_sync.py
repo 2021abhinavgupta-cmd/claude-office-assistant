@@ -289,6 +289,16 @@ def create_google_sheet_link(client_id: str):
     except Exception:
         logger.exception(f"Sheets connect: backfill failed for client {client_id}")
 
+    # Also format Type/Assigned To/Status dropdowns on whatever tab(s) exist
+    # at connect time (the sheet's default first tab, or any month tabs the
+    # employee pre-created) -- so a newly-connected client's Sheet is never
+    # left free-text and vulnerable to the typo class of bug _normalize_type
+    # exists to paper over. Best-effort: must not fail the connect itself.
+    try:
+        gs.apply_dropdown_validation_to_all_tabs(spreadsheet_id)
+    except Exception:
+        logger.exception(f"Sheets connect: dropdown formatting failed for client {client_id}")
+
     webhook_url = f"{_base_url()}/api/sheets/webhook/{link_token}"
     return jsonify({
         "success": True, "spreadsheet_id": spreadsheet_id,
@@ -320,6 +330,26 @@ def get_google_sheet_link(client_id: str):
     if not row:
         return jsonify({"linked": False})
     return jsonify(_link_row_to_dict(row))
+
+
+@sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link/format", methods=["POST"])
+def format_google_sheet_dropdowns(client_id: str):
+    """Retroactively applies the Type/Assigned To/Status dropdowns to every
+    tab of an already-linked client's Sheet -- for clients linked before
+    this feature existed, or a tab created by hand rather than through
+    ensure_tab_exists()/the connect flow (both of which already apply this
+    automatically)."""
+    if not _is_admin(_verified_user_id()):
+        return jsonify({"error": "Unauthorized"}), 403
+    link = get_link_for_client(client_id)
+    if not link:
+        return jsonify({"error": "Client has no linked Google Sheet"}), 404
+    try:
+        formatted = gs.apply_dropdown_validation_to_all_tabs(link["spreadsheet_id"])
+    except Exception:
+        logger.exception(f"Manual dropdown formatting failed for client {client_id}")
+        return jsonify({"error": "Failed to format sheet, see server logs"}), 500
+    return jsonify({"success": True, "tabs_formatted": formatted})
 
 
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["DELETE"])
