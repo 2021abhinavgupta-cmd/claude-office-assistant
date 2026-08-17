@@ -565,18 +565,35 @@ def _employee_names() -> list:
 
 def _column_validation_requests(sheet_id: int) -> list:
     """setDataValidation requests for one tab's Type/Assigned To/Status
-    columns. Type and Status are strict ONE_OF_LIST -- they're genuinely
-    single-value fields in Lumina, so rejecting anything outside the exact
-    option set at the Sheets level prevents the free-text-typo class of bug
-    _normalize_type() had to be built to paper over (a stray "IG Reel" or
-    "TikTok" in the Type column used to reach the backend at all -- see
-    gotcha #87's fourth/sixth audit rounds). Assigned To is NOT strict:
-    Lumina stores it as a comma-separated list of employee names (multiple
-    assignees in one cell, see the checkbox picker in projects.html), which
-    a single-value strict dropdown would reject outright -- so this is a
-    non-blocking suggestion list instead, giving autocomplete without
-    breaking multi-assignee entries."""
-    def _rule(col_index, options, strict):
+    columns. ALL THREE are non-strict (suggestion-only) dropdowns, not
+    strict/blocking ONE_OF_LIST rules -- deliberately, after tracing what
+    actually gets WRITTEN into these two cells server-side:
+      - Status: _task_to_fields() always writes Lumina's raw internal
+        snake_case status key ("not_started", "in_progress", ...), never
+        the Title Case labels in STATUS_DROPDOWN_OPTIONS -- a strict rule
+        here would flag or reject literally every task's real status value.
+      - Type: _normalize_type() preserves whatever casing the source data
+        had (a CSV-imported "story" stays lowercase, not "Story") and,
+        worse, its fallback for anything unrecognized is the literal string
+        "Post" -- which isn't even one of TYPE_DROPDOWN_OPTIONS' 4 options
+        (Lumina's own <select> never offers Post/Video, see gotcha #87) --
+        so a strict rule here would flag any task that ever hit that
+        fallback, a common path for imported/legacy data.
+    A strict rule was tried first and shipped briefly, but making these two
+    columns strict without ALSO rewriting the create/update/diff pipeline
+    to canonicalize every status/type value into the dropdown's exact
+    casing (a much larger, riskier change touching _task_to_fields/
+    _row_to_fields/_fields_to_row, with real potential to introduce a
+    spurious-diff bug of the same shape as the SQLite creation_date issue
+    earlier in this gotcha) was judged not worth it for what's fundamentally
+    a UI-convenience feature. Non-strict still gives a real, useful
+    click-to-pick dropdown with the exact same option sets -- it just shows
+    a small warning icon instead of blocking/flagging a legitimate value
+    the backend itself wrote. Assigned To was non-strict from the start for
+    an unrelated reason: Lumina stores it as a comma-separated list of
+    employee names (multiple assignees in one cell), which a single-value
+    strict dropdown would reject outright."""
+    def _rule(col_index, options):
         return {
             "setDataValidation": {
                 "range": {
@@ -591,17 +608,17 @@ def _column_validation_requests(sheet_id: int) -> list:
                         "values": [{"userEnteredValue": v} for v in options],
                     },
                     "showCustomUi": True,
-                    "strict": strict,
+                    "strict": False,
                 },
             }
         }
     requests = [
-        _rule(_COL_TYPE, TYPE_DROPDOWN_OPTIONS, True),
-        _rule(_COL_STATUS, STATUS_DROPDOWN_OPTIONS, True),
+        _rule(_COL_TYPE, TYPE_DROPDOWN_OPTIONS),
+        _rule(_COL_STATUS, STATUS_DROPDOWN_OPTIONS),
     ]
     names = _employee_names()
     if names:
-        requests.append(_rule(_COL_ASSIGNED_TO, names, False))
+        requests.append(_rule(_COL_ASSIGNED_TO, names))
     return requests
 
 
