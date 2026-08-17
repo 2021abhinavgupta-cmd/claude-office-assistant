@@ -1133,6 +1133,16 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
+    # Ids that matched a REAL current task, as opposed to seen_ids (every
+    # non-blank id encountered, including ones that don't match anything in
+    # `current` and get recreated as garbage). The safety-guard check and
+    # the delete pass below both need "did this payload actually recognize
+    # any of our real tasks", not "did it contain any id at all" -- a single
+    # unrecognized/garbage row (e.g. a stray non-Sheets tab getting synced
+    # by mistake) used to make seen_ids non-empty and silently bypass the
+    # safety guard, letting every real task for the client get deleted. See
+    # CLAUDE.md gotcha #87's flagged-not-fixed entry, fixed here.
+    recognized_ids = set()
     created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed = \
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
@@ -1243,6 +1253,11 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                                  changed_fields=list(row_fields.keys()))
                     recreated += 1
                 continue
+            # This row's task_id matched a real current task -- the only
+            # point in this function where that's true. See the comment on
+            # recognized_ids' declaration above for why this must be tracked
+            # separately from seen_ids.
+            recognized_ids.add(task_id)
             old_fields = _task_to_fields(existing)
             if old_fields == row_fields:
                 skipped += 1
@@ -1299,7 +1314,7 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
     # otherwise wipe every task for a client in one request. Deleting
     # everything on purpose should go through an explicit action, not a
     # webhook payload that happens to recognize nothing.
-    if not seen_ids and current:
+    if not recognized_ids and current:
         logger.warning(
             f"Sheets reconcile: snapshot for client {client_id} recognized 0 of "
             f"{len(current)} known tasks -- skipping delete pass as a safety measure."
@@ -1310,7 +1325,7 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                 "update_failed": update_failed, "delete_failed": 0, "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
-        if existing_id not in seen_ids:
+        if existing_id not in recognized_ids:
             # Same discarded-return-value bug as _update_task above: a
             # failed archive_notion_page() (Notion mode) still got counted
             # as a successful delete. The task then stays active in Notion
@@ -1354,6 +1369,9 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
+    # See the matching declaration + comment in _reconcile_sheet_rows_locked
+    # -- same fix, same reasoning, applied here too.
+    recognized_ids = set()
     created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed = \
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
@@ -1425,6 +1443,9 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                         recreated += 1
                     continue
 
+                # This row's task_id matched a real current task -- see the
+                # comment on recognized_ids' declaration above.
+                recognized_ids.add(task_id)
                 old_fields = _task_to_fields(existing)
                 if old_fields == row_fields:
                     skipped += 1
@@ -1456,7 +1477,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                 logger.exception(f"Sheets reconcile (multi-tab): skipping malformed row at {row_label} for client {client_id}")
                 errored += 1
 
-    if not seen_ids and current:
+    if not recognized_ids and current:
         logger.warning(
             f"Sheets reconcile (multi-tab): snapshot for client {client_id} recognized 0 of "
             f"{len(current)} known tasks -- skipping delete pass as a safety measure."
@@ -1486,7 +1507,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
     payload_tab_names = set(tabs.keys())
     deletes_skipped_missing_tab = 0
     for existing_id in current:
-        if existing_id in seen_ids:
+        if existing_id in recognized_ids:
             continue
         target_tab = _month_tab_name_for(current[existing_id].get("due_date", ""))
         if target_tab not in payload_tab_names:
