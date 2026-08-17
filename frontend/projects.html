@@ -4028,8 +4028,16 @@ document.addEventListener('paste', function(e) {
             ${modeLine}
             ${pushLine}
             ${pullLine}
-            <p>Share the Sheet with: <code>${esc(d.service_account_email)}</code></p>
-            <p>Apps Script (paste into the Sheet's Apps Script editor, then run <code>installTrigger</code> once):</p>
+            <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;margin:14px 0;">
+              <p style="font-weight:600;margin:0 0 8px;">To turn on (or reinstall) live sync from the Sheet:</p>
+              <ol style="margin:0;padding-left:18px;line-height:1.7;">
+                <li>Make sure the Sheet is shared with <strong>Editor</strong> access to <code style="user-select:all;">${esc(d.service_account_email)}</code></li>
+                <li>Open the Sheet, then go to <strong>Extensions &gt; Apps Script</strong></li>
+                <li>Delete anything already in the editor, paste in the code below, then save (Ctrl+S / the disk icon)</li>
+                <li>In the function dropdown near the top (next to "Debug"), pick <code>installTrigger</code></li>
+                <li>Click <strong>Run</strong>, and approve the permissions prompt (your own Google account, own script) -- sync is now live</li>
+              </ol>
+            </div>
             <textarea readonly style="width:100%;height:180px;font-family:monospace;font-size:0.8rem;">${esc(d.apps_script)}</textarea>
             <div style="margin-top:12px;display:flex;gap:8px;">
               <button id="gsheet-format-btn" class="btn btn-sm" onclick="formatGoogleSheetDropdowns('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Adds/refreshes the Type, Assigned To, and Status column dropdowns on every tab -- matches Lumina's own Sheets UI options">Format columns (dropdowns)</button>
@@ -4038,8 +4046,19 @@ document.addEventListener('paste', function(e) {
           `;
         } else {
           body.innerHTML = `
-            <p>Paste the URL of an existing Google Sheet to link it to this client. The Sheet needs a hidden column A (lumina_task_id) and 12 columns after it matching the Sheets tab's fields (Creation Date, Post Day, Post Title, Type, Content, Idea, Scripts/Copy, Caption, File (Drive Link), Notes, Assigned To, Status). Format the Creation Date and Post Day columns as Plain Text so typed YYYY-MM-DD dates round-trip correctly.</p>
-            <p>New connections sync one tab per due-date month. Name each month's tab exactly like <code>"August 2026"</code>; tasks with no due date go in a tab named exactly <code>"Unscheduled"</code>. Any other tab name is ignored.</p>
+            <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+              <p style="font-weight:600;margin:0 0 8px;">How to connect a Google Sheet:</p>
+              <ol style="margin:0;padding-left:18px;line-height:1.7;">
+                <li>Create (or open) a Google Sheet for this client -- a blank one is fine, Lumina builds out the tabs/columns for you automatically once connected.</li>
+                <li>Share it with <strong>Editor</strong> access to: <code style="user-select:all;">${esc(d.service_account_email || '')}</code></li>
+                <li>Paste the Sheet's URL below and click <strong>Connect</strong>.</li>
+                <li>After connecting, this box will show an Apps Script snippet and the last two steps to paste it in and turn sync on -- come back to this same "🔗 Google Sheet" button any time to see that again.</li>
+              </ol>
+            </div>
+            <details style="margin-bottom:12px;">
+              <summary style="cursor:pointer;color:var(--muted);">Column/tab naming details (only matters if you're setting the Sheet up yourself instead of letting Lumina build it)</summary>
+              <p style="color:var(--muted);font-size:0.85rem;margin-top:8px;">The Sheet needs a hidden column A (lumina_task_id) and 12 columns after it matching the Sheets tab's fields (Creation Date, Post Day, Post Title, Type, Content, Idea, Scripts/Copy, Caption, File (Drive Link), Notes, Assigned To, Status). Format the Creation Date and Post Day columns as Plain Text so typed YYYY-MM-DD dates round-trip correctly. Sync is one tab per due-date month -- name each month's tab exactly like <code>"August 2026"</code>; tasks with no due date go in a tab named exactly <code>"Unscheduled"</code>. Any other tab name is ignored.</p>
+            </details>
             <input type="text" id="gsheet-url-input" placeholder="https://docs.google.com/spreadsheets/d/..." style="width:100%;padding:8px;margin-bottom:8px;">
             <button id="gsheet-connect-btn" class="btn btn-sm" onclick="submitGoogleSheetLink('${clientId}')" style="border: 1px solid var(--bdr); background: var(--acc); color: #000; padding: 8px 16px; font-weight:600;">Connect</button>
           `;

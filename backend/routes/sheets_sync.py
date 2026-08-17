@@ -343,7 +343,11 @@ def get_google_sheet_link(client_id: str):
     row = cur.fetchone()
     conn.close()
     if not row:
-        return jsonify({"linked": False})
+        # Surfaces the service account email even before a Sheet is
+        # connected -- the "how to connect" guide in the modal needs it up
+        # front (share the Sheet with this address BEFORE pasting the URL),
+        # not only after a connect attempt fails with "make sure it's shared".
+        return jsonify({"linked": False, "service_account_email": gs.service_account_email()})
     return jsonify(_link_row_to_dict(row))
 
 
