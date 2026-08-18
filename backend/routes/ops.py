@@ -1158,11 +1158,20 @@ def update_my_task(task_id: int):
 
 @ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["DELETE"])
 def delete_my_task(task_id: int):
-    """Delete a task from the personal list."""
+    """Delete a task from the personal list. If this row was pushed to the
+    Notion board (has a notion_id), archive that Notion page too -- removing
+    a task here previously left its Notion counterpart behind untouched."""
     conn = _su_conn()
+    row = conn.execute("SELECT notion_id FROM standup_tasks WHERE id=?", (task_id,)).fetchone()
+    notion_id = row[0] if row else None
     with conn:
         conn.execute("UPDATE standup_tasks SET status='deleted' WHERE id=?", (task_id,))
     conn.close()
+    if notion_id:
+        try:
+            notion_store.archive_notion_page(notion_id)
+        except Exception:
+            logger.exception(f"Failed to archive Notion task {notion_id} after deleting standup row {task_id}")
     return jsonify({"success": True})
 
 
