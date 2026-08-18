@@ -4112,6 +4112,9 @@ document.addEventListener('paste', function(e) {
         if (d.initialized_blank) msg += ` -- built tab(s): ${(d.initialized_tabs || []).join(', ')}`;
         if (d.backfilled) msg += ` -- ${d.backfilled} existing task(s) pushed in`;
         toast(msg);
+        if (d.backfill_failed) {
+          toast(`${d.backfill_failed} task(s) failed to push during backfill -- edit and save each one once in Lumina to push it individually, or click "🔗 Sheet" and Connect again to retry the whole backfill (safe to re-run)`, 'err');
+        }
         if (d.typed_column_tabs && d.typed_column_tabs.length) {
           toast(`Dropdowns couldn't be added to: ${d.typed_column_tabs.join(', ')} -- these use Google Sheets' Table feature. Right-click the table there and choose "Convert to range" first.`, 'err');
         }

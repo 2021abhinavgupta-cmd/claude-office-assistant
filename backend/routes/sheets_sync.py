@@ -290,17 +290,34 @@ def create_google_sheet_link(client_id: str):
     # tasks. push_task_to_sheet is safe to call repeatedly (it looks up the
     # row by task_id and overwrites in place, or appends if missing), so
     # this is also safe to re-run on a re-link.
+    #
+    # Each task is pushed inside its OWN try/except -- previously the whole
+    # loop shared one try/except, so a single task raising (a malformed
+    # field, a transient Sheets API error not already caught inside
+    # push_fn, ...) silently aborted every task still left in the
+    # iteration, with only one generic log line and no indication which
+    # tasks were actually skipped. Same per-item isolation already used
+    # elsewhere in this codebase for exactly this reason (notion_store's
+    # per-page list_tasks/list_clients guard, reconcile's per-row guard).
     backfilled = 0
+    backfill_failed = 0
     try:
         existing_tasks = gs._current_tasks_by_id(client_id, is_notion)
         link_for_push = {"spreadsheet_id": spreadsheet_id, "client_id": client_id}
         push_fn = gs.push_task_to_sheet_multi_tab if multi_tab else gs.push_task_to_sheet
-        for tid, task in existing_tasks.items():
+    except Exception:
+        logger.exception(f"Sheets connect: could not load existing tasks to backfill for client {client_id}")
+        existing_tasks = {}
+    for tid, task in existing_tasks.items():
+        try:
             fields = gs._task_to_fields(task)
             if push_fn(link_for_push, tid, fields):
                 backfilled += 1
-    except Exception:
-        logger.exception(f"Sheets connect: backfill failed for client {client_id}")
+            else:
+                backfill_failed += 1
+        except Exception:
+            logger.exception(f"Sheets connect: backfill failed for task {tid} (client {client_id}) -- continuing with the rest")
+            backfill_failed += 1
 
     # Also format Type/Assigned To/Status dropdowns on whatever tab(s) exist
     # at connect time (the sheet's default first tab, or any month tabs the
@@ -320,6 +337,7 @@ def create_google_sheet_link(client_id: str):
         "apps_script": _apps_script_snippet(webhook_url, bool(multi_tab)),
         "multi_tab": bool(multi_tab),
         "backfilled": backfilled,
+        "backfill_failed": backfill_failed,
         "initialized_blank": init_result.get("initialized", False),
         "initialized_tabs": init_result.get("tabs", []),
         "dropdowns_formatted": format_result["formatted"],
