@@ -3998,6 +3998,7 @@ document.addEventListener('paste', function(e) {
   </div>
   <script>
     let gsheetLinkClientId = null;
+    let gsheetLinkSpreadsheetId = null;
 
     function closeGoogleSheetLinkModal() {
       document.getElementById('gsheet-link-overlay').style.display = 'none';
@@ -4036,6 +4037,7 @@ document.addEventListener('paste', function(e) {
         const res = await fetch(`${API}/api/clients/${clientId}/google-sheet-link?user_id=${encodeURIComponent(UID)}`);
         const d = await res.json();
         if (d.linked) {
+          gsheetLinkSpreadsheetId = d.spreadsheet_id;
           const pushLine = d.last_push_at
             ? `<p>Last push to Sheet: ${esc(d.last_push_at)} ${d.last_push_ok ? '<span style="color:var(--grn, #22d3a0);">✓ ok</span>' : '<span style="color:var(--red, #ff5c5c);">✕ failed</span>'}</p>`
             : `<p style="color:var(--muted);">No pushes yet -- edit a row in the Sheets tab to trigger one.</p>`;
@@ -4064,6 +4066,7 @@ document.addEventListener('paste', function(e) {
             <textarea readonly style="width:100%;height:180px;font-family:monospace;font-size:0.8rem;">${esc(d.apps_script)}</textarea>
             <div style="margin-top:12px;display:flex;gap:8px;">
               <button id="gsheet-format-btn" class="btn btn-sm" onclick="formatGoogleSheetDropdowns('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Adds/refreshes the Type, Assigned To, and Status column dropdowns on every tab -- matches Lumina's own Sheets UI options">Format columns (dropdowns)</button>
+              <button id="gsheet-reconnect-btn" class="btn btn-sm" onclick="reconnectGoogleSheet('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Re-runs the connect step against the same Sheet -- retries any failed backfill tasks, rebuilds blank tabs, re-applies dropdowns. Safe to run any time.">Reconnect</button>
               <button class="btn btn-sm" onclick="unlinkGoogleSheet('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Unlink</button>
             </div>
             ${sheetsProUsageGuideHtml()}
@@ -4122,6 +4125,44 @@ document.addEventListener('paste', function(e) {
         openGoogleSheetLinkModal(clientId);
       } catch (e) {
         toast('Network error connecting sheet', 'err');
+        if (btn) { btn.disabled = false; btn.textContent = origLabel; btn.style.opacity = '1'; }
+      }
+    }
+
+    async function reconnectGoogleSheet(clientId) {
+      const spreadsheetId = gsheetLinkSpreadsheetId;
+      if (!spreadsheetId) { toast('No spreadsheet on record -- unlink and reconnect with the URL instead', 'err'); return; }
+      const client = allData.clients.find(c => String(c.id) === String(clientId));
+      const isNotionClient = notionMode && !!(client && client.notion_id);
+      const btn = document.getElementById('gsheet-reconnect-btn');
+      const origLabel = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Reconnecting…'; btn.style.opacity = '0.6'; }
+      try {
+        const res = await fetch(`${API}/api/clients/${clientId}/google-sheet-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: UID, spreadsheet_url: spreadsheetId, is_notion: isNotionClient,
+            client_name: client ? client.name : '',
+          }),
+        });
+        const d = await res.json();
+        if (!d.success) { toast(d.error || 'Failed to reconnect', 'err'); return; }
+        let msg = 'Sheet reconnected';
+        if (d.initialized_blank) msg += ` -- built tab(s): ${(d.initialized_tabs || []).join(', ')}`;
+        if (d.backfilled) msg += ` -- ${d.backfilled} task(s) pushed in`;
+        toast(msg);
+        if (d.backfill_failed) {
+          toast(`${d.backfill_failed} task(s) still failed to push -- edit and save each one once in Lumina to push it individually`, 'err');
+        }
+        if (d.typed_column_tabs && d.typed_column_tabs.length) {
+          toast(`Dropdowns couldn't be added to: ${d.typed_column_tabs.join(', ')} -- these use Google Sheets' Table feature. Right-click the table there and choose "Convert to range" first.`, 'err');
+        }
+        loadLinkedSheetClientIds();
+        openGoogleSheetLinkModal(clientId);
+      } catch (e) {
+        toast('Network error reconnecting sheet', 'err');
+      } finally {
         if (btn) { btn.disabled = false; btn.textContent = origLabel; btn.style.opacity = '1'; }
       }
     }
