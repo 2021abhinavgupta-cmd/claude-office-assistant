@@ -3974,16 +3974,23 @@ document.addEventListener('mouseover', e => {
       const url = urlMatch[1];
       linkA.href = url;
       linkText.textContent = url.length > 40 ? url.substring(0, 40) + '...' : url;
-      
-      const rect = cell.getBoundingClientRect();
+
+      // Anchor to the mouse position, not the cell's own bounding rect --
+      // a tall/scrolled cell (e.g. a long script in the Idea/Scripts
+      // column) put rect.bottom far below the visible viewport, so the
+      // popup rendered off the bottom of the screen instead of near
+      // where the user was actually hovering.
       linkPopup.style.display = 'block';
-      linkPopup.style.top = (rect.bottom + window.scrollY - 2) + 'px';
-      
+      const popupH = linkPopup.offsetHeight || 34;
+      let topPos = e.clientY + window.scrollY + 16;
+      if (e.clientY + 16 + popupH > window.innerHeight) topPos = e.clientY + window.scrollY - popupH - 8;
+      linkPopup.style.top = topPos + 'px';
+
       // Keep it within screen bounds horizontally
-      let leftPos = rect.left + window.scrollX;
+      let leftPos = e.clientX + window.scrollX + 10;
       if (leftPos + 300 > window.innerWidth) leftPos = window.innerWidth - 320;
       linkPopup.style.left = leftPos + 'px';
-      
+
       clearTimeout(popupTimeout);
     } else {
       hidePopup();
