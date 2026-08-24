@@ -727,6 +727,7 @@ function renderDetail(clients){
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
         <div style="display:flex; gap: 8px; align-items: center;">
           <button class="btn-sm gsheet-link-btn" data-client-id="${c.id}" onclick="event.stopPropagation(); openGoogleSheetLinkModal('${c.id}')" title="${linkedSheetClientIds.has(String(c.id)) ? 'Google Sheet connected -- click to view/manage' : 'Connect a Google Sheet to sync with this client tasks'}" style="${linkedSheetClientIds.has(String(c.id)) ? 'color:var(--grn, #22d3a0);' : ''}">${linkedSheetClientIds.has(String(c.id)) ? 'Sheet ✓' : 'Sheet'}</button>
+          ${linkedSheetClientIds.has(String(c.id)) && linkedSheetSpreadsheetIds[String(c.id)] ? `<a href="https://docs.google.com/spreadsheets/d/${encodeURIComponent(linkedSheetSpreadsheetIds[String(c.id)])}/edit" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Open the linked Google Sheet" class="btn-sm gsheet-redirect-btn" data-client-id="${c.id}" style="text-decoration:none; display:inline-flex; align-items:center;">↗</a>` : ''}
           <button class="btn-sm" style="background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25);" onclick="event.stopPropagation(); deleteClient('${c.id}')"> Delete Client</button>
           <span style="color:var(--muted);font-size:.8rem">▼</span>
         </div>
@@ -1389,10 +1390,36 @@ async function loadLinkedSheetClientIds() {
     linkedSheetSpreadsheetIds = d.spreadsheet_ids || {};
   } catch (e) { /* leave empty -- button just shows as unlinked */ }
   document.querySelectorAll('.gsheet-link-btn').forEach(btn => {
-    const linked = linkedSheetClientIds.has(String(btn.dataset.clientId));
+    const cid = String(btn.dataset.clientId);
+    const linked = linkedSheetClientIds.has(cid);
     btn.textContent = linked ? 'Sheet ✓' : 'Sheet';
     btn.title = linked ? 'Google Sheet connected -- click to view/manage' : "Connect a Google Sheet to sync with this client's tasks";
     btn.style.color = linked ? 'var(--grn, #22d3a0)' : '';
+
+    // Keep the adjacent "open the real sheet" redirect arrow in sync too --
+    // it's not part of this button, so a connect/disconnect after initial
+    // render (which only ran the loop above) needs its own add/remove here.
+    let arrow = btn.nextElementSibling;
+    if (!arrow || !arrow.classList || !arrow.classList.contains('gsheet-redirect-btn')) arrow = null;
+    const spreadsheetId = linkedSheetSpreadsheetIds[cid];
+    if (linked && spreadsheetId) {
+      if (!arrow) {
+        arrow = document.createElement('a');
+        arrow.className = 'btn-sm gsheet-redirect-btn';
+        arrow.target = '_blank';
+        arrow.rel = 'noopener';
+        arrow.title = 'Open the linked Google Sheet';
+        arrow.style.textDecoration = 'none';
+        arrow.style.display = 'inline-flex';
+        arrow.style.alignItems = 'center';
+        arrow.textContent = '↗';
+        arrow.addEventListener('click', (e) => e.stopPropagation());
+        btn.insertAdjacentElement('afterend', arrow);
+      }
+      arrow.href = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/edit`;
+    } else if (arrow) {
+      arrow.remove();
+    }
   });
 }
 
@@ -1707,10 +1734,6 @@ function renderClientSheets(clientId) {
             </div>
           </div>
           <button class="btn btn-sm" onclick="openSheetHistory('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕓 Edit History</button>
-          <div style="display:inline-flex; align-items:stretch;">
-            <button class="btn btn-sm" onclick="openGoogleSheetLinkModal('${clientId}')" style="border: 1px solid var(--bdr); ${linkedSheetClientIds.has(String(clientId)) && linkedSheetSpreadsheetIds[String(clientId)] ? 'border-right: none; border-radius: 6px 0 0 6px;' : ''} background: var(--s2); color: var(--txt); padding: 8px 12px;">Google Sheet</button>
-            ${linkedSheetClientIds.has(String(clientId)) && linkedSheetSpreadsheetIds[String(clientId)] ? `<a href="https://docs.google.com/spreadsheets/d/${encodeURIComponent(linkedSheetSpreadsheetIds[String(clientId)])}/edit" target="_blank" rel="noopener" title="Open the linked Google Sheet" style="border: 1px solid var(--bdr); border-left: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 10px; border-radius:0 6px 6px 0; text-decoration:none; display:inline-flex; align-items:center; font-size:.95rem;">↗</a>` : ''}
-          </div>
           <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
         </div>
       </div>
