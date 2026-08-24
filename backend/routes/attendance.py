@@ -296,6 +296,20 @@ def attendance_export():
         "SELECT date, user_id, checkin_time, checkout_time FROM daily_attendance ORDER BY date DESC, user_id"
     )
     rows = cursor.fetchall()
+
+    # Standup task counts per (user_id, date), same definitions the Velocity
+    # chart uses (routes/ops.py::get_velocity) so the two stay consistent:
+    # completed = marked done that day; carried = still-pending tasks that
+    # were carried in from an earlier day (not a new task started that day).
+    cursor.execute(
+        """SELECT user_id, date,
+                  SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS completed,
+                  SUM(CASE WHEN carried_from IS NOT NULL AND status='pending' THEN 1 ELSE 0 END) AS carried
+           FROM standup_tasks
+           WHERE status != 'deleted'
+           GROUP BY user_id, date"""
+    )
+    task_counts = {(r[0], r[1]): (r[2] or 0, r[3] or 0) for r in cursor.fetchall()}
     conn.close()
 
     emp_map = {}
@@ -318,9 +332,10 @@ def attendance_export():
 
     si = StringIO()
     cw = csv.writer(si)
-    cw.writerow(["Date", "In", "Out", "Employee"])
+    cw.writerow(["Date", "In", "Out", "Employee", "Tasks Completed", "Tasks Carried Forward"])
     for date, user_id, checkin_time, checkout_time in rows:
-        cw.writerow([date, checkin_time or "", checkout_time or "", format_user(user_id)])
+        completed, carried = task_counts.get((user_id, date), (0, 0))
+        cw.writerow([date, checkin_time or "", checkout_time or "", format_user(user_id), completed, carried])
 
     return Response(
         si.getvalue(),
