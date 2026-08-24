@@ -433,6 +433,7 @@ const API = (window.location.protocol === "file:" || !window.location.hostname)
 
 
 let employeesMap = {};
+let serverTodayIST = null; // set from the server's own "today" response, not the browser's local clock
 
 async function loadAttendance() {
   const wrap  = document.getElementById("attendance-wrap");
@@ -470,6 +471,11 @@ async function loadAttendance() {
     // (so it defaults to today per IST, which can differ from the
     // browser's local "today") -- never overwrite a date the user picked.
     if (datePicker && !datePicker.value) { datePicker.max = istDate; datePicker.value = istDate; }
+    // The unfiltered request (no ?date=) is the only one that reflects the
+    // server's actual "today" -- capture it once so a past date the user
+    // picks can be told apart from today (see isViewingToday below).
+    if (!pickedDate) serverTodayIST = istDate;
+    const isViewingToday = serverTodayIST === null || istDate === serverTodayIST;
 
     const allRows = employees.map(emp => {
       const daily = attendanceMap[emp.id] || {};
@@ -486,8 +492,8 @@ async function loadAttendance() {
     const inCount = allRows.filter(r => r.checkin_time && !r.checkout_time).length;
 
     if (badge) {
-      badge.textContent = isAdmin ? `${inCount} / ${allRows.length} in office` : "My Attendance";
-      badge.style.color = inCount > 0 ? "var(--green)" : "var(--muted)";
+      badge.textContent = isAdmin ? `${inCount} / ${allRows.length} ${isViewingToday ? "in office" : "checked in"}` : "My Attendance";
+      badge.style.color = (isViewingToday && inCount > 0) ? "var(--green)" : "var(--muted)";
     }
 
     if (!visibleRows.length) {
@@ -511,14 +517,18 @@ async function loadAttendance() {
     wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">${
       visibleRows.map(emp => {
         const checkin = emp.checkin_time ? `${emp.checkin_time} IST` : "Not in yet";
-        // "Still working" only if they actually checked in today but have not logged out yet
+        // "Still working" only makes sense when viewing today -- for a past
+        // date, a null checkout just means nobody ever recorded one for
+        // that day (they closed the tab and it predates the heartbeat
+        // sweep, or a very stale/still-open session), not that they're
+        // literally still working right now.
         const checkout = !emp.checkin_time
           ? "—"
-          : (emp.checkout_time ? `${emp.checkout_time} IST` : "Still working");
+          : (emp.checkout_time ? `${emp.checkout_time} IST` : (isViewingToday ? "Still working" : "Not checked out"));
         const inSec = toSeconds(emp.checkin_time);
         const outSec = toSeconds(emp.checkout_time);
         const total = (inSec != null && outSec != null && outSec >= inSec) ? formatDuration(outSec - inSec) : "—";
-        const isWorking = Boolean(emp.checkin_time) && !emp.checkout_time;
+        const isWorking = isViewingToday && Boolean(emp.checkin_time) && !emp.checkout_time;
         const statusDot = isWorking
           ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22d3a0;margin-right:6px"></span>'
           : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px"></span>';
