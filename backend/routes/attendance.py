@@ -91,6 +91,29 @@ def _attendance_checkin(user_id: str):
     return d, stored_checkin
 
 
+def _attendance_ping(user_id: str) -> str:
+    """Lightweight presence heartbeat -- called every 60s while a Lumina page
+    is open (see auth.js). Only writes last_seen_at, nothing else. Real
+    checkout is inferred later by sweep_stale_checkouts() (task_scheduler.py)
+    from staleness of this timestamp, NOT from any unload/pagehide event --
+    that approach was tried and reverted (see CLAUDE.md gotcha #70/#71: a
+    pagehide-triggered checkout write fires on every internal page
+    navigation, not just a real tab close, and the resulting write volume
+    was implicated in a production DB hang)."""
+    d = today_ist()
+    t = now_ist()
+    conn = _attendance_conn()
+    with conn:
+        conn.execute(
+            """INSERT INTO daily_attendance (user_id, date, last_seen_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id, date) DO UPDATE SET last_seen_at = excluded.last_seen_at""",
+            (user_id, d, t),
+        )
+    conn.close()
+    return t
+
+
 def _attendance_checkout(user_id: str):
     """Always updates checkout_time to latest IST logout (UPSERT).
     checkout_time is clamped to the work-day window (see WORK_START/WORK_END)
@@ -153,6 +176,52 @@ def attendance_checkout():
         "checkout_time": checkout_time,
         "timezone": "IST",
     })
+
+
+@attendance_bp.route("/api/attendance/ping", methods=["POST"])
+def attendance_ping():
+    body = _attendance_payload()
+    user_id = str(body.get("user_id", "")).strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    last_seen = _attendance_ping(user_id)
+    return jsonify({"success": True, "last_seen_at": last_seen})
+
+
+def sweep_stale_checkouts(stale_after_seconds: int = 240):
+    """Called by task_scheduler.py every ~3min. For today's rows with a
+    checkin but no checkout, whose last_seen_at is older than
+    stale_after_seconds, mark checkout_time = last_seen_at -- i.e. the
+    employee's tab went away (closed / crashed / lost network) and their
+    heartbeat simply stopped. Explicit Logout (attendance_checkout above)
+    already handles the instant case; this is the fallback for everyone
+    who just closes the tab."""
+    d = today_ist()
+    now_dt = datetime.strptime(now_ist(), "%H:%M:%S")
+    conn = _attendance_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT user_id, last_seen_at FROM daily_attendance
+           WHERE date=? AND checkin_time IS NOT NULL
+             AND checkout_time IS NULL AND last_seen_at IS NOT NULL""",
+        (d,),
+    )
+    rows = cur.fetchall()
+    swept = 0
+    with conn:
+        for user_id, last_seen_at in rows:
+            try:
+                last_seen_dt = datetime.strptime(last_seen_at, "%H:%M:%S")
+            except ValueError:
+                continue
+            if (now_dt - last_seen_dt).total_seconds() >= stale_after_seconds:
+                conn.execute(
+                    "UPDATE daily_attendance SET checkout_time=? WHERE user_id=? AND date=?",
+                    (_clamp_work_time(last_seen_at), user_id, d),
+                )
+                swept += 1
+    conn.close()
+    return swept
 
 
 @attendance_bp.route("/api/attendance/summary", methods=["GET"])

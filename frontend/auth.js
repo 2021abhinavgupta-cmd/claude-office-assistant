@@ -39,6 +39,18 @@ document.documentElement.style.visibility = 'hidden';
     // Auth passed — reveal the page
     document.documentElement.style.visibility = 'visible';
 
+    // Presence heartbeat: immediate + every 60s. Real checkout is inferred
+    // server-side from staleness of this timestamp (see task_scheduler.py's
+    // attendance_presence_sweep job) -- NOT from a pagehide/beforeunload
+    // event. An unload-event approach was tried once (see CLAUDE.md gotcha
+    // #70/#71) and reverted: pagehide fires identically on a real tab close
+    // and on clicking a link to another Lumina page (separate .html files,
+    // not an SPA), so it wrote a checkout on every internal navigation --
+    // the resulting write volume was implicated in a production DB hang.
+    // Heartbeat-only avoids firing anything on navigation at all.
+    sendAttendancePing(authApi, user.user_id);
+    setInterval(() => sendAttendancePing(authApi, user.user_id), 60000);
+
   } catch (e) {
     // Network error — reveal page then redirect to login
     document.documentElement.style.visibility = 'visible';
@@ -47,9 +59,14 @@ document.documentElement.style.visibility = 'hidden';
   }
 })();
 
-/**
- * (Removed beforeunload checkout logic to prevent aggressive mid-session checkouts)
- */
+function sendAttendancePing(authApi, userId) {
+  fetch(`${authApi}/api/attendance/ping`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  }).catch(() => {});
+}
+
 /**
  * Logout helper — call window.authLogout() from any page.
  */

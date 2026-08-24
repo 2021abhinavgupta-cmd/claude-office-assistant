@@ -85,6 +85,10 @@ def init_db():
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_user_date ON daily_attendance(user_id, date)"
         )
+        try:
+            conn.execute("ALTER TABLE daily_attendance ADD COLUMN last_seen_at TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
 
         # Daily standups
         conn.execute("""CREATE TABLE IF NOT EXISTS standups (

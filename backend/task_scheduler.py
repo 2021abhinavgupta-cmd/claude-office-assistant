@@ -249,6 +249,19 @@ def get_all_alerts(days_back: int = 7) -> list:
     ]
 
 
+def _run_attendance_sweep():
+    """Wraps routes.attendance.sweep_stale_checkouts() for the interval job
+    below -- imported lazily so this module has no hard import-time
+    dependency on the attendance blueprint."""
+    try:
+        from routes.attendance import sweep_stale_checkouts
+        swept = sweep_stale_checkouts()
+        if swept:
+            logger.info(f"Attendance sweep: auto-checked-out {swept} stale session(s).")
+    except Exception as e:
+        logger.warning(f"Attendance sweep failed (non-fatal): {e}")
+
+
 def init_scheduler(app):
     """Call this once from app.py to register the background job."""
     try:
@@ -257,6 +270,12 @@ def init_scheduler(app):
         # Run daily at 8:00 AM
         scheduler.add_job(check_overdue_tasks, "cron", hour=8, minute=0,
                           id="daily_overdue_check", replace_existing=True)
+        # Attendance presence sweep -- infers checkout from a stale heartbeat
+        # (see routes/attendance.py::sweep_stale_checkouts) instead of any
+        # pagehide/unload event. See CLAUDE.md gotcha #70/#71 for why the
+        # unload-event approach was tried once and reverted.
+        scheduler.add_job(_run_attendance_sweep, "interval", minutes=3,
+                          id="attendance_presence_sweep", replace_existing=True)
         scheduler.start()
         logger.info(" Task delay scheduler started (runs daily at 08:00).")
 
