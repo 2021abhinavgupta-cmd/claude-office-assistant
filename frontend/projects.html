@@ -2299,12 +2299,25 @@ function applyPastedCellValue(td, value) {
   if (td.isContentEditable) td.textContent = value;
 }
 
+const IMPORT_MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
 function parseFlexibleDate(value) {
   value = (value||'').trim();
   if (!value) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const dm = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (dm) return `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`; // assume DD/MM/YYYY (app is India/IST-based)
+  // "10/August/2026" / "10-Aug-2026" / "10 August 2026" -- a real format
+  // Google Sheets renders for some locales, which the new Date() fallback
+  // below parses as Invalid Date, silently returning ''.
+  const mm = value.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]+)[\/\-\s]+(\d{4})$/);
+  if (mm) {
+    const day = parseInt(mm[1], 10);
+    const monIdx = IMPORT_MONTH_NAMES.findIndex(mn => mn.startsWith(mm[2].toLowerCase()));
+    if (monIdx >= 0 && day >= 1 && day <= 31) {
+      return `${mm[3]}-${String(monIdx+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    }
+  }
   const d = new Date(value);
   if (!isNaN(d.getTime())) return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   return '';
@@ -3837,35 +3850,42 @@ function exportClientSocialCSV(clientId) {
   document.body.removeChild(link);
 }
 
-const IMPORT_MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-
-// Converts a flexibly-formatted date string (whatever a source spreadsheet
-// happens to contain: "07/08/2026", "10/August/2026", already-ISO, etc.)
-// into strict YYYY-MM-DD -- required for it to display in an <input
-// type="date">, which silently renders blank for anything else. Day-first
-// (DD/MM/YYYY) to match this app's own dd-mm-yyyy convention (see CLAUDE.md
-// gotcha #84), not US MM/DD/YYYY. Returns "" (leave blank) rather than
-// guessing on anything it can't confidently parse.
-function parseFlexibleDate(raw) {
-  const s = String(raw || '').trim();
-  if (!s) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (m) {
-    const day = parseInt(m[1], 10), mon = parseInt(m[2], 10), year = m[3];
-    if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
-      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+// Maps a spreadsheet's header row to column indices. Each field lists its
+// matchers in PRIORITY order, and every matcher is tried against ALL
+// headers before falling through to the next -- deliberately not a single
+// findIndex with an OR chain, which returns whichever column matches ANY
+// branch first in left-to-right order. A broad fallback like
+// includes('date') in such a chain silently wins on an earlier "Creation
+// Date" column before the exact "Post Day" column is ever reached (this is
+// exactly the bug that made add-tasks.html import both date fields blank).
+function buildColIdx(headers) {
+  const findCol = (...matchers) => {
+    for (const match of matchers) {
+      const idx = headers.findIndex(match);
+      if (idx >= 0) return idx;
     }
-    return '';
-  }
-  m = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]+)[\/\-\s]+(\d{4})$/);
-  if (m) {
-    const day = parseInt(m[1], 10);
-    const monIdx = IMPORT_MONTH_NAMES.findIndex(mn => mn.startsWith(m[2].toLowerCase()));
-    if (monIdx < 0 || day < 1 || day > 31) return '';
-    return `${m[3]}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  }
-  return '';
+    return -1;
+  };
+  return {
+    postDay:      findCol(h => h.includes('post day'), h => h.includes('post date'),
+                          h => h.includes('date') && !h.includes('creation')),
+    creationDate: findCol(h => h.includes('creation')),
+    post:         findCol(h => h === 'post', h => h.includes('post title'), h => h.includes('title')),
+    type:         findCol(h => h === 'type'),
+    content:      findCol(h => h === 'content'),
+    idea:         findCol(h => h === 'idea'),
+    scripts:      findCol(h => h.includes('script'), h => h.includes('copy')),
+    caption:      findCol(h => h === 'caption'),
+    assignee:     findCol(h => h.includes('assign')),
+    status:       findCol(h => h === 'status'),
+    link:         findCol(h => h.includes('link'), h => h.includes('drive'), h => h === 'file'),
+  };
+}
+
+// True if this row looks like a header row rather than data.
+function looksLikeHeaderRow(cells) {
+  const row = cells.map(c => String(c).toLowerCase());
+  return row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'));
 }
 
 async function importClientSocialCSV(event, clientId) {
@@ -3907,29 +3927,13 @@ async function importClientSocialCSV(event, clientId) {
         if (jsonRows.length < 2) return;
         let headerIdx = -1;
         for (let i = 0; i < Math.min(5, jsonRows.length); i++) {
-          const row = jsonRows[i].map(c => String(c).toLowerCase());
-          if (row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'))) {
-            headerIdx = i;
-            break;
-          }
+          if (looksLikeHeaderRow(jsonRows[i])) { headerIdx = i; break; }
         }
         // No recognizable header found in this tab (e.g. a scratch/notes
         // tab) -- skip it rather than guessing row 0 is the header.
         if (headerIdx < 0) return;
         const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
-        const colIdx = {
-          creationDate: headers.findIndex(h => h.includes('creation') || h === 'date'),
-          postDay:      headers.findIndex(h => h.includes('post day') || h.includes('day')),
-          post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
-          type:         headers.findIndex(h => h === 'type'),
-          content:      headers.findIndex(h => h === 'content'),
-          idea:         headers.findIndex(h => h === 'idea'),
-          scripts:      headers.findIndex(h => h.includes('script') || h.includes('copy')),
-          caption:      headers.findIndex(h => h === 'caption'),
-          assignee:     headers.findIndex(h => h.includes('assign')),
-          status:       headers.findIndex(h => h === 'status'),
-          link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
-        };
+        const colIdx = buildColIdx(headers);
         const rows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
           creationDate: getDateCell(row, colIdx, 'creationDate'),
           postDay:      getDateCell(row, colIdx, 'postDay'),
@@ -3946,31 +3950,49 @@ async function importClientSocialCSV(event, clientId) {
         parsedRows = parsedRows.concat(rows);
       });
     } else {
-      // Parse CSV
+      // Parse CSV. Header-driven like the Excel branch above, NOT by fixed
+      // column position -- a CSV exported straight out of a linked Google
+      // Sheet has an extra lumina_task_id column A, which shifts every
+      // subsequent column by one and made positional parsing land every
+      // single field in the wrong slot.
       const text = e.target.result;
-      const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
-      if (rows.length < 2) return;
-      parsedRows = rows.slice(1).map(row => {
+      const parseCsvLine = (line) => {
         const regex = /(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^,]+)|)(?:,|$)/g;
         let m; let data = [];
-        while ((m = regex.exec(row)) !== null && m[0] !== "") {
-          let val = m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || "");
-          data.push(val);
+        while ((m = regex.exec(line)) !== null && m[0] !== "") {
+          data.push(m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || ""));
         }
-        return {
-          creationDate: parseFlexibleDate(data[0]),
-          postDay:      parseFlexibleDate(data[1]),
-          post:         data[2] || "",
-          type:         data[3] || "Story",
-          content:      data[4] || "",
-          idea:         data[5] || "",
-          scripts:      data[6] || "",
-          caption:      data[7] || "",
-          assignee:     data[8] || "",
-          status:       data[9] || "Scheduled",
-          link:         data[10] || ""
-        };
-      });
+        return data;
+      };
+      const lines = text.split("\n").map(r => r.trim()).filter(Boolean).map(parseCsvLine);
+      if (lines.length < 2) return;
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(5, lines.length); i++) {
+        if (looksLikeHeaderRow(lines[i])) { headerIdx = i; break; }
+      }
+      if (headerIdx < 0) return;
+      const headers = lines[headerIdx].map(h => String(h).toLowerCase().trim());
+      const colIdx = buildColIdx(headers);
+      const getCsv = (row, key) => {
+        const idx = colIdx[key];
+        if (idx < 0 || idx >= row.length) return "";
+        const val = row[idx];
+        if (key === 'postDay' || key === 'creationDate') return parseFlexibleDate(val);
+        return String(val || "").trim();
+      };
+      parsedRows = lines.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
+        creationDate: getCsv(row, 'creationDate'),
+        postDay:      getCsv(row, 'postDay'),
+        post:         getCsv(row, 'post'),
+        type:         getCsv(row, 'type') || "Story",
+        content:      getCsv(row, 'content'),
+        idea:         getCsv(row, 'idea'),
+        scripts:      getCsv(row, 'scripts'),
+        caption:      getCsv(row, 'caption'),
+        assignee:     getCsv(row, 'assignee'),
+        status:       getCsv(row, 'status') || "Scheduled",
+        link:         getCsv(row, 'link'),
+      }));
     }
 
     // Sort chronologically (Post Day, falling back to Creation Date) before

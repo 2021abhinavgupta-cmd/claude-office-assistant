@@ -1606,6 +1606,45 @@
       return '';
     }
 
+    // Maps a spreadsheet's header row to column indices. Each field lists
+    // its matchers in PRIORITY order, and every matcher is tried against
+    // ALL headers before falling through to the next one -- deliberately
+    // not a single findIndex with an OR chain, which returns whichever
+    // column matches ANY branch first in left-to-right order. That's
+    // exactly how postDay used to silently resolve to the "Creation Date"
+    // column: its broad `includes('date')` fallback matched that earlier
+    // column before the exact "Post Day" column was ever reached, so both
+    // date fields read the same (often empty) column and imported blank.
+    function buildColIdx(headers) {
+      const findCol = (...matchers) => {
+        for (const match of matchers) {
+          const idx = headers.findIndex(match);
+          if (idx >= 0) return idx;
+        }
+        return -1;
+      };
+      return {
+        postDay:      findCol(h => h.includes('post day'), h => h.includes('post date'),
+                              h => h.includes('date') && !h.includes('creation')),
+        creationDate: findCol(h => h.includes('creation')),
+        post:         findCol(h => h === 'post', h => h.includes('post title'), h => h.includes('title')),
+        type:         findCol(h => h === 'type'),
+        content:      findCol(h => h === 'content'),
+        idea:         findCol(h => h === 'idea'),
+        scripts:      findCol(h => h.includes('script'), h => h.includes('copy')),
+        caption:      findCol(h => h === 'caption'),
+        assignee:     findCol(h => h.includes('assign')),
+        status:       findCol(h => h === 'status'),
+        link:         findCol(h => h.includes('link'), h => h.includes('drive'), h => h === 'file'),
+      };
+    }
+
+    // True if this row looks like a header row rather than data.
+    function looksLikeHeaderRow(cells) {
+      const row = cells.map(c => String(c).toLowerCase());
+      return row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'));
+    }
+
     async function importSocialCSV(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -1645,29 +1684,13 @@
             // Find header row — try to detect by checking for known column names
             let headerIdx = -1;
             for (let i = 0; i < Math.min(5, jsonRows.length); i++) {
-              const row = jsonRows[i].map(c => String(c).toLowerCase());
-              if (row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'))) {
-                headerIdx = i;
-                break;
-              }
+              if (looksLikeHeaderRow(jsonRows[i])) { headerIdx = i; break; }
             }
             // No recognizable header in this tab (e.g. a scratch/notes tab)
             // -- skip it rather than guessing row 0 is the header.
             if (headerIdx < 0) return;
             const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
-            const colIdx = {
-              postDay:      headers.findIndex(h => h.includes('post day') || h.includes('post date') || h.includes('date')),
-              creationDate: headers.findIndex(h => h.includes('creation')),
-              post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
-              type:         headers.findIndex(h => h === 'type'),
-              content:      headers.findIndex(h => h === 'content'),
-              idea:         headers.findIndex(h => h === 'idea'),
-              scripts:      headers.findIndex(h => h.includes('script') || h.includes('copy')),
-              caption:      headers.findIndex(h => h === 'caption'),
-              assignee:     headers.findIndex(h => h.includes('assign')),
-              status:       headers.findIndex(h => h === 'status'),
-              link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
-            };
+            const colIdx = buildColIdx(headers);
             const rows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
               creationDate: getCell(row, colIdx, 'creationDate'),
               postDay:      getCell(row, colIdx, 'postDay'),
@@ -1684,31 +1707,54 @@
             parsedRows = parsedRows.concat(rows);
           });
         } else {
-          // Parse CSV
+          // Parse CSV. Header-driven like the Excel branch above, NOT by
+          // fixed column position -- the old positional version read
+          // postDay from column 0 and creationDate from column 1, which is
+          // the opposite of what this app's own "Export CSV" writes
+          // (Creation Date first, then Post Day), so a straight
+          // export-then-reimport round trip silently swapped the two
+          // dates. Header-driven also means a CSV exported straight out of
+          // a linked Google Sheet (which has an extra lumina_task_id
+          // column A, shifting every subsequent column by one) maps
+          // correctly instead of landing every field one column off.
           const text = e.target.result;
-          const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
-          if (rows.length < 2) return;
-          parsedRows = rows.slice(1).map(row => {
+          const parseCsvLine = (line) => {
             const regex = /(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^,]+)|)(?:,|$)/g;
             let m; let data = [];
-            while ((m = regex.exec(row)) !== null && m[0] !== "") {
-              let val = m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || "");
-              data.push(val);
+            while ((m = regex.exec(line)) !== null && m[0] !== "") {
+              data.push(m[1] !== undefined ? m[1].replace(/\"\"/g, "\"") : (m[2] || ""));
             }
-            return {
-              postDay:      formatDate(data[0]),
-              creationDate: formatDate(data[1]),
-              post:         data[2] || "",
-              type:         data[3] || "",
-              content:      data[4] || "",
-              idea:         data[5] || "",
-              scripts:      data[6] || "",
-              caption:      data[7] || "",
-              assignee:     data[8] || "",
-              status:       data[9] || "Scheduled",
-              link:         data[10] || ""
-            };
-          });
+            return data;
+          };
+          const lines = text.split("\n").map(r => r.trim()).filter(Boolean).map(parseCsvLine);
+          if (lines.length < 2) return;
+          let headerIdx = -1;
+          for (let i = 0; i < Math.min(5, lines.length); i++) {
+            if (looksLikeHeaderRow(lines[i])) { headerIdx = i; break; }
+          }
+          if (headerIdx < 0) return;
+          const headers = lines[headerIdx].map(h => String(h).toLowerCase().trim());
+          const colIdx = buildColIdx(headers);
+          const getCsv = (row, key) => {
+            const idx = colIdx[key];
+            if (idx < 0 || idx >= row.length) return "";
+            const val = row[idx];
+            if (key === 'postDay' || key === 'creationDate') return formatDate(val);
+            return String(val || "").trim();
+          };
+          parsedRows = lines.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
+            creationDate: getCsv(row, 'creationDate'),
+            postDay:      getCsv(row, 'postDay'),
+            post:         getCsv(row, 'post'),
+            type:         getCsv(row, 'type') || "",
+            content:      getCsv(row, 'content'),
+            idea:         getCsv(row, 'idea'),
+            scripts:      getCsv(row, 'scripts'),
+            caption:      getCsv(row, 'caption'),
+            assignee:     getCsv(row, 'assignee'),
+            status:       getCsv(row, 'status') || "Scheduled",
+            link:         getCsv(row, 'link'),
+          }));
         }
 
         const btn = event.target.parentElement;
