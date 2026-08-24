@@ -544,6 +544,15 @@ async function load(){
 
   showNotionBadge(notionMode);
 
+  // Must run BEFORE loadNotion()/loadSQLite() -- both call renderDetail(),
+  // which reads linkedSheetClientIds synchronously to decide whether a
+  // zero-task client's Sheets tab renders at all. Loading it after (as this
+  // used to) left the tab permanently missing until a second full render,
+  // since loadLinkedSheetClientIds() only DOM-patches the existing Sheet
+  // button in place -- it never re-runs renderDetail to add a tab that
+  // wasn't in the HTML the first time.
+  await loadLinkedSheetClientIds();
+
   if(notionMode){
     await loadNotion();
   } else {
@@ -553,7 +562,6 @@ async function load(){
   await loadQuickTasks();
   // Shared Sheets row-hide state (server-backed, see loadAllHiddenRowsFromServer)
   await loadAllHiddenRowsFromServer();
-  await loadLinkedSheetClientIds();
 
   const urlParams = new URLSearchParams(window.location.search);
   const targetNotionId = urlParams.get('notion_id');
