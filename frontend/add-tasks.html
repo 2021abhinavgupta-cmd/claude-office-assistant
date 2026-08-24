@@ -1574,6 +1574,38 @@
       document.body.removeChild(link);
     }
 
+    const IMPORT_MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
+    // Converts a flexibly-formatted date string ("07/08/2026",
+    // "10/August/2026", already-ISO, etc.) into strict YYYY-MM-DD, day-first
+    // (matches this app's dd-mm-yyyy convention, CLAUDE.md gotcha #84) --
+    // NOT the native `new Date(str)` this function used before, which
+    // parses ambiguous slash-separated strings as US MM/DD/YYYY and
+    // silently produced a wrong date (e.g. "07/08/2026" -> July 8th
+    // instead of Aug 7th) rather than an obviously-blank one. Returns ""
+    // rather than guessing on anything it can't confidently parse.
+    function parseFlexibleDate(raw) {
+      const s = String(raw || '').trim();
+      if (!s) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (m) {
+        const day = parseInt(m[1], 10), mon = parseInt(m[2], 10), year = m[3];
+        if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
+          return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+        return '';
+      }
+      m = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]+)[\/\-\s]+(\d{4})$/);
+      if (m) {
+        const day = parseInt(m[1], 10);
+        const monIdx = IMPORT_MONTH_NAMES.findIndex(mn => mn.startsWith(m[2].toLowerCase()));
+        if (monIdx < 0 || day < 1 || day > 31) return '';
+        return `${m[3]}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+      return '';
+    }
+
     async function importSocialCSV(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -1581,69 +1613,76 @@
       const reader = new FileReader();
       reader.onload = async function(e) {
         let parsedRows = [];
-        
+
         const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
 
         const formatDate = (val) => {
-          if (!val) return "";
-          let d = val instanceof Date ? val : new Date(String(val).trim());
-          if (isNaN(d)) return String(val).trim();
-          const yyyy = d.getFullYear();
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const dd = String(d.getDate()).padStart(2, '0');
-          return `${yyyy}-${mm}-${dd}`;
+          if (val instanceof Date) return val.toISOString().split('T')[0];
+          return parseFlexibleDate(val);
         };
-        
+
         if (isExcel) {
-          // Parse Excel with SheetJS
+          // Parse Excel with SheetJS -- every tab in the workbook, not just
+          // the first. A Google Sheet exported to .xlsx keeps one tab per
+          // month (see the multi-tab sync convention, CLAUDE.md gotcha
+          // #87), and reading only SheetNames[0] silently dropped every
+          // other month.
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-          const sheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-          if (jsonRows.length < 2) return;
-          // Find header row — try to detect by checking for known column names
-          let headerIdx = 0;
-          for (let i = 0; i < Math.min(5, jsonRows.length); i++) {
-            const row = jsonRows[i].map(c => String(c).toLowerCase());
-            if (row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'))) {
-              headerIdx = i;
-              break;
-            }
-          }
-          const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
-          const colIdx = {
-            postDay:      headers.findIndex(h => h.includes('post day') || h.includes('post date') || h.includes('date')),
-            creationDate: headers.findIndex(h => h.includes('creation')),
-            post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
-            type:         headers.findIndex(h => h === 'type'),
-            content:      headers.findIndex(h => h === 'content'),
-            idea:         headers.findIndex(h => h === 'idea'),
-            scripts:      headers.findIndex(h => h.includes('script') || h.includes('copy')),
-            caption:      headers.findIndex(h => h === 'caption'),
-            assignee:     headers.findIndex(h => h.includes('assign')),
-            status:       headers.findIndex(h => h === 'status'),
-            link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
-          };
-          const getCell = (row, key) => {
+
+          const getCell = (row, colIdx, key) => {
             const idx = colIdx[key];
             if (idx < 0 || idx >= row.length) return "";
             const val = row[idx];
             if (key === 'postDay' || key === 'creationDate') return formatDate(val);
             return String(val || "").trim();
           };
-          parsedRows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
-            creationDate: getCell(row, 'creationDate'),
-            postDay:      getCell(row, 'postDay'),
-            post:         getCell(row, 'post'),
-            type:         getCell(row, 'type') || "",
-            content:      getCell(row, 'content'),
-            idea:         getCell(row, 'idea'),
-            scripts:      getCell(row, 'scripts'),
-            caption:      getCell(row, 'caption'),
-            assignee:     getCell(row, 'assignee'),
-            status:       getCell(row, 'status') || "Scheduled",
-            link:         getCell(row, 'link'),
-          }));
+
+          workbook.SheetNames.forEach(sheetName => {
+            const sheet = workbook.Sheets[sheetName];
+            const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+            if (jsonRows.length < 2) return;
+            // Find header row — try to detect by checking for known column names
+            let headerIdx = -1;
+            for (let i = 0; i < Math.min(5, jsonRows.length); i++) {
+              const row = jsonRows[i].map(c => String(c).toLowerCase());
+              if (row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'))) {
+                headerIdx = i;
+                break;
+              }
+            }
+            // No recognizable header in this tab (e.g. a scratch/notes tab)
+            // -- skip it rather than guessing row 0 is the header.
+            if (headerIdx < 0) return;
+            const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
+            const colIdx = {
+              postDay:      headers.findIndex(h => h.includes('post day') || h.includes('post date') || h.includes('date')),
+              creationDate: headers.findIndex(h => h.includes('creation')),
+              post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
+              type:         headers.findIndex(h => h === 'type'),
+              content:      headers.findIndex(h => h === 'content'),
+              idea:         headers.findIndex(h => h === 'idea'),
+              scripts:      headers.findIndex(h => h.includes('script') || h.includes('copy')),
+              caption:      headers.findIndex(h => h === 'caption'),
+              assignee:     headers.findIndex(h => h.includes('assign')),
+              status:       headers.findIndex(h => h === 'status'),
+              link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
+            };
+            const rows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
+              creationDate: getCell(row, colIdx, 'creationDate'),
+              postDay:      getCell(row, colIdx, 'postDay'),
+              post:         getCell(row, colIdx, 'post'),
+              type:         getCell(row, colIdx, 'type') || "",
+              content:      getCell(row, colIdx, 'content'),
+              idea:         getCell(row, colIdx, 'idea'),
+              scripts:      getCell(row, colIdx, 'scripts'),
+              caption:      getCell(row, colIdx, 'caption'),
+              assignee:     getCell(row, colIdx, 'assignee'),
+              status:       getCell(row, colIdx, 'status') || "Scheduled",
+              link:         getCell(row, colIdx, 'link'),
+            }));
+            parsedRows = parsedRows.concat(rows);
+          });
         } else {
           // Parse CSV
           const text = e.target.result;
