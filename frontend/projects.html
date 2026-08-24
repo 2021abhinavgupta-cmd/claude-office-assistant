@@ -4180,7 +4180,8 @@ document.addEventListener('paste', function(e) {
               <p style="margin:0 0 8px;color:var(--muted);">Connecting does <strong>not</strong> import existing rows -- it only keeps future edits in sync, and only if the sheet already matches Lumina's exact layout below. Restructure it first or your data won't sync (and may sync into the wrong fields):</p>
               <ol style="margin:0 0 10px;padding-left:18px;line-height:1.6;color:var(--muted);">
                 <li>Rename each tab to exactly <code>"Month YYYY"</code> (e.g. <code>"August 2026"</code>) or <code>"Unscheduled"</code> for undated tasks. Any other tab name is ignored.</li>
-                <li>Set row 1 (the header) and column order to exactly this -- insert a new column A if your data doesn't already have one:</li>
+                <li>Set row 1 (the header) and column order to exactly this table -- insert a new column A if your data doesn't already have one. <strong style="color:var(--txt);">This order is NOT the same as what Lumina's own Sheets tab shows on screen</strong> (there, Assigned To/Status appear before File Link/Notes -- the real Sheet needs it the other way, File Link/Notes before Assigned To/Status). Go by this table, not the app's on-screen column order:</li>
+                <li>Format the <strong>Creation Date</strong> and <strong>Post Day</strong> columns as <strong>Plain Text</strong>, not Date -- a real Date-formatted cell renders per your browser's locale and can shift the value by a day on sync.</li>
               </ol>
               <div style="overflow-x:auto;">
                 <table style="border-collapse:collapse;font-size:0.8rem;width:100%;margin-bottom:10px;">
