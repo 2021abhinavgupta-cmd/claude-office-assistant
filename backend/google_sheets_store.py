@@ -40,11 +40,25 @@ _client_sheet_locks: dict = {}
 _client_sheet_locks_guard = threading.Lock()
 
 
-def _get_client_sheet_lock(client_id: str) -> threading.Lock:
+def _get_client_sheet_lock(client_id: str) -> threading.RLock:
+    """RLock, not a plain Lock -- the connect-time backfill (see
+    routes/sheets_sync.py::create_google_sheet_link) holds this lock for
+    its ENTIRE loop so a reconcile webhook firing mid-backfill (a real,
+    observed failure mode: reconnecting to a spreadsheet that already has
+    a live Apps Script trigger installed from an earlier connect attempt
+    means every backfill write is itself an edit that can trigger that
+    trigger) blocks until backfill finishes and only ever sees the
+    complete final state, never a partial in-progress snapshot that would
+    otherwise look like "these tasks were deleted from the Sheet" and get
+    mirrored as real deletes in Notion/SQLite. Each individual push_fn
+    call inside that loop also acquires this same lock internally
+    (push_task_to_sheet(_multi_tab) -> _get_client_sheet_lock) -- with a
+    plain Lock that nested re-acquire by the same thread would deadlock;
+    RLock allows it."""
     with _client_sheet_locks_guard:
         lock = _client_sheet_locks.get(client_id)
         if lock is None:
-            lock = threading.Lock()
+            lock = threading.RLock()
             _client_sheet_locks[client_id] = lock
         return lock
 

@@ -295,66 +295,82 @@ def create_google_sheet_link(client_id: str):
         )
     conn.close()
 
-    # Auto-build a brand-new, completely empty spreadsheet into an
-    # immediately usable one instead of leaving it inert -- renames the
-    # default tab to the current month (multi-tab clients) or just formats
-    # the existing tab (single-tab clients), writes the header row, and
-    # applies the Type/Assigned To/Status dropdowns. No-ops harmlessly if
-    # the sheet already has any tabs/data (never touches a sheet someone
-    # already started setting up by hand). Must not fail the connect itself.
-    init_result = {"initialized": False}
-    try:
-        init_result = gs.initialize_blank_spreadsheet(spreadsheet_id, bool(multi_tab))
-    except Exception:
-        logger.exception(f"Sheets connect: blank-spreadsheet init failed for client {client_id}")
-
-    # One-time backfill: push every task Lumina already has for this client
-    # into the newly-linked Sheet. Without this, connecting a client with
-    # pre-existing tasks leaves the Sheet empty until each row happens to be
-    # individually edited in Lumina (which is what triggers a push) -- not
-    # discoverable, and impractical for a client with a dozen+ existing
-    # tasks. push_task_to_sheet is safe to call repeatedly (it looks up the
-    # row by task_id and overwrites in place, or appends if missing), so
-    # this is also safe to re-run on a re-link.
-    #
-    # Each task is pushed inside its OWN try/except -- previously the whole
-    # loop shared one try/except, so a single task raising (a malformed
-    # field, a transient Sheets API error not already caught inside
-    # push_fn, ...) silently aborted every task still left in the
-    # iteration, with only one generic log line and no indication which
-    # tasks were actually skipped. Same per-item isolation already used
-    # elsewhere in this codebase for exactly this reason (notion_store's
-    # per-page list_tasks/list_clients guard, reconcile's per-row guard).
-    backfilled = 0
-    backfill_failed = 0
-    try:
-        existing_tasks = gs._current_tasks_by_id(client_id, is_notion)
-        link_for_push = {"spreadsheet_id": spreadsheet_id, "client_id": client_id}
-        push_fn = gs.push_task_to_sheet_multi_tab if multi_tab else gs.push_task_to_sheet
-    except Exception:
-        logger.exception(f"Sheets connect: could not load existing tasks to backfill for client {client_id}")
-        existing_tasks = {}
-    for tid, task in existing_tasks.items():
+    # Everything below writes to the Sheet (tab init, the backfill loop,
+    # dropdown formatting) -- held under ONE lock acquisition for the whole
+    # sequence, not per-call. This matters specifically on a RECONNECT to a
+    # spreadsheet that already has a live Apps Script trigger installed from
+    # an earlier connect attempt: every write below is itself an edit that
+    # fires that trigger, and a reconcile webhook call slipping in between
+    # two of these writes would see only a partial, still-in-progress state
+    # and delete every real task not yet (re-)written as "removed from the
+    # Sheet". This happened for real once already (Omotec, 2026-08-24): a
+    # reconnect that only had 19 of 45 tasks pushed so far raced an already-
+    # installed trigger's reconcile, which deleted the other 26 real tasks
+    # from Notion. See the docstring on _get_client_sheet_lock -- it's now an
+    # RLock specifically so this outer lock and each push_fn's own internal
+    # re-acquire (push_task_to_sheet(_multi_tab) -> _get_client_sheet_lock)
+    # don't deadlock.
+    with gs._get_client_sheet_lock(client_id):
+        # Auto-build a brand-new, completely empty spreadsheet into an
+        # immediately usable one instead of leaving it inert -- renames the
+        # default tab to the current month (multi-tab clients) or just formats
+        # the existing tab (single-tab clients), writes the header row, and
+        # applies the Type/Assigned To/Status dropdowns. No-ops harmlessly if
+        # the sheet already has any tabs/data (never touches a sheet someone
+        # already started setting up by hand). Must not fail the connect itself.
+        init_result = {"initialized": False}
         try:
-            fields = gs._task_to_fields(task)
-            if push_fn(link_for_push, tid, fields):
-                backfilled += 1
-            else:
-                backfill_failed += 1
+            init_result = gs.initialize_blank_spreadsheet(spreadsheet_id, bool(multi_tab))
         except Exception:
-            logger.exception(f"Sheets connect: backfill failed for task {tid} (client {client_id}) -- continuing with the rest")
-            backfill_failed += 1
+            logger.exception(f"Sheets connect: blank-spreadsheet init failed for client {client_id}")
 
-    # Also format Type/Assigned To/Status dropdowns on whatever tab(s) exist
-    # at connect time (the sheet's default first tab, or any month tabs the
-    # employee pre-created) -- so a newly-connected client's Sheet is never
-    # left free-text and vulnerable to the typo class of bug _normalize_type
-    # exists to paper over. Best-effort: must not fail the connect itself.
-    format_result = {"formatted": 0, "typed_column_tabs": [], "other_failures": 0}
-    try:
-        format_result = gs.apply_dropdown_validation_to_all_tabs(spreadsheet_id)
-    except Exception:
-        logger.exception(f"Sheets connect: dropdown formatting failed for client {client_id}")
+        # One-time backfill: push every task Lumina already has for this client
+        # into the newly-linked Sheet. Without this, connecting a client with
+        # pre-existing tasks leaves the Sheet empty until each row happens to be
+        # individually edited in Lumina (which is what triggers a push) -- not
+        # discoverable, and impractical for a client with a dozen+ existing
+        # tasks. push_task_to_sheet is safe to call repeatedly (it looks up the
+        # row by task_id and overwrites in place, or appends if missing), so
+        # this is also safe to re-run on a re-link.
+        #
+        # Each task is pushed inside its OWN try/except -- previously the whole
+        # loop shared one try/except, so a single task raising (a malformed
+        # field, a transient Sheets API error not already caught inside
+        # push_fn, ...) silently aborted every task still left in the
+        # iteration, with only one generic log line and no indication which
+        # tasks were actually skipped. Same per-item isolation already used
+        # elsewhere in this codebase for exactly this reason (notion_store's
+        # per-page list_tasks/list_clients guard, reconcile's per-row guard).
+        backfilled = 0
+        backfill_failed = 0
+        try:
+            existing_tasks = gs._current_tasks_by_id(client_id, is_notion)
+            link_for_push = {"spreadsheet_id": spreadsheet_id, "client_id": client_id}
+            push_fn = gs.push_task_to_sheet_multi_tab if multi_tab else gs.push_task_to_sheet
+        except Exception:
+            logger.exception(f"Sheets connect: could not load existing tasks to backfill for client {client_id}")
+            existing_tasks = {}
+        for tid, task in existing_tasks.items():
+            try:
+                fields = gs._task_to_fields(task)
+                if push_fn(link_for_push, tid, fields):
+                    backfilled += 1
+                else:
+                    backfill_failed += 1
+            except Exception:
+                logger.exception(f"Sheets connect: backfill failed for task {tid} (client {client_id}) -- continuing with the rest")
+                backfill_failed += 1
+
+        # Also format Type/Assigned To/Status dropdowns on whatever tab(s) exist
+        # at connect time (the sheet's default first tab, or any month tabs the
+        # employee pre-created) -- so a newly-connected client's Sheet is never
+        # left free-text and vulnerable to the typo class of bug _normalize_type
+        # exists to paper over. Best-effort: must not fail the connect itself.
+        format_result = {"formatted": 0, "typed_column_tabs": [], "other_failures": 0}
+        try:
+            format_result = gs.apply_dropdown_validation_to_all_tabs(spreadsheet_id)
+        except Exception:
+            logger.exception(f"Sheets connect: dropdown formatting failed for client {client_id}")
 
     webhook_url = f"{_base_url()}/api/sheets/webhook/{link_token}"
     return jsonify({
