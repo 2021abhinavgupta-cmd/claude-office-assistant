@@ -726,7 +726,7 @@ function renderDetail(clients){
         <div><div class="cb-name"> ${c.name}${notionLink}</div>
           <div class="cb-meta">${c.deadline?"Due: "+c.deadline+" · ":""}${approved}/${c.tasks.length} approved</div></div>
         <div style="display:flex; gap: 8px; align-items: center;">
-          <button class="btn-sm gsheet-link-btn" data-client-id="${c.id}" onclick="event.stopPropagation(); openGoogleSheetLinkModal('${c.id}')" title="${linkedSheetClientIds.has(String(c.id)) ? 'Google Sheet connected -- click to view/manage' : 'Connect a Google Sheet to sync with this client tasks'}" style="${linkedSheetClientIds.has(String(c.id)) ? 'color:var(--grn, #22d3a0);' : ''}">${linkedSheetClientIds.has(String(c.id)) ? '🔗 Sheet ✓' : '🔗 Sheet'}</button>
+          <button class="btn-sm gsheet-link-btn" data-client-id="${c.id}" onclick="event.stopPropagation(); openGoogleSheetLinkModal('${c.id}')" title="${linkedSheetClientIds.has(String(c.id)) ? 'Google Sheet connected -- click to view/manage' : 'Connect a Google Sheet to sync with this client tasks'}" style="${linkedSheetClientIds.has(String(c.id)) ? 'color:var(--grn, #22d3a0);' : ''}">${linkedSheetClientIds.has(String(c.id)) ? 'Sheet ✓' : 'Sheet'}</button>
           <button class="btn-sm" style="background:rgba(255,92,92,.15);color:var(--red);border:1px solid rgba(255,92,92,.25);" onclick="event.stopPropagation(); deleteClient('${c.id}')"> Delete Client</button>
           <span style="color:var(--muted);font-size:.8rem">▼</span>
         </div>
@@ -1380,15 +1380,17 @@ function applyColumnVisibility(clientId) {
 // employee, not just whoever hid it -- was previously per-browser
 // localStorage, which meant e.g. Palak hiding a row was invisible to Vidit.
 let linkedSheetClientIds = new Set();
+let linkedSheetSpreadsheetIds = {}; // clientId -> spreadsheet_id, for the direct "open sheet" link
 async function loadLinkedSheetClientIds() {
   try {
     const res = await fetch(`${API}/api/sheets/links?user_id=${encodeURIComponent(UID)}`);
     const d = await res.json();
     linkedSheetClientIds = new Set((d.linked_client_ids || []).map(String));
+    linkedSheetSpreadsheetIds = d.spreadsheet_ids || {};
   } catch (e) { /* leave empty -- button just shows as unlinked */ }
   document.querySelectorAll('.gsheet-link-btn').forEach(btn => {
     const linked = linkedSheetClientIds.has(String(btn.dataset.clientId));
-    btn.textContent = linked ? '🔗 Sheet ✓' : '🔗 Sheet';
+    btn.textContent = linked ? 'Sheet ✓' : 'Sheet';
     btn.title = linked ? 'Google Sheet connected -- click to view/manage' : "Connect a Google Sheet to sync with this client's tasks";
     btn.style.color = linked ? 'var(--grn, #22d3a0)' : '';
   });
@@ -1705,7 +1707,8 @@ function renderClientSheets(clientId) {
             </div>
           </div>
           <button class="btn btn-sm" onclick="openSheetHistory('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕓 Edit History</button>
-          <button class="btn btn-sm" onclick="openGoogleSheetLinkModal('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🔗 Google Sheet</button>
+          <button class="btn btn-sm" onclick="openGoogleSheetLinkModal('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Google Sheet</button>
+          ${linkedSheetClientIds.has(String(clientId)) && linkedSheetSpreadsheetIds[String(clientId)] ? `<a href="https://docs.google.com/spreadsheets/d/${encodeURIComponent(linkedSheetSpreadsheetIds[String(clientId)])}/edit" target="_blank" rel="noopener" title="Open the linked Google Sheet" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 10px; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; font-size:.95rem;">↗</a>` : ''}
           <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
         </div>
       </div>

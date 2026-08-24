@@ -171,10 +171,14 @@ def list_linked_client_ids():
         return jsonify({"error": "Unauthorized"}), 403
     conn = _su_conn()
     cur = conn.cursor()
-    cur.execute("SELECT client_id FROM google_sheet_links")
-    ids = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT client_id, spreadsheet_id FROM google_sheet_links")
+    rows = cur.fetchall()
     conn.close()
-    return jsonify({"linked_client_ids": ids})
+    ids = [r[0] for r in rows]
+    # spreadsheet_id is not secret (unlike link_token) -- safe to hand back so the
+    # frontend can build a direct "open in Google Sheets" link without another round trip.
+    spreadsheet_ids = {str(r[0]): r[1] for r in rows}
+    return jsonify({"linked_client_ids": ids, "spreadsheet_ids": spreadsheet_ids})
 
 
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["POST"])
