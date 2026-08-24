@@ -2291,6 +2291,53 @@ function sheetTrClientId(tr) {
 // multi-row data entry has its own dedicated path: the Import CSV/Excel
 // button. Internal line breaks within the pasted text are preserved (cells
 // render with white-space:pre-wrap), just never treated as row separators.
+
+// Inserts pasted text at the caret position within a contentEditable Sheets
+// cell, like real Google Sheets does when you're actively editing a cell
+// (as opposed to replacing the whole cell, which only happens when the
+// cell is merely *selected*, not being typed into -- every Sheets cell
+// here is always directly editable, so caret-insert is the correct match).
+// Cells only ever hold a single text node (see applyPastedCellValue), so
+// offsets are plain string indices into td.textContent.
+function textOffsetWithinCell(td, node, offset) {
+  if (node === td) return td.textContent.length; // caret landed on the td itself (e.g. empty cell) -- treat as end
+  const walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT, null);
+  let total = 0, n;
+  while ((n = walker.nextNode())) {
+    if (n === node) return total + offset;
+    total += n.textContent.length;
+  }
+  return td.textContent.length;
+}
+
+function placeCaretInCell(td, pos) {
+  const sel = window.getSelection();
+  const range = document.createRange();
+  const node = td.firstChild;
+  if (!node) { range.setStart(td, 0); }
+  else { range.setStart(node, Math.max(0, Math.min(pos, node.textContent.length))); }
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function pasteIntoCellAtCaret(td, text) {
+  const existing = td.textContent || '';
+  let start = existing.length, end = existing.length; // no usable selection -> append at end, never wipe
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    const range = sel.getRangeAt(0);
+    if (td.contains(range.startContainer) && td.contains(range.endContainer)) {
+      start = textOffsetWithinCell(td, range.startContainer, range.startOffset);
+      end = textOffsetWithinCell(td, range.endContainer, range.endOffset);
+    }
+  }
+  const newValue = existing.slice(0, start) + text + existing.slice(end);
+  td.textContent = newValue;
+  placeCaretInCell(td, start + text.length);
+  return newValue;
+}
+
 let pendingPasteUndo = null; // { clientId, taskId, colIndex, oldValue, timeoutId }
 
 function startPendingPasteUndo(clientId, taskId, colIndex, oldValue) {
@@ -2338,7 +2385,7 @@ document.addEventListener('paste', (e) => {
   const taskId = tr.dataset.taskId;
   const colIndex = td.cellIndex;
   const oldValue = sheetCellTextValue(td);
-  applyPastedCellValue(td, text);
+  pasteIntoCellAtCaret(td, text);
   saveSheetRow(taskId, td, clientId);
   startPendingPasteUndo(clientId, taskId, colIndex, oldValue);
   toast('Pasted.');
