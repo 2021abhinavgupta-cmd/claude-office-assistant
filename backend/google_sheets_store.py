@@ -13,6 +13,8 @@ import time
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
+import requests
+
 import notion_store
 from utils import today_ist, now_ist, IST
 
@@ -213,59 +215,88 @@ def service_account_email() -> str:
     return _service_account_email_cache
 
 
+def _sheets_request(method: str, url: str, raise_for_status: bool = True, **kwargs) -> requests.Response:
+    """Calls the Sheets API with retry-on-429/5xx backoff, mirroring
+    notion_store._notion_request's pattern. Google's Sheets API has its own
+    short-window write quota (low double digits of write requests per
+    minute per project by default), and a client with many rows -- e.g.
+    connect-time backfill pushing 40+ tasks one at a time, or a multi-tab
+    reconcile -- can legitimately burst past it with zero pacing between
+    individual calls. Before this, every one of the 14 call sites below did
+    a bare session.get/post/put + raise_for_status() with no retry at all,
+    so a burst mid-backfill silently dropped whichever rows landed after
+    the quota tripped (raised, caught by the connect route's per-task
+    try/except, counted in backfill_failed) instead of retrying through
+    what's usually a transient 429. raise_for_status=False returns the raw
+    (possibly non-2xx) response instead of raising on a non-429/5xx status --
+    used only by apply_dropdown_validation, which needs to inspect a 400's
+    body itself to distinguish the one specific non-retryable
+    TypedColumnError case from every other error."""
+    session = _get_session()
+    last_exc = None
+    for attempt in range(1, 4):
+        try:
+            r = session.request(method, url, **kwargs)
+            if r.status_code == 429 or r.status_code >= 500:
+                wait = 2 ** attempt  # 2s, 4s, 8s
+                logger.warning(f"Sheets API {r.status_code}, retrying in {wait}s (attempt {attempt}): {url}")
+                time.sleep(wait)
+                continue
+            if raise_for_status:
+                r.raise_for_status()
+            return r
+        except requests.exceptions.HTTPError:
+            raise  # non-retryable HTTP errors (4xx other than 429) bubble up immediately
+        except Exception as e:
+            logger.warning(f"Sheets API request error (attempt {attempt}): {e}")
+            last_exc = e
+            time.sleep(2 ** attempt)
+    raise requests.exceptions.ConnectionError(f"Sheets API request failed after 3 attempts: {url}") from last_exc
+
+
 def read_all_rows(spreadsheet_id: str) -> list:
     """Every row (including the header) as a list of lists, using
     FORMATTED_VALUE (the API default) so plain-text-formatted date cells come
     back as the exact typed string rather than a date serial number. Short
     rows are NOT padded by the Sheets API -- callers must not assume every
     row has all 13 columns."""
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/A:M"
-    r = session.get(url)
-    r.raise_for_status()
+    r = _sheets_request("GET", url)
     return r.json().get("values", [])
 
 
 def write_row(spreadsheet_id: str, row_number: int, values: list):
     """Overwrites one full row, 1-indexed to match the Sheet's own row numbers."""
-    session = _get_session()
     rng = f"A{row_number}:M{row_number}"
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}"
-    r = session.put(url, params={"valueInputOption": "RAW"}, json={"values": [values]})
-    r.raise_for_status()
+    _sheets_request("PUT", url, params={"valueInputOption": "RAW"}, json={"values": [values]})
 
 
 def append_row(spreadsheet_id: str, values: list) -> int:
     """Appends a new row after the sheet's last row with data. Returns the
     new row's 1-indexed row number, parsed out of the API's updatedRange."""
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/A:M:append"
-    r = session.post(
-        url,
+    r = _sheets_request(
+        "POST", url,
         params={"valueInputOption": "RAW", "insertDataOption": "INSERT_ROWS"},
         json={"values": [values]},
     )
-    r.raise_for_status()
     updated_range = r.json().get("updates", {}).get("updatedRange", "")
     m = re.search(r"!A(\d+)", updated_range)
     return int(m.group(1)) if m else -1
 
 
 def write_cell(spreadsheet_id: str, a1_cell: str, value):
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{a1_cell}"
-    r = session.put(url, params={"valueInputOption": "RAW"}, json={"values": [[value]]})
-    r.raise_for_status()
+    _sheets_request("PUT", url, params={"valueInputOption": "RAW"}, json={"values": [[value]]})
 
 
 def _first_sheet_id(spreadsheet_id: str) -> int:
     """The spreadsheet-internal numeric sheetId (gid) of the first tab --
     needed for a physical row delete via batchUpdate, which addresses rows
     by sheetId, not by the A1 range names read_all_rows/write_row use."""
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
-    r = session.get(url, params={"fields": "sheets.properties"})
-    r.raise_for_status()
+    r = _sheets_request("GET", url, params={"fields": "sheets.properties"})
     sheets = r.json().get("sheets", [])
     return sheets[0]["properties"]["sheetId"] if sheets else 0
 
@@ -275,7 +306,6 @@ def delete_row(spreadsheet_id: str, row_number: int):
     numbers), shifting everything below it up -- not a blank-out. Mirrors
     what a Sheet-side row delete already does to a Lumina task, so a
     Lumina-side delete now does the equivalent to the Sheet."""
-    session = _get_session()
     sheet_id = _first_sheet_id(spreadsheet_id)
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
     body = {
@@ -290,8 +320,7 @@ def delete_row(spreadsheet_id: str, row_number: int):
             }
         }]
     }
-    r = session.post(url, json=body)
-    r.raise_for_status()
+    _sheets_request("POST", url, json=body)
 
 
 # ── Multi-tab I/O ────────────────────────────────────────────────────────
@@ -304,10 +333,8 @@ def delete_row(spreadsheet_id: str, row_number: int):
 def list_tabs(spreadsheet_id: str) -> list:
     """Every tab in the spreadsheet as [{"name": str, "sheet_id": int}, ...],
     in the spreadsheet's own tab order."""
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
-    r = session.get(url, params={"fields": "sheets.properties"})
-    r.raise_for_status()
+    r = _sheets_request("GET", url, params={"fields": "sheets.properties"})
     sheets = r.json().get("sheets", [])
     return [{"name": s["properties"]["title"], "sheet_id": s["properties"]["sheetId"]} for s in sheets]
 
@@ -330,11 +357,9 @@ def ensure_tab_exists(spreadsheet_id: str, sheet_name: str):
     tabs = list_tabs(spreadsheet_id)
     if any(t["name"] == sheet_name for t in tabs):
         return
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
     body = {"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
-    r = session.post(url, json=body)
-    r.raise_for_status()
+    r = _sheets_request("POST", url, json=body)
     write_tab_row(spreadsheet_id, sheet_name, 1, SHEET_HEADER_ROW)
     new_sheet_id = r.json()["replies"][0]["addSheet"]["properties"]["sheetId"]
     try:
@@ -347,53 +372,44 @@ def read_tab_rows(spreadsheet_id: str, sheet_name: str) -> list:
     """Every row (including the header) in one tab, as a list of lists.
     Short rows are NOT padded -- callers must not assume every row has all
     13 columns."""
-    session = _get_session()
     rng = quote(f"{_a1_quote(sheet_name)}!A:M", safe="")
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}"
-    r = session.get(url)
-    r.raise_for_status()
+    r = _sheets_request("GET", url)
     return r.json().get("values", [])
 
 
 def write_tab_row(spreadsheet_id: str, sheet_name: str, row_number: int, values: list):
     """Overwrites one full row in one tab, 1-indexed to match the tab's own
     row numbers."""
-    session = _get_session()
     rng = quote(f"{_a1_quote(sheet_name)}!A{row_number}:M{row_number}", safe="")
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}"
-    r = session.put(url, params={"valueInputOption": "RAW"}, json={"values": [values]})
-    r.raise_for_status()
+    _sheets_request("PUT", url, params={"valueInputOption": "RAW"}, json={"values": [values]})
 
 
 def append_tab_row(spreadsheet_id: str, sheet_name: str, values: list) -> int:
     """Appends a new row after one tab's last row with data. Returns the new
     row's 1-indexed row number, parsed out of the API's updatedRange."""
-    session = _get_session()
     rng = quote(f"{_a1_quote(sheet_name)}!A:M", safe="")
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}:append"
-    r = session.post(
-        url,
+    r = _sheets_request(
+        "POST", url,
         params={"valueInputOption": "RAW", "insertDataOption": "INSERT_ROWS"},
         json={"values": [values]},
     )
-    r.raise_for_status()
     updated_range = r.json().get("updates", {}).get("updatedRange", "")
     m = re.search(r"!A(\d+)", updated_range)
     return int(m.group(1)) if m else -1
 
 
 def write_tab_cell(spreadsheet_id: str, sheet_name: str, a1_cell: str, value):
-    session = _get_session()
     rng = quote(f"{_a1_quote(sheet_name)}!{a1_cell}", safe="")
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{rng}"
-    r = session.put(url, params={"valueInputOption": "RAW"}, json={"values": [[value]]})
-    r.raise_for_status()
+    _sheets_request("PUT", url, params={"valueInputOption": "RAW"}, json={"values": [[value]]})
 
 
 def delete_tab_row(spreadsheet_id: str, sheet_name: str, row_number: int):
     """Physically removes one row from one tab (1-indexed), shifting
     everything below it up -- not a blank-out."""
-    session = _get_session()
     sheet_id = _sheet_id_for_tab(spreadsheet_id, sheet_name)
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
     body = {
@@ -408,8 +424,7 @@ def delete_tab_row(spreadsheet_id: str, sheet_name: str, row_number: int):
             }
         }]
     }
-    r = session.post(url, json=body)
-    r.raise_for_status()
+    _sheets_request("POST", url, json=body)
 
 
 def read_all_synced_tabs(spreadsheet_id: str) -> dict:
@@ -421,11 +436,9 @@ def read_all_synced_tabs(spreadsheet_id: str) -> dict:
     tabs = [t["name"] for t in list_tabs(spreadsheet_id) if _is_synced_tab_name(t["name"])]
     if not tabs:
         return {}
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values:batchGet"
     ranges = [f"{_a1_quote(name)}!A:M" for name in tabs]
-    r = session.get(url, params={"ranges": ranges})
-    r.raise_for_status()
+    r = _sheets_request("GET", url, params={"ranges": ranges})
     value_ranges = r.json().get("valueRanges", [])
     result = {}
     for name, vr in zip(tabs, value_ranges):
@@ -640,10 +653,9 @@ def apply_dropdown_validation(spreadsheet_id: str, sheet_id: int):
     of a generic HTTPError for that one specific, real, non-retryable
     cause, so callers can surface an actionable message instead of a
     silent failure."""
-    session = _get_session()
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
     body = {"requests": _column_validation_requests(sheet_id)}
-    r = session.post(url, json=body)
+    r = _sheets_request("POST", url, json=body, raise_for_status=False)
     if r.status_code == 400 and "typed column" in r.text.lower():
         raise TypedColumnError(
             "This tab uses Google Sheets' 'Table' feature, which blocks classic dropdown "
@@ -684,7 +696,6 @@ def initialize_blank_spreadsheet(spreadsheet_id: str, multi_tab: bool) -> dict:
     default_tab = list_tabs(spreadsheet_id)[0]
     if multi_tab:
         target_name = _month_tab_name_for(today_ist())
-        session = _get_session()
         url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
         body = {"requests": [{
             "updateSheetProperties": {
@@ -692,8 +703,7 @@ def initialize_blank_spreadsheet(spreadsheet_id: str, multi_tab: bool) -> dict:
                 "fields": "title",
             }
         }]}
-        r = session.post(url, json=body)
-        r.raise_for_status()
+        _sheets_request("POST", url, json=body)
     else:
         target_name = default_tab["name"]
     write_tab_row(spreadsheet_id, target_name, 1, SHEET_HEADER_ROW)
