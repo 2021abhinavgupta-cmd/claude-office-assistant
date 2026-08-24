@@ -1674,11 +1674,11 @@ function renderClientSheets(clientId) {
               }).join('')}
             </div>
           </div>
-          <div id="sheet-month-tabs-${clientId}" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-left:8px;">
-            <button class="smtab ${monthFilter===''?'on':''}" onclick="saveMonthFilter('${clientId}', ''); renderClientSheets('${clientId}')">All</button>
-            ${allMonths.map(ym => `<button class="smtab ${monthFilter===ym?'on':''}" onclick="saveMonthFilter('${clientId}', '${ym}'); renderClientSheets('${clientId}')">${monthLabel(ym)}</button>`).join('')}
-            ${hasUnscheduled ? `<button class="smtab ${monthFilter==='__unscheduled__'?'on':''}" onclick="saveMonthFilter('${clientId}', '__unscheduled__'); renderClientSheets('${clientId}')">Unscheduled</button>` : ''}
-          </div>
+          <select id="sheet-month-tabs-${clientId}" onchange="saveMonthFilter('${clientId}', this.value); renderClientSheets('${clientId}')" style="background:var(--s2); border:1px solid var(--bdr); border-radius:6px; padding:8px 10px; color:var(--txt); font-size:.8rem; margin-left:8px; font-weight:600; cursor:pointer;">
+            <option value="" ${monthFilter===''?'selected':''}>All</option>
+            ${allMonths.map(ym => `<option value="${ym}" ${monthFilter===ym?'selected':''}>${monthLabel(ym)}</option>`).join('')}
+            ${hasUnscheduled ? `<option value="__unscheduled__" ${monthFilter==='__unscheduled__'?'selected':''}>Unscheduled</option>` : ''}
+          </select>
           <input type="text" id="sheet-search-${clientId}" placeholder="🔍 Search rows…" value="${esc(sheetSearchState[clientId]||'')}"
             oninput="sheetSearchState['${clientId}']=this.value; renderClientSheets('${clientId}')"
             style="background:var(--s2); border:1px solid var(--bdr); border-radius:6px; padding:8px 12px; color:var(--txt); font-size:.85rem; margin-left:8px; width:180px;">
@@ -1707,8 +1707,10 @@ function renderClientSheets(clientId) {
             </div>
           </div>
           <button class="btn btn-sm" onclick="openSheetHistory('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">🕓 Edit History</button>
-          <button class="btn btn-sm" onclick="openGoogleSheetLinkModal('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Google Sheet</button>
-          ${linkedSheetClientIds.has(String(clientId)) && linkedSheetSpreadsheetIds[String(clientId)] ? `<a href="https://docs.google.com/spreadsheets/d/${encodeURIComponent(linkedSheetSpreadsheetIds[String(clientId)])}/edit" target="_blank" rel="noopener" title="Open the linked Google Sheet" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 10px; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; font-size:.95rem;">↗</a>` : ''}
+          <div style="display:inline-flex; align-items:stretch;">
+            <button class="btn btn-sm" onclick="openGoogleSheetLinkModal('${clientId}')" style="border: 1px solid var(--bdr); ${linkedSheetClientIds.has(String(clientId)) && linkedSheetSpreadsheetIds[String(clientId)] ? 'border-right: none; border-radius: 6px 0 0 6px;' : ''} background: var(--s2); color: var(--txt); padding: 8px 12px;">Google Sheet</button>
+            ${linkedSheetClientIds.has(String(clientId)) && linkedSheetSpreadsheetIds[String(clientId)] ? `<a href="https://docs.google.com/spreadsheets/d/${encodeURIComponent(linkedSheetSpreadsheetIds[String(clientId)])}/edit" target="_blank" rel="noopener" title="Open the linked Google Sheet" style="border: 1px solid var(--bdr); border-left: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 10px; border-radius:0 6px 6px 0; text-decoration:none; display:inline-flex; align-items:center; font-size:.95rem;">↗</a>` : ''}
+          </div>
           <button class="btn btn-sm fs-toggle-btn" onclick="toggleFullscreenSheets('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">${isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}</button>
         </div>
       </div>
