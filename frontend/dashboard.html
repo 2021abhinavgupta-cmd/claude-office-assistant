@@ -394,6 +394,7 @@
         <div style="color:var(--muted);font-size:.8rem" id="att-date">Loading...</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <input type="date" id="att-date-picker" lang="en-GB" onchange="loadAttendance()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:.8rem;padding:5px 10px;border-radius:100px;">
         <span id="att-summary-badge" style="font-size:.8rem;background:var(--surface2);border:1px solid var(--border);padding:4px 12px;border-radius:100px">—</span>
         <a href="#" id="export-attendance-btn" target="_blank" style="display:none; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.8rem; padding:6px 12px; border-radius:100px; transition:all .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇ CSV</a>
       </div>
@@ -448,9 +449,12 @@ async function loadAttendance() {
     exportBtn.href = `${API}/api/attendance/export?user_id=${user.user_id}`;
   }
 
+  const datePicker = document.getElementById("att-date-picker");
+  const pickedDate = datePicker && datePicker.value ? datePicker.value : "";
+
   try {
     const [attendanceRes, employeesRes] = await Promise.all([
-      fetch(`${API}/api/attendance/today`),
+      fetch(`${API}/api/attendance/today${pickedDate ? `?date=${pickedDate}` : ""}`),
       fetch(`${API}/api/employees`)
     ]);
     const attendanceData = await attendanceRes.json();
@@ -462,6 +466,10 @@ async function loadAttendance() {
 
     const istDate = attendanceData.date || new Date().toISOString().slice(0, 10);
     if (dateEl) dateEl.textContent = `Date: ${istDate} (IST)`;
+    // Only set the picker's value from the server on the very first load
+    // (so it defaults to today per IST, which can differ from the
+    // browser's local "today") -- never overwrite a date the user picked.
+    if (datePicker && !datePicker.value) { datePicker.max = istDate; datePicker.value = istDate; }
 
     const allRows = employees.map(emp => {
       const daily = attendanceMap[emp.id] || {};

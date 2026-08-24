@@ -249,7 +249,10 @@ def attendance_summary():
 
 @attendance_bp.route("/api/attendance/today", methods=["GET"])
 def attendance_today():
-    date_ist = today_ist()
+    # Optional ?date=YYYY-MM-DD to view a past day's attendance (Live
+    # Attendance dashboard date picker); defaults to today when omitted,
+    # same as before this param existed.
+    date_ist = request.args.get("date", "").strip() or today_ist()
     conn = _attendance_conn()
     cur = conn.cursor()
     cur.execute(
