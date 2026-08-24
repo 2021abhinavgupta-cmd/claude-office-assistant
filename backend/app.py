@@ -3478,3 +3478,4 @@ if __name__ == "__main__":
     debug = os.getenv("FLASK_ENV", "development") == "development"
     logger.info(f"Starting Agency Portal Assistant API on port {port}")
     app.run(host="0.0.0.0", port=port, debug=debug)
+
