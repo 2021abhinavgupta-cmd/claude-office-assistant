@@ -3837,6 +3837,37 @@ function exportClientSocialCSV(clientId) {
   document.body.removeChild(link);
 }
 
+const IMPORT_MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
+// Converts a flexibly-formatted date string (whatever a source spreadsheet
+// happens to contain: "07/08/2026", "10/August/2026", already-ISO, etc.)
+// into strict YYYY-MM-DD -- required for it to display in an <input
+// type="date">, which silently renders blank for anything else. Day-first
+// (DD/MM/YYYY) to match this app's own dd-mm-yyyy convention (see CLAUDE.md
+// gotcha #84), not US MM/DD/YYYY. Returns "" (leave blank) rather than
+// guessing on anything it can't confidently parse.
+function parseFlexibleDate(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) {
+    const day = parseInt(m[1], 10), mon = parseInt(m[2], 10), year = m[3];
+    if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
+      return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    return '';
+  }
+  m = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]+)[\/\-\s]+(\d{4})$/);
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const monIdx = IMPORT_MONTH_NAMES.findIndex(mn => mn.startsWith(m[2].toLowerCase()));
+    if (monIdx < 0 || day < 1 || day > 31) return '';
+    return `${m[3]}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  return '';
+}
+
 async function importClientSocialCSV(event, clientId) {
   const file = event.target.files[0];
   if (!file) return;
@@ -3848,54 +3879,72 @@ async function importClientSocialCSV(event, clientId) {
     const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     
     if (isExcel) {
-      // Parse Excel with SheetJS
+      // Parse Excel with SheetJS -- every tab in the workbook, not just the
+      // first. A Google Sheet exported to .xlsx keeps one tab per month
+      // (see the multi-tab sync convention, CLAUDE.md gotcha #87), and
+      // reading only SheetNames[0] silently dropped every other month.
       const data = new Uint8Array(e.target.result);
       const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-      if (jsonRows.length < 2) return;
-      let headerIdx = 0;
-      for (let i = 0; i < Math.min(5, jsonRows.length); i++) {
-        const row = jsonRows[i].map(c => String(c).toLowerCase());
-        if (row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'))) {
-          headerIdx = i;
-          break;
-        }
-      }
-      const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
-      const colIdx = {
-        creationDate: headers.findIndex(h => h.includes('creation') || h === 'date'),
-        postDay:      headers.findIndex(h => h.includes('post day') || h.includes('day')),
-        post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
-        type:         headers.findIndex(h => h === 'type'),
-        content:      headers.findIndex(h => h === 'content'),
-        idea:         headers.findIndex(h => h === 'idea'),
-        scripts:      headers.findIndex(h => h.includes('script') || h.includes('copy')),
-        caption:      headers.findIndex(h => h === 'caption'),
-        assignee:     headers.findIndex(h => h.includes('assign')),
-        status:       headers.findIndex(h => h === 'status'),
-        link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
+
+      const getDateCell = (row, colIdx, key) => {
+        const idx = colIdx[key];
+        if (idx < 0 || idx >= row.length) return "";
+        const val = row[idx];
+        if (val instanceof Date) return val.toISOString().split('T')[0];
+        return parseFlexibleDate(val);
       };
-      const getCell = (row, key) => {
+      const getCell = (row, colIdx, key) => {
         const idx = colIdx[key];
         if (idx < 0 || idx >= row.length) return "";
         const val = row[idx];
         if (val instanceof Date) return val.toISOString().split('T')[0];
         return String(val || "").trim();
       };
-      parsedRows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
-        creationDate: getCell(row, 'creationDate'),
-        postDay:      getCell(row, 'postDay'),
-        post:         getCell(row, 'post'),
-        type:         getCell(row, 'type') || "Story",
-        content:      getCell(row, 'content'),
-        idea:         getCell(row, 'idea'),
-        scripts:      getCell(row, 'scripts'),
-        caption:      getCell(row, 'caption'),
-        assignee:     getCell(row, 'assignee'),
-        status:       getCell(row, 'status') || "Scheduled",
-        link:         getCell(row, 'link'),
-      }));
+
+      workbook.SheetNames.forEach(sheetName => {
+        const sheet = workbook.Sheets[sheetName];
+        const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        if (jsonRows.length < 2) return;
+        let headerIdx = -1;
+        for (let i = 0; i < Math.min(5, jsonRows.length); i++) {
+          const row = jsonRows[i].map(c => String(c).toLowerCase());
+          if (row.some(c => c.includes('post') || c.includes('caption') || c.includes('type'))) {
+            headerIdx = i;
+            break;
+          }
+        }
+        // No recognizable header found in this tab (e.g. a scratch/notes
+        // tab) -- skip it rather than guessing row 0 is the header.
+        if (headerIdx < 0) return;
+        const headers = jsonRows[headerIdx].map(h => String(h).toLowerCase().trim());
+        const colIdx = {
+          creationDate: headers.findIndex(h => h.includes('creation') || h === 'date'),
+          postDay:      headers.findIndex(h => h.includes('post day') || h.includes('day')),
+          post:         headers.findIndex(h => h === 'post' || h.includes('post title') || h.includes('title')),
+          type:         headers.findIndex(h => h === 'type'),
+          content:      headers.findIndex(h => h === 'content'),
+          idea:         headers.findIndex(h => h === 'idea'),
+          scripts:      headers.findIndex(h => h.includes('script') || h.includes('copy')),
+          caption:      headers.findIndex(h => h === 'caption'),
+          assignee:     headers.findIndex(h => h.includes('assign')),
+          status:       headers.findIndex(h => h === 'status'),
+          link:         headers.findIndex(h => h.includes('link') || h.includes('drive') || h === 'file'),
+        };
+        const rows = jsonRows.slice(headerIdx + 1).filter(r => r.some(c => c !== "")).map(row => ({
+          creationDate: getDateCell(row, colIdx, 'creationDate'),
+          postDay:      getDateCell(row, colIdx, 'postDay'),
+          post:         getCell(row, colIdx, 'post'),
+          type:         getCell(row, colIdx, 'type') || "Story",
+          content:      getCell(row, colIdx, 'content'),
+          idea:         getCell(row, colIdx, 'idea'),
+          scripts:      getCell(row, colIdx, 'scripts'),
+          caption:      getCell(row, colIdx, 'caption'),
+          assignee:     getCell(row, colIdx, 'assignee'),
+          status:       getCell(row, colIdx, 'status') || "Scheduled",
+          link:         getCell(row, colIdx, 'link'),
+        }));
+        parsedRows = parsedRows.concat(rows);
+      });
     } else {
       // Parse CSV
       const text = e.target.result;
@@ -3909,8 +3958,8 @@ async function importClientSocialCSV(event, clientId) {
           data.push(val);
         }
         return {
-          creationDate: data[0] || "",
-          postDay:      data[1] || "",
+          creationDate: parseFlexibleDate(data[0]),
+          postDay:      parseFlexibleDate(data[1]),
           post:         data[2] || "",
           type:         data[3] || "Story",
           content:      data[4] || "",
