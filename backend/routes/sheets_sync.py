@@ -12,7 +12,7 @@ import google_sheets_store as gs
 import notion_store
 from extensions import limiter
 from flask import Blueprint, jsonify, request
-from utils import today_ist, now_ist, _is_admin
+from utils import today_ist, now_ist, _is_admin, _load_employees
 
 # Real Google Sheets spreadsheet ids are alphanumeric plus -/_, and always
 # well over 20 characters. Rejecting anything else up front means a bad
@@ -146,15 +146,37 @@ def _apps_script_snippet(webhook_url: str, multi_tab: bool = False) -> str:
     )
 
 
+def _emp_name(user_id: str) -> str:
+    """id -> display name, read live from employees.json (see CLAUDE.md
+    gotcha #63 -- never hardcode this mapping). Falls back to the raw id
+    if the file can't be read or the id isn't found."""
+    try:
+        for e in _load_employees().get("employees", []):
+            if e.get("id") == user_id:
+                return e.get("name", user_id)
+    except Exception:
+        pass
+    return user_id or "someone"
+
+
 def _link_row_to_dict(row) -> dict:
     (client_id, spreadsheet_id, link_token, is_notion, client_name, linked_at, linked_by,
      last_push_at, last_push_ok, last_pull_at, last_pull_summary, multi_tab) = row
     webhook_url = f"{_base_url()}/api/sheets/webhook/{link_token}"
+    # Live tab-name listing so the modal can show real examples of how tabs
+    # in THIS sheet are actually named, instead of only the abstract naming
+    # rule -- best-effort, must never break the modal if the Sheets API call
+    # fails (e.g. sharing was revoked after linking).
+    try:
+        existing_tabs = [t["name"] for t in gs.list_tabs(spreadsheet_id)]
+    except Exception:
+        logger.exception(f"Failed to list tabs for spreadsheet {spreadsheet_id}")
+        existing_tabs = []
     return {
         "linked": True, "client_id": client_id, "spreadsheet_id": spreadsheet_id,
         "is_notion": bool(is_notion), "client_name": client_name,
-        "linked_at": linked_at, "linked_by": linked_by,
-        "multi_tab": bool(multi_tab),
+        "linked_at": linked_at, "linked_by": linked_by, "linked_by_name": _emp_name(linked_by),
+        "multi_tab": bool(multi_tab), "existing_tabs": existing_tabs,
         "service_account_email": gs.service_account_email(),
         "apps_script": _apps_script_snippet(webhook_url, bool(multi_tab)),
         "last_push_at": last_push_at, "last_push_ok": bool(last_push_ok) if last_push_ok is not None else None,

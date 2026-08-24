@@ -4134,12 +4134,15 @@ document.addEventListener('paste', function(e) {
           const pullLine = d.last_pull_at
             ? `<p>Last pull from Sheet: ${esc(d.last_pull_at)} <span style="color:var(--muted);">(${esc(d.last_pull_summary || '')})</span></p>`
             : `<p style="color:var(--muted);">No pulls yet -- edit the Sheet directly (after installing the trigger below) to trigger one.</p>`;
+          const existingTabsLine = (d.existing_tabs && d.existing_tabs.length)
+            ? `<p style="color:var(--muted);">Tabs already in this Sheet: ${d.existing_tabs.map(t => `<code>${esc(t)}</code>`).join(', ')}</p>`
+            : `<p style="color:var(--muted);">This Sheet has no tabs yet -- Lumina names new tabs for you automatically as tasks sync.</p>`;
           const modeLine = d.multi_tab
-            ? `<p>Sync mode: <strong>one tab per month</strong>. Name each month's tab exactly like <code>"August 2026"</code>; tasks with no due date sync to a tab named exactly <code>"Unscheduled"</code>. Any other tab name is ignored.</p>`
-            : `<p>Sync mode: <strong>single tab</strong> (this Sheet's first tab only).</p>`;
+            ? `<p>Sync mode: <strong>one tab per month</strong>. Name each month's tab exactly like <code>"August 2026"</code>; tasks with no due date sync to a tab named exactly <code>"Unscheduled"</code>. Any other tab name is ignored.</p>${existingTabsLine}`
+            : `<p>Sync mode: <strong>single tab</strong> (this Sheet's first tab only).</p>${existingTabsLine}`;
           body.innerHTML = `
             <p><strong>Linked</strong> to spreadsheet <code>${esc(d.spreadsheet_id)}</code></p>
-            <p>Linked by ${esc(d.linked_by || 'someone')} on ${esc(d.linked_at || '')}</p>
+            <p>Linked by ${esc(d.linked_by_name || d.linked_by || 'someone')} on ${esc(d.linked_at || '')}</p>
             ${modeLine}
             ${pushLine}
             ${pullLine}
