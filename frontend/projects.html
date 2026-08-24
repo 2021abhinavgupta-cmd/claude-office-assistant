@@ -4043,7 +4043,13 @@ async function importClientSocialCSV(event, clientId) {
         });
         const d = await res.json().catch(() => ({}));
         if (res.ok && d.success) {
-          toast(`Imported ${d.tasks_created ?? parsedRows.length} row(s), added below existing tasks.`);
+          const failed = d.social_posts_failed || [];
+          if (failed.length) {
+            const names = failed.slice(0, 5).map(f => f.title).join(', ');
+            toast(`Imported ${d.tasks_created ?? parsedRows.length} row(s) -- ${failed.length} FAILED (Notion error, not skipped on purpose): ${names}${failed.length > 5 ? '…' : ''}. Re-import a file with just those rows to retry.`, "err");
+          } else {
+            toast(`Imported ${d.tasks_created ?? parsedRows.length} row(s), added below existing tasks.`);
+          }
           load(); // reload dashboard
         } else {
           toast(d.error || "Import failed", "err");

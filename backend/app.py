@@ -23,6 +23,7 @@ import os
 import re
 import json
 import copy
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -3066,6 +3067,7 @@ def auto_generate_tasks(client_id):
     custom_tasks = body.get("custom_tasks", {})
     created_ids = []
     ordered_tasks = []
+    failed_posts = []  # social rows whose Notion create failed even after retry -- surfaced to the caller instead of silently vanishing (see comment below)
 
     # For social: if custom posts were provided, use them directly as tasks
     # instead of the generic templates. For other services, use custom_tasks if present, else templates.
@@ -3134,6 +3136,16 @@ def auto_generate_tasks(client_id):
             if caption: detail_parts.append(f"Caption: {caption}")
             if link:    detail_parts.append(f"Link: {link}")
             notes = " | ".join(detail_parts)
+            # notion_store.create_task() already retries transient/429 failures
+            # 3x internally (~7s total) before giving up and returning None --
+            # but a bulk import can land right after a burst of other Notion
+            # traffic against this workspace (e.g. a bulk delete/cleanup) that
+            # keeps rate-limiting for longer than that. One extra retry here,
+            # after a longer pause, catches that case; a row that still fails
+            # is recorded in failed_posts instead of silently vanishing (the
+            # previous behavior: `if res` skipped it with no trace anywhere
+            # the caller could see -- a full-looking "success" response that
+            # had quietly dropped rows).
             res = notion_store.create_task(
                 title=task_title,
                 client_name=client_name,
@@ -3145,6 +3157,19 @@ def auto_generate_tasks(client_id):
                 service="Social Media",
                 notes=notes
             )
+            if not res:
+                time.sleep(5)
+                res = notion_store.create_task(
+                    title=task_title,
+                    client_name=client_name,
+                    client_notion_id=client_id,
+                    assigned_to=assignee,
+                    due_date=post_day,
+                    status="not_started",
+                    progress=0,
+                    service="Social Media",
+                    notes=notes
+                )
             if res:
                 created_ids.append(res["notion_id"])
                 _push_new_social_task_to_sheet(
@@ -3152,6 +3177,8 @@ def auto_generate_tasks(client_id):
                     title=title, post_type=post_type, content=content, idea=idea, scripts=scripts,
                     caption=caption, link_url=link, assignee=assignee,
                 )
+            else:
+                failed_posts.append({"title": title, "post_day": post_day})
 
         # Generic template tasks for non-social services
         for tmpl in ordered_tasks:
@@ -3170,7 +3197,7 @@ def auto_generate_tasks(client_id):
         if extra_notes:
             notion_store.append_client_requirements(client_id, extra_notes)
 
-        return jsonify({"success": True, "tasks_created": len(created_ids), "task_ids": created_ids})
+        return jsonify({"success": True, "tasks_created": len(created_ids), "task_ids": created_ids, "social_posts_failed": failed_posts})
 
     # SQLite Mode
     conn = _pt_conn()
