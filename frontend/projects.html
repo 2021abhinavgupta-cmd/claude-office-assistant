@@ -719,8 +719,12 @@ function renderDetail(clients){
   wrap.innerHTML=clients.map(c=>{
     const approved=c.tasks.filter(t=>t.status==="approved").length;
     const notionLink = c.url ? `<a href="${c.url}" target="_blank" style="font-size:.72rem;color:var(--acc);text-decoration:none;margin-left:8px">↗ Notion</a>` : "";
-    // Detect social media client: has tasks with [Type] prefix or service=Social Media
-    const isSocial = (c.tasks||[]).some(t => t.service === "Social Media" || /\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title));
+    // Detect social media client: has tasks with [Type] prefix or service=Social Media,
+    // OR is linked to a Google Sheet -- a freshly Sheets-linked client can start with
+    // zero Lumina tasks (the Sheet is meant to be the source of the first ones), and
+    // without this OR the Sheets tab/Import button would be permanently unreachable
+    // since task-based detection alone can never flip true with no tasks to look at.
+    const isSocial = (c.tasks||[]).some(t => t.service === "Social Media" || /\[(Story|Static|Reel|Carousel|Post|Video)\]/i.test(t.title)) || linkedSheetClientIds.has(String(c.id));
     return`<div class="cb" id="cb-${c.id}" data-social="${isSocial}">
       <div class="cb-head" onclick="toggleDetail('${c.id}')">
         <div><div class="cb-name"> ${c.name}${notionLink}</div>
