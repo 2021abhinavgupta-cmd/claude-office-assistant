@@ -8,7 +8,6 @@ import logging
 import re
 from datetime import datetime, time as dt_time
 from io import StringIO
-from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request
 
@@ -217,23 +216,27 @@ def attendance_export():
     if not _is_admin(admin_id):
         return "Unauthorized", 403
 
+    # daily_attendance (not the raw attendance event log) is already one row
+    # per user per day with checkin_time/checkout_time -- both stored as
+    # plain HH:MM:SS IST (see now_ist()/_clamp_work_time() above), so no
+    # timezone conversion is needed here.
     from db import get_connection
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id, action, timestamp FROM attendance ORDER BY timestamp DESC")
+    cursor.execute(
+        "SELECT date, user_id, checkin_time, checkout_time FROM daily_attendance ORDER BY date DESC, user_id"
+    )
     rows = cursor.fetchall()
     conn.close()
 
     emp_map = {}
     try:
-        emp_file = Path(__file__).parent.parent / "config" / "employees.json"
-        with open(emp_file, "r") as f:
-            emps = json.load(f).get("employees", [])
-            for e in emps:
-                emp_map[e["id"]] = e["name"]
-                if e.get("whatsapp"):
-                    emp_map[e["whatsapp"]] = e["name"]
-                    emp_map[e["whatsapp"].replace('+', '')] = e["name"]
+        emps = _load_employees().get("employees", [])
+        for e in emps:
+            emp_map[e["id"]] = e["name"]
+            if e.get("whatsapp"):
+                emp_map[e["whatsapp"]] = e["name"]
+                emp_map[e["whatsapp"].replace('+', '')] = e["name"]
     except Exception:
         pass
 
@@ -246,9 +249,9 @@ def attendance_export():
 
     si = StringIO()
     cw = csv.writer(si)
-    cw.writerow(["Timestamp", "Employee", "Action"])
-    for r in rows:
-        cw.writerow([r[2], format_user(r[0]), r[1].upper()])
+    cw.writerow(["Date", "In", "Out", "Employee"])
+    for date, user_id, checkin_time, checkout_time in rows:
+        cw.writerow([date, checkin_time or "", checkout_time or "", format_user(user_id)])
 
     return Response(
         si.getvalue(),
