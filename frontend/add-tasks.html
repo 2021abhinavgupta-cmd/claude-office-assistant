@@ -1502,7 +1502,12 @@
             social_posts: socialPosts,
             custom_tasks: customTasks
           }),
-          signal: AbortSignal.timeout(15000),
+          // Bulk imports create one Notion page per row sequentially (plus a
+          // Google Sheets push each for a linked client), so a 45-row
+          // calendar legitimately runs for minutes -- the old 15s timeout
+          // aborted client-side long before the server finished and reported
+          // a failure for work that was actually still succeeding.
+          signal: AbortSignal.timeout(600000),
         });
         const ad = await ar.json().catch(() => ({}));
         if (!ar.ok || ad.success === false || (!ad.success && ad.error)) {

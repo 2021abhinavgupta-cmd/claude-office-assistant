@@ -3005,8 +3005,6 @@ def auto_fill_social_media():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ── POST /api/clients/<id>/auto-tasks ─────────────────────────────────────────
-@app.route("/api/clients/<client_id>/auto-tasks", methods=["POST"])
 def _push_new_social_task_to_sheet(client_id, task_id, *, creation_date, due_date, title,
                                     post_type, content, idea, scripts, caption, link_url, assignee):
     """Best-effort push of a freshly-created social task into its client's
@@ -3040,6 +3038,16 @@ def _push_new_social_task_to_sheet(client_id, task_id, *, creation_date, due_dat
         logger.exception(f"Sheets: failed to push newly-created task {task_id} for client {client_id}")
 
 
+# ── POST /api/clients/<id>/auto-tasks ─────────────────────────────────────────
+# NOTE: this decorator must stay directly above auto_generate_tasks. It was
+# previously separated from it by the _push_new_social_task_to_sheet helper
+# above, which silently bound this route to that helper instead -- every POST
+# then called it with only client_id, raising TypeError on its required
+# keyword-only args (500 HTML, so the frontend's `ad.error` was undefined and
+# it showed a generic "Failed to add tasks"), while auto_generate_tasks was
+# never registered at all. That broke both the Add Tasks calendar submit and
+# projects.html's bulk CSV/Excel import, which post to this same endpoint.
+@app.route("/api/clients/<client_id>/auto-tasks", methods=["POST"])
 def auto_generate_tasks(client_id):
     """Auto-generate tasks from selected service types. Admin only."""
     body = request.get_json(silent=True) or {}
