@@ -98,6 +98,17 @@
       "pin": "0000",
       "tone_profile": "Direct, strategic, and high-level.",
       "checkins": []
+    },
+    {
+      "id": "emp011",
+      "name": "Rishika",
+      "role": "Content",
+      "whatsapp": "",
+      "department": "Content",
+      "status": "active",
+      "pin": "2006",
+      "tone_profile": "Clear, engaging, and audience-focused.",
+      "checkins": []
     }
   ]
 }
