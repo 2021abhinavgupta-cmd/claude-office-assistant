@@ -18,6 +18,14 @@ _DONE_RE = re.compile(r"^(all|\d+(?:\s*,\s*\d+)*)\s+done$", re.IGNORECASE)
 _ADD_RE = re.compile(r"^add\s+(.+)$", re.IGNORECASE | re.DOTALL)
 _BLOCKED_RE = re.compile(r"^blocked\s*:?\s*(\d+)\s+(.+)$", re.IGNORECASE | re.DOTALL)
 
+# People type "all done!" and "1 done." -- the command regexes are $-anchored,
+# so without stripping this the message silently falls through to generic
+# Claude chat instead of being recognized as the command it obviously is.
+# Deliberately narrow: only whitespace and unambiguously non-content trailing
+# punctuation, and only at the very END of the string, so a mid-command
+# apostrophe ("blocked: 2 waiting on client's approval") is untouched.
+_TRAILING_PUNCT_RE = re.compile(r"[\s.!?…]+$")
+
 
 def _normalize_phone(raw: str) -> str:
     """Digits-only, last 10 digits -- handles a stored number with/without
@@ -47,8 +55,12 @@ def find_employee_by_whatsapp(sender: str) -> Optional[dict]:
 
 def parse_standup_command(text: str) -> dict:
     """Deterministic command grammar -- see module docstring for why this
-    is never AI-classified. Checked in order; first match wins."""
-    stripped = (text or "").strip()
+    is never AI-classified. Checked in order; first match wins.
+
+    Trailing punctuation is stripped ONCE up front rather than loosening each
+    regex individually -- note this also trims a trailing '.'/'!' from an
+    `add <task>` title, which is cosmetic and intentional."""
+    stripped = _TRAILING_PUNCT_RE.sub("", (text or "").strip())
 
     m = _DONE_RE.match(stripped)
     if m:
@@ -103,6 +115,37 @@ def get_task_context(user_id: str, date_str: str) -> list:
         return []
 
 
+def _fetch_task_titles(task_ids: list) -> dict:
+    """standup_tasks.id -> title, for echoing real titles back in a
+    confirmation. Deliberately a direct lookup rather than
+    _fetch_standup_tasks_for_user(), which is NOT read-only (it materializes
+    carry-over rows and runs the Notion Creation-Date self-heal) -- merely
+    confirming a reply should never trigger those writes."""
+    if not task_ids:
+        return {}
+    from db import get_connection
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        placeholders = ",".join("?" * len(task_ids))
+        cur.execute(
+            f"SELECT id, title FROM standup_tasks WHERE id IN ({placeholders})",
+            list(task_ids),
+        )
+        return {row[0]: row[1] for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def _task_label(number: int, task_id: int, titles: dict) -> str:
+    """'#2 Draft the brief' -- always echo the TITLE alongside the number.
+    The numbering legitimately drifts between the 10am full list and the 7pm
+    renumbered incomplete-only list, so the title is the employee's only way
+    to notice they just marked the wrong task."""
+    title = titles.get(task_id)
+    return f"#{number} {title}" if title else f"#{number}"
+
+
 def build_task_list_message(tasks: list, heading: str) -> str:
     """tasks: list of standup task dicts (id, title, carried_from, ...). Builds
     the numbered list text and returns it; caller is responsible for calling
@@ -143,16 +186,29 @@ def handle_standup_message(employee: dict, text: str) -> Optional[str]:
         if out_of_range:
             return f"No task(s) numbered {', '.join(str(n) for n in out_of_range)} -- your list only has 1-{len(context_ids)}. Nothing was changed."
 
+        titles = _fetch_task_titles(context_ids)
         marked = []
+        failed = []
         for n in indices:
             task_id = context_ids[n - 1]
+            label = _task_label(n, task_id, titles)
             result = _apply_standup_task_update(task_id, status="done", progress=100)
             if "error" not in result:
-                marked.append(n)
+                marked.append(label)
+            else:
+                # Name what failed -- silently omitting it from the "marked"
+                # list reads as if nothing was attempted for that number.
+                failed.append(f"{label} ({result['error']})")
 
-        if not marked:
+        if not marked and not failed:
             return "Couldn't mark those done -- something went wrong. Try again or use the app."
-        return f"Marked done: {', '.join(str(n) for n in marked)}"
+
+        segments = []
+        if marked:
+            segments.append("Marked done: " + "; ".join(marked))
+        if failed:
+            segments.append("Failed: " + "; ".join(failed))
+        return "\n".join(segments)
 
     if cmd["type"] == "add":
         result = _smart_add_standup_task_impl(user_id=user_id, assigned_to=user_id, title=cmd["title"])
@@ -164,13 +220,20 @@ def handle_standup_message(employee: dict, text: str) -> Optional[str]:
         return f"Added: {cmd['title']}\n\n{listing}"
 
     if cmd["type"] == "blocked":
+        # Same guard the 'done' branch has -- without it an empty context
+        # falls through to the range check and emits "your list only has 1-0".
+        if not context_ids:
+            return "I don't have a task list on file for you today yet -- you'll get one at 10am, or text \"add <task>\" to start one now."
+
         n = cmd["number"]
         if n < 1 or n > len(context_ids):
             return f"No task numbered {n} -- your list only has 1-{len(context_ids)}. Nothing was changed."
         task_id = context_ids[n - 1]
+        titles = _fetch_task_titles(context_ids)
+        label = _task_label(n, task_id, titles)
         result = _apply_standup_task_update(task_id, blocker=cmd["reason"])
         if "error" in result:
             return f"Couldn't flag that as blocked: {result['error']}"
-        return f"Flagged blocked: task {n} -- {cmd['reason']}"
+        return f"Flagged blocked: {label} -- {cmd['reason']}"
 
     return None

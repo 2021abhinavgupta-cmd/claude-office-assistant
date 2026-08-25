@@ -362,29 +362,61 @@ def get_weekly_completion_by_user(since_date: str) -> dict:
     Weekends excluded from the 'completed' count, matching the existing
     /velocity chart's weekday-only convention (gotcha #77's follow-up) --
     open/overdue counts intentionally include weekend-carried rows since an
-    open task doesn't stop being open over a weekend."""
+    open task doesn't stop being open over a weekend.
+
+    Two things this deliberately does NOT do naively:
+
+    1. 'completed' counts BOTH 'done' and 'need_for_approval'. A social-media
+       task marked done locally lands on 'need_for_approval', never 'done'
+       (see _apply_standup_task_update below, and CLAUDE.md gotcha #64).
+       Counting only 'done' silently drops those rows -- they'd be reported
+       as neither completed nor open, so a social-heavy week under-reports.
+
+    2. 'open' counts DISTINCT task lineages, not raw rows. A task that stays
+       pending is re-INSERTed as a NEW standup_tasks row every single day
+       (see the carry-over INSERT in _fetch_standup_tasks_for_user), all
+       sharing the same (user_id, title, carried_from). Counting rows would
+       report one open task carried for 5 days as "5 open". Same dedup key
+       and reasoning as get_velocity_summary() above.
+    """
     conn = _su_conn()
     cur = conn.cursor()
+
+    # Completed: raw row count is correct here -- a task is only ever marked
+    # done/need_for_approval on the single row/day it happened, and the
+    # carry-over logic never re-inserts finished tasks. Weekdays only.
     cur.execute(
-        """SELECT user_id, status, date FROM standup_tasks
-           WHERE date >= ? AND status != 'deleted'""",
+        """SELECT user_id, COUNT(*) FROM standup_tasks
+           WHERE date >= ?
+             AND status IN ('done', 'need_for_approval')
+             AND strftime('%w', date) NOT IN ('0','6')
+           GROUP BY user_id""",
         (since_date,),
     )
-    rows = cur.fetchall()
+    completed_rows = cur.fetchall()
+
+    # Open: dedup by task lineage. carried_from is NULL for a task's first
+    # day, so COALESCE it to the row's own date -- without that, the ||
+    # concatenation yields NULL and the row is dropped from COUNT(DISTINCT)
+    # entirely, losing every never-yet-carried open task.
+    cur.execute(
+        """SELECT user_id,
+                  COUNT(DISTINCT user_id || '|' || title || '|' || COALESCE(carried_from, date))
+           FROM standup_tasks
+           WHERE date >= ? AND status = 'pending'
+           GROUP BY user_id""",
+        (since_date,),
+    )
+    open_rows = cur.fetchall()
     conn.close()
 
     result = {}
-    for user_id, status, date_str in rows:
+    for user_id, count in completed_rows:
         result.setdefault(user_id, {"completed": 0, "open": 0})
-        if status == "done":
-            import datetime as _dt
-            try:
-                if _dt.date.fromisoformat(date_str).weekday() < 5:  # Mon-Fri only
-                    result[user_id]["completed"] += 1
-            except Exception:
-                result[user_id]["completed"] += 1
-        elif status == "pending":
-            result[user_id]["open"] += 1
+        result[user_id]["completed"] = count or 0
+    for user_id, count in open_rows:
+        result.setdefault(user_id, {"completed": 0, "open": 0})
+        result[user_id]["open"] = count or 0
     return result
 
 

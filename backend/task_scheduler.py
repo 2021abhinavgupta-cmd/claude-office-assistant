@@ -12,6 +12,16 @@ import json
 from pathlib import Path
 import notion_store
 
+# Statuses that mean "this standup task is finished".
+# 'need_for_approval' is set by _apply_standup_task_update() (routes/ops.py)
+# whenever a SOCIAL MEDIA task is marked done -- Notion requires an approval
+# step for social posts, so completing one locally lands on this status, NOT
+# 'done' (CLAUDE.md gotcha #64). Every other "is this finished" check in this
+# codebase treats the two as equivalent (standup.html in 9 places, app.py's
+# `status NOT IN ('done', 'need_for_approval')` queries) -- match that here or
+# a completed social task looks permanently open.
+DONE_STATUSES = ("done", "need_for_approval")
+
 # Risk escalation thresholds (days overdue)
 RISK_THRESHOLDS = {
     "day1": 1,   # Friendly reminder to assignee
@@ -265,7 +275,21 @@ def _run_attendance_sweep():
 def send_morning_standup_prompts():
     """10:00 IST daily -- text every employee with a WhatsApp number their
     today's task list (including auto-carry-over), and record the numbering
-    so a later 'N done' reply resolves correctly."""
+    so a later 'N done' reply resolves correctly.
+
+    SIDE EFFECT, deliberate but worth knowing about: _fetch_standup_tasks_for_user()
+    is NOT read-only. It materializes auto-carry-over rows (gotcha #8) and runs
+    the Notion Creation-Date self-heal (gotcha #50, which DELETES standup_tasks
+    rows whose live Creation Date has moved into the future). Before this job
+    existed, both of those only ever ran when a specific employee actually
+    opened standup.html; now they run for EVERY employee with a WhatsApp
+    number, every day at 10:00 IST, whether or not they touch the web UI.
+    That is a real behavioral change from the pre-existing lazy pattern.
+    A genuinely read-only fetch variant was considered and deliberately
+    deferred (bigger architectural change, real risk of introducing a new
+    bug in the shared carry-over path) -- flagged here rather than left
+    silently unnoted for whoever reads this next.
+    """
     from utils import _load_employees, today_ist
     from routes.ops import _fetch_standup_tasks_for_user
     from whatsapp_standup import build_task_list_message, save_task_context
@@ -292,8 +316,18 @@ def send_morning_standup_prompts():
                 "Reply \"add <task>\" to add something.\n"
                 "Reply \"blocked: 2 <reason>\" to flag a blocker."
             )
-            save_task_context(emp["id"], today, [t["id"] for t in tasks])
-            send_whatsapp_message(wa, msg)
+            # Send FIRST, persist the numbering only if it actually went out.
+            # Saving context for a message the employee never received would
+            # leave a stale list that a later "2 done" reply resolves against.
+            if send_whatsapp_message(wa, msg):
+                save_task_context(emp["id"], today, [t["id"] for t in tasks])
+            else:
+                logger.warning(
+                    f"Morning standup prompt: WhatsApp send failed for {emp.get('id')} "
+                    "-- task context was NOT saved, so a later 'N done' reply will "
+                    "correctly report no task list on file rather than resolving "
+                    "against a list they never saw."
+                )
         except Exception:
             logger.exception(f"Morning standup prompt failed for {emp.get('id')}")
 
@@ -322,14 +356,41 @@ def send_eod_standup_reminders():
         if not wa:
             continue
         try:
+            # Idempotency guard: if this employee was already processed today,
+            # a second same-day invocation of this job must be a complete
+            # no-op -- no re-send, no counter bump, no re-escalation. Without
+            # this, a manual re-run (or a scheduler misfire) double-increments
+            # consecutive_incomplete and can escalate to founders spuriously.
+            cur = conn.execute(
+                "SELECT last_checked_date FROM whatsapp_reminder_state WHERE user_id=?",
+                (emp["id"],),
+            )
+            state_row = cur.fetchone()
+            if state_row and state_row[0] == today:
+                logger.info(
+                    f"EOD standup reminder: {emp.get('id')} already processed for {today} -- skipping."
+                )
+                continue
+
             tasks, _ = _fetch_standup_tasks_for_user(emp["id"], today)
-            incomplete = [t for t in tasks if t["status"] != "done"]
+            # 'need_for_approval' means DONE for a social-media task (gotcha #64).
+            incomplete = [t for t in tasks if t["status"] not in DONE_STATUSES]
 
             if incomplete:
                 msg = build_task_list_message(incomplete, "End of day check-in -- still open:")
                 msg += "\n\nReply \"1 done\" etc. to update, or it'll carry over to tomorrow."
-                save_task_context(emp["id"], today, [t["id"] for t in incomplete])
-                send_whatsapp_message(wa, msg)
+                # Send FIRST -- only persist the renumbered incomplete-only
+                # ordering if the nudge actually went out, otherwise a later
+                # "1 done" would resolve against a list the employee never saw.
+                if send_whatsapp_message(wa, msg):
+                    save_task_context(emp["id"], today, [t["id"] for t in incomplete])
+                else:
+                    logger.warning(
+                        f"EOD standup reminder: WhatsApp send failed for {emp.get('id')} "
+                        "-- task context was NOT saved, so any later 'N done' reply will "
+                        "report no task list on file rather than resolving against a "
+                        "renumbered list they never received."
+                    )
 
                 with conn:
                     cur = conn.execute(
@@ -403,7 +464,19 @@ def send_weekly_standup_digest():
 
     employees = emp_data.get("employees", [])
     emp_names = {e["id"]: e["name"] for e in employees}
-    completion = get_weekly_completion_by_user(since)
+
+    # Seed every WhatsApp-enabled employee at 0/0 first, THEN overlay whatever
+    # actually had standup_tasks rows in the window. get_weekly_completion_by_user()
+    # only returns user_ids with at least one row, so without this seeding a
+    # genuinely zero-activity employee vanishes from the digest entirely --
+    # which reads as "nothing to report" when it actually means "logged nothing
+    # all week", the exact case a founder digest most needs to surface.
+    completion = {
+        e["id"]: {"completed": 0, "open": 0}
+        for e in employees
+        if e.get("whatsapp")
+    }
+    completion.update(get_weekly_completion_by_user(since))
 
     lines = [f"Weekly Standup Digest ({since} to {today_ist()})"]
     for user_id, counts in sorted(completion.items(), key=lambda kv: emp_names.get(kv[0], kv[0])):
