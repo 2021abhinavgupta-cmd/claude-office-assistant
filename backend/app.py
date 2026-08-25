@@ -3451,6 +3451,19 @@ def whatsapp_webhook():
             return "OK", 200
         text = message["text"]["body"]
 
+        # WhatsApp standup: if this sender is a known employee, try the
+        # deterministic standup command parser first. Falls through to the
+        # existing generic Claude chat below if it's not a recognized
+        # standup command (e.g. an employee just chatting with the bot).
+        from whatsapp_standup import find_employee_by_whatsapp, handle_standup_message
+        employee = find_employee_by_whatsapp(sender)
+        if employee:
+            standup_reply = handle_standup_message(employee, text)
+            if standup_reply is not None:
+                send_whatsapp_message(sender, standup_reply)
+                logger.info(f"WhatsApp standup command handled for {employee['id']}")
+                return "OK", 200
+
         # Budget guard
         budget = check_budget_available()
         if not budget["allowed"]:
