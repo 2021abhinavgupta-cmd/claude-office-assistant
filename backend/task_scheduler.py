@@ -262,6 +262,161 @@ def _run_attendance_sweep():
         logger.warning(f"Attendance sweep failed (non-fatal): {e}")
 
 
+def send_morning_standup_prompts():
+    """10:00 IST daily -- text every employee with a WhatsApp number their
+    today's task list (including auto-carry-over), and record the numbering
+    so a later 'N done' reply resolves correctly."""
+    from utils import _load_employees, today_ist
+    from routes.ops import _fetch_standup_tasks_for_user
+    from whatsapp_standup import build_task_list_message, save_task_context
+    from app import send_whatsapp_message
+
+    today = today_ist()
+    try:
+        emp_data = _load_employees()
+    except Exception:
+        logger.exception("Morning standup prompt: failed to load employees.json")
+        return
+
+    for emp in emp_data.get("employees", []):
+        wa = emp.get("whatsapp", "")
+        if not wa:
+            continue
+        try:
+            tasks, _ = _fetch_standup_tasks_for_user(emp["id"], today)
+            if not tasks:
+                continue
+            msg = build_task_list_message(tasks, "Good morning! Today's tasks:")
+            msg += (
+                "\n\nReply \"1 done\", \"1,3 done\", or \"all done\" to mark complete.\n"
+                "Reply \"add <task>\" to add something.\n"
+                "Reply \"blocked: 2 <reason>\" to flag a blocker."
+            )
+            save_task_context(emp["id"], today, [t["id"] for t in tasks])
+            send_whatsapp_message(wa, msg)
+        except Exception:
+            logger.exception(f"Morning standup prompt failed for {emp.get('id')}")
+
+
+def send_eod_standup_reminders():
+    """19:00 IST daily -- nudge anyone with incomplete tasks today, track
+    consecutive missed evenings, and escalate to founders after 2 in a row."""
+    from utils import _load_employees, today_ist
+    from routes.ops import _fetch_standup_tasks_for_user
+    from whatsapp_standup import build_task_list_message, save_task_context
+    from app import send_whatsapp_message
+    from db import get_connection
+
+    today = today_ist()
+    try:
+        emp_data = _load_employees()
+    except Exception:
+        logger.exception("EOD standup reminder: failed to load employees.json")
+        return
+
+    employees = emp_data.get("employees", [])
+    conn = get_connection()
+
+    for emp in employees:
+        wa = emp.get("whatsapp", "")
+        if not wa:
+            continue
+        try:
+            tasks, _ = _fetch_standup_tasks_for_user(emp["id"], today)
+            incomplete = [t for t in tasks if t["status"] != "done"]
+
+            if incomplete:
+                msg = build_task_list_message(incomplete, "End of day check-in -- still open:")
+                msg += "\n\nReply \"1 done\" etc. to update, or it'll carry over to tomorrow."
+                save_task_context(emp["id"], today, [t["id"] for t in incomplete])
+                send_whatsapp_message(wa, msg)
+
+                with conn:
+                    cur = conn.execute(
+                        "SELECT consecutive_incomplete FROM whatsapp_reminder_state WHERE user_id=?",
+                        (emp["id"],),
+                    )
+                    row = cur.fetchone()
+                    new_count = (row[0] if row else 0) + 1
+                    conn.execute(
+                        "INSERT INTO whatsapp_reminder_state (user_id, consecutive_incomplete, last_checked_date) "
+                        "VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET "
+                        "consecutive_incomplete=excluded.consecutive_incomplete, last_checked_date=excluded.last_checked_date",
+                        (emp["id"], new_count, today),
+                    )
+
+                if new_count == 2:
+                    _escalate_missed_reminders(emp, incomplete, employees)
+                    with conn:
+                        conn.execute(
+                            "UPDATE whatsapp_reminder_state SET consecutive_incomplete=0 WHERE user_id=?",
+                            (emp["id"],),
+                        )
+            else:
+                with conn:
+                    conn.execute(
+                        "INSERT INTO whatsapp_reminder_state (user_id, consecutive_incomplete, last_checked_date) "
+                        "VALUES (?, 0, ?) ON CONFLICT(user_id) DO UPDATE SET "
+                        "consecutive_incomplete=0, last_checked_date=excluded.last_checked_date",
+                        (emp["id"], today),
+                    )
+        except Exception:
+            logger.exception(f"EOD standup reminder failed for {emp.get('id')}")
+
+    conn.close()
+
+
+def _escalate_missed_reminders(emp: dict, incomplete: list, all_employees: list) -> None:
+    """Ping every 'founder' (role contains 'founder', case-insensitive --
+    matches 'Founder', 'Co-Founder', and the literal '1Founder' role string,
+    see CLAUDE.md gotcha #80) that `emp` has missed 2 EOD checkins in a row."""
+    from app import send_whatsapp_message
+
+    titles = "\n".join(f"- {t['title']}" for t in incomplete)
+    msg = (
+        f"Heads up: {emp['name']} has had incomplete standup tasks for 2 evenings in a row.\n\n"
+        f"Still open:\n{titles}"
+    )
+    for founder in all_employees:
+        if "founder" in founder.get("role", "").lower() and founder.get("whatsapp"):
+            if founder["id"] == emp["id"]:
+                continue  # don't escalate someone to themselves
+            send_whatsapp_message(founder["whatsapp"], msg)
+
+
+def send_weekly_standup_digest():
+    """Monday 09:00 IST -- founders get a completed/open breakdown for the
+    prior 7 days (Mon-Sun)."""
+    # timedelta is already imported at module level (line 6).
+    from utils import _load_employees, today_ist
+    from routes.ops import get_weekly_completion_by_user
+    from app import send_whatsapp_message
+
+    today = date.fromisoformat(today_ist())
+    since = (today - timedelta(days=7)).isoformat()
+
+    try:
+        emp_data = _load_employees()
+    except Exception:
+        logger.exception("Weekly standup digest: failed to load employees.json")
+        return
+
+    employees = emp_data.get("employees", [])
+    emp_names = {e["id"]: e["name"] for e in employees}
+    completion = get_weekly_completion_by_user(since)
+
+    lines = [f"Weekly Standup Digest ({since} to {today_ist()})"]
+    for user_id, counts in sorted(completion.items(), key=lambda kv: emp_names.get(kv[0], kv[0])):
+        name = emp_names.get(user_id, user_id)
+        marker = "OK" if counts["open"] == 0 else "!!"
+        lines.append(f"{marker} {name}: {counts['completed']} done, {counts['open']} open")
+    msg = "\n".join(lines)
+
+    for founder in employees:
+        if "founder" in founder.get("role", "").lower() and founder.get("whatsapp"):
+            send_whatsapp_message(founder["whatsapp"], msg)
+
+
 def init_scheduler(app):
     """Call this once from app.py to register the background job."""
     try:
@@ -276,6 +431,17 @@ def init_scheduler(app):
         # unload-event approach was tried once and reverted.
         scheduler.add_job(_run_attendance_sweep, "interval", minutes=3,
                           id="attendance_presence_sweep", replace_existing=True)
+
+        # WhatsApp standup: morning prompt, EOD nudge, weekly founder digest.
+        # All explicit timezone=IST -- unlike the pre-existing 08:00 job
+        # above, do not rely on the server's local timezone here.
+        from utils import IST
+        scheduler.add_job(send_morning_standup_prompts, "cron", hour=10, minute=0,
+                          timezone=IST, id="whatsapp_morning_standup", replace_existing=True)
+        scheduler.add_job(send_eod_standup_reminders, "cron", hour=19, minute=0,
+                          timezone=IST, id="whatsapp_eod_standup", replace_existing=True)
+        scheduler.add_job(send_weekly_standup_digest, "cron", day_of_week="mon", hour=9, minute=0,
+                          timezone=IST, id="whatsapp_weekly_digest", replace_existing=True)
         scheduler.start()
         logger.info(" Task delay scheduler started (runs daily at 08:00).")
 
