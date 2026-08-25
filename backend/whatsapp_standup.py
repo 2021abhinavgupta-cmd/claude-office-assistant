@@ -201,9 +201,22 @@ def build_task_list_message(tasks: list, heading: str) -> str:
     return "\n".join(lines)
 
 
-def handle_standup_message(employee: dict, text: str) -> Optional[str]:
-    """Returns the WhatsApp reply text for a recognized standup command, or
-    None if `text` didn't match one (caller falls through to generic chat)."""
+def handle_standup_message(employee: dict, text: str) -> Optional[tuple]:
+    """Returns (reply_text, context_to_save) for a recognized standup
+    command, or None if `text` didn't match one (caller falls through to
+    generic chat). `context_to_save` is either None (nothing to persist --
+    'done'/'blocked' don't change what the numbers refer to) or an
+    (user_id, date_str, task_ids) tuple the caller must pass to
+    save_task_context() -- but ONLY after confirming reply_text was
+    actually delivered.
+
+    This mirrors the "send first, persist only if it went out" rule the
+    10am/7pm scheduler jobs already follow (see task_scheduler.py): the
+    'add' command builds a NEW numbered list, and if the confirmation
+    reply fails to send, the employee never saw that new numbering -- a
+    later 'N done' must still resolve against whatever list they actually
+    have on their screen, not one persisted here on the assumption the
+    send would succeed."""
     from utils import today_ist
     from routes.ops import _apply_standup_task_update, _smart_add_standup_task_impl, _fetch_standup_tasks_for_user
 
@@ -217,7 +230,7 @@ def handle_standup_message(employee: dict, text: str) -> Optional[str]:
 
     if cmd["type"] == "done":
         if not context_ids:
-            return "I don't have a task list on file for you today yet -- you'll get one at 10am, or text \"add <task>\" to start one now."
+            return ("I don't have a task list on file for you today yet -- you'll get one at 10am, or text \"add <task>\" to start one now.", None)
 
         if cmd["numbers"] == "all":
             indices = list(range(1, len(context_ids) + 1))
@@ -226,7 +239,7 @@ def handle_standup_message(employee: dict, text: str) -> Optional[str]:
 
         out_of_range = [n for n in indices if n < 1 or n > len(context_ids)]
         if out_of_range:
-            return f"No task(s) numbered {', '.join(str(n) for n in out_of_range)} -- your list only has 1-{len(context_ids)}. Nothing was changed."
+            return (f"No task(s) numbered {', '.join(str(n) for n in out_of_range)} -- your list only has 1-{len(context_ids)}. Nothing was changed.", None)
 
         titles = _fetch_task_titles(context_ids)
         marked = []
@@ -243,39 +256,39 @@ def handle_standup_message(employee: dict, text: str) -> Optional[str]:
                 failed.append(f"{label} ({result['error']})")
 
         if not marked and not failed:
-            return "Couldn't mark those done -- something went wrong. Try again or use the app."
+            return ("Couldn't mark those done -- something went wrong. Try again or use the app.", None)
 
         segments = []
         if marked:
             segments.append("Marked done: " + "; ".join(marked))
         if failed:
             segments.append("Failed: " + "; ".join(failed))
-        return "\n".join(segments)
+        return ("\n".join(segments), None)
 
     if cmd["type"] == "add":
         result = _smart_add_standup_task_impl(user_id=user_id, assigned_to=user_id, title=cmd["title"])
         if "error" in result:
-            return f"Couldn't add that task: {result['error']}"
+            return (f"Couldn't add that task: {result['error']}", None)
         tasks, _ = _fetch_standup_tasks_for_user(user_id, today)
-        save_task_context(user_id, today, [t["id"] for t in tasks])
         listing = build_task_list_message(tasks, "Added. Today's list:")
-        return f"Added: {cmd['title']}\n\n{listing}"
+        context_to_save = (user_id, today, [t["id"] for t in tasks])
+        return (f"Added: {cmd['title']}\n\n{listing}", context_to_save)
 
     if cmd["type"] == "blocked":
         # Same guard the 'done' branch has -- without it an empty context
         # falls through to the range check and emits "your list only has 1-0".
         if not context_ids:
-            return "I don't have a task list on file for you today yet -- you'll get one at 10am, or text \"add <task>\" to start one now."
+            return ("I don't have a task list on file for you today yet -- you'll get one at 10am, or text \"add <task>\" to start one now.", None)
 
         n = cmd["number"]
         if n < 1 or n > len(context_ids):
-            return f"No task numbered {n} -- your list only has 1-{len(context_ids)}. Nothing was changed."
+            return (f"No task numbered {n} -- your list only has 1-{len(context_ids)}. Nothing was changed.", None)
         task_id = context_ids[n - 1]
         titles = _fetch_task_titles(context_ids)
         label = _task_label(n, task_id, titles)
         result = _apply_standup_task_update(task_id, blocker=cmd["reason"])
         if "error" in result:
-            return f"Couldn't flag that as blocked: {result['error']}"
-        return f"Flagged blocked: {label} -- {cmd['reason']}"
+            return (f"Couldn't flag that as blocked: {result['error']}", None)
+        return (f"Flagged blocked: {label} -- {cmd['reason']}", None)
 
     return None

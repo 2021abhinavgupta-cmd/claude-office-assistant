@@ -3465,7 +3465,7 @@ def whatsapp_webhook():
         # deterministic standup command parser first. Falls through to the
         # existing generic Claude chat below if it's not a recognized
         # standup command (e.g. an employee just chatting with the bot).
-        from whatsapp_standup import find_employee_by_whatsapp, handle_standup_message
+        from whatsapp_standup import find_employee_by_whatsapp, handle_standup_message, save_task_context
         employee = find_employee_by_whatsapp(sender)
         if employee:
             # Own try/except, NOT the outer one. The standup path does plenty
@@ -3476,9 +3476,20 @@ def whatsapp_webhook():
             # those silently, leaving the employee with no reply and nothing
             # in the logs. Catch here, log loudly, and always answer.
             try:
-                standup_reply = handle_standup_message(employee, text)
-                if standup_reply is not None:
-                    send_whatsapp_message(sender, standup_reply)
+                result = handle_standup_message(employee, text)
+                if result is not None:
+                    standup_reply, context_to_save = result
+                    # Send FIRST -- only persist a NEW numbered list (from
+                    # "add") if the employee actually received it. Same rule
+                    # the 10am/7pm scheduler jobs already follow.
+                    if send_whatsapp_message(sender, standup_reply):
+                        if context_to_save:
+                            save_task_context(*context_to_save)
+                    else:
+                        logger.warning(
+                            f"WhatsApp standup reply failed to send for {employee.get('id')} "
+                            "-- any new task-list context was NOT persisted."
+                        )
                     logger.info(f"WhatsApp standup command handled for {employee['id']}")
                     return "OK", 200
             except Exception as exc:
