@@ -1,4 +1,4 @@
-import sqlite3
+﻿import sqlite3
 import json
 import os
 import time
@@ -161,6 +161,29 @@ def init_db():
             conn.execute("ALTER TABLE standup_tasks ADD COLUMN due_date TEXT DEFAULT NULL")
         except Exception:
             pass  # Column already exists
+
+        # WhatsApp standup: maps a numbered list sent to an employee (morning
+        # prompt or EOD nudge) back to real standup_tasks ids, so a reply like
+        # "1,3 done" resolves correctly. One row per employee per day --
+        # INSERT OR REPLACE so a later resend (e.g. after "add <task>") always
+        # overwrites with the freshest numbering.
+        conn.execute("""CREATE TABLE IF NOT EXISTS whatsapp_standup_context (
+            user_id    TEXT NOT NULL,
+            date       TEXT NOT NULL,
+            task_order TEXT NOT NULL,
+            sent_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, date)
+        )""")
+
+        # WhatsApp standup: tracks consecutive evenings an employee had
+        # incomplete tasks at the 19:00 nudge, for the 2-in-a-row founder
+        # escalation. Reset to 0 whenever an employee has zero incomplete
+        # tasks at nudge time, or right after an escalation fires.
+        conn.execute("""CREATE TABLE IF NOT EXISTS whatsapp_reminder_state (
+            user_id                TEXT PRIMARY KEY,
+            consecutive_incomplete INTEGER DEFAULT 0,
+            last_checked_date      TEXT
+        )""")
 
         # Task risk escalation log (tracks alert level per task)
         conn.execute("""CREATE TABLE IF NOT EXISTS task_risk (
@@ -443,7 +466,7 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
-        # ── Startup cleanup: remove orphaned client_users ──────────────
+        # â”€â”€ Startup cleanup: remove orphaned client_users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         # Removes portal credentials for clients that no longer exist in the DB.
         # This fixes stuck "username already taken" errors after a client is deleted.
         try:
@@ -503,7 +526,7 @@ def migrate_from_json():
                 for period, bdata in budget.items():
                     conn.execute("INSERT OR IGNORE INTO budget (period, total_cost) VALUES (?, ?)", (period, bdata.get("total_cost", 0.0)))
                 # Dedup by exact content, not just primary key (this table has no
-                # natural unique key) — if the process is killed between this
+                # natural unique key) â€” if the process is killed between this
                 # commit and the os.rename() below, usage.json is still present
                 # on next boot and this whole block re-runs; without the dedup
                 # check every log line would be re-inserted and double-count
@@ -523,3 +546,4 @@ def migrate_from_json():
     conn.close()
 
 migrate_from_json()
+
