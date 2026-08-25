@@ -357,8 +357,11 @@ def get_velocity_summary():
     return jsonify({"completed": completed, "overdue": overdue, "month_start": month_start})
 
 
-def get_weekly_completion_by_user(since_date: str) -> dict:
-    """user_id -> {"completed": N, "open": N} for the window [since_date, today].
+def get_weekly_completion_by_user(since_date: str, until_date: str = None) -> dict:
+    """user_id -> {"completed": N, "open": N} for the window [since_date, until_date]
+    (until_date defaults to today when omitted -- pass it explicitly to get a
+    closed window that excludes the day the caller is running on, e.g. the
+    Monday-morning digest excluding the Monday it's actually sent).
     Weekends excluded from the 'completed' count, matching the existing
     /velocity chart's weekday-only convention (gotcha #77's follow-up) --
     open/overdue counts intentionally include weekend-carried rows since an
@@ -385,28 +388,48 @@ def get_weekly_completion_by_user(since_date: str) -> dict:
     # Completed: raw row count is correct here -- a task is only ever marked
     # done/need_for_approval on the single row/day it happened, and the
     # carry-over logic never re-inserts finished tasks. Weekdays only.
-    cur.execute(
-        """SELECT user_id, COUNT(*) FROM standup_tasks
-           WHERE date >= ?
-             AND status IN ('done', 'need_for_approval')
-             AND strftime('%w', date) NOT IN ('0','6')
-           GROUP BY user_id""",
-        (since_date,),
-    )
+    if until_date:
+        cur.execute(
+            """SELECT user_id, COUNT(*) FROM standup_tasks
+               WHERE date >= ? AND date <= ?
+                 AND status IN ('done', 'need_for_approval')
+                 AND strftime('%w', date) NOT IN ('0','6')
+               GROUP BY user_id""",
+            (since_date, until_date),
+        )
+    else:
+        cur.execute(
+            """SELECT user_id, COUNT(*) FROM standup_tasks
+               WHERE date >= ?
+                 AND status IN ('done', 'need_for_approval')
+                 AND strftime('%w', date) NOT IN ('0','6')
+               GROUP BY user_id""",
+            (since_date,),
+        )
     completed_rows = cur.fetchall()
 
     # Open: dedup by task lineage. carried_from is NULL for a task's first
     # day, so COALESCE it to the row's own date -- without that, the ||
     # concatenation yields NULL and the row is dropped from COUNT(DISTINCT)
     # entirely, losing every never-yet-carried open task.
-    cur.execute(
-        """SELECT user_id,
-                  COUNT(DISTINCT user_id || '|' || title || '|' || COALESCE(carried_from, date))
-           FROM standup_tasks
-           WHERE date >= ? AND status = 'pending'
-           GROUP BY user_id""",
-        (since_date,),
-    )
+    if until_date:
+        cur.execute(
+            """SELECT user_id,
+                      COUNT(DISTINCT user_id || '|' || title || '|' || COALESCE(carried_from, date))
+               FROM standup_tasks
+               WHERE date >= ? AND date <= ? AND status = 'pending'
+               GROUP BY user_id""",
+            (since_date, until_date),
+        )
+    else:
+        cur.execute(
+            """SELECT user_id,
+                      COUNT(DISTINCT user_id || '|' || title || '|' || COALESCE(carried_from, date))
+               FROM standup_tasks
+               WHERE date >= ? AND status = 'pending'
+               GROUP BY user_id""",
+            (since_date,),
+        )
     open_rows = cur.fetchall()
     conn.close()
 

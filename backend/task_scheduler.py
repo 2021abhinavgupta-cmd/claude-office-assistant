@@ -454,7 +454,14 @@ def send_weekly_standup_digest():
     from app import send_whatsapp_message
 
     today = date.fromisoformat(today_ist())
+    # Window is the prior 7 calendar days ending YESTERDAY, not including
+    # today (the Monday this digest itself runs on) -- so it reports a
+    # closed Mon-Sun week, matching the design spec's example
+    # "Weekly Standup Digest (Aug 18-24)". Without the explicit `until`,
+    # get_weekly_completion_by_user() defaults to an open-ended `date >= since`
+    # window that silently included today's (partial, mid-run) activity too.
     since = (today - timedelta(days=7)).isoformat()
+    until = (today - timedelta(days=1)).isoformat()
 
     try:
         emp_data = _load_employees()
@@ -476,9 +483,9 @@ def send_weekly_standup_digest():
         for e in employees
         if e.get("whatsapp")
     }
-    completion.update(get_weekly_completion_by_user(since))
+    completion.update(get_weekly_completion_by_user(since, until))
 
-    lines = [f"Weekly Standup Digest ({since} to {today_ist()})"]
+    lines = [f"Weekly Standup Digest ({since} to {until})"]
     for user_id, counts in sorted(completion.items(), key=lambda kv: emp_names.get(kv[0], kv[0])):
         name = emp_names.get(user_id, user_id)
         marker = "OK" if counts["open"] == 0 else "!!"
