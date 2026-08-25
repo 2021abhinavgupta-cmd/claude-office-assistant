@@ -927,6 +927,27 @@ def set_client_id(notion_id: str, client_notion_id: str) -> bool:
         return False
 
 
+def is_client_active(client_notion_id: str) -> bool:
+    """True only if client_notion_id points at a real, non-archived Notion
+    page. Used to refuse connecting a Google Sheet to a client_id that no
+    longer exists -- without this, a browser tab left open from before a
+    client was deleted could still successfully create a sync link pointing
+    at nothing (see CLAUDE.md gotcha #94's Omotec stale-tab incident,
+    2026-08-25). Returns False on any lookup failure, not just a genuine
+    archived/missing page -- a link creation should fail closed if this
+    can't be verified, not assume the client is fine."""
+    if not is_configured() or not client_notion_id:
+        return False
+    try:
+        r = _notion_request("GET", f"https://api.notion.com/v1/pages/{client_notion_id}", headers=_headers())
+        if r.status_code != 200:
+            return False
+        return not r.json().get("archived", False)
+    except Exception:
+        logger.exception(f"Notion is_client_active check failed for {client_notion_id}")
+        return False
+
+
 def archive_notion_page(page_id: str) -> bool:
     """
     Archives a Notion page (moves it to trash). Used for deleting clients/tasks.
