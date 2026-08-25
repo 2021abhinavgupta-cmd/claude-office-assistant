@@ -1043,15 +1043,23 @@ Respond ONLY in valid JSON format:
             assigned_to=assigned_to, due_date=due_date, status="in_progress",
             creation_date=today_ist()
         )
-        if created and "id" in created:
-            notion_id = created["id"]
+        # create_task() returns {"notion_id": ..., "title": ...} on success --
+        # never a key called "id". The old `"id" in created` check was always
+        # False, so this Notion link silently never happened for any caller
+        # (web Smart Add or WhatsApp "add"). See CLAUDE.md gotcha #94.
+        if created and "notion_id" in created:
+            notion_id = created["notion_id"]
 
+    # Bind today_ist() explicitly rather than SQLite's date('now') (UTC) --
+    # for ~5.5 hours a day (00:00-05:29 IST) those two disagree on the
+    # calendar date, which silently created a duplicate carried-over row the
+    # next time this user's task list was fetched. See CLAUDE.md gotcha #94.
     conn = _su_conn()
     with conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO standup_tasks (user_id, title, status, date, notion_id, due_date) VALUES (?, ?, 'pending', date('now'), ?, ?)",
-            (user_id, title, notion_id, due_date)
+            "INSERT INTO standup_tasks (user_id, title, status, date, notion_id, due_date) VALUES (?, ?, 'pending', ?, ?, ?)",
+            (user_id, title, today_ist(), notion_id, due_date)
         )
         task_id = cur.lastrowid
 
@@ -1109,8 +1117,12 @@ def push_to_notion(task_id):
         status="in_progress",
         creation_date=due_date
     )
-    if created and "id" in created:
-        notion_id = created["id"]
+    # Same "id" vs "notion_id" key bug as _smart_add_standup_task_impl above
+    # (see CLAUDE.md gotcha #94) -- this made every push-to-Notion call
+    # report failure even when the Notion page was created successfully,
+    # leaking an orphan Notion page on every retry.
+    if created and "notion_id" in created:
+        notion_id = created["notion_id"]
         with conn:
             conn.execute("UPDATE standup_tasks SET notion_id=?, due_date=? WHERE id=?", (notion_id, due_date, task_id))
         return jsonify({"success": True, "notion_id": notion_id})
@@ -1148,7 +1160,17 @@ def _apply_standup_task_update(task_id: int, status: str = None, blocker: str = 
 
     conn = _su_conn()
     with conn:
-        conn.execute(f"UPDATE standup_tasks SET {', '.join(updates)} WHERE id=?", params)
+        cur = conn.execute(f"UPDATE standup_tasks SET {', '.join(updates)} WHERE id=?", params)
+        rowcount = cur.rowcount
+
+    if rowcount == 0:
+        # task_id didn't match any row -- without this check every caller
+        # (PATCH /api/standup/my-tasks/<id> and the WhatsApp done/blocked
+        # commands) reported {"success": true} for a no-op update, which is
+        # exactly the "never fail silently" rule this codebase keeps
+        # re-learning the hard way (CLAUDE.md gotchas #53/#54).
+        conn.close()
+        return {"error": f"task {task_id} not found"}
 
     cur = conn.cursor()
     cur.execute("SELECT notion_id, subtasks, status FROM standup_tasks WHERE id=?", (task_id,))

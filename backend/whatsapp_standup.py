@@ -18,12 +18,15 @@ _DONE_RE = re.compile(r"^(all|\d+(?:\s*,\s*\d+)*)\s+done$", re.IGNORECASE)
 _ADD_RE = re.compile(r"^add\s+(.+)$", re.IGNORECASE | re.DOTALL)
 _BLOCKED_RE = re.compile(r"^blocked\s*:?\s*(\d+)\s+(.+)$", re.IGNORECASE | re.DOTALL)
 
-# People type "all done!" and "1 done." -- the command regexes are $-anchored,
-# so without stripping this the message silently falls through to generic
-# Claude chat instead of being recognized as the command it obviously is.
-# Deliberately narrow: only whitespace and unambiguously non-content trailing
-# punctuation, and only at the very END of the string, so a mid-command
-# apostrophe ("blocked: 2 waiting on client's approval") is untouched.
+# People type "all done!" and "1 done." -- _DONE_RE is $-anchored, so without
+# stripping this the message silently falls through to generic Claude chat
+# instead of being recognized as the command it obviously is. Applied ONLY to
+# the text matched against _DONE_RE -- _ADD_RE/_BLOCKED_RE already match
+# trailing punctuation via their own `.+` capture group (DOTALL), so their
+# captured free text is taken from the un-stripped original instead. Applying
+# this strip to all three used to also eat trailing punctuation off of a
+# `blocked: N <reason>` reason and an `add <title>` title, which is not
+# cosmetic there -- it's the employee's actual sentence.
 _TRAILING_PUNCT_RE = re.compile(r"[\s.!?…]+$")
 
 
@@ -32,6 +35,41 @@ def _normalize_phone(raw: str) -> str:
     '+', country code, or a 'whatsapp:' prefix from either side."""
     digits = re.sub(r"\D", "", raw or "")
     return digits[-10:] if len(digits) >= 10 else digits
+
+
+_warned_malformed_numbers = False
+
+
+def _warn_malformed_numbers(employees: list) -> None:
+    """Logs once per process. A stored 'whatsapp' number that isn't a valid
+    10-digit Indian mobile (optionally 91- or 0-prefixed) can never match an
+    inbound sender in _normalize_phone()'s last-10-digits scheme -- that
+    employee's replies silently fall through to generic chat with no error
+    anywhere. Caught in practice: Nupur/emp002's stored '+91770085605' is 11
+    digits, one short of either valid form. See CLAUDE.md gotcha #94 -- this
+    doesn't fix her number (can't guess the missing digit), it just makes
+    the problem visible instead of silent."""
+    global _warned_malformed_numbers
+    if _warned_malformed_numbers:
+        return
+    _warned_malformed_numbers = True
+    for emp in employees:
+        wa = emp.get("whatsapp", "")
+        if not wa:
+            continue
+        digits = re.sub(r"\D", "", wa)
+        valid = (
+            len(digits) == 10
+            or (len(digits) == 11 and digits.startswith("0"))
+            or (len(digits) == 12 and digits.startswith("91"))
+        )
+        if not valid:
+            logger.warning(
+                "employees.json: %s's whatsapp number %r normalizes to %d digits -- "
+                "not a valid 10-digit (or 0-/91-prefixed) number, so their WhatsApp "
+                "standup replies will never be recognized.",
+                emp.get("name", emp.get("id")), wa, len(digits),
+            )
 
 
 def find_employee_by_whatsapp(sender: str) -> Optional[dict]:
@@ -46,7 +84,9 @@ def find_employee_by_whatsapp(sender: str) -> Optional[dict]:
     except Exception:
         logger.exception("Failed to load employees.json for WhatsApp identification")
         return None
-    for emp in data.get("employees", []):
+    employees = data.get("employees", [])
+    _warn_malformed_numbers(employees)
+    for emp in employees:
         wa = emp.get("whatsapp", "")
         if wa and _normalize_phone(wa) == sender_norm:
             return emp
@@ -57,10 +97,12 @@ def parse_standup_command(text: str) -> dict:
     """Deterministic command grammar -- see module docstring for why this
     is never AI-classified. Checked in order; first match wins.
 
-    Trailing punctuation is stripped ONCE up front rather than loosening each
-    regex individually -- note this also trims a trailing '.'/'!' from an
-    `add <task>` title, which is cosmetic and intentional."""
-    stripped = _TRAILING_PUNCT_RE.sub("", (text or "").strip())
+    `done` is matched against a trailing-punctuation-stripped copy (so
+    "all done!" / "1 done." parse); `add`/`blocked` are matched against the
+    original text so their captured free text keeps whatever punctuation
+    the employee actually typed."""
+    original = (text or "").strip()
+    stripped = _TRAILING_PUNCT_RE.sub("", original)
 
     m = _DONE_RE.match(stripped)
     if m:
@@ -70,11 +112,11 @@ def parse_standup_command(text: str) -> dict:
         numbers = [int(n.strip()) for n in raw.split(",") if n.strip()]
         return {"type": "done", "numbers": numbers}
 
-    m = _BLOCKED_RE.match(stripped)
+    m = _BLOCKED_RE.match(original)
     if m:
         return {"type": "blocked", "number": int(m.group(1)), "reason": m.group(2).strip()}
 
-    m = _ADD_RE.match(stripped)
+    m = _ADD_RE.match(original)
     if m:
         return {"type": "add", "title": m.group(1).strip()}
 
