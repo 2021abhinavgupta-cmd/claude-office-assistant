@@ -357,6 +357,37 @@ def get_velocity_summary():
     return jsonify({"completed": completed, "overdue": overdue, "month_start": month_start})
 
 
+def get_weekly_completion_by_user(since_date: str) -> dict:
+    """user_id -> {"completed": N, "open": N} for the window [since_date, today].
+    Weekends excluded from the 'completed' count, matching the existing
+    /velocity chart's weekday-only convention (gotcha #77's follow-up) --
+    open/overdue counts intentionally include weekend-carried rows since an
+    open task doesn't stop being open over a weekend."""
+    conn = _su_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT user_id, status, date FROM standup_tasks
+           WHERE date >= ? AND status != 'deleted'""",
+        (since_date,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    result = {}
+    for user_id, status, date_str in rows:
+        result.setdefault(user_id, {"completed": 0, "open": 0})
+        if status == "done":
+            import datetime as _dt
+            try:
+                if _dt.date.fromisoformat(date_str).weekday() < 5:  # Mon-Fri only
+                    result[user_id]["completed"] += 1
+            except Exception:
+                result[user_id]["completed"] += 1
+        elif status == "pending":
+            result[user_id]["open"] += 1
+    return result
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PERSONAL DAILY TASK TRACKER (separate from project tasks)
 # ══════════════════════════════════════════════════════════════════════════════
