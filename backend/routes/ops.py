@@ -407,23 +407,16 @@ def execute_standup_actions():
 
 
 
-@ops_bp.route("/api/standup/my-tasks", methods=["GET"])
-def get_my_tasks():
-    """
-    Get an employee's task list for a given date.
-    Carried-over tasks from yesterday are automatically seeded when first
-    fetching today if they don't exist yet.
-    Query: user_id, date (optional — defaults to today UTC)
-    """
-    user_id  = request.args.get("user_id", "").strip()
-    date_str = request.args.get("date", "") or today_ist()
-    if not user_id:
-        return jsonify({"error": "user_id required"}), 400
+def _fetch_standup_tasks_for_user(user_id: str, date_str: str = None) -> tuple:
+    """Shared by GET /api/standup/my-tasks and the WhatsApp 10am morning
+    prompt -- includes the existing auto-carry-over (gotcha #8) and
+    Creation-Date self-heal (gotcha #50) so WhatsApp and the web UI can
+    never show a different task list for the same employee/day."""
+    date_str = date_str or today_ist()
 
     conn = _su_conn()
-    cur  = conn.cursor()
+    cur = conn.cursor()
 
-    # Auto-carry-over: if no tasks exist for today, copy pending ones from yesterday
     cur.execute("SELECT id FROM standup_tasks WHERE user_id=? AND date=?", (user_id, date_str))
     existing = cur.fetchall()
     if not existing and date_str == today_ist():
@@ -445,16 +438,11 @@ def get_my_tasks():
                             (user_id, date_str, title, orig_carry_from, blocker, nid, dd, sub, d_to, d_from),
                         )
 
-    import json
-    import re
-
     def parse_date_for_sort(d):
         if not d:
             return "9999-12-31"
-        # If DD-MM-YYYY, convert to YYYY-MM-DD
         if re.match(r"^\d{2}-\d{2}-\d{4}$", d.strip()):
             return f"{d[6:10]}-{d[3:5]}-{d[0:2]}"
-        # If DD/MM/YYYY, convert to YYYY-MM-DD
         if re.match(r"^\d{2}/\d{2}/\d{4}$", d.strip()):
             return f"{d[6:10]}-{d[3:5]}-{d[0:2]}"
         return d.strip()
@@ -465,10 +453,6 @@ def get_my_tasks():
     )
     rows = cur.fetchall()
 
-    # Auto-clean: a task pulled into this snapshot earlier may have had its live
-    # Notion Creation Date pushed to the future since then (e.g. postponed in
-    # Sheets) — the local row doesn't self-heal on its own, so re-check and drop
-    # it here rather than leaving it stuck until the next manual Auto-Fill/Sync.
     if date_str == today_ist() and notion_store.is_configured():
         future_ids = []
         for r in rows:
@@ -493,17 +477,26 @@ def get_my_tasks():
         try:
             st = json.loads(r[7]) if r[7] else []
         except: pass
-        
         tasks.append({
             "id": r[0], "title": r[1], "status": r[2],
-            "carried_from": r[3], "created_at": r[4], 
+            "carried_from": r[3], "created_at": r[4],
             "blocker": r[5], "notion_id": r[6], "subtasks": st,
             "delegated_to": r[8], "delegated_from": r[9], "due_date": r[10]
         })
 
     tasks.sort(key=lambda x: (parse_date_for_sort(x["due_date"]), x["id"]))
+    return tasks, date_str
 
-    return jsonify({"tasks": tasks, "date": date_str})
+
+@ops_bp.route("/api/standup/my-tasks", methods=["GET"])
+def get_my_tasks():
+    """Get an employee's task list for a given date. Query: user_id, date (optional)."""
+    user_id  = request.args.get("user_id", "").strip()
+    date_str = request.args.get("date", "") or None
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    tasks, resolved_date = _fetch_standup_tasks_for_user(user_id, date_str)
+    return jsonify({"tasks": tasks, "date": resolved_date})
 
 
 @ops_bp.route("/api/standup/tasks/<int:task_id>/delegate", methods=["POST"])
@@ -951,16 +944,10 @@ def cleanup_today():
     return f"Successfully cleaned up {deleted_count} mistakenly synced tasks for today! You can close this tab and click 'Sync All Tasks' again."
 
 
-@ops_bp.route("/api/standup/smart-add", methods=["POST"])
-def standup_smart_add():
-    body = request.get_json(silent=True) or {}
-    user_id = body.get("user_id", "")
-    assigned_to = body.get("assigned_to", "")
-    title = body.get("title", "").strip()
-    due_date = body.get("due_date", "").strip()
-
+def _smart_add_standup_task_impl(user_id: str, assigned_to: str, title: str, due_date: str = "") -> dict:
+    """Shared by POST /api/standup/smart-add and the WhatsApp 'add <task>' command."""
     if not user_id or not title:
-        return jsonify({"error": "user_id and title required"}), 400
+        return {"error": "user_id and title required"}
 
     system_prompt = """You are an AI task router.
 The user just typed a new task into their daily standup list.
@@ -971,13 +958,11 @@ Respond ONLY in valid JSON format:
   "is_project_task": true/false,
   "client_name": "Name or Internal"
 }"""
-    
+
     try:
         resp = _claude_call(system_prompt, title, 200)
-        import re
         match = re.search(r'\{.*\}', resp, re.DOTALL)
         resp_json = json.loads(match.group(0)) if match else json.loads(resp)
-            
         is_project = resp_json.get("is_project_task", False)
         client = resp_json.get("client_name", "Internal")
     except Exception as e:
@@ -986,22 +971,18 @@ Respond ONLY in valid JSON format:
         client = "Internal"
 
     notion_id = None
-    
+
     if is_project and notion_store.is_configured():
         if not due_date:
             due_date = today_ist()
         created = notion_store.create_task(
-            title=title,
-            client_name=client,
-            client_notion_id="",
-            assigned_to=assigned_to,
-            due_date=due_date,
-            status="in_progress",
+            title=title, client_name=client, client_notion_id="",
+            assigned_to=assigned_to, due_date=due_date, status="in_progress",
             creation_date=today_ist()
         )
         if created and "id" in created:
             notion_id = created["id"]
-            
+
     conn = _su_conn()
     with conn:
         cur = conn.cursor()
@@ -1010,14 +991,22 @@ Respond ONLY in valid JSON format:
             (user_id, title, notion_id, due_date)
         )
         task_id = cur.lastrowid
-        
-    return jsonify({
-        "success": True, 
-        "task_id": task_id, 
-        "title": title, 
-        "notion_id": notion_id,
-        "is_project": is_project
-    })
+
+    return {"success": True, "task_id": task_id, "title": title, "notion_id": notion_id, "is_project": is_project}
+
+
+@ops_bp.route("/api/standup/smart-add", methods=["POST"])
+def standup_smart_add():
+    body = request.get_json(silent=True) or {}
+    result = _smart_add_standup_task_impl(
+        user_id=body.get("user_id", ""),
+        assigned_to=body.get("assigned_to", ""),
+        title=body.get("title", "").strip(),
+        due_date=body.get("due_date", "").strip(),
+    )
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
 
 
 @ops_bp.route("/api/standup/push-to-notion/<int:task_id>", methods=["POST"])
@@ -1065,24 +1054,18 @@ def push_to_notion(task_id):
     return jsonify({"error": "Failed to push to Notion"}), 500
 
 
-@ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["PATCH"])
-def update_my_task(task_id: int):
-    """
-    Update a task's status or blocker.
-    Body: { status?: 'done' | 'pending', blocker?: str }
-    """
-    body   = request.get_json(silent=True) or {}
-    status = body.get("status")
-    blocker = body.get("blocker")
-    title = body.get("title")
-    progress = body.get("progress")  # optional progress override (int 0-100)
-    subtasks = body.get("subtasks")  # list of dicts: [{"title": "x", "done": true}]
-    
+def _apply_standup_task_update(task_id: int, status: str = None, blocker: str = None,
+                                title: str = None, progress: int = None, subtasks: list = None) -> dict:
+    """Shared by the PATCH /api/standup/my-tasks/<id> route and the WhatsApp
+    'done'/'blocked' commands -- do not duplicate this logic a second time,
+    see CLAUDE.md gotcha #63/#69 for why this codebase keeps getting bitten
+    by exactly that."""
+    if status is not None and status not in ("done", "pending"):
+        return {"error": "status must be 'done' or 'pending'"}
+
     updates = []
     params = []
     if status is not None:
-        if status not in ("done", "pending"):
-            return jsonify({"error": "status must be 'done' or 'pending'"}), 400
         updates.append("status=?")
         params.append(status)
     if blocker is not None:
@@ -1092,20 +1075,18 @@ def update_my_task(task_id: int):
         updates.append("title=?")
         params.append(title.strip())
     if subtasks is not None:
-        import json
         updates.append("subtasks=?")
         params.append(json.dumps(subtasks))
 
     if not updates:
-        return jsonify({"error": "no updates provided"}), 400
-        
+        return {"error": "no updates provided"}
+
     params.append(task_id)
 
     conn = _su_conn()
     with conn:
         conn.execute(f"UPDATE standup_tasks SET {', '.join(updates)} WHERE id=?", params)
 
-    # Sync to Notion if progress is provided explicitly, OR if subtasks are updated
     cur = conn.cursor()
     cur.execute("SELECT notion_id, subtasks, status FROM standup_tasks WHERE id=?", (task_id,))
     row = cur.fetchone()
@@ -1117,33 +1098,27 @@ def update_my_task(task_id: int):
 
     if notion_id:
         try:
-            import notion_store
             notion_status = None
             notion_progress = None
-            
-            # Explicit progress override
+
             if progress is not None and current_status == "done":
                 notion_progress = int(progress)
                 if notion_progress == 100: notion_status = "Done"
                 elif notion_progress > 0: notion_status = "In Progress"
-            
-            # Auto-calculate progress from subtasks
+
             elif subtasks is not None:
-                import json
                 st = json.loads(current_subtasks_json) if current_subtasks_json else []
                 if st:
                     done_count = sum(1 for s in st if s.get("done"))
                     notion_progress = int((done_count / len(st)) * 100)
                     if notion_progress == 100: notion_status = "Done"
                     elif notion_progress > 0: notion_status = "In Progress"
-            
+
             if notion_progress is not None:
                 if notion_status == "Done":
                     task_type = notion_store.get_task_type(notion_id)
                     if task_type and task_type.lower() == "social media":
                         notion_status = "need_for_approval"
-                        
-                        # Also update local db to reflect this
                         conn = _su_conn()
                         conn.execute("UPDATE standup_tasks SET status='need_for_approval' WHERE id=?", (task_id,))
                         conn.commit()
@@ -1153,7 +1128,24 @@ def update_my_task(task_id: int):
         except Exception as e:
             logger.warning(f"Notion sync failed for task {notion_id}: {e}")
 
-    return jsonify({"success": True})
+    return {"success": True}
+
+
+@ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["PATCH"])
+def update_my_task(task_id: int):
+    """Update a task's status or blocker. Body: { status?, blocker?, title?, progress?, subtasks? }"""
+    body = request.get_json(silent=True) or {}
+    result = _apply_standup_task_update(
+        task_id,
+        status=body.get("status"),
+        blocker=body.get("blocker"),
+        title=body.get("title"),
+        progress=body.get("progress"),
+        subtasks=body.get("subtasks"),
+    )
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
 
 
 @ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["DELETE"])
