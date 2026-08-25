@@ -1553,6 +1553,24 @@ def _unlink_google_sheet_for_client(client_id: str):
 
 @ops_bp.route("/api/notion/clients/<string:notion_id>", methods=["DELETE"])
 def notion_delete_client(notion_id: str):
+    """Idempotent: calling this on an already-deleted (archived) client is a
+    safe no-op success, not a 500. Notion's API rejects re-archiving a page
+    that's already archived, so without this check, a retried/duplicate
+    delete call (e.g. a double-click, or manual recovery after a stale
+    client_id caused a bad Google Sheet link -- see CLAUDE.md gotcha #94)
+    used to fail outright, even though there was nothing left to actually
+    delete. Still archives any straggler tasks and unlinks any Sheet found
+    under this id either way, so re-running delete on an already-gone
+    client remains useful cleanup, not just a no-op."""
+    if not notion_store.is_client_active(notion_id):
+        all_client_tasks = notion_store.list_tasks(client_notion_id=notion_id)
+        for t in all_client_tasks:
+            tid = t.get("notion_id") or t.get("id")
+            if tid:
+                notion_store.archive_notion_page(tid)
+        _unlink_google_sheet_for_client(notion_id)
+        return jsonify({"success": True, "already_deleted": True})
+
     all_client_tasks = notion_store.list_tasks(client_notion_id=notion_id)
     for t in all_client_tasks:
         tid = t.get("notion_id") or t.get("id")
