@@ -1,4 +1,4 @@
-﻿import sqlite3
+import sqlite3
 import json
 import os
 import time
@@ -466,7 +466,7 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
-        # â”€â”€ Startup cleanup: remove orphaned client_users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Startup cleanup: remove orphaned client_users ──────────────
         # Removes portal credentials for clients that no longer exist in the DB.
         # This fixes stuck "username already taken" errors after a client is deleted.
         try:
@@ -526,7 +526,7 @@ def migrate_from_json():
                 for period, bdata in budget.items():
                     conn.execute("INSERT OR IGNORE INTO budget (period, total_cost) VALUES (?, ?)", (period, bdata.get("total_cost", 0.0)))
                 # Dedup by exact content, not just primary key (this table has no
-                # natural unique key) â€” if the process is killed between this
+                # natural unique key) — if the process is killed between this
                 # commit and the os.rename() below, usage.json is still present
                 # on next boot and this whole block re-runs; without the dedup
                 # check every log line would be re-inserted and double-count
@@ -546,4 +546,3 @@ def migrate_from_json():
     conn.close()
 
 migrate_from_json()
-
