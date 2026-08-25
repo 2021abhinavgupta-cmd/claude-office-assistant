@@ -162,6 +162,29 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
+        # WhatsApp standup: maps a numbered list sent to an employee (morning
+        # prompt or EOD nudge) back to real standup_tasks ids, so a reply like
+        # "1,3 done" resolves correctly. One row per employee per day --
+        # INSERT OR REPLACE so a later resend (e.g. after "add <task>") always
+        # overwrites with the freshest numbering.
+        conn.execute("""CREATE TABLE IF NOT EXISTS whatsapp_standup_context (
+            user_id    TEXT NOT NULL,
+            date       TEXT NOT NULL,
+            task_order TEXT NOT NULL,
+            sent_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, date)
+        )""")
+
+        # WhatsApp standup: tracks consecutive evenings an employee had
+        # incomplete tasks at the 19:00 nudge, for the 2-in-a-row founder
+        # escalation. Reset to 0 whenever an employee has zero incomplete
+        # tasks at nudge time, or right after an escalation fires.
+        conn.execute("""CREATE TABLE IF NOT EXISTS whatsapp_reminder_state (
+            user_id                TEXT PRIMARY KEY,
+            consecutive_incomplete INTEGER DEFAULT 0,
+            last_checked_date      TEXT
+        )""")
+
         # Task risk escalation log (tracks alert level per task)
         conn.execute("""CREATE TABLE IF NOT EXISTS task_risk (
             task_id     TEXT PRIMARY KEY,

@@ -3397,14 +3397,21 @@ def restore_db():
 
 # ── WhatsApp Bot (Meta Cloud API) ─────────────────────────────────────────────
 
-def send_whatsapp_message(to: str, text: str):
-    """Send a WhatsApp text message via Meta Cloud API."""
+def send_whatsapp_message(to: str, text: str) -> bool:
+    """Send a WhatsApp text message via Meta Cloud API.
+
+    Returns True only if Meta accepted the send, False on every failure path
+    (missing env vars, non-2xx response, exception). Callers that persist
+    state tied to a message actually arriving -- e.g. the standup scheduler's
+    save_task_context() -- must gate on this. Existing call sites that ignore
+    the return value are unaffected.
+    """
     import requests as req
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
     token    = os.getenv("WHATSAPP_ACCESS_TOKEN")
     if not phone_id or not token:
         logger.warning("WhatsApp env vars not set — message not sent.")
-        return
+        return False
     url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
     payload = {
         "messaging_product": "whatsapp",
@@ -3420,8 +3427,11 @@ def send_whatsapp_message(to: str, text: str):
         resp = req.post(url, json=payload, headers=headers, timeout=10)
         if not resp.ok:
             logger.error(f"WhatsApp send failed: HTTP {resp.status_code} — {resp.text[:500]}")
+            return False
+        return True
     except Exception as exc:
         logger.error(f"WhatsApp send failed: {exc}")
+        return False
 
 
 @app.route("/whatsapp/webhook", methods=["GET"])
@@ -3450,6 +3460,47 @@ def whatsapp_webhook():
         if message.get("type") != "text":
             return "OK", 200
         text = message["text"]["body"]
+
+        # WhatsApp standup: if this sender is a known employee, try the
+        # deterministic standup command parser first. Falls through to the
+        # existing generic Claude chat below if it's not a recognized
+        # standup command (e.g. an employee just chatting with the bot).
+        from whatsapp_standup import find_employee_by_whatsapp, handle_standup_message, save_task_context
+        employee = find_employee_by_whatsapp(sender)
+        if employee:
+            # Own try/except, NOT the outer one. The standup path does plenty
+            # of dict/list indexing (employee['id'], task fields, context
+            # lookups) that can raise KeyError/IndexError for reasons that
+            # have nothing to do with "this webhook wasn't a real message" --
+            # the outer `except (KeyError, IndexError): pass` would swallow
+            # those silently, leaving the employee with no reply and nothing
+            # in the logs. Catch here, log loudly, and always answer.
+            try:
+                result = handle_standup_message(employee, text)
+                if result is not None:
+                    standup_reply, context_to_save = result
+                    # Send FIRST -- only persist a NEW numbered list (from
+                    # "add") if the employee actually received it. Same rule
+                    # the 10am/7pm scheduler jobs already follow.
+                    if send_whatsapp_message(sender, standup_reply):
+                        if context_to_save:
+                            save_task_context(*context_to_save)
+                    else:
+                        logger.warning(
+                            f"WhatsApp standup reply failed to send for {employee.get('id')} "
+                            "-- any new task-list context was NOT persisted."
+                        )
+                    logger.info(f"WhatsApp standup command handled for {employee['id']}")
+                    return "OK", 200
+            except Exception as exc:
+                logger.exception(
+                    f"WhatsApp standup dispatch failed for {employee.get('id', '?')}: {exc}"
+                )
+                send_whatsapp_message(
+                    sender,
+                    "Something went wrong processing that — try again or check the app.",
+                )
+                return "OK", 200
 
         # Budget guard
         budget = check_budget_available()
