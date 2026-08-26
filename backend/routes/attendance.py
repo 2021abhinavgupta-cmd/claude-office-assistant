@@ -61,9 +61,17 @@ def _attendance_payload():
 
 
 def _attendance_checkin(user_id: str):
-    """First IST login of day wins; ON CONFLICT DO NOTHING prevents overwriting.
-    checkin_time is clamped to the work-day window (see WORK_START/WORK_END)
-    so a login before 9am doesn't record the day as having started at 2am."""
+    """First IST login of day wins. checkin_time is clamped to the work-day
+    window (see WORK_START/WORK_END) so a login before 9am doesn't record the
+    day as having started at 2am.
+
+    Uses DO UPDATE ... WHERE checkin_time IS NULL rather than DO NOTHING:
+    _attendance_ping() (the presence heartbeat) can create today's row first
+    with checkin_time still NULL (it only ever writes last_seen_at). A plain
+    DO NOTHING would then permanently skip setting checkin_time once that
+    placeholder row exists, even on a genuine login -- this still preserves
+    "first real checkin wins" (a NULL only gets filled once), it just also
+    handles the row already existing from a ping with nothing in it yet."""
     d = today_ist()
     t = _clamp_work_time(now_ist())
     ts = datetime.now(IST).isoformat(timespec="seconds")
@@ -73,7 +81,8 @@ def _attendance_checkin(user_id: str):
         cur.execute(
             """INSERT INTO daily_attendance (user_id, date, checkin_time)
                VALUES (?, ?, ?)
-               ON CONFLICT(user_id, date) DO NOTHING""",
+               ON CONFLICT(user_id, date) DO UPDATE SET checkin_time = excluded.checkin_time
+               WHERE daily_attendance.checkin_time IS NULL""",
             (user_id, d, t),
         )
         if cur.rowcount > 0:
