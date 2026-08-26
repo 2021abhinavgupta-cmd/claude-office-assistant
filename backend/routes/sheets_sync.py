@@ -228,6 +228,37 @@ def create_google_sheet_link(client_id: str):
     if is_notion and not notion_store.is_configured():
         return jsonify({"error": "is_notion=true but Notion isn't configured on this server"}), 400
 
+    # Refuse to link a client_id that doesn't actually exist (deleted, or
+    # never existed). Without this, a browser tab left open from before a
+    # client was deleted -- its `allData` still holding the old client_id --
+    # could click Connect and silently create a working sync link pointing
+    # at nothing: the immediate backfill push finds zero current tasks (so
+    # nothing looks wrong), but the link and its webhook stay live, ready to
+    # start creating orphaned tasks under a dead client_id the moment
+    # someone edits the Sheet. Caught live on Omotec, 2026-08-25 (CLAUDE.md
+    # gotcha #94) -- no orphans were actually created that time only because
+    # the stale client's tasks had already been archived, so there was
+    # nothing to reconcile against yet; a client deleted moments earlier
+    # (tasks still un-archived, or on a slower connection) would not have
+    # been so lucky.
+    if is_notion:
+        if not notion_store.is_client_active(client_id):
+            return jsonify({
+                "error": "This client no longer exists (it may have been deleted, "
+                         "or your page is showing stale data). Refresh the page and try again."
+            }), 404
+    else:
+        conn_check = _su_conn()
+        cur_check = conn_check.cursor()
+        cur_check.execute("SELECT 1 FROM clients WHERE id=?", (client_id,))
+        exists = cur_check.fetchone() is not None
+        conn_check.close()
+        if not exists:
+            return jsonify({
+                "error": "This client no longer exists (it may have been deleted, "
+                         "or your page is showing stale data). Refresh the page and try again."
+            }), 404
+
     try:
         gs.list_tabs(spreadsheet_id)
     except Exception:
