@@ -831,10 +831,45 @@ def _fields_to_row(task_id: str, fields: dict) -> list:
     return [task_id] + [fields.get(f, "") for f in SHEET_FIELDS]
 
 
+
+# Notion's date properties require a strict ISO-8601 "YYYY-MM-DD" string --
+# anything else 400s the ENTIRE create/update page request (not just that
+# one property), and _notion_request() doesn't retry a 400 (it's not a
+# transient rate-limit/timeout). A hand-typed Sheet's Creation Date/Post Day
+# columns are plain text (per the connect modal's own setup instructions,
+# to dodge the locale-dependent-Date-cell problem) but plain text means
+# people type dates in whatever format they're used to -- "07/08/2026",
+# "10/August/2026", etc. -- none of which Notion accepts as-is. Found live:
+# every single row of a real 47-row calendar failed to create with zero
+# visible error (create_task() catches the 400 and returns None) because
+# every date in it was DD/MM/YYYY or DD/Month/YYYY, not ISO. Best-effort:
+# an unparseable date is dropped (empty string) rather than sent through
+# raw, so one bad date doesn't sink the entire row's creation.
+_DATE_INPUT_FORMATS = ["%d/%m/%Y", "%d/%B/%Y", "%d-%m-%Y", "%d-%B-%Y", "%d/%b/%Y", "%d-%b-%Y", "%Y/%m/%d"]
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _normalize_date(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if _ISO_DATE_RE.match(value):
+        return value
+    for fmt in _DATE_INPUT_FORMATS:
+        try:
+            return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    logger.warning(f"Sheets sync: couldn't parse date '{value}' into ISO format -- dropping it")
+    return ""
+
+
 def _row_to_fields(row: list) -> dict:
     padded = list(row) + [""] * (13 - len(row))
     fields = dict(zip(SHEET_FIELDS, [str(v).strip() for v in padded[1:13]]))
     fields["status"] = fields["status"].lower().replace(" ", "_")
+    fields["due_date"] = _normalize_date(fields.get("due_date"))
+    fields["creation_date"] = _normalize_date(fields.get("creation_date"))
     # Normalize the same way _create_task/_update_task always normalize
     # whatever ends up in the stored title -- without this, a Sheet's raw
     # Type cell (free text, e.g. "TikTok") never equals the normalized
@@ -1224,8 +1259,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
     # safety guard, letting every real task for the client get deleted. See
     # CLAUDE.md gotcha #87's flagged-not-fixed entry, fixed here.
     recognized_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed = \
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed, create_failed = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
     for idx, row in enumerate(rows):
         row_number = idx + 2  # +1 for 0-index, +1 for the header row Apps Script stripped
@@ -1262,6 +1297,12 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                     _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                  changed_fields=list(row_fields.keys()))
                     created += 1
+                else:
+                    logger.warning(
+                        f"Sheets reconcile: create failed for row {row_number} (client {client_id}) -- "
+                        f"see notion_store's own log line just above for the underlying error."
+                    )
+                    create_failed += 1
                 continue
 
             if task_id in seen_ids:
@@ -1333,6 +1374,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                     _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                  changed_fields=list(row_fields.keys()))
                     recreated += 1
+                else:
+                    create_failed += 1
                 continue
             # This row's task_id matched a real current task -- the only
             # point in this function where that's true. See the comment on
@@ -1403,7 +1446,8 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
                 "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-                "update_failed": update_failed, "delete_failed": 0, "deletes_skipped_safety": len(current)}
+                "update_failed": update_failed, "delete_failed": 0, "create_failed": create_failed,
+                "deletes_skipped_safety": len(current)}
 
     for existing_id in current:
         if existing_id not in recognized_ids:
@@ -1426,7 +1470,7 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
             "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-            "update_failed": update_failed, "delete_failed": delete_failed}
+            "update_failed": update_failed, "delete_failed": delete_failed, "create_failed": create_failed}
 
 
 def reconcile_sheet_tabs(link: dict, tabs: dict) -> dict:
@@ -1453,8 +1497,8 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
     # See the matching declaration + comment in _reconcile_sheet_rows_locked
     # -- same fix, same reasoning, applied here too.
     recognized_ids = set()
-    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed = \
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    created, updated, deleted, skipped, errored, duplicates, recreated, tombstoned, skipped_recent_push, update_failed, delete_failed, create_failed = \
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
     for tab_name, rows in tabs.items():
         if not _is_synced_tab_name(tab_name):
@@ -1487,6 +1531,13 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                         _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                      changed_fields=list(row_fields.keys()))
                         created += 1
+                    else:
+                        logger.warning(
+                            f"Sheets reconcile (multi-tab): create failed for {row_label} (client "
+                            f"{client_id}) -- see notion_store's own log line just above for the "
+                            f"underlying error."
+                        )
+                        create_failed += 1
                     continue
 
                 if task_id in seen_ids:
@@ -1522,6 +1573,8 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                         _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                      changed_fields=list(row_fields.keys()))
                         recreated += 1
+                    else:
+                        create_failed += 1
                     continue
 
                 # This row's task_id matched a real current task -- see the
@@ -1566,7 +1619,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
         return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
                 "errored": errored, "duplicates": duplicates, "recreated": recreated,
                 "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-                "update_failed": update_failed, "delete_failed": 0,
+                "update_failed": update_failed, "delete_failed": 0, "create_failed": create_failed,
                 "deletes_skipped_safety": len(current), "deletes_skipped_missing_tab": 0}
 
     # Per-task guard on top of the all-tabs-empty safety check above: a task
@@ -1611,5 +1664,5 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
     return {"created": created, "updated": updated, "deleted": deleted, "skipped": skipped,
             "errored": errored, "duplicates": duplicates, "recreated": recreated,
             "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
-            "update_failed": update_failed, "delete_failed": delete_failed,
+            "update_failed": update_failed, "delete_failed": delete_failed, "create_failed": create_failed,
             "deletes_skipped_missing_tab": deletes_skipped_missing_tab}
