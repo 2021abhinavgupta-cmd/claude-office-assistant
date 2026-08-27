@@ -4247,6 +4247,7 @@ document.addEventListener('paste', function(e) {
             </div>
             <textarea readonly style="width:100%;height:180px;font-family:monospace;font-size:0.8rem;">${esc(d.apps_script)}</textarea>
             <div style="margin-top:12px;display:flex;gap:8px;">
+              <button id="gsheet-pull-btn" class="btn btn-sm" onclick="pullGoogleSheetNow('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Reads the Sheet's current content right now and syncs it into Lumina -- use this after typing rows in by hand, instead of re-editing every row to trigger the automatic sync">Pull now</button>
               <button id="gsheet-format-btn" class="btn btn-sm" onclick="formatGoogleSheetDropdowns('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Adds/refreshes the Type, Assigned To, and Status column dropdowns on every tab -- matches Lumina's own Sheets UI options">Format columns (dropdowns)</button>
               <button id="gsheet-reconnect-btn" class="btn btn-sm" onclick="reconnectGoogleSheet('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;" title="Re-runs the connect step against the same Sheet -- retries any failed backfill tasks, rebuilds blank tabs, re-applies dropdowns. Safe to run any time.">Reconnect</button>
               <button class="btn btn-sm" onclick="unlinkGoogleSheet('${clientId}')" style="border: 1px solid var(--bdr); background: var(--s2); color: var(--txt); padding: 8px 12px;">Unlink</button>
@@ -4392,6 +4393,24 @@ document.addEventListener('paste', function(e) {
         }
       } catch (e) {
         toast('Network error formatting sheet', 'err');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origLabel; btn.style.opacity = '1'; }
+      }
+    }
+
+    async function pullGoogleSheetNow(clientId) {
+      const btn = document.getElementById('gsheet-pull-btn');
+      const origLabel = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Pulling…'; btn.style.opacity = '0.6'; }
+      try {
+        const res = await fetch(`${API}/api/clients/${clientId}/google-sheet-link/pull-now?user_id=${encodeURIComponent(UID)}`, { method: 'POST' });
+        const d = await res.json();
+        if (!d.success) { toast(d.error || 'Pull failed', 'err'); return; }
+        toast(`Pulled: created=${d.created ?? 0}, updated=${d.updated ?? 0}, deleted=${d.deleted ?? 0}, skipped=${d.skipped ?? 0}`);
+        await load();
+        openGoogleSheetLinkModal(clientId);
+      } catch (e) {
+        toast('Network error pulling sheet', 'err');
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = origLabel; btn.style.opacity = '1'; }
       }

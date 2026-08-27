@@ -469,6 +469,56 @@ def format_google_sheet_dropdowns(client_id: str):
     })
 
 
+@sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link/pull-now", methods=["POST"])
+@limiter.limit("10 per minute")
+def pull_google_sheet_now(client_id: str):
+    """On-demand pull, reading the Sheet's current live state directly via
+    the Sheets API and reconciling immediately -- same reconcile functions
+    the Apps Script onChange webhook calls, just triggered manually instead
+    of waiting for an edit event. Exists because a freshly-linked Sheet with
+    pre-existing hand-typed rows has nothing to sync until *some* cell is
+    edited (onChange only fires on a real change) -- without this, the only
+    way to pull in existing content was to manually re-edit every row."""
+    if not _is_admin(_verified_user_id()):
+        return jsonify({"error": "Unauthorized"}), 403
+    conn = _su_conn()
+    row = conn.execute(
+        "SELECT client_id, spreadsheet_id, link_token, is_notion, client_name, linked_by, multi_tab "
+        "FROM google_sheet_links WHERE client_id=?", (client_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Client has no linked Google Sheet"}), 404
+    link_token = row[2]
+    link = {"client_id": row[0], "spreadsheet_id": row[1], "is_notion": bool(row[3]),
+            "client_name": row[4], "linked_by": row[5], "multi_tab": bool(row[6])}
+    spreadsheet_id = link["spreadsheet_id"]
+
+    try:
+        if link["multi_tab"]:
+            tab_names = [t["name"] for t in gs.list_tabs(spreadsheet_id) if gs._is_synced_tab_name(t["name"])]
+            tabs = {}
+            for name in tab_names:
+                rows = gs.read_tab_rows(spreadsheet_id, name)
+                tabs[name] = rows[1:] if rows else []
+            total_rows = sum(len(v) for v in tabs.values())
+            if total_rows > MAX_WEBHOOK_ROWS:
+                return jsonify({"error": f"Sheet has more than {MAX_WEBHOOK_ROWS} total rows across its tabs -- contact the developer to raise this limit"}), 400
+            summary = gs.reconcile_sheet_tabs(link, tabs)
+        else:
+            all_rows = gs.read_all_rows(spreadsheet_id)
+            rows = all_rows[1:] if all_rows else []
+            if len(rows) > MAX_WEBHOOK_ROWS:
+                return jsonify({"error": f"Sheet has more than {MAX_WEBHOOK_ROWS} rows -- contact the developer to raise this limit"}), 400
+            summary = gs.reconcile_sheet_rows(link, rows)
+    except Exception:
+        logger.exception(f"Manual pull-now failed for client {client_id}")
+        return jsonify({"error": "Pull failed, see server logs"}), 500
+
+    _record_pull_result(link_token, summary)
+    return jsonify({"success": True, **summary})
+
+
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link", methods=["DELETE"])
 def delete_google_sheet_link(client_id: str):
     if not _is_admin(_verified_user_id()):
