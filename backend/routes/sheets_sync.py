@@ -469,22 +469,6 @@ def format_google_sheet_dropdowns(client_id: str):
     })
 
 
-@sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link/debug-rows", methods=["GET"])
-def _debug_rows(client_id: str):
-    """Temporary, read-only diagnostic -- dumps raw tab rows to find why a
-    row isn't syncing as expected. Not linked from any UI. Remove after use."""
-    if not _is_admin(_verified_user_id()):
-        return jsonify({"error": "Unauthorized"}), 403
-    link = get_link_for_client(client_id)
-    if not link:
-        return jsonify({"error": "not linked"}), 404
-    out = {}
-    for t in gs.list_tabs(link["spreadsheet_id"]):
-        if gs._is_synced_tab_name(t["name"]):
-            out[t["name"]] = gs.read_tab_rows(link["spreadsheet_id"], t["name"])
-    return jsonify(out)
-
-
 @sheets_sync_bp.route("/api/clients/<string:client_id>/google-sheet-link/pull-now", methods=["POST"])
 @limiter.limit("10 per minute")
 def pull_google_sheet_now(client_id: str):
