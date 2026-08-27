@@ -305,6 +305,29 @@ def write_cell(spreadsheet_id: str, a1_cell: str, value):
     _sheets_request("PUT", url, params={"valueInputOption": "RAW"}, json={"values": [[value]]})
 
 
+def batch_write_cells(spreadsheet_id: str, range_value_pairs: list):
+    """One batchUpdate call writing several single-cell values at once --
+    used to write back multiple newly-created tasks' ids in one shot
+    instead of one PUT per row. This is critical for loop safety, not just
+    an efficiency nicety: each individual cell write IS a Sheet edit, which
+    re-fires the installed onChange trigger. Writing N new-row ids back one
+    at a time in one reconcile pass caused N separate re-triggers, each
+    doing its own fresh full-sheet read -- and any row that hadn't gotten
+    its id written back YET (because this pass was still in the middle of
+    writing the others) looked blank to that re-triggered read and got
+    created AGAIN. Confirmed as a real runaway duplicate-creation incident
+    (Omotec, 2026-08-27) that kept compounding until the trigger was
+    deleted and the server restarted. Coalescing every write-back from one
+    reconcile pass into this single call means at most ONE re-trigger fires
+    after the whole pass finishes, and that one finds every row already
+    matching (skipped) -- no further creates, so the cascade can't start."""
+    if not range_value_pairs:
+        return
+    data = [{"range": rng, "values": [[value]]} for rng, value in range_value_pairs]
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values:batchUpdate"
+    _sheets_request("POST", url, json={"valueInputOption": "RAW", "data": data})
+
+
 def _first_sheet_id(spreadsheet_id: str) -> int:
     """The spreadsheet-internal numeric sheetId (gid) of the first tab --
     needed for a physical row delete via batchUpdate, which addresses rows
@@ -1236,16 +1259,31 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
     gotchas #45/#51/#69).
 
     Loop safety: this function only ever writes back to the Sheet for the
-    "brand new row" case (write_cell with the newly created task_id) -- every
-    other branch writes to Notion/SQLite only. A push-triggered Sheet write
-    does fire the Sheet's own onChange and lands back here, but by then the
-    Sheet and Lumina already agree, so that pass's own diff is empty for that
-    row and terminates without writing anywhere -- no unbounded ping-pong."""
+    "brand new row"/"recreate" cases (the newly created task_id), never for
+    an update -- every other branch writes to Notion/SQLite only. A push-
+    triggered Sheet write does fire the Sheet's own onChange and lands back
+    here, but by then the Sheet and Lumina already agree, so that pass's own
+    diff is empty for that row and terminates without writing anywhere.
+
+    The create-case write-back is the one place this ISN'T automatically
+    safe: writing a new id into column A is itself a Sheet edit, so it
+    re-fires onChange too. Confirmed live (Omotec, 2026-08-27) that writing
+    each new row's id back individually, one PUT per row, causes exactly
+    this: N separate re-triggers mid-pass, each re-reading the whole sheet
+    fresh and finding any row whose id hadn't been written back YET still
+    blank -- creating it again, whose write-back re-fires again, compounding
+    into a runaway duplicate-creation incident that only stopped once the
+    trigger was deleted and the server restarted. Fixed by never writing
+    mid-loop: every write-back is collected into `pending_writebacks` and
+    flushed as ONE batch_write_cells() call after the whole pass finishes,
+    so at most one re-trigger fires afterward, and it finds everything
+    already matching -- no further creates, so the cascade can't start."""
     client_id = link["client_id"]
     is_notion = link["is_notion"]
     client_name = link.get("client_name") or ""
     spreadsheet_id = link["spreadsheet_id"]
     editor_name = link.get("linked_by") or "Google Sheets"
+    pending_writebacks = []
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
@@ -1287,13 +1325,7 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
             if not task_id:
                 new_id = _create_task(client_id, client_name, is_notion, row_fields)
                 if new_id:
-                    ok = _retry(lambda: write_cell(spreadsheet_id, f"A{row_number}", new_id))
-                    if not ok:
-                        logger.error(
-                            f"Sheets reconcile: giving up writing back task id {new_id} for row "
-                            f"{row_number} (client {client_id}) after retries -- row stays id-less "
-                            f"and may get duplicate-created on the next unrelated edit."
-                        )
+                    pending_writebacks.append((f"A{row_number}", new_id))
                     _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                  changed_fields=list(row_fields.keys()))
                     created += 1
@@ -1365,12 +1397,7 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                         f"{task_id}, which no longer exists in Lumina -- recreated as {new_id} "
                         f"(likely a Sheets undo after a row delete)."
                     )
-                    ok = _retry(lambda: write_cell(spreadsheet_id, f"A{row_number}", new_id))
-                    if not ok:
-                        logger.error(
-                            f"Sheets reconcile: giving up writing back recreated task id {new_id} for "
-                            f"row {row_number} (client {client_id}) after retries."
-                        )
+                    pending_writebacks.append((f"A{row_number}", new_id))
                     _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                  changed_fields=list(row_fields.keys()))
                     recreated += 1
@@ -1430,6 +1457,19 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
             logger.exception(f"Sheets reconcile: skipping malformed row {row_number} for client {client_id}")
             errored += 1
 
+    # Flush every collected id write-back as ONE batch call, not one PUT
+    # per row -- see the loop-safety comment on this function's docstring
+    # for why doing this individually caused a real runaway duplicate-
+    # creation incident.
+    if pending_writebacks:
+        ok = _retry(lambda: batch_write_cells(spreadsheet_id, pending_writebacks))
+        if not ok:
+            logger.error(
+                f"Sheets reconcile: giving up writing back {len(pending_writebacks)} new task id(s) "
+                f"for client {client_id} after retries -- affected row(s) stay id-less and may get "
+                f"duplicate-created on the next unrelated edit."
+            )
+
     # Safety guard: if this snapshot recognized zero existing tasks (empty
     # `rows`, or every row was a blank/unrecognized/newly-created one) while
     # Lumina has tasks on file for this client, treat it as a suspicious
@@ -1486,11 +1526,15 @@ def reconcile_sheet_tabs(link: dict, tabs: dict) -> dict:
 
 
 def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
+    """See _reconcile_sheet_rows_locked's docstring for the loop-safety
+    reasoning behind pending_writebacks -- same fix, applied here for the
+    same confirmed real-incident reason (Omotec, 2026-08-27)."""
     client_id = link["client_id"]
     is_notion = link["is_notion"]
     client_name = link.get("client_name") or ""
     spreadsheet_id = link["spreadsheet_id"]
     editor_name = link.get("linked_by") or "Google Sheets"
+    pending_writebacks = []
 
     current = _current_tasks_by_id(client_id, is_notion)
     seen_ids = set()
@@ -1522,12 +1566,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                 if not task_id:
                     new_id = _create_task(client_id, client_name, is_notion, row_fields)
                     if new_id:
-                        ok = _retry(lambda: write_tab_cell(spreadsheet_id, tab_name, f"A{row_number}", new_id))
-                        if not ok:
-                            logger.error(
-                                f"Sheets reconcile (multi-tab): giving up writing back task id {new_id} "
-                                f"for {row_label} (client {client_id}) after retries."
-                            )
+                        pending_writebacks.append((f"{_a1_quote(tab_name)}!A{row_number}", new_id))
                         _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                      changed_fields=list(row_fields.keys()))
                         created += 1
@@ -1564,12 +1603,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                             f"Sheets reconcile (multi-tab): {row_label} (client {client_id}) referenced "
                             f"task_id {task_id}, which no longer exists in Lumina -- recreated as {new_id}."
                         )
-                        ok = _retry(lambda: write_tab_cell(spreadsheet_id, tab_name, f"A{row_number}", new_id))
-                        if not ok:
-                            logger.error(
-                                f"Sheets reconcile (multi-tab): giving up writing back recreated task id "
-                                f"{new_id} for {row_label} (client {client_id}) after retries."
-                            )
+                        pending_writebacks.append((f"{_a1_quote(tab_name)}!A{row_number}", new_id))
                         _log_version(new_id, client_id, f"{editor_name} (via Google Sheets)", row_fields,
                                      changed_fields=list(row_fields.keys()))
                         recreated += 1
@@ -1610,6 +1644,17 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
             except Exception:
                 logger.exception(f"Sheets reconcile (multi-tab): skipping malformed row at {row_label} for client {client_id}")
                 errored += 1
+
+    # Flush every collected id write-back as ONE batch call -- see the
+    # loop-safety comment on this function's docstring.
+    if pending_writebacks:
+        ok = _retry(lambda: batch_write_cells(spreadsheet_id, pending_writebacks))
+        if not ok:
+            logger.error(
+                f"Sheets reconcile (multi-tab): giving up writing back {len(pending_writebacks)} new "
+                f"task id(s) for client {client_id} after retries -- affected row(s) stay id-less and "
+                f"may get duplicate-created on the next unrelated edit."
+            )
 
     if not recognized_ids and current:
         logger.warning(
