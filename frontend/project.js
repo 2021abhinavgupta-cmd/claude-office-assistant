@@ -182,7 +182,7 @@ function setupInstructions() {
       });
       if (res.ok) {
         projectData.instructions = text;
-        instDisplay.textContent = text || 'Add instructions to tailor System\\'s responses';
+        instDisplay.textContent = text || "Add instructions to tailor System's responses";
         modalOverlay.style.display = 'none';
         showToast('Instructions saved!');
       } else {
