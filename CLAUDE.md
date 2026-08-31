@@ -8,7 +8,7 @@ This file provides essential context for AI coding assistants (System, Copilot, 
 
 ## Project Overview
  
-**Agency Portal Assistant** is a full-stack, production-deployed internal tool for a small team (8 employees). It is a System AI-powered workspace that combines:
+**Agency Portal Assistant** ("Lumina", live at `lumina.mmga.agency`) is a full-stack, production-deployed internal tool for a small team (~10 employees, see `config/employees.json`). It is a System AI-powered workspace that combines:
 
 - Multi-turn intelligent chat workspace (auto-routed by task complexity)
 - Project & client management with per-project knowledge bases
@@ -36,7 +36,8 @@ This file provides essential context for AI coding assistants (System, Copilot, 
 | Deployment | Railway with Nixpacks |
 | Auth | Server-side session tokens (stored in SQLite `sessions` table) |
 
-**Notable deps** (`backend/requirements.txt`): `anthropic`, `flask-cors`, `flask-compress`, `Flask-Limiter`, `apscheduler`, `gevent`, `pypdf`/`python-docx`/`openpyxl` (file parsing), `weasyprint`/`python-pptx`/`reportlab` (export), `google-auth` (Google Sheets two-way sync, see gotcha #87). Notion integration and Google Sheets sync both use raw `requests`/`AuthorizedSession`, not their respective official SDKs.
+**Notable deps**: `anthropic`, `flask-cors`, `flask-compress`, `Flask-Limiter`, `apscheduler`, `gevent`, `pypdf`/`python-docx`/`openpyxl` (file parsing), `weasyprint`/`python-pptx`/`reportlab` (export), `beautifulsoup4`/`lxml` (`web_fetcher.py`), `google-auth` (Google Sheets two-way sync, see gotcha #87). Notion integration and Google Sheets sync both use raw `requests`/`AuthorizedSession`, not their respective official SDKs.
+> **Two requirements files, and they differ.** Root `requirements.txt` is what Railway installs and is the authoritative superset. `backend/requirements.txt` is stale — it's missing `beautifulsoup4` and `lxml`, so installing only that one leaves `web_fetcher.py` unimportable (`ModuleNotFoundError: bs4`). Install the root one.
 
 ---
 
@@ -102,16 +103,33 @@ claude-office-assistant/
 │   ├── client-admin.html       # Admin: manage client accounts
 │   ├── client-auth.js          # Auth guard for client portal pages
 │   ├── client-onboard.html     # New client onboarding form (3 steps: Info → Services → Review & Create). Includes Username/Password fields for client portal access. Success screen offers Done or  Add Tasks
-│   └── add-tasks.html          # Apply workflow task templates to an existing client (select client → pick workflow(s) → POST to /api/clients/<id>/auto-tasks)
+│   ├── add-tasks.html          # Apply workflow task templates to an existing client (select client → pick workflow(s) → POST to /api/clients/<id>/auto-tasks)
+│   └── logo.png                # Brand mark (referenced by the UI; see gotcha #21 — logo is otherwise a plain orange box)
 ├── config/
-│   └── employees.json          # Static employee data (id, name, pin, role, etc.)
+│   ├── employees.json          # Static employee data (id, name, pin, role, etc.)
+│   └── .env                    # Local secrets — GITIGNORED, never committed. start.sh/start.ps1 read it.
+├── docs/
+│   └── superpowers/
+│       ├── specs/              # Design specs for larger features (Sheets two-way sync, multi-tab sync, sheets edit/version history, WhatsApp standup)
+│       └── plans/              # Matching task-by-task implementation plans
 ├── logs/                       # Persistent volume — DO NOT delete
 │   └── app.db                  # SQLite database (all production data lives here — the ONLY real DB file)
-├── scripts/                    # Utility/migration scripts
-├── requirements.txt            # Python dependencies
+├── scripts/
+│   ├── pre-commit              # Git hook: blocks commits that add pyflakes "undefined name" errors. Auto-installed by start.sh (gotcha #58).
+│   ├── test_api.py             # Ad-hoc API smoke tests (not run in CI)
+│   ├── test_notion.py          # Ad-hoc Notion connectivity check
+│   ├── weekly_summary.py       # One-off standalone report script
+│   └── upload-frames.mjs       # One-off asset upload helper (Node)
+├── requirements.txt            # Python deps — the AUTHORITATIVE one Railway installs; a superset of backend/requirements.txt (which is missing beautifulsoup4/lxml). Install this one locally.
+├── runtime.txt                 # Railway pins Python 3.11.9
 ├── Procfile                    # Railway: web: gunicorn backend.app:app
 ├── nixpacks.toml               # Railway build config
-└── railway.toml                # Railway deploy config
+├── railway.toml                # Railway deploy config
+├── start.sh                    # Local dev launcher (bash/macOS/Linux) — venv + deps + Flask dev server on :5000
+├── start.ps1                   # Local dev launcher (Windows PowerShell) — same, skips gunicorn (no fcntl on Windows)
+├── README.md / ARCHITECTURE.md / USER_GUIDE.md / hosting_options.md   # Human-facing docs (not read by the app)
+├── notion_tasks_dump.json      # Stray one-off Notion export — NOT used by the app, safe to ignore/delete
+└── database.sqlite             # Stray empty file (also backend/database.sqlite) — NOT a real DB; the only DB is logs/app.db
 ```
 
 > [!NOTE]
@@ -173,7 +191,8 @@ claude-office-assistant/
 - All `ALTER TABLE ... ADD COLUMN` are wrapped in `try/except` to be non-breaking
 - Always use `get_connection()` from `db.py` — never create `sqlite3.connect()` directly
 - FTS5 Virtual Table for the RAG knowledge base is actually named **`kb_chunks_fts`** (columns: `project_id`, `user_id`, `doc_id`, `filename`, `chunk`; `tokenize='porter'`, ranked with `bm25()`). It is *not* called `project_knowledge` despite that name appearing in older comments/docs — don't search for a `project_knowledge` table, it doesn't exist.
-- **Full table list** (`init_db()` in `db.py`): `budget`, `conversations`, `memory`, `custom_skills`, `usage_logs`, `attendance`, `daily_attendance`, `standups`, `mohit_bets` (bet feature), `app_settings` (key/value, e.g. `bet_question`), `standup_tasks`, `task_risk` (scheduler escalation), `sessions`, `client_users`, `client_dependencies`, `client_sessions`, `client_task_feedback`, `projects`, `form_templates` (discovery form schema), `client_form_answers` (per-client answers — has API endpoints but **no dedicated frontend page**, looks half-built), `discovery_submissions` (public intake submissions), `project_files`, `kb_chunks_fts`, `sheet_edit_log` (Sheets version history — see gotcha #74), `sheet_hidden_rows` (shared Sheets row-hide state — see gotcha #83), `google_sheet_links` (Google Sheets two-way sync link per client — see gotcha #87).
+- **Full table list** (`init_db()` in `db.py`): `budget`, `conversations`, `memory`, `custom_skills`, `usage_logs`, `attendance`, `daily_attendance` (`last_seen_at` col added for the heartbeat auto-checkout — gotcha #89), `standups`, `mohit_bets` (bet feature), `app_settings` (key/value, e.g. `bet_question`), `standup_tasks`, `task_risk` (scheduler escalation), `sessions`, `client_users`, `client_dependencies`, `client_sessions`, `client_task_feedback`, `projects`, `form_templates` (discovery form schema), `client_form_answers` (per-client answers — has API endpoints but **no dedicated frontend page**, looks half-built), `discovery_submissions` (public intake submissions), `project_files`, `kb_chunks_fts`, `sheet_edit_log` (Sheets version history, `changed_fields` col — gotcha #76), `sheet_hidden_rows` (shared Sheets row-hide state — gotcha #83), `google_sheet_links` (Google Sheets two-way sync link per client — gotchas #87/#95–97; cols beyond the base set: `last_push_at`, `last_push_ok`, `last_pull_at`, `last_pull_summary` sync-health, `multi_tab` one-tab-per-month mode), `sheet_task_tombstones` (`task_id` PK, 15-min TTL — stops a Lumina-side delete from being resurrected by a stale Sheet snapshot, gotcha #87 round 4).
+- **Not created by `init_db()`:** the `tasks` and `clients` tables (SQLite-mode / `is_notion=0` client storage) are assumed pre-existing — they live on the production Railway volume, so a fresh local `logs/app.db` won't have them and `task_scheduler.py` logs a harmless `no such table: tasks` on startup. `tasks` did gain a `creation_date` column via the standard try/except `ALTER TABLE` in `db.py` (gotcha #87 round 2).
 
 ### 7. Skills System
 - Two tiers: **builtin** (defined in `skills.py`) and **custom** (stored in `custom_skills` table, IDs prefixed `sk_`).
@@ -232,12 +251,19 @@ claude-office-assistant/
 | Variable | Description |
 |---|---|
 | `ANTHROPIC_API_KEY` | Anthropic API key (required) |
-| `MONTHLY_BUDGET_LIMIT` | Max USD spend per month (e.g., `50`) |
-| `SECRET_KEY` | Flask secret key for sessions |
+| `MONTHLY_BUDGET_LIMIT` | Max USD spend per month (e.g., `50`). Default `20` if unset. |
+| `FLASK_SECRET_KEY` | Flask session-signing secret. **This is the real name** — `app.secret_key = os.getenv("FLASK_SECRET_KEY", ...)`. (`routes/system.py`'s DB-transfer routes also accept a bare `SECRET_KEY` as a fallback, which is why an older version of this doc listed it.) |
+| `FLASK_ENV` | `development` (default) enables the Flask debugger + auto-reload. Set to anything else in prod. |
+| `FLASK_PORT` | Local dev port, default `5000`. |
+| `LOG_LEVEL` | Python logging level, default `INFO`. |
+| `PUBLIC_BASE_URL` | (Optional) e.g. `https://lumina.mmga.agency`. Preferred over `request.host_url` when building the Apps Script webhook URL for Google Sheets sync — Railway's edge terminates TLS so the app otherwise sees `http://`, which breaks the pull direction (Apps Script drops the POST body on the `http→https` redirect). See gotcha #87. |
+| `NOTION_TOKEN` | (Optional) Notion API integration |
+| `NOTION_CLIENTS_DB_ID` / `NOTION_TASKS_DB_ID` | (Optional) Notion database ids; `notion_store.py` hot-reloads these without a redeploy. |
+| `HAIKU_MODEL` | (Optional) Override the Haiku model id (default `claude-haiku-4-5-20251001`). |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `FOUNDER_EMAIL` | (Optional) Outbound email for founder digests/alerts (`app.py`). |
 | `TWILIO_ACCOUNT_SID` | (Optional) Outbound WhatsApp notifications via Twilio |
 | `TWILIO_AUTH_TOKEN` | (Optional) Outbound WhatsApp notifications via Twilio |
 | `TWILIO_WHATSAPP_FROM` | (Optional) Twilio WhatsApp sender number |
-| `NOTION_TOKEN` | (Optional) Notion API integration |
 | `WHATSAPP_PHONE_NUMBER_ID` | (Optional) Meta Cloud API phone number ID for WhatsApp bot |
 | `WHATSAPP_ACCESS_TOKEN` | (Optional) Meta Cloud API bearer token for WhatsApp bot |
 | `META_VERIFY_TOKEN` | (Optional) Shared secret for Meta webhook verification handshake |
@@ -248,28 +274,39 @@ claude-office-assistant/
 ## Running Locally
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# 1. Create a venv and install deps (use the ROOT requirements.txt — it's the superset)
+python3.11 -m venv venv
+venv/bin/pip install -r requirements.txt        # Windows: venv\Scripts\pip install -r requirements.txt
 
-# 2. Set environment variables in config/.env or shell
-export ANTHROPIC_API_KEY=sk-ant-...
+# 2. Set secrets in config/.env (gitignored). Minimum:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   FLASK_SECRET_KEY=<64-char hex>      # python -c "import secrets; print(secrets.token_hex(32))"
+# The UI works without the API key; only chat will error.
 
 # 3. Start the backend
-python -m backend.app
-# OR
-bash start.sh
+bash start.sh            # macOS/Linux — venv + deps + gunicorn on :5000
+.\start.ps1              # Windows PowerShell — venv + deps + Flask dev server on :5000
+# OR run it directly:
+venv/bin/python backend/app.py        # Windows: venv\Scripts\python.exe backend\app.py
 
-# 4. Open the frontend
-# Navigate to: http://localhost:5000/
+# 4. Open http://localhost:5000/
 ```
 
 The Flask app serves the `frontend/` folder as static files.
 
 > [!NOTE]
-> The default `python`/`pip` on PATH may not be this project's venv. Use `.venv/Scripts/python.exe` (Windows) explicitly for anything needing project deps (Flask, requests, etc) — a bare `python -m pyflakes ...` can silently run against an unrelated environment.
+> **`start.sh` / `start.ps1` create a venv named `venv/`** (not `.venv/`). The default `python`/`pip` on PATH may not be it — use `venv/Scripts/python.exe` (Windows) / `venv/bin/python` (Unix) explicitly for anything needing project deps, or a bare `python -m pyflakes ...` can silently run against an unrelated environment. **On Windows:** gunicorn depends on `fcntl` and cannot run; `start.ps1` correctly uses the Flask dev server instead. One harmless startup error on a fresh local DB: `sqlite3.OperationalError: no such table: tasks` from a `task_scheduler.py` background thread — the `tasks` table only exists on the production Railway volume; the web app runs fine regardless.
+>
+> **WeasyPrint on Windows** needs the GTK3 native runtime (Pango/Cairo/GObject), which is *not* a pip package. Without it, `document_exporter.py::export_pdf()` catches the import error and falls back to `export_pdf_reportlab()` (pure-Python) — PDF export still works, just with plainer styling than prod (Linux/nixpacks has GTK). To get full-fidelity WeasyPrint locally, install the GTK3 runtime (e.g. the `tschoonj/GTK-for-Windows-Runtime-Environment-Installer` release, or via MSYS2) and restart. This is optional.
 
 ### Debugging
-- `.venv/Scripts/python.exe -m pyflakes backend/*.py backend/routes/*.py` — static undefined-name check (`pip install pyflakes` first if missing). This codebase has a recurring copy-paste bug pattern: a variable set in one `if/else` branch, then referenced unconditionally afterward (or via a stray `for...else`) — silently 500s in production. Caught 4 real bugs this way in one session.
+- **pyflakes** (static undefined-name check — this codebase's recurring bug is a variable set in one `if/else` branch then referenced unconditionally afterward; silently 500s in prod):
+  - bash: `venv/bin/python -m pyflakes backend/*.py backend/routes/*.py`
+  - PowerShell (no native globbing): `venv\Scripts\python.exe -m pyflakes (gci backend\*.py,backend\routes\*.py | % FullName)`
+  - `pip install pyflakes` **into the venv** first if missing. There is a small pre-existing baseline of unused-import warnings — only *new* "undefined name" lines matter (the `scripts/pre-commit` hook blocks exactly those).
+- `python -c "import app"` **run from `backend/`** — boots the whole app (blueprints, `db.init_db()`, scheduler). Fastest "did I break an import / a table / a route" check. A `sqlite3.OperationalError: no such table: tasks` from a background thread is expected on a fresh local DB and does not fail the import.
+- `node --check frontend/<file>.js` — the frontend has no build step; this is the only static check for a broken script. For a `.html` file, extract the `<script>` block first (`node --check` can't parse HTML). All 9 standalone `frontend/*.js` files pass `node --check` as of 2026-08-31 (a stray `\\'s` escaping bug in `project.js:185` that broke the whole file was fixed then).
+- **The pre-commit hook** (`.git/hooks/pre-commit`, copied from `scripts/pre-commit`) runs pyflakes on staged `.py` and blocks a commit that adds an "undefined name". `start.sh` auto-installs it; on Windows copy it manually and change its `PYFLAKES=` line to `venv/Scripts/python.exe`. Skip with `git commit --no-verify` in a pinch.
 
 ---
 
@@ -315,26 +352,39 @@ A quick reference map for developers of the massive backend API.
 - **DB Admin:** `/api/admin/backup-db`, `/api/admin/restore-db` (POST) — DB backup/restore over HTTP, verify auth before relying on these
 - **WhatsApp:** `/whatsapp/webhook`
 
-### `routes/sheets_sync.py` (Google Sheets two-way sync — see gotcha #87)
-- **Link management:** `GET/POST/DELETE /api/clients/<id>/google-sheet-link`
-- **Push (Lumina→Sheet):** `POST /api/sheets/push/<task_id>` — called fire-and-forget from `applySheetFields()`, no-op for unlinked clients
-- **Pull webhook (Sheet→Lumina):** `POST /api/sheets/webhook/<link_token>` — called by the Apps Script `onChange` trigger installed in a linked Sheet
+### `routes/sheets_sync.py` (Google Sheets two-way sync — see gotchas #87, #95–97)
+All routes except the webhook are admin-gated via `_verified_user_id()` — a **real** `session_token` cookie check, not the `bool(user_id)` body-param pattern used elsewhere (see gotcha #87 third follow-up). The webhook's sole authenticator is the unguessable `link_token`.
+- **Link management:** `GET/POST/DELETE /api/clients/<id>/google-sheet-link` — GET returns link status + Apps Script snippet + `service_account_email` + `last_push_*`/`last_pull_*` health; POST connects (validates spreadsheet id, refuses a dead `client_id` (#95) or a sheet already linked to another client, reuses `link_token` on same-sheet relink, then initializes a blank sheet + backfills every existing task + applies dropdowns); DELETE unlinks.
+- **`POST /api/clients/<id>/google-sheet-link/format`** — retroactively apply the Type / Assigned To / Status dropdown validation to every tab of an already-linked sheet.
+- **`POST /api/clients/<id>/google-sheet-link/pull-now`** — on-demand Sheet→Lumina reconcile, reads the sheet live via the API (#96). `@limiter.limit("10/min")`.
+- **`GET /api/sheets/links`** — `{linked_client_ids, spreadsheet_ids}` (no tokens) — powers the "is this client linked" indicator + direct "open in Sheets" link.
+- **Push (Lumina→Sheet):** `POST /api/sheets/push/<task_id>` — fire-and-forget from `applySheetFields()`, no-op (200) for unlinked clients. `@limiter.limit("120/min")`.
+- **Delete (Lumina→Sheet):** `POST /api/sheets/delete/<task_id>` — fire-and-forget after a Lumina-side row delete commits past the undo window. No-op for unlinked clients.
+- **Pull webhook (Sheet→Lumina):** `POST /api/sheets/webhook/<link_token>` — called by the Apps Script `onChange` trigger. Accepts `{"rows": [...]}` (single-tab links) or `{"tabs": {...}}` (multi-tab links); caps total rows at `MAX_WEBHOOK_ROWS` (1000). `@limiter.limit("60/min")`.
+
+### `routes/ops.py` — Sheets edit/version history & row-hide (see gotchas #74–76, #82–83)
+- **Version history:** `POST /api/sheets/tasks/<id>/log-version`, `GET /api/sheets/tasks/<id>/versions`, `GET /api/sheets/clients/<id>/versions`
+- **Row-hide (shared, server-backed):** `GET /api/sheets/hidden-rows`, `POST /api/sheets/tasks/<id>/hide`, `POST /api/sheets/tasks/<id>/unhide`, `POST /api/sheets/clients/<id>/unhide-all`
 
 > [!WARNING]
 > **Duplicate/dead route definitions in `app.py`:** `GET`/`POST /api/projects` and `GET /api/projects/<id>` are each defined **twice or three times** (~line 1441/1447/1457 vs ~2378/2385/2396 vs ~2486). Flask/Werkzeug matches whichever rule was **registered first**, so only the first block (the `project_store`-based chat Projects/KB feature) is actually live. The second `list_projects`/`create_project`/`get_project` block (~2378-2401) and the "PROJECT TRACKER ROUTES" block starting ~2486 (which reuses names like `get_projects`/`get_clients` for a *different* clients+tasks entity model) are **unreachable dead code** — but that same dead block also defines helper functions (`_pt_conn`, `_calc_progress`, `_is_admin`) that ARE used elsewhere. Before editing anything named `get_projects`/`list_projects`/`get_clients` in `app.py`, check whether it's actually reachable — it's easy to "fix" dead code by mistake.
 
 ### `routes/ops.py` (Standups, Operations, AI Actions)
-- **Standups:** `/api/standup`, `/api/standup/today`, `/api/standup/history`, `/api/standup/my-tasks`, `/api/standup/auto-fill`, `/api/standup/carry-over`, `/api/standup/smart-add`
-- **Notion Sync:** `/api/notion/status`, `/api/notion/clients`, `/api/notion/tasks`, `/api/notion/dashboard`
-- **AI Analytics:** `/api/ai/breakdown`, `/api/ai/proof-of-work`, `/api/ai/coach`, `/api/ai/daily-summary` (`/api/ai/meeting-to-tasks` removed 2026-07-20, see gotcha #46)
-- **Client Portal:** `/api/client-portal/tasks`, `/api/client-portal/tasks/<id>/feedback`, `/api/client-portal/dependencies/upload`, `/api/client-portal/dependencies/text`, `/api/client-portal/dependencies` (GET/DELETE)
+- **Standups:** `/api/standup` (POST), `/api/standup/today`, `/api/standup/history`, `/api/standup/actions`, `/api/standup/my-tasks` (GET/POST, plus `/<id>` PATCH/DELETE), `/api/standup/tasks/<id>/delegate`, `/api/standup/push-to-notion/<id>`, `/api/standup/auto-fill`, `/api/standup/carry-over`, `/api/standup/smart-add`, `/api/standup/ai-coach`
+- **Standup Velocity (gotcha #77):** `/api/standup/velocity` (chart data, `?days=N` or `?range=month`), `/api/standup/velocity-summary` (month-to-date completed/overdue totals)
+- **Notion Sync:** `/api/notion/status`, `/api/notion/schema-check` (gotcha #58), `/api/notion/clients` (GET/POST), `/api/notion/clients/<id>` (DELETE — archives), `/api/notion/tasks` (GET/POST), `/api/notion/tasks/<id>` (PATCH/DELETE), `/api/notion/tasks/<id>/set-client-id` (back-fill a blank Client ID, see gotcha #79), `/api/notion/dashboard`
+- **SQLite-mode task/client CRUD:** `/api/sqlite/tasks/<id>` (PATCH/DELETE), `/api/sqlite/clients/<id>` (DELETE), `/api/quick-tasks` (GET/POST)
+- **Sheets edit/version history + row-hide:** listed in the `sheets_sync.py` section above (they live in this file but are part of that feature set)
+- **AI Analytics:** `/api/ai/breakdown`, `/api/ai/proof-of-work`, `/api/ai/parse-task`, `/api/ai/coach`, `/api/ai/daily-summary`, `/api/ai/client-update` (`/api/ai/meeting-to-tasks` removed 2026-07-20, see gotcha #46)
+- **Client Portal:** `/api/client-portal/tasks`, `/api/client-portal/tasks/<id>/feedback`, `/api/client-portal/dependencies/upload`, `/api/client-portal/dependencies/text`, `/api/client-portal/dependencies` (GET), `/api/client-portal/dependencies/<id>` (DELETE)
 - **Bet (internal fun feature):** `/api/bet` (GET/POST), `/api/bet/question` (POST) — see Key Patterns #12 and security warning above
 - **Discovery Forms:** `/api/form-templates` (GET), `/api/form-templates/<id>` (GET/POST), `/api/discovery-submissions` (GET/POST) (`/api/clients/<id>/form-answers` removed 2026-07-20, see Key Patterns #11)
 - **Alerts:** `/api/alerts`, `/api/alerts/run-check`
-- **Export:** `/api/export`, `/api/export/standup-tasks`
+- **Export:** `/api/export` (POST), `/api/export/standup-tasks` (GET)
+- **Debug (dev only):** `/api/debug/tasks`, `/api/debug/cleanup-today`
 
 ### `routes/attendance.py` (HR)
-- **Attendance:** `/api/attendance/checkin`, `/api/attendance/checkout`, `/api/attendance/summary`, `/api/attendance/today`, `/api/attendance/logs`, `/api/attendance/export`
+- **Attendance:** `/api/attendance/checkin`, `/api/attendance/checkout`, `/api/attendance/ping` (60s heartbeat → staleness-sweep auto-checkout, gotchas #89/#94), `/api/attendance/summary`, `/api/attendance/today`, `/api/attendance/logs`, `/api/attendance/export` (Date/In/Out/Employee + Tasks Completed/Carried Forward, gotcha #88)
 - **Employees:** `/api/employees`, `/api/employees/checkin`, `/api/employees/summary`
 
 ### `routes/auth.py` (Security)
@@ -343,9 +393,9 @@ A quick reference map for developers of the massive backend API.
 - **Admin Portal:** `/api/auth/admin_portal_login`, `/api/auth/admin_portal_verify`, `/api/auth/admin_portal_logout`
 
 ### `routes/system.py` (Health & Budget)
-- **Monitoring:** `/api/health`, `/api/routes`
-- **Budget/Usage:** `/api/budget`, `/api/usage`, `/api/usage/export`
-- **Admin:** `/admin/download-db`, `/admin/upload-db`
+- **Monitoring:** `/api/health`, `/api/routes`, `/api/test-whatsapp`, `/api/web-search`
+- **Budget/Usage:** `/api/budget`, `/api/account-balance` (GET/POST — manually-entered real Anthropic credit balance, gotcha #47), `/api/usage`, `/api/usage/export`
+- **Admin:** `/admin/download-db`, `/admin/upload-db` (both gated by `?secret=` matching `FLASK_SECRET_KEY`/`SECRET_KEY`)
 
 ---
 
@@ -804,3 +854,21 @@ A quick reference map for developers of the massive backend API.
     - **Fix:** changed the conflict clause to `DO UPDATE SET checkin_time = excluded.checkin_time WHERE daily_attendance.checkin_time IS NULL` — still "first real checkin of the day wins" (a second login later the same day is a no-op, since checkin_time is no longer NULL), but a ping-created blank row now gets correctly filled in by the next real checkin instead of being permanently stuck.
     - **Verification:** pyflakes clean. Verified the exact upsert semantics against a real scratch in-memory SQLite DB (not just reasoning about the SQL): simulated ping-creates-blank-row → real-checkin-fills-it-in (rowcount 1, checkin_time set) → second-checkin-same-day-is-noop (rowcount 0, original time preserved). Not yet deployed/backfilled — Noorish's actual row for 2026-08-26 will need either a real re-login or one `POST /api/attendance/checkin {"user_id":"emp009"}` call after this ships to retroactively fix today's row (safe and idempotent under the new logic).
     - **If a similar "logged in but not showing" report recurs for anyone else:** check `GET /api/attendance/today` first for that user's exact row (null checkin_time + non-null last_seen_at is the fingerprint of this exact race) before assuming it's a frontend display bug.
+
+95. **Sheets sync — refuse to link a Google Sheet to a stale/deleted `client_id`, and make Notion-mode client delete idempotent — 2026-08-25, commit `e25f809`** (cherry-picked onto `main` from `worktree-whatsapp-standup`'s `156dd15` so it ships without that branch's still-unverified WhatsApp-standup feature — see the note at the end of this section). **The code comment in `routes/sheets_sync.py::create_google_sheet_link()` for this fix mislabels it "CLAUDE.md gotcha #94" — #94 is the unrelated attendance-checkin race; this fix is #95.**
+    - **Root cause, found live on Omotec:** a browser tab left open from *before* a client was deleted still holds the old `client_id` in its in-memory `allData`. Clicking "Connect Google Sheet" on that stale page happily created a fully-working sync link pointing at a client that no longer exists — the immediate backfill push finds zero current tasks (so nothing looks wrong), but the link and its webhook stay live, and the very next Sheet edit would make `reconcile_sheet_rows()` treat every existing Sheet row as an unrecognized id and **recreate them all as brand-new tasks under a dead `client_id` nothing in the UI can see**. No orphans were actually created that specific time only because the stale client's tasks had already been archived; a client deleted moments earlier (tasks not yet archived, or a slower connection) would not have been so lucky.
+    - **Fix 1 — `notion_store.is_client_active(client_notion_id)`** (`notion_store.py` ~930): fetches the page and checks it isn't archived. `create_google_sheet_link()` now calls this (or, for `is_notion=0` clients, a plain `SELECT 1 FROM clients WHERE id=?` existence check) *before doing anything else*, and 404s with "This client no longer exists … Refresh the page and try again." instead of silently succeeding.
+    - **Fix 2 — `notion_delete_client()` (`routes/ops.py` ~1555) is now idempotent:** re-archiving an already-archived Notion page 500'd (hit firsthand during manual recovery). It now calls `is_client_active()` first; if the client is already gone it returns 200 success — still running the straggler-task-archive and `_unlink_google_sheet_for_client()` (`ops.py` ~1528) cleanup, just not re-archiving the client page itself. (The SQLite-mode `delete_client()` in `app.py` already `DELETE`s the `google_sheet_links` row — gotcha #87 round 6 — and is naturally idempotent.)
+    - **Verified** with a scratch test (mocked `notion_store`/`google_sheets_store`, Flask test client): a dead `client_id` is rejected 404 while a live one passes unaffected, and calling delete-client twice in a row no longer 500s on the second call. `pyflakes` clean, `import app` boots clean.
+
+96. **Sheets sync — manual "Pull now" button, no edit-to-trigger needed — 2026-08-27, commit `c1b1f6a`.** Connecting a Sheet backfills Lumina→Sheet, but the reverse direction (Sheet→Lumina) only ever runs on an Apps Script `onChange` event — so a freshly-built calendar sheet full of hand-typed rows synced *nothing* into Lumina until every row was re-edited by hand to fire the trigger.
+    - **New route `POST /api/clients/<id>/google-sheet-link/pull-now`** (`routes/sheets_sync.py`, admin-gated via `_verified_user_id()`, `@limiter.limit("10 per minute")`): reads the Sheet's current live state directly via the Sheets API and calls the *same* `reconcile_sheet_rows()` / `reconcile_sheet_tabs()` the webhook uses (honoring `MAX_WEBHOOK_ROWS`, recording `last_pull_at`/`last_pull_summary`). Dispatches on the link's `multi_tab` flag exactly like the webhook.
+    - **Frontend:** a "Pull now" button (`#gsheet-pull-btn` → `pullGoogleSheetNow(clientId)`, `frontend/projects.html` ~4250) in the Connect Google Sheet modal.
+    - A throwaway diagnostic route was added (`5191baf`) then removed once the round-2 Omotec bugs below were root-caused (`b067c11`) — don't look for it.
+
+97. **Sheets sync — Omotec incident, round 2 (2026-08-27): non-ISO dates silently dropped every row, plus a runaway duplicate-task-creation loop.** Both surfaced trying to sync a real 47-row Omotec calendar; this is a second, separate round from the 2026-08-24/25 Omotec work in gotcha #93.
+    - **[commit `c57d6c4`] Every row with a non-ISO date synced as *nothing*.** Notion's date property requires strict ISO-8601 (`YYYY-MM-DD`), but the Sheet's Creation Date / Post Day columns are plain text *by design* (to dodge locale-dependent Date-cell rendering — see gotcha #87), so people type whatever date format they normally use. Any other format 400s the *entire* create/update page request (not just that one property — see gotcha #43), and that 400 isn't retried, so `create_task()` silently returned `None` for every affected row with zero visible error. Omotec's 47-row calendar synced 0 rows because every date was `DD/MM/YYYY` or `DD/Month/YYYY`. **Fix:** `_row_to_fields()` (`google_sheets_store.py` ~890) now normalizes `due_date` and `creation_date` to ISO via `_normalize_date()` before they ever reach Notion — tries `_DATE_INPUT_FORMATS` (`%d/%m/%Y`, `%d/%B/%Y`, `%d-%m-%Y`, `%d-%B-%Y`, `%d/%b/%Y`, `%d-%b-%Y`, `%Y/%m/%d`) in order and drops an unparseable date (empty) rather than sending it through raw. Also adds a `create_failed` counter to both reconcile functions (matching the existing `update_failed`/`delete_failed` pattern) so a future silent create-failure surfaces in the sync summary instead of only in server logs.
+    - **[commit `7ac9f32`] Runaway duplicate-creation loop.** Reconcile wrote each newly-created row's task id back to the Sheet one cell at a time (one `write_cell` PUT per row). Each of those write-backs is itself a Sheet edit that re-fires the installed `onChange` trigger — and a re-triggered run reads the whole sheet fresh mid-pass, sees any row that hadn't gotten its id written back *yet* as still blank, and creates it *again*. That row's write-back re-fires again, and so on: confirmed live as a real incident where task count climbed 44 → 66 → 68 → 86 … and eventually started deleting real tasks too, only stopped by deleting the trigger and restarting the server. **Fix:** every write-back from one reconcile pass is now collected into `pending_writebacks` and flushed as a single `batch_write_cells()` call (via `_retry()`) *after* the whole pass finishes, in both `reconcile_sheet_rows()` and `reconcile_sheet_tabs()`. At most one re-trigger can fire after a pass, and it finds everything already matching — the cascade can't start.
+
+> [!NOTE]
+> **WhatsApp daily-standup feature is NOT on `main`.** A design spec (`docs/superpowers/specs/2026-08-25-whatsapp-standup-design.md`) and implementation plan (`docs/superpowers/plans/2026-08-25-whatsapp-standup.md`) exist, and a branch `worktree-whatsapp-standup` carries a work-in-progress build (morning prompt, EOD nudge, `done`/`add`/`blocked` commands, founder digest + escalation). It is unverified and unmerged — don't treat it as shipped. Commit `e25f809` (gotcha #95) was deliberately cherry-picked *out* of that branch onto `main` so its fix could ship without the rest.
