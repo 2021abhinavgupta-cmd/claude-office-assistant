@@ -40,6 +40,11 @@ try:
 except ImportError:
     sys.exit("research_feed: `pip install requests` first.")
 
+try:
+    import trafilatura  # much better article extraction; optional
+except ImportError:
+    trafilatura = None
+
 SOURCES_FILE = "research_sources.txt"
 OUT_SUBDIR = "research"
 MAX_CHARS = 8000
@@ -69,6 +74,16 @@ class _TextExtractor(HTMLParser):
 
 
 def _html_to_text(html: str) -> str:
+    if trafilatura is not None:
+        try:
+            out = trafilatura.extract(
+                html, include_comments=False, include_tables=True, favor_precision=True
+            )
+            if out and out.strip():
+                return re.sub(r"\n{3,}", "\n\n", out).strip()
+        except Exception:
+            pass
+    # fallback: crude stdlib tag-strip
     p = _TextExtractor()
     try:
         p.feed(html)

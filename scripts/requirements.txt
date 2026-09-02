@@ -1,0 +1,7 @@
+# Laptop-side companion scripts (kb_sync.py, research_feed.py, laptop_agent.py).
+# NOT used by the Flask app — install this only on the always-on laptop.
+#   pip install -r scripts/requirements.txt
+
+requests>=2.31
+trafilatura>=2.0      # better web-article extraction for research_feed.py (optional)
+apprise>=1.9          # 100+ alert channels for laptop_agent.py health checks (optional)

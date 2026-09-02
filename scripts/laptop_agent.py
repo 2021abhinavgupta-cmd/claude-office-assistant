@@ -14,11 +14,12 @@ Jobs 2–4 are skipped automatically if not configured (no research_sources.txt,
 no FLASK_SECRET_KEY, etc.), so it's safe to just run it.
 
 Setup:
-    pip install requests
+    pip install -r scripts/requirements.txt
     set LUMINA_URL=https://lumina.mmga.agency
     set STORAGE_SYNC_TOKEN=<token you set on Railway>     (for job 1)
     set FLASK_SECRET_KEY=<Railway FLASK_SECRET_KEY>        (for job 3, optional)
-    set ALERT_WEBHOOK=<Slack/Discord incoming webhook URL> (for job 4, optional)
+    set ALERT_TARGETS=tgram://bottoken/chatid,mailto://... (for job 4, optional; apprise URLs)
+    set ALERT_WEBHOOK=<Slack/Discord incoming webhook URL> (job 4 fallback if no ALERT_TARGETS)
 
 Run (leave it running):
     python scripts/laptop_agent.py --dir "C:\\Users\\me\\LuminaKnowledge"
@@ -42,6 +43,11 @@ try:
     import requests
 except ImportError:
     sys.exit("laptop_agent: `pip install requests` first.")
+
+try:
+    import apprise  # 100+ notification services in one lib; optional
+except ImportError:
+    apprise = None
 
 import kb_sync
 import research_feed
@@ -104,21 +110,38 @@ def job_backup(cfg: dict) -> None:
         _log(f"backup error: {e}")
 
 
+def _notify(cfg: dict, msg: str) -> None:
+    """Fan out an alert: apprise targets (Telegram/Discord/email/ntfy/…) if
+    set, else a plain JSON webhook, else just the console log."""
+    text = "Lumina watchdog: " + msg
+    targets = cfg["alert_targets"]
+    if targets and apprise is not None:
+        try:
+            ap = apprise.Apprise()
+            for t in targets:
+                ap.add(t)
+            ap.notify(title="Lumina watchdog", body=msg)
+            return
+        except Exception as e:
+            _log(f"apprise notify failed: {e}")
+    hook = cfg["alert_webhook"]
+    if hook:
+        try:
+            requests.post(hook, json={"text": text}, timeout=15)
+        except Exception as e:
+            _log(f"alert webhook failed: {e}")
+
+
 def job_health(cfg: dict) -> None:
     try:
         r = requests.get(f"{cfg['url']}/api/health", timeout=15)
         if r.ok:
             return
-        msg = f"Lumina health check failed: HTTP {r.status_code}"
+        msg = f"health check failed: HTTP {r.status_code}"
     except Exception as e:
-        msg = f"Lumina unreachable: {e}"
+        msg = f"unreachable: {e}"
     _log("ALERT: " + msg)
-    hook = cfg["alert_webhook"]
-    if hook:
-        try:
-            requests.post(hook, json={"text": "Lumina watchdog: " + msg}, timeout=15)
-        except Exception as e:
-            _log(f"alert webhook failed: {e}")
+    _notify(cfg, msg)
 
 
 JOBS = [
@@ -150,6 +173,7 @@ def main() -> None:
         "storage_token": os.getenv("STORAGE_SYNC_TOKEN") or os.getenv("FLASK_SECRET_KEY") or "",
         "db_secret": os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "",
         "alert_webhook": os.getenv("ALERT_WEBHOOK", ""),
+        "alert_targets": [t.strip() for t in os.getenv("ALERT_TARGETS", "").split(",") if t.strip()],
         "sync_every": args.sync_every,
         "research_every": args.research_every,
         "backup_every": args.backup_every,
@@ -160,7 +184,9 @@ def main() -> None:
     _log(f"  sync {'on' if cfg['storage_token'] else 'OFF (no STORAGE_SYNC_TOKEN)'} | "
          f"research {'on' if (root / research_feed.SOURCES_FILE).exists() else 'OFF (no research_sources.txt)'} | "
          f"backup {'on' if cfg['db_secret'] else 'OFF (no FLASK_SECRET_KEY)'} | "
-         f"health on")
+         f"health on"
+         + (f" (apprise -> {len(cfg['alert_targets'])} target(s))" if cfg['alert_targets'] and apprise
+            else " (webhook alert)" if cfg['alert_webhook'] else " (console-only alert)"))
 
     next_run = {name: 0.0 for name, _, _ in JOBS}
     try:
