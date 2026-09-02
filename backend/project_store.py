@@ -174,3 +174,40 @@ def delete_knowledge_base_doc(project_id: str, doc_id: str) -> bool:
     conn.commit()
     conn.close()
     return deleted
+
+
+def list_knowledge_base_docs(project_id: str) -> list:
+    """All KB docs for a project — id, filename, size, added_at (no content)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, filename, length(content), added_at FROM project_files "
+        "WHERE project_id=? ORDER BY added_at DESC",
+        (project_id,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "filename": r[1], "size": r[2] or 0, "added_at": r[3]}
+        for r in rows
+    ]
+
+
+def delete_knowledge_base_docs_by_filename(project_id: str, filename: str) -> list:
+    """Delete every KB doc in a project matching a filename. Returns the
+    deleted doc ids so the caller can also drop them from the FTS index."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM project_files WHERE project_id=? AND filename=?",
+        (project_id, filename),
+    )
+    ids = [r[0] for r in cur.fetchall()]
+    if ids:
+        cur.execute(
+            "DELETE FROM project_files WHERE project_id=? AND filename=?",
+            (project_id, filename),
+        )
+        conn.commit()
+    conn.close()
+    return ids

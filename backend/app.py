@@ -2361,6 +2361,98 @@ def upload_file():
     return jsonify({"success": True, **result})
 
 
+# ── Knowledge storage sync ───────────────────────────────────────────────────
+# A folder on a laptop is kept in sync with the agency knowledge base by
+# scripts/kb_sync.py, which calls these endpoints. Everything lands under a
+# single sentinel project so the WhatsApp agent's unscoped kb_chunks_fts
+# search (backend/whatsapp_agent.py::_kb_search) picks it up automatically.
+_STORAGE_PID = "_storage"
+_STORAGE_UID = "_storage"
+
+
+def _storage_auth_ok() -> bool:
+    import hmac
+    expected = os.getenv("STORAGE_SYNC_TOKEN") or os.getenv("FLASK_SECRET_KEY") or ""
+    if not expected:
+        return False
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.lower().startswith("bearer ") else request.args.get("token", "")
+    return bool(token) and hmac.compare_digest(token, expected)
+
+
+@app.route("/api/storage/doc", methods=["POST"])
+@limiter.limit("120 per minute")
+def storage_add_doc():
+    """Add/replace one document in the synced knowledge store.
+    multipart: file=<file>   or   json: {filename, content}
+    Auth: Authorization: Bearer <STORAGE_SYNC_TOKEN or FLASK_SECRET_KEY>"""
+    if not _storage_auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+
+    filename = ""
+    content = ""
+    if "file" in request.files:
+        f = request.files["file"]
+        filename = request.form.get("filename") or f.filename or ""
+        raw = f.read()
+        result = file_processor.process_file(raw, f.filename or filename, f.content_type or "")
+        if result.get("type") == "error":
+            return jsonify({"error": result.get("error", "could not parse"), "filename": filename}), 422
+        if result.get("type") != "document":
+            return jsonify({"error": "only text documents are indexable", "filename": filename}), 422
+        content = result.get("content", "")
+    else:
+        data = request.get_json(silent=True) or {}
+        filename = (data.get("filename") or "").strip()
+        content = data.get("content") or ""
+
+    filename = filename.strip().lstrip("/\\")
+    if not filename or not content.strip():
+        return jsonify({"error": "filename and non-empty content required"}), 400
+
+    # Idempotent replace: drop any existing copy of this filename first.
+    old_ids = project_store.delete_knowledge_base_docs_by_filename(_STORAGE_PID, filename)
+    for oid in old_ids:
+        try:
+            kb_retriever.delete_doc_index(_STORAGE_PID, _STORAGE_UID, oid)
+        except Exception:
+            pass
+
+    doc = project_store.add_knowledge_base_doc(_STORAGE_PID, filename, content)
+    try:
+        kb_retriever.index_doc(_STORAGE_PID, _STORAGE_UID, doc["id"], filename, content)
+    except Exception:
+        logger.exception("storage: FTS index failed for %s", filename)
+
+    return jsonify({"success": True, "filename": filename, "chars": len(content), "doc_id": doc["id"]})
+
+
+@app.route("/api/storage/docs", methods=["GET"])
+@limiter.limit("60 per minute")
+def storage_list_docs():
+    if not _storage_auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    docs = project_store.list_knowledge_base_docs(_STORAGE_PID)
+    return jsonify({"docs": docs, "count": len(docs)})
+
+
+@app.route("/api/storage/doc", methods=["DELETE"])
+@limiter.limit("120 per minute")
+def storage_delete_doc():
+    if not _storage_auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    filename = (request.args.get("name") or (request.get_json(silent=True) or {}).get("filename") or "").strip()
+    if not filename:
+        return jsonify({"error": "name required"}), 400
+    ids = project_store.delete_knowledge_base_docs_by_filename(_STORAGE_PID, filename)
+    for oid in ids:
+        try:
+            kb_retriever.delete_doc_index(_STORAGE_PID, _STORAGE_UID, oid)
+        except Exception:
+            pass
+    return jsonify({"success": True, "deleted": len(ids), "filename": filename})
+
+
 # ──Saved Notes Routes ───────────────────────────────────────────────────────────
 @app.route("/api/memory/<user_id>", methods=["GET"])
 def get_memory(user_id):
