@@ -73,15 +73,17 @@ WhatsApp. Just ask by client name, e.g. "show me Omotec's content plan" or
 ## 4. The laptop companion (runs by itself)
 
 One program on the laptop, started automatically every time the laptop logs in.
-It does five things on a loop:
+It does seven things:
 
 | Job | What it does |
 |---|---|
 | Knowledge sync | keeps `C:\LuminaKnowledge` mirrored to Lumina |
 | Web research | (optional) re-fetches web pages you list and adds them to the knowledge base |
-| DB backup | once a day, saves a copy of Lumina's database to `C:\lumina-backups\` |
-| Health check | pings Lumina every few minutes; alerts you if it's down |
+| DB backup | once a day, saves a copy of Lumina's database to `C:\lumina-backups\`; can also copy it offsite, and grabs the client-files archive weekly |
+| Health check | pings Lumina every few minutes, times it, alerts you if it's **down or slow** |
 | WhatsApp bridge | keeps the WhatsApp connection alive (once the number is paired) |
+| Daily brief | at ~9am and ~7pm, sends you a summary: overdue tasks, what's due, who's submitted standups, sync issues, budget |
+| Sheets watchdog | every ~20 min, checks each client's Google-Sheet sync and alerts if one is stuck |
 
 Nothing to do day-to-day. If you reboot the laptop, it starts again on its own.
 
@@ -89,6 +91,22 @@ Nothing to do day-to-day. If you reboot the laptop, it starts again on its own.
 `C:\LuminaKnowledge\research_sources.txt` with one line per page, like
 `Competitor blog | https://example.com/blog`. Those pages get pulled in and kept
 current.
+
+**Optional — daily brief delivery:** the brief only reaches you if you set an
+`ALERT_TARGETS` (or `DIGEST_TARGETS`) environment variable to a notification
+address — a Telegram bot, a Discord webhook, or an email address in
+[apprise](https://github.com/caronc/apprise) URL form
+(e.g. `tgram://<bot-token>/<chat-id>`). Without it, the brief is just written to
+the console.
+
+**Optional — offsite backups:** add `--backup-mirror "D:\GoogleDriveFolder"` to
+the launch command to also copy each backup into a cloud-synced folder, or set
+`BACKUP_RCLONE_REMOTE=name:path` if you use rclone. Right now backups only live
+on this one laptop.
+
+**Optional — auto-fix stuck sheets:** add `--sheets-autopull` to the launch
+command and the watchdog will also force a re-sync when it spots a problem,
+instead of only alerting.
 
 ---
 

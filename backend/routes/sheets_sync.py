@@ -492,30 +492,15 @@ def pull_google_sheet_now(client_id: str):
     link_token = row[2]
     link = {"client_id": row[0], "spreadsheet_id": row[1], "is_notion": bool(row[3]),
             "client_name": row[4], "linked_by": row[5], "multi_tab": bool(row[6])}
-    spreadsheet_id = link["spreadsheet_id"]
 
     try:
-        if link["multi_tab"]:
-            tab_names = [t["name"] for t in gs.list_tabs(spreadsheet_id) if gs._is_synced_tab_name(t["name"])]
-            tabs = {}
-            for name in tab_names:
-                rows = gs.read_tab_rows(spreadsheet_id, name)
-                tabs[name] = rows[1:] if rows else []
-            total_rows = sum(len(v) for v in tabs.values())
-            if total_rows > MAX_WEBHOOK_ROWS:
-                return jsonify({"error": f"Sheet has more than {MAX_WEBHOOK_ROWS} total rows across its tabs -- contact the developer to raise this limit"}), 400
-            summary = gs.reconcile_sheet_tabs(link, tabs)
-        else:
-            all_rows = gs.read_all_rows(spreadsheet_id)
-            rows = all_rows[1:] if all_rows else []
-            if len(rows) > MAX_WEBHOOK_ROWS:
-                return jsonify({"error": f"Sheet has more than {MAX_WEBHOOK_ROWS} rows -- contact the developer to raise this limit"}), 400
-            summary = gs.reconcile_sheet_rows(link, rows)
+        summary = pull_one_link(link, link_token)
+    except ValueError as e:
+        return jsonify({"error": f"{e} -- contact the developer to raise this limit"}), 400
     except Exception:
         logger.exception(f"Manual pull-now failed for client {client_id}")
         return jsonify({"error": "Pull failed, see server logs"}), 500
 
-    _record_pull_result(link_token, summary)
     return jsonify({"success": True, **summary})
 
 
@@ -590,6 +575,33 @@ def _record_pull_result(link_token: str, summary: dict):
             (f"{today_ist()} {now_ist()}", ", ".join(parts), link_token),
         )
     conn.close()
+
+
+def pull_one_link(link: dict, link_token: str) -> dict:
+    """Read a linked Sheet's current live state and reconcile it into Lumina --
+    the shared body of the manual pull-now route and the companion watchdog's
+    bulk pull. Raises on a Sheets/reconcile failure; records the result on
+    success. `link` needs: spreadsheet_id, is_notion, client_name, linked_by,
+    multi_tab, client_id."""
+    spreadsheet_id = link["spreadsheet_id"]
+    if link.get("multi_tab"):
+        tab_names = [t["name"] for t in gs.list_tabs(spreadsheet_id)
+                     if gs._is_synced_tab_name(t["name"])]
+        tabs = {}
+        for name in tab_names:
+            rows = gs.read_tab_rows(spreadsheet_id, name)
+            tabs[name] = rows[1:] if rows else []
+        if sum(len(v) for v in tabs.values()) > MAX_WEBHOOK_ROWS:
+            raise ValueError(f"Sheet exceeds {MAX_WEBHOOK_ROWS} total rows across tabs")
+        summary = gs.reconcile_sheet_tabs(link, tabs)
+    else:
+        all_rows = gs.read_all_rows(spreadsheet_id)
+        rows = all_rows[1:] if all_rows else []
+        if len(rows) > MAX_WEBHOOK_ROWS:
+            raise ValueError(f"Sheet exceeds {MAX_WEBHOOK_ROWS} rows")
+        summary = gs.reconcile_sheet_rows(link, rows)
+    _record_pull_result(link_token, summary)
+    return summary
 
 
 @sheets_sync_bp.route("/api/sheets/push/<string:task_id>", methods=["POST"])
