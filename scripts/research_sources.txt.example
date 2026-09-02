@@ -1,0 +1,12 @@
+# research_feed.py reads this file from your knowledge folder as:
+#   <knowledge-dir>/research_sources.txt
+# Copy this file there, rename it (drop the .example), and edit.
+#
+# One source per line.  "Label | URL"  (label optional; a bare URL works too).
+# Lines starting with # are ignored.  Each run overwrites <dir>/research/<slug>.md
+# so the knowledge base always has the latest, never stale copies.
+
+MMGA site            | https://mmga.agency
+# Competitor blog     | https://somecompetitor.example/blog
+# Industry news       | https://news.example/topic/marketing
+# A client's pricing  | https://client.example/pricing

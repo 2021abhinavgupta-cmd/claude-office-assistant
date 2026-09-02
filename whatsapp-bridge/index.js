@@ -116,6 +116,12 @@ async function start() {
         log("logged out on the phone. Delete ./auth and re-pair. Exiting.");
         process.exit(1);
       }
+      if (code === DisconnectReason.connectionReplaced) {
+        // another bridge instance took over this session — don't fight it,
+        // just exit. (If it was a stale orphan, the supervisor restarts us.)
+        log("connection replaced by another instance. Exiting.");
+        process.exit(1);
+      }
       log(`connection closed (${code}); reconnecting in 3s…`);
       setTimeout(start, 3000);
     }
