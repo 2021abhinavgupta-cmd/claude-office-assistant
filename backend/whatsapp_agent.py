@@ -43,7 +43,7 @@ _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # Rolling per-sender context. Older than this and we start a fresh thread.
 _CONTEXT_TTL_HOURS = 6
 _CONTEXT_MAX_TURNS = 6          # user/assistant pairs kept between messages
-_MAX_TOOL_ROUNDS = 6           # hard cap on the tool-use loop
+_MAX_TOOL_ROUNDS = 8           # hard cap on the tool-use loop (pause_turn can eat rounds)
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -338,6 +338,9 @@ _EMPLOYEE_TOOLS = [
                        "overdue tasks across the whole agency.",
         "input_schema": {"type": "object", "properties": {}},
     },
+    # Anthropic-hosted web search — Claude runs the query server-side and
+    # gets cited results. Same tool spec the chat stream endpoint uses.
+    {"type": "web_search_20250305", "name": "web_search", "max_uses": 4},
 ]
 
 _CLIENT_TOOLS = [
@@ -442,9 +445,12 @@ def _system_prompt(identity: dict) -> str:
             + ".\n"
             "- Use the tools to look up real client, task, deadline and document "
             "data before answering. Never guess a task's status or date.\n"
+            "- You can use web_search for current or external information (news, "
+            "trends, competitor info, general facts) the CRM and knowledge base "
+            "don't have. Prefer internal tools first; name the source briefly.\n"
             "- Keep replies short and WhatsApp-style: plain text, no markdown "
             "headings, no tables. A few lines is ideal. Use simple '-' bullets.\n"
-            "- If the data doesn't contain the answer, say so in one line.\n"
+            "- If nothing has the answer, say so in one line.\n"
             f"- Today is {today} (IST)."
         )
     if identity["kind"] == "client":
@@ -492,15 +498,16 @@ def handle_message(sender: str, text: str) -> str | None:
         for _ in range(_MAX_TOOL_ROUNDS):
             resp = _client.messages.create(
                 model=model["name"],
-                max_tokens=900,
+                max_tokens=1200,
                 system=_system_prompt(identity),
                 tools=tools,
                 messages=messages,
             )
             total_in += resp.usage.input_tokens
             total_out += resp.usage.output_tokens
+            stop = resp.stop_reason
 
-            if resp.stop_reason == "tool_use":
+            if stop == "tool_use":
                 messages.append({"role": "assistant", "content": resp.content})
                 results = []
                 for block in resp.content:
@@ -511,7 +518,15 @@ def handle_message(sender: str, text: str) -> str | None:
                             "tool_use_id": block.id,
                             "content": out[:6000],
                         })
+                if not results:
+                    break  # nothing we can execute — fall through to text
                 messages.append({"role": "user", "content": results})
+                continue
+
+            if stop == "pause_turn":
+                # A server-side tool (web_search) is mid-run — echo the
+                # partial turn back and let the next call resume it.
+                messages.append({"role": "assistant", "content": resp.content})
                 continue
 
             reply = "".join(
