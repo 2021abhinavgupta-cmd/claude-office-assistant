@@ -321,12 +321,13 @@ def list_client_users():
     """List all client portal accounts. Admin use."""
     conn = _sessions_conn()
     cur = conn.cursor()
-    cur.execute("SELECT id, username, client_name, client_notion_id, created_at FROM client_users ORDER BY id")
+    cur.execute("SELECT id, username, client_name, client_notion_id, created_at, "
+                "COALESCE(whatsapp,'') FROM client_users ORDER BY id")
     rows = cur.fetchall()
     conn.close()
     clients = [
         {"id": r[0], "username": r[1], "client_name": r[2],
-         "client_notion_id": r[3] or "", "created_at": r[4]}
+         "client_notion_id": r[3] or "", "created_at": r[4], "whatsapp": r[5] or ""}
         for r in rows
     ]
     return jsonify({"clients": clients})
@@ -340,6 +341,7 @@ def create_client_user():
     password = body.get("password", "").strip()
     client_name = body.get("client_name", "").strip()
     client_notion_id = body.get("client_notion_id", "").strip()
+    whatsapp = body.get("whatsapp", "").strip()
 
     if not username or not password or not client_name:
         return jsonify({"error": "username, password, and client_name are required"}), 400
@@ -350,8 +352,8 @@ def create_client_user():
     try:
         with conn:
             cur = conn.execute(
-                "INSERT INTO client_users (username, password, client_name, client_notion_id) VALUES (?,?,?,?)",
-                (username, hashed_password, client_name, client_notion_id)
+                "INSERT INTO client_users (username, password, client_name, client_notion_id, whatsapp) VALUES (?,?,?,?,?)",
+                (username, hashed_password, client_name, client_notion_id, whatsapp)
             )
             new_id = cur.lastrowid
         conn.close()
@@ -487,6 +489,9 @@ def update_client_user(client_id):
     if "client_notion_id" in body:
         updates.append("client_notion_id=?")
         values.append(body["client_notion_id"].strip())
+    if "whatsapp" in body:
+        updates.append("whatsapp=?")
+        values.append(body["whatsapp"].strip())
 
     if not updates:
         return jsonify({"error": "Nothing to update"}), 400

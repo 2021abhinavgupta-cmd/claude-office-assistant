@@ -243,6 +243,14 @@
             </div>
             <button class="btn-sm" style="padding:10px 16px" onclick="linkAccount()">Save Link</button>
           </div>
+          ${portalAcc ? `
+          <div class="form-row" style="margin-top:12px">
+            <div class="form-group">
+              <label>WhatsApp number &mdash; lets this client use the WhatsApp assistant (scoped to their own deliverables)</label>
+              <input type="text" id="wa-number-input" placeholder="+9198XXXXXXXX" value="${(portalAcc.whatsapp || '').replace(/"/g, '&quot;')}">
+            </div>
+            <button class="btn-sm" style="padding:10px 16px" onclick="saveClientWhatsapp(${portalAcc.id})">Save number</button>
+          </div>` : ``}
         </div>
 
         <div class="section-title" style="margin-top: 24px">
@@ -303,6 +311,23 @@
         renderMain();
       } else {
         toast("Error linking account: " + (data.error || "Unknown"), "err");
+      }
+    }
+
+    async function saveClientWhatsapp(portalId) {
+      const val = document.getElementById("wa-number-input").value.trim();
+      const res = await fetch(`${API}/api/auth/clients/${portalId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsapp: val })
+      });
+      const data = await res.json().catch(() => ({}));
+      if(res.ok && data.success !== false) {
+        await fetchPortalAccounts();
+        renderMain();
+        toast(val ? "WhatsApp number saved" : "WhatsApp number cleared");
+      } else {
+        toast("Error saving number: " + (data.error || res.status), "err");
       }
     }
 
