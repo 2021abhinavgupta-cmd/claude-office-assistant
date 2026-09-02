@@ -23,3 +23,8 @@ beautifulsoup4>=4.12.0
 lxml>=5.0.0
 # Google Sheets sync
 google-auth>=2.29.0
+# Semantic knowledge-base layer (backend/semantic_kb.py) -- OFF until an admin
+# enables it via POST /api/kb/semantic. Base model2vec is light: no torch/onnx,
+# CPU static embeddings, ~30MB model cached to the persistent volume.
+model2vec>=0.3.0
+numpy>=1.24
