@@ -190,6 +190,48 @@ def account_balance():
     return jsonify({"balance": float(row[0]) if row else None})
 
 
+@system_bp.route("/api/kb/semantic", methods=["GET", "POST"])
+def kb_semantic():
+    """Status + on/off switch for the optional semantic knowledge-base layer.
+
+    GET  -> {available, enabled, active, model, vectors, fts_chunks, backfill}
+    POST {"enabled": bool, "user_id": "<emp>"} -> toggles the stored flag;
+         turning it on also kicks a background backfill of existing chunks.
+
+    Harmless when the embedding deps aren't installed on the server:
+    `available` is false and search stays keyword-only regardless of `enabled`.
+    """
+    try:
+        import semantic_kb
+    except Exception as e:
+        return jsonify({"available": False, "enabled": False, "error": str(e)}), 200
+
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        if not (body.get("user_id") or request.args.get("user_id")):
+            return jsonify({"error": "user_id required"}), 403
+        enabled = bool(body.get("enabled"))
+        semantic_kb.set_enabled(enabled)
+        if enabled:
+            semantic_kb.start_backfill()
+        return jsonify(semantic_kb.stats())
+
+    return jsonify(semantic_kb.stats())
+
+
+@system_bp.route("/api/kb/semantic/backfill", methods=["POST"])
+def kb_semantic_backfill():
+    """Force a (re)embed of every chunk not yet vectorized. Runs in the
+    background; poll GET /api/kb/semantic for progress."""
+    if not (request.args.get("user_id") or (request.get_json(silent=True) or {}).get("user_id")):
+        return jsonify({"error": "user_id required"}), 403
+    try:
+        import semantic_kb
+    except Exception as e:
+        return jsonify({"error": str(e)}), 200
+    return jsonify(semantic_kb.start_backfill())
+
+
 @system_bp.route("/api/usage", methods=["GET"])
 def usage_dashboard():
     """Full usageDashboard data — powers the cost monitoringDashboard."""

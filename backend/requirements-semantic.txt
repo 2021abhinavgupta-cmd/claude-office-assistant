@@ -1,0 +1,14 @@
+# Optional: enables the semantic (embedding) layer over the knowledge base.
+# See backend/semantic_kb.py. NOT installed by default.
+#
+# To turn semantic search on in production:
+#   1. append these two lines to the root requirements.txt and redeploy
+#      (this is the only step that carries any deploy risk — watch that deploy)
+#   2. POST /api/kb/semantic  {"enabled": true, "user_id": "<your emp id>"}
+#
+# model2vec runs static embeddings on CPU with a ~30 MB model (no torch,
+# no onnxruntime, no embeddings API key). The model downloads once to
+# $HF_HOME, which semantic_kb.py points at the persistent volume.
+
+model2vec>=0.3.0
+numpy>=1.24

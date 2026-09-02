@@ -14,6 +14,11 @@ from typing import List, Dict, Optional
 
 from db import get_connection
 
+try:
+    import semantic_kb  # optional meaning-based layer; no-ops unless enabled
+except Exception:  # pragma: no cover - defensive
+    semantic_kb = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +100,8 @@ def index_doc(project_id: str, user_id: str, doc_id: str, filename: str, content
                     (project_id, user_id, doc_id, filename, c),
                 )
         conn.close()
+        if semantic_kb is not None:
+            semantic_kb.index_doc(doc_id)   # no-op unless semantic search is enabled
     except Exception as e:
         logger.warning(f"KB index failed (non-fatal): {e}")
 
@@ -108,6 +115,8 @@ def delete_doc_index(project_id: str, user_id: str, doc_id: str) -> None:
                 (project_id, user_id, doc_id),
             )
         conn.close()
+        if semantic_kb is not None:
+            semantic_kb.prune()   # sweep now-orphaned vectors
     except Exception as e:
         logger.warning(f"KB deindex failed (non-fatal): {e}")
 
@@ -159,6 +168,8 @@ def _merge_ranked_chunks(primary: List[Dict], secondary: List[Dict], *, limit: i
 def search_hybrid(project_id: str, user_id: str, query: str, *, limit: int = 8) -> List[Dict]:
     """
     OR-query recall + optional AND-query precision, merged and re-ranked.
+    If semantic search is enabled, its top hits are folded in ahead of the
+    keyword results (it exists to catch what shared-word matching misses).
     """
     primary = search(project_id, user_id, query, limit=max(limit, 6))
     and_q = _keyword_and_query(query)
@@ -166,7 +177,27 @@ def search_hybrid(project_id: str, user_id: str, query: str, *, limit: int = 8) 
     secondary: List[Dict] = []
     if and_q and and_q.strip() != (or_q or "").strip():
         secondary = search(project_id, user_id, and_q, limit=max(4, limit // 2))
-    return _merge_ranked_chunks(primary, secondary, limit=limit)
+    keyword = _merge_ranked_chunks(primary, secondary, limit=limit)
+
+    sem: List[Dict] = []
+    if semantic_kb is not None:
+        try:
+            sem = semantic_kb.search(query, limit=max(3, limit // 2),
+                                     project_id=project_id, user_id=user_id)
+        except Exception:
+            sem = []
+    if not sem:
+        return keyword
+
+    seen = set()
+    merged: List[Dict] = []
+    for m in sem + keyword:
+        key = (m.get("doc_id"), (m.get("chunk") or "")[:140])
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(m)
+    return merged[:limit]
 
 
 def unique_doc_labels(matches: List[Dict]) -> List[Dict]:

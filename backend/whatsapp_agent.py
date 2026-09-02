@@ -34,6 +34,7 @@ from budget_tracker import check_budget_available, record_usage
 from db import get_connection
 import notion_store
 import kb_retriever
+import semantic_kb
 import utils
 
 logger = logging.getLogger(__name__)
@@ -252,28 +253,43 @@ def _tasks_for_employee(name: str) -> list:
 
 
 def _kb_search(query: str, limit: int = 6) -> list:
-    """Full-text search across the whole project knowledge base, no
-    project/user scoping (every employee is admin-tier here)."""
-    mq = kb_retriever._fts_query(query)
-    if not mq:
-        return []
+    """Search the whole knowledge base, no project/user scoping (every
+    employee is admin-tier here). Keyword (bm25) always; semantic hits
+    folded in ahead of it when that layer is enabled."""
+    hits: list = []
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT filename, chunk, bm25(kb_chunks_fts) AS score
-               FROM kb_chunks_fts
-               WHERE kb_chunks_fts MATCH ?
-               ORDER BY score
-               LIMIT ?""",
-            (mq, int(limit)),
-        )
-        rows = cur.fetchall()
-        conn.close()
-        return [{"filename": r[0], "chunk": r[1]} for r in rows]
+        for h in semantic_kb.search(query, limit=max(3, limit // 2)):
+            hits.append({"filename": h.get("filename"), "chunk": h.get("chunk")})
     except Exception:
-        logger.debug("whatsapp_agent: kb search failed", exc_info=True)
-        return []
+        logger.debug("whatsapp_agent: semantic kb search failed", exc_info=True)
+
+    mq = kb_retriever._fts_query(query)
+    if mq:
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT filename, chunk, bm25(kb_chunks_fts) AS score
+                   FROM kb_chunks_fts
+                   WHERE kb_chunks_fts MATCH ?
+                   ORDER BY score
+                   LIMIT ?""",
+                (mq, int(limit)),
+            )
+            rows = cur.fetchall()
+            conn.close()
+            hits.extend({"filename": r[0], "chunk": r[1]} for r in rows)
+        except Exception:
+            logger.debug("whatsapp_agent: kb search failed", exc_info=True)
+
+    seen, out = set(), []
+    for h in hits:
+        key = (h.get("filename"), (h.get("chunk") or "")[:140])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+    return out[:limit]
 
 
 # ── Formatting helpers ──────────────────────────────────────────────────────

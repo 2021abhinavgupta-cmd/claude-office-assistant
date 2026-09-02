@@ -423,8 +423,16 @@ def init_db():
             # FTS5 might be unavailable in some SQLite builds; app will gracefully fall back.
             pass
 
-        # NOTE: Semantic KB retrieval (embeddings) intentionally not enabled by default
-        # to avoid requiring an additional embeddings API key.
+        # Optional semantic layer over kb_chunks_fts (backend/semantic_kb.py).
+        # One row per FTS chunk: its rowid + a unit-norm embedding as a float32
+        # BLOB. Stays empty (and unused) until an admin enables the feature and
+        # runs a backfill; see semantic_kb.py. `fts_rowid` mirrors
+        # kb_chunks_fts.rowid — orphans are swept by semantic_kb.prune().
+        conn.execute("""CREATE TABLE IF NOT EXISTS kb_chunk_vectors (
+            fts_rowid INTEGER PRIMARY KEY,
+            dim       INTEGER NOT NULL,
+            vec       BLOB NOT NULL
+        )""")
 
         # Add task_type column to tasks if not already present
         try:
