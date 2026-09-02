@@ -51,6 +51,7 @@ import notion_store
 import google_sheets_store
 import skills
 import custom_skills_store
+import whatsapp_agent
 
 from utils import now_ist, today_ist, _load_employees, _save_employees, _is_admin, IST
 from extensions import limiter
@@ -3439,7 +3440,7 @@ def whatsapp_verify():
 
 @app.route("/whatsapp/webhook", methods=["POST"])
 def whatsapp_webhook():
-    """Receive an inbound WhatsApp message, call Claude, send a reply."""
+    """Receive an inbound WhatsApp message and reply via the CRM/knowledge agent."""
     data = request.json or {}
     try:
         entry   = data["entry"][0]["changes"][0]["value"]
@@ -3451,43 +3452,10 @@ def whatsapp_webhook():
             return "OK", 200
         text = message["text"]["body"]
 
-        # Budget guard
-        budget = check_budget_available()
-        if not budget["allowed"]:
-            send_whatsapp_message(sender, "Sorry, the monthly AI budget limit has been reached. Please try again next month.")
-            return "OK", 200
-
-        # Route through Claude (Haiku — fast & cheap for mobile)
-        model_config   = get_model_for_task("whatsapp")
-        system_blocks, _ = _build_system_prompt("general", f"wa_{sender}", None)
-
-        response = client.messages.create(
-            model=model_config["name"],
-            max_tokens=500,
-            system=system_blocks,
-            messages=[{"role": "user", "content": text}],
-        )
-
-        reply = _anthropic_response_text(response)
-
-        # Record usage against budget
-        cost = calculate_cost(
-            model_config["tier"],
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-        )
-        record_usage(
-            task_type="whatsapp",
-            model_tier=model_config["tier"],
-            model_name=model_config["name"],
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
-            cost=cost,
-            user_id=f"wa_{sender}",
-        )
-
-        send_whatsapp_message(sender, reply)
-        logger.info(f"WhatsApp reply sent to {sender} ({response.usage.output_tokens} tokens)")
+        reply = whatsapp_agent.handle_message(sender, text)
+        if reply:
+            send_whatsapp_message(sender, reply)
+            logger.info(f"WhatsApp reply sent to {sender}")
 
     except (KeyError, IndexError):
         # Status updates, read-receipts, and non-message webhooks — ignore silently

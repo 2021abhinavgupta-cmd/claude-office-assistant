@@ -397,6 +397,17 @@ def init_db():
             deleted_at TEXT NOT NULL
         )""")
 
+        # Rolling per-sender context for the WhatsApp CRM/knowledge agent
+        # (backend/whatsapp_agent.py). `messages` is a JSON list of plain
+        # {role, content} text turns — tool-use scaffolding is never stored.
+        # A thread older than whatsapp_agent._CONTEXT_TTL_HOURS is ignored and
+        # started fresh, so this table stays tiny and self-pruning in practice.
+        conn.execute("""CREATE TABLE IF NOT EXISTS whatsapp_agent_context (
+            sender     TEXT PRIMARY KEY,
+            messages   TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL
+        )""")
+
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
         try:
@@ -440,6 +451,15 @@ def init_db():
         # re-triggering an update with nothing actually changed. See CLAUDE.md gotcha #87.
         try:
             conn.execute("ALTER TABLE tasks ADD COLUMN creation_date TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
+        # Optional WhatsApp number for a client portal account. Lets the
+        # WhatsApp agent (backend/whatsapp_agent.py) identify an inbound
+        # client sender and scope its replies to that client's own tasks.
+        # Populated manually / via client-admin — safe to be empty.
+        try:
+            conn.execute("ALTER TABLE client_users ADD COLUMN whatsapp TEXT DEFAULT ''")
         except Exception:
             pass  # Column already exists
 

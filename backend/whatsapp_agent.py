@@ -1,0 +1,543 @@
+"""
+whatsapp_agent.py — Tool-using Claude agent for the WhatsApp channel.
+
+An inbound WhatsApp message from a known sender is answered by Claude with
+tool access to the agency's live CRM (Notion clients/tasks, with a SQLite
+fallback) and the project knowledge base (FTS5). The flow is:
+
+    identify sender  →  give it only the tools that sender is allowed to use
+                     →  run a short tool-use loop  →  send back a short reply
+
+Identity (never cached — read live every message, see CLAUDE.md gotcha #63):
+  - employees.json `whatsapp` field  → full read access (every employee is
+    admin-tier in this app, see CLAUDE.md gotcha #60)
+  - client_users.whatsapp (optional) → scoped to that client's own tasks only
+  - unknown number                   → polite "not recognized", no AI spend
+
+This module must not import `app` (app imports it). It talks to
+model_router / budget_tracker / notion_store / project_store / db / utils
+directly, and owns its own Anthropic client.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+
+import anthropic
+
+from model_router import get_model_for_task, calculate_cost
+from budget_tracker import check_budget_available, record_usage
+from db import get_connection
+import notion_store
+import kb_retriever
+import utils
+
+logger = logging.getLogger(__name__)
+
+_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+# Rolling per-sender context. Older than this and we start a fresh thread.
+_CONTEXT_TTL_HOURS = 6
+_CONTEXT_MAX_TURNS = 6          # user/assistant pairs kept between messages
+_MAX_TOOL_ROUNDS = 6           # hard cap on the tool-use loop
+
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _today_ist() -> str:
+    return datetime.now(_IST).strftime("%Y-%m-%d")
+
+
+# ── Identity ─────────────────────────────────────────────────────────────────
+
+def _normalize_phone(raw: str) -> str:
+    """Digits-only, last 10 — tolerates '+', country code, 'whatsapp:' prefix
+    on either side. Same scheme as whatsapp_standup.py so the two stay
+    interchangeable if merged."""
+    digits = re.sub(r"\D", "", raw or "")
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def identify_sender(sender: str) -> dict:
+    """Returns one of:
+      {"kind": "employee", "id", "name", "role"}
+      {"kind": "client", "client_id", "client_name", "client_notion_id"}
+      {"kind": "unknown"}
+    """
+    norm = _normalize_phone(sender)
+    if not norm:
+        return {"kind": "unknown"}
+
+    # Employees
+    try:
+        for emp in utils._load_employees().get("employees", []):
+            wa = emp.get("whatsapp", "")
+            if wa and _normalize_phone(wa) == norm:
+                return {
+                    "kind": "employee",
+                    "id": emp.get("id", ""),
+                    "name": emp.get("name", "there"),
+                    "role": emp.get("role", ""),
+                }
+    except Exception:
+        logger.exception("whatsapp_agent: employee lookup failed")
+
+    # Clients (client_users.whatsapp — optional column, may not be populated)
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, client_name, client_notion_id, whatsapp FROM client_users"
+        )
+        rows = cur.fetchall()
+        conn.close()
+        for r in rows:
+            wa = r[3] if len(r) > 3 else ""
+            if wa and _normalize_phone(wa) == norm:
+                return {
+                    "kind": "client",
+                    "client_id": r[0],
+                    "client_name": r[1] or "",
+                    "client_notion_id": r[2] or "",
+                }
+    except Exception:
+        # `whatsapp` column missing on an old DB, etc. — treat as no client match
+        logger.debug("whatsapp_agent: client lookup skipped/failed", exc_info=True)
+
+    return {"kind": "unknown"}
+
+
+# ── Per-sender conversation context ──────────────────────────────────────────
+
+def _load_context(sender: str) -> list:
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT messages, updated_at FROM whatsapp_agent_context WHERE sender=?",
+            (sender,),
+        )
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return []
+        updated = row[1]
+        if updated:
+            try:
+                ts = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - ts > timedelta(hours=_CONTEXT_TTL_HOURS):
+                    return []
+            except ValueError:
+                pass
+        msgs = json.loads(row[0] or "[]")
+        return msgs if isinstance(msgs, list) else []
+    except Exception:
+        logger.debug("whatsapp_agent: context load failed", exc_info=True)
+        return []
+
+
+def _save_context(sender: str, messages: list) -> None:
+    # Keep only plain text user/assistant turns — never persist tool scaffolding.
+    trimmed = [
+        {"role": m["role"], "content": m["content"]}
+        for m in messages
+        if isinstance(m.get("content"), str) and m.get("role") in ("user", "assistant")
+    ][-(_CONTEXT_MAX_TURNS * 2):]
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                """INSERT INTO whatsapp_agent_context (sender, messages, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(sender) DO UPDATE SET messages=excluded.messages,
+                                                    updated_at=excluded.updated_at""",
+                (sender, json.dumps(trimmed), datetime.now(timezone.utc).isoformat()),
+            )
+        conn.close()
+    except Exception:
+        logger.debug("whatsapp_agent: context save failed", exc_info=True)
+
+
+# ── Data access (Notion first, SQLite fallback) ─────────────────────────────
+
+def _sqlite_clients() -> list:
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT name, status FROM clients ORDER BY created_at DESC")
+        rows = cur.fetchall()
+        conn.close()
+        return [{"name": r[0], "status": r[1] or ""} for r in rows]
+    except Exception:
+        return []
+
+
+def _sqlite_tasks_for_client(client_name: str) -> list:
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT t.title, t.status, t.assigned_to, t.due_date
+               FROM tasks t JOIN clients c ON t.client_id = c.id
+               WHERE lower(c.name) = lower(?)
+               ORDER BY t.due_date""",
+            (client_name,),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return [
+            {"title": r[0], "status": r[1] or "", "assigned_to": r[2] or "", "due_date": r[3] or ""}
+            for r in rows
+        ]
+    except Exception:
+        return []
+
+
+def _all_clients() -> list:
+    if notion_store.is_configured():
+        try:
+            return [
+                {"name": c.get("name", ""), "status": c.get("status", "")}
+                for c in notion_store.list_clients()
+            ]
+        except Exception:
+            logger.exception("whatsapp_agent: notion list_clients failed")
+    return _sqlite_clients()
+
+
+def _find_client(name: str) -> dict | None:
+    name_l = (name or "").strip().lower()
+    if not name_l:
+        return None
+    if notion_store.is_configured():
+        try:
+            for c in notion_store.list_clients():
+                if (c.get("name", "") or "").strip().lower() == name_l:
+                    return c
+            # loose contains-match fallback
+            for c in notion_store.list_clients():
+                if name_l in (c.get("name", "") or "").strip().lower():
+                    return c
+        except Exception:
+            logger.exception("whatsapp_agent: notion client resolve failed")
+    return None
+
+
+def _tasks_for_client(client_name: str, client_notion_id: str = "") -> list:
+    if notion_store.is_configured():
+        try:
+            if not client_notion_id:
+                c = _find_client(client_name)
+                client_notion_id = (c or {}).get("notion_id", "")
+            if client_notion_id:
+                return notion_store.list_tasks(client_notion_id=client_notion_id)
+        except Exception:
+            logger.exception("whatsapp_agent: notion list_tasks (client) failed")
+    return _sqlite_tasks_for_client(client_name)
+
+
+def _tasks_for_employee(name: str) -> list:
+    if notion_store.is_configured():
+        try:
+            return notion_store.list_tasks(assigned_to=name)
+        except Exception:
+            logger.exception("whatsapp_agent: notion list_tasks (employee) failed")
+    return []
+
+
+def _kb_search(query: str, limit: int = 6) -> list:
+    """Full-text search across the whole project knowledge base, no
+    project/user scoping (every employee is admin-tier here)."""
+    mq = kb_retriever._fts_query(query)
+    if not mq:
+        return []
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT filename, chunk, bm25(kb_chunks_fts) AS score
+               FROM kb_chunks_fts
+               WHERE kb_chunks_fts MATCH ?
+               ORDER BY score
+               LIMIT ?""",
+            (mq, int(limit)),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return [{"filename": r[0], "chunk": r[1]} for r in rows]
+    except Exception:
+        logger.debug("whatsapp_agent: kb search failed", exc_info=True)
+        return []
+
+
+# ── Formatting helpers ──────────────────────────────────────────────────────
+
+def _fmt_task_line(t: dict, *, include_assignee: bool = True) -> str:
+    bits = [t.get("title") or "(untitled)"]
+    if t.get("status"):
+        bits.append(str(t["status"]))
+    if include_assignee and t.get("assigned_to"):
+        bits.append("→ " + str(t["assigned_to"]))
+    if t.get("due_date"):
+        bits.append("due " + str(t["due_date"]))
+    return " | ".join(bits)
+
+
+def _is_overdue(due: str, today: str) -> bool:
+    return bool(due) and re.match(r"^\d{4}-\d{2}-\d{2}$", str(due)) and str(due) < today
+
+
+# ── Tools ───────────────────────────────────────────────────────────────────
+
+_EMPLOYEE_TOOLS = [
+    {
+        "name": "get_clients",
+        "description": "List all of the agency's clients and their current status.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_client_tasks",
+        "description": "List all tasks/deliverables for one client, with status, "
+                       "who it's assigned to, and due date.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_name": {"type": "string", "description": "The client's name."}
+            },
+            "required": ["client_name"],
+        },
+    },
+    {
+        "name": "get_my_tasks",
+        "description": "List the tasks currently assigned to the person you are "
+                       "chatting with.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "search_knowledge_base",
+        "description": "Search the agency's uploaded documents / knowledge base "
+                       "(briefs, notes, brand guidelines, strategy docs) for a "
+                       "phrase or topic. Returns matching excerpts.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What to look for."}
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_team_overview",
+        "description": "A quick snapshot: number of clients, open tasks, and "
+                       "overdue tasks across the whole agency.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+]
+
+_CLIENT_TOOLS = [
+    {
+        "name": "get_my_tasks",
+        "description": "List your deliverables with their status and due date.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+]
+
+
+def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
+    today = _today_ist()
+    kind = identity["kind"]
+
+    try:
+        if name == "get_clients" and kind == "employee":
+            clients = _all_clients()
+            if not clients:
+                return "No clients found."
+            return "\n".join(
+                f"- {c['name']}" + (f" ({c['status']})" if c.get("status") else "")
+                for c in clients
+            )
+
+        if name == "get_client_tasks" and kind == "employee":
+            cname = (tool_input or {}).get("client_name", "")
+            tasks = _tasks_for_client(cname)
+            if not tasks:
+                return f"No tasks found for '{cname}'. Check the client name with get_clients."
+            lines = [_fmt_task_line(t) for t in tasks[:40]]
+            return f"Tasks for {cname}:\n" + "\n".join(lines)
+
+        if name == "get_my_tasks":
+            if kind == "employee":
+                tasks = _tasks_for_employee(identity["name"])
+                if not tasks:
+                    return "You have no tasks assigned right now."
+                lines = [_fmt_task_line(t, include_assignee=False) for t in tasks[:40]]
+                return "Your tasks:\n" + "\n".join(lines)
+            if kind == "client":
+                tasks = _tasks_for_client(
+                    identity["client_name"], identity.get("client_notion_id", "")
+                )
+                if not tasks:
+                    return "You have no deliverables listed right now."
+                lines = [_fmt_task_line(t, include_assignee=False) for t in tasks[:40]]
+                return "Your deliverables:\n" + "\n".join(lines)
+
+        if name == "search_knowledge_base" and kind == "employee":
+            q = (tool_input or {}).get("query", "")
+            hits = _kb_search(q)
+            if not hits:
+                return f"Nothing in the knowledge base matched '{q}'."
+            out = []
+            for h in hits:
+                snippet = " ".join((h.get("chunk") or "").split())[:400]
+                out.append(f"[{h.get('filename') or 'doc'}] {snippet}")
+            return "\n\n".join(out)
+
+        if name == "get_team_overview" and kind == "employee":
+            clients = _all_clients()
+            open_tasks = overdue = 0
+            if notion_store.is_configured():
+                try:
+                    all_tasks = notion_store.list_tasks()
+                except Exception:
+                    all_tasks = []
+                for t in all_tasks:
+                    st = (t.get("status") or "").lower()
+                    if st in ("done", "approved", "posted", "final", "need_for_approval"):
+                        continue
+                    open_tasks += 1
+                    if _is_overdue(t.get("due_date"), today):
+                        overdue += 1
+            return (
+                f"Clients: {len(clients)}\n"
+                f"Open tasks: {open_tasks}\n"
+                f"Overdue: {overdue}"
+            )
+
+        return f"(tool '{name}' is not available to you)"
+    except Exception:
+        logger.exception("whatsapp_agent: tool %s failed", name)
+        return f"(couldn't run '{name}' just now)"
+
+
+# ── System prompt ───────────────────────────────────────────────────────────
+
+def _system_prompt(identity: dict) -> str:
+    today = _today_ist()
+    if identity["kind"] == "employee":
+        return (
+            "You are the internal assistant for MMGA, a creative agency. You are "
+            f"replying on WhatsApp to {identity['name']}"
+            + (f" ({identity['role']})" if identity.get("role") else "")
+            + ".\n"
+            "- Use the tools to look up real client, task, deadline and document "
+            "data before answering. Never guess a task's status or date.\n"
+            "- Keep replies short and WhatsApp-style: plain text, no markdown "
+            "headings, no tables. A few lines is ideal. Use simple '-' bullets.\n"
+            "- If the data doesn't contain the answer, say so in one line.\n"
+            f"- Today is {today} (IST)."
+        )
+    if identity["kind"] == "client":
+        return (
+            "You are the MMGA client assistant on WhatsApp, replying to "
+            f"{identity['client_name']}.\n"
+            "- You can ONLY see this client's own deliverables. Never mention "
+            "other clients, team members, or internal agency matters.\n"
+            "- Use get_my_tasks to check their deliverables and status.\n"
+            "- Keep replies short, friendly and plain-text.\n"
+            f"- Today is {today} (IST)."
+        )
+    return "You are a helpful assistant. Keep replies short."
+
+
+# ── Entry point ─────────────────────────────────────────────────────────────
+
+def handle_message(sender: str, text: str) -> str | None:
+    """Process one inbound WhatsApp text. Returns the reply string to send
+    back, or None to stay silent."""
+    text = (text or "").strip()
+    if not text:
+        return None
+
+    identity = identify_sender(sender)
+    if identity["kind"] == "unknown":
+        return (
+            "Hi! This number isn't linked to an MMGA account yet, so I can't "
+            "look anything up for you. Please contact the team to get set up."
+        )
+
+    budget = check_budget_available()
+    if not budget["allowed"]:
+        return "The monthly usage limit has been reached. Please try again next month."
+
+    tools = _EMPLOYEE_TOOLS if identity["kind"] == "employee" else _CLIENT_TOOLS
+    model = get_model_for_task("whatsapp")
+
+    history = _load_context(sender)
+    messages = history + [{"role": "user", "content": text}]
+
+    total_in = total_out = 0
+    reply = ""
+    try:
+        for _ in range(_MAX_TOOL_ROUNDS):
+            resp = _client.messages.create(
+                model=model["name"],
+                max_tokens=900,
+                system=_system_prompt(identity),
+                tools=tools,
+                messages=messages,
+            )
+            total_in += resp.usage.input_tokens
+            total_out += resp.usage.output_tokens
+
+            if resp.stop_reason == "tool_use":
+                messages.append({"role": "assistant", "content": resp.content})
+                results = []
+                for block in resp.content:
+                    if getattr(block, "type", "") == "tool_use":
+                        out = _run_tool(block.name, block.input or {}, identity)
+                        results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": out[:6000],
+                        })
+                messages.append({"role": "user", "content": results})
+                continue
+
+            reply = "".join(
+                getattr(b, "text", "") for b in resp.content
+                if getattr(b, "type", "") == "text"
+            ).strip()
+            break
+    except Exception:
+        logger.exception("whatsapp_agent: model loop failed")
+        return "Sorry — I hit an error looking that up. Try again in a moment."
+
+    if not reply:
+        reply = "Sorry, I couldn't put together an answer for that one."
+
+    # Persist plain-text turns for follow-up continuity
+    _save_context(sender, history + [
+        {"role": "user", "content": text},
+        {"role": "assistant", "content": reply},
+    ])
+
+    try:
+        record_usage(
+            task_type="whatsapp",
+            model_tier=model["tier"],
+            model_name=model["name"],
+            input_tokens=total_in,
+            output_tokens=total_out,
+            cost=calculate_cost(model["tier"], total_in, total_out),
+            user_id=f"wa_{sender}",
+        )
+    except Exception:
+        logger.debug("whatsapp_agent: usage record failed", exc_info=True)
+
+    return reply
