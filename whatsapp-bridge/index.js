@@ -49,6 +49,17 @@ if (!TOKEN) {
 
 const log = (...a) => console.log(`[${new Date().toTimeString().slice(0, 8)}]`, ...a);
 
+// Baileys redelivers messages on reconnect — remember the last N ids so a
+// redelivery doesn't trigger a second reply.
+const seen = new Set();
+function alreadyHandled(id) {
+  if (!id) return false;
+  if (seen.has(id)) return true;
+  seen.add(id);
+  if (seen.size > 500) seen.delete(seen.values().next().value);
+  return false;
+}
+
 function extractText(message) {
   if (!message) return "";
   return (
@@ -65,7 +76,7 @@ async function askLumina(from, text) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
     body: JSON.stringify({ from, text }),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(90000), // agent tool-loop + web search can be slow
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -115,6 +126,7 @@ async function start() {
     for (const msg of messages) {
       try {
         if (!msg.message || msg.key.fromMe) continue;
+        if (alreadyHandled(msg.key.id)) continue;
         const jid = msg.key.remoteJid || "";
         // DMs only — no groups, no status, no channels/newsletters
         if (

@@ -3,15 +3,17 @@
 laptop_agent.py — one always-on process that gets the most out of a spare
 machine sitting next to Lumina.
 
-It runs four jobs on their own intervals:
+It runs five jobs, each managed on its own:
 
   1. knowledge sync   — mirror your knowledge folder up to Lumina   (default 30s)
   2. research feed     — refresh research_sources.txt web snapshots  (default 1h)
   3. DB backup         — pull logs/app.db off Railway to local disk  (default 24h)
   4. health check      — ping Lumina; log + optional webhook alert   (default 5m)
+  5. WhatsApp bridge   — keep  whatsapp-bridge/index.js  (Baileys) alive, restart on crash
 
-Jobs 2–4 are skipped automatically if not configured (no research_sources.txt,
-no FLASK_SECRET_KEY, etc.), so it's safe to just run it.
+Jobs 2–5 are skipped automatically if not configured (no research_sources.txt,
+no FLASK_SECRET_KEY, no node / no whatsapp-bridge folder, etc.), so it's safe to
+just run it — you get whatever you've set up, nothing else.
 
 Setup:
     pip install -r scripts/requirements.txt
@@ -20,6 +22,8 @@ Setup:
     set FLASK_SECRET_KEY=<Railway FLASK_SECRET_KEY>        (for job 3, optional)
     set ALERT_TARGETS=tgram://bottoken/chatid,mailto://... (for job 4, optional; apprise URLs)
     set ALERT_WEBHOOK=<Slack/Discord incoming webhook URL> (job 4 fallback if no ALERT_TARGETS)
+    set WHATSAPP_BRIDGE_TOKEN=<same value you set on Railway> (for job 5)
+      one-time first: cd whatsapp-bridge && npm install && node index.js   (scan the QR once)
 
 Run (leave it running):
     python scripts/laptop_agent.py --dir "C:\\Users\\me\\LuminaKnowledge"
@@ -33,7 +37,9 @@ from __future__ import annotations
 import os
 import sys
 import time
+import shutil
 import argparse
+import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -144,11 +150,71 @@ def job_health(cfg: dict) -> None:
     _notify(cfg, msg)
 
 
+# ── job 5: keep the Baileys WhatsApp bridge alive ───────────────────────────
+_BRIDGE: dict = {"proc": None, "started": 0.0, "dead_at": 0.0, "backoff": 0.0, "fails": 0}
+
+
+def job_bridge(cfg: dict) -> None:
+    """(Re)spawn `node index.js` in whatsapp-bridge/ and keep it running.
+
+    Skips entirely if node isn't installed, the folder/deps are missing, or
+    no bridge token is set. On a fast crash (< 15s up) it backs off (5s per
+    consecutive fast fail, capped 60s), so a misconfig doesn't hot-loop."""
+    if not cfg["bridge_ok"]:
+        return
+    now = time.monotonic()
+    proc = _BRIDGE["proc"]
+
+    if proc is not None:
+        if proc.poll() is None:
+            return  # still running
+        # just found it dead — account for the crash exactly once
+        up = now - _BRIDGE["started"]
+        _BRIDGE["fails"] = _BRIDGE["fails"] + 1 if up < 15 else 0
+        _BRIDGE["backoff"] = min(60.0, 5.0 * _BRIDGE["fails"])
+        _BRIDGE["dead_at"] = now
+        _BRIDGE["proc"] = None
+        _log(f"bridge exited (code {proc.returncode}, up {up:.0f}s); "
+             f"restart in {_BRIDGE['backoff']:.0f}s")
+        return
+
+    if now < _BRIDGE["dead_at"] + _BRIDGE["backoff"]:
+        return  # still cooling down after a crash
+
+    env = dict(os.environ)
+    env.setdefault("LUMINA_URL", cfg["url"])
+    try:
+        _BRIDGE["proc"] = subprocess.Popen(
+            [cfg["node"], "index.js"], cwd=str(cfg["bridge_dir"]), env=env,
+        )
+        _BRIDGE["started"] = now
+        _log(f"bridge started (pid {_BRIDGE['proc'].pid})")
+    except Exception as e:
+        _BRIDGE["dead_at"] = now
+        _BRIDGE["backoff"] = 30.0
+        _log(f"bridge failed to start: {e}")
+
+
+def _stop_bridge() -> None:
+    proc = _BRIDGE.get("proc")
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()          # Baileys persists its session to ./auth on the way
+        proc.wait(timeout=8)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
 JOBS = [
     ("sync", job_sync, "sync_every"),
     ("research", job_research, "research_every"),
     ("backup", job_backup, "backup_every"),
     ("health", job_health, "health_every"),
+    ("bridge", job_bridge, "bridge_every"),
 ]
 
 
@@ -161,10 +227,26 @@ def main() -> None:
     ap.add_argument("--research-every", type=int, default=3600)
     ap.add_argument("--backup-every", type=int, default=86400)
     ap.add_argument("--health-every", type=int, default=300)
+    ap.add_argument("--bridge-dir", default="",
+                    help="path to whatsapp-bridge/ (default: sibling of this repo's scripts/)")
+    ap.add_argument("--no-bridge", action="store_true", help="don't supervise the WhatsApp bridge")
     args = ap.parse_args()
 
     root = Path(args.dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
+
+    bridge_dir = (Path(args.bridge_dir).expanduser().resolve() if args.bridge_dir
+                  else Path(__file__).resolve().parent.parent / "whatsapp-bridge")
+    node = shutil.which("node") or ""
+    bridge_ok = (
+        not args.no_bridge
+        and bool(node)
+        and (bridge_dir / "index.js").exists()
+        and (bridge_dir / "node_modules").exists()
+        and bool(os.getenv("WHATSAPP_BRIDGE_TOKEN") or os.getenv("STORAGE_SYNC_TOKEN")
+                 or os.getenv("FLASK_SECRET_KEY"))
+    )
+
     cfg = {
         "dir": root,
         "url": args.url.rstrip("/"),
@@ -174,11 +256,25 @@ def main() -> None:
         "db_secret": os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "",
         "alert_webhook": os.getenv("ALERT_WEBHOOK", ""),
         "alert_targets": [t.strip() for t in os.getenv("ALERT_TARGETS", "").split(",") if t.strip()],
+        "bridge_dir": bridge_dir,
+        "bridge_ok": bridge_ok,
+        "node": node,
         "sync_every": args.sync_every,
         "research_every": args.research_every,
         "backup_every": args.backup_every,
         "health_every": args.health_every,
+        "bridge_every": 15,
     }
+
+    if not bridge_ok and not args.no_bridge:
+        reason = ("node not on PATH" if not node
+                  else "whatsapp-bridge/ missing or `npm install` not run" if not (bridge_dir / "node_modules").exists()
+                  else "no WHATSAPP_BRIDGE_TOKEN")
+        _bridge_note = f"OFF ({reason})"
+    elif args.no_bridge:
+        _bridge_note = "OFF (--no-bridge)"
+    else:
+        _bridge_note = "on"
 
     _log(f"laptop_agent up — {root}  <->  {cfg['url']}")
     _log(f"  sync {'on' if cfg['storage_token'] else 'OFF (no STORAGE_SYNC_TOKEN)'} | "
@@ -186,7 +282,8 @@ def main() -> None:
          f"backup {'on' if cfg['db_secret'] else 'OFF (no FLASK_SECRET_KEY)'} | "
          f"health on"
          + (f" (apprise -> {len(cfg['alert_targets'])} target(s))" if cfg['alert_targets'] and apprise
-            else " (webhook alert)" if cfg['alert_webhook'] else " (console-only alert)"))
+            else " (webhook alert)" if cfg['alert_webhook'] else " (console-only alert)")
+         + f" | bridge {_bridge_note}")
 
     next_run = {name: 0.0 for name, _, _ in JOBS}
     try:
@@ -199,6 +296,8 @@ def main() -> None:
             time.sleep(5)
     except KeyboardInterrupt:
         _log("stopped.")
+    finally:
+        _stop_bridge()
 
 
 if __name__ == "__main__":
