@@ -294,15 +294,39 @@ def _kb_search(query: str, limit: int = 6) -> list:
 
 # ── Formatting helpers ──────────────────────────────────────────────────────
 
-def _fmt_task_line(t: dict, *, include_assignee: bool = True) -> str:
+def _clip(s, n: int) -> str:
+    s = " ".join(str(s or "").split())
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _fmt_task_line(t: dict, *, include_assignee: bool = True, detail: bool = False) -> str:
     bits = [t.get("title") or "(untitled)"]
+    if t.get("type"):
+        bits.append(str(t["type"]))
     if t.get("status"):
         bits.append(str(t["status"]))
     if include_assignee and t.get("assigned_to"):
         bits.append("→ " + str(t["assigned_to"]))
     if t.get("due_date"):
         bits.append("due " + str(t["due_date"]))
-    return " | ".join(bits)
+    line = " | ".join(bits)
+    if not detail:
+        return line
+    # the Sheets/content-calendar fields, so WhatsApp can answer "what's the
+    # caption for X" / "what's the script for Y" without opening Lumina
+    extra = []
+    if t.get("creation_date"):
+        extra.append(f"  start: {t['creation_date']}")
+    for label, key, n in (
+        ("brief", "brief", 200), ("content", "content", 240), ("idea", "idea", 240),
+        ("script", "scripts_copy", 500), ("caption", "caption", 400),
+    ):
+        v = _clip(t.get(key), n)
+        if v:
+            extra.append(f"  {label}: {v}")
+    if t.get("file_link"):
+        extra.append(f"  file: {t['file_link']}")
+    return line + ("\n" + "\n".join(extra) if extra else "")
 
 
 def _is_overdue(due: str, today: str) -> bool:
@@ -319,8 +343,12 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "get_client_tasks",
-        "description": "List all tasks/deliverables for one client, with status, "
-                       "who it's assigned to, and due date.",
+        "description": "List a client's tasks/deliverables AND their full content "
+                       "calendar (the Lumina 'Sheets' view): post type, status, "
+                       "assignee, dates, brief, content, idea, script/copy, "
+                       "caption and file link. Use this for questions like 'what's "
+                       "the caption for X', 'what's the script for Y's reel', "
+                       "'what's scheduled this week for Z'.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -362,7 +390,9 @@ _EMPLOYEE_TOOLS = [
 _CLIENT_TOOLS = [
     {
         "name": "get_my_tasks",
-        "description": "List your deliverables with their status and due date.",
+        "description": "List your deliverables: status, due date, and (for social "
+                       "content) the post type, brief, content, idea, script/copy, "
+                       "caption and file link.",
         "input_schema": {"type": "object", "properties": {}},
     },
 ]
@@ -387,8 +417,11 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
             tasks = _tasks_for_client(cname)
             if not tasks:
                 return f"No tasks found for '{cname}'. Check the client name with get_clients."
-            lines = [_fmt_task_line(t) for t in tasks[:40]]
-            return f"Tasks for {cname}:\n" + "\n".join(lines)
+            shown = tasks[:15]
+            head = f"Tasks for {cname}"
+            if len(tasks) > len(shown):
+                head += f" (first {len(shown)} of {len(tasks)} — ask about a specific post for the rest)"
+            return head + ":\n" + "\n".join(_fmt_task_line(t, detail=True) for t in shown)
 
         if name == "get_my_tasks":
             if kind == "employee":
@@ -408,8 +441,13 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
                 tasks = _tasks_for_client(identity["client_name"], cnid)
                 if not tasks:
                     return "You have no deliverables listed right now."
-                lines = [_fmt_task_line(t, include_assignee=False) for t in tasks[:40]]
-                return "Your deliverables:\n" + "\n".join(lines)
+                shown = tasks[:15]
+                head = "Your deliverables"
+                if len(tasks) > len(shown):
+                    head += f" (first {len(shown)} of {len(tasks)})"
+                return head + ":\n" + "\n".join(
+                    _fmt_task_line(t, include_assignee=False, detail=True) for t in shown
+                )
 
         if name == "search_knowledge_base" and kind == "employee":
             q = (tool_input or {}).get("query", "")
