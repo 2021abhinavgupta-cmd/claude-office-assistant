@@ -61,13 +61,18 @@ def _iso(d: str) -> bool:
 
 def _build_digest(window: str) -> dict:
     today = utils.today_ist()
-    tomorrow = (datetime.strptime(today, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    _dt = datetime.strptime(today, "%Y-%m-%d")
+    tomorrow = (_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+    # only surface overdue items that are still plausibly actionable -- a task
+    # 6 months past due with status "Not Started" is dead weight in a daily brief
+    overdue_floor = (_dt - timedelta(days=30)).strftime("%Y-%m-%d")
     names = _emp_names()
     data: dict = {"window": window, "date": today}
     lines: list[str] = []
 
     # ── tasks (Notion is the source of truth when configured) ──
     overdue, due_today, due_tomorrow = [], [], []
+    overdue_total = 0
     try:
         import notion_store
         if notion_store.is_configured():
@@ -82,7 +87,9 @@ def _build_digest(window: str) -> dict:
                 who = t.get("assigned_to") or ""
                 row = f"{label}" + (f" -> {who}" if who else "") + f" (due {due})"
                 if due < today:
-                    overdue.append(row)
+                    overdue_total += 1
+                    if due >= overdue_floor:
+                        overdue.append(row)
                 elif due == today:
                     due_today.append(row)
                 elif due == tomorrow:
@@ -91,6 +98,7 @@ def _build_digest(window: str) -> dict:
         logger.debug("digest: task pull failed", exc_info=True)
 
     data["overdue"] = overdue
+    data["overdue_total"] = overdue_total
     data["due_today"] = due_today
     data["due_tomorrow"] = due_tomorrow
 
@@ -149,7 +157,8 @@ def _build_digest(window: str) -> dict:
     lines.append(f"{head} -- {today}")
     lines.append("")
     if overdue:
-        lines.append(f"OVERDUE ({len(overdue)}):")
+        extra = f", {overdue_total} total incl. old" if overdue_total > len(overdue) else ""
+        lines.append(f"OVERDUE (last 30d: {len(overdue)}{extra}):")
         lines += [f"  - {r}" for r in overdue[:15]]
         if len(overdue) > 15:
             lines.append(f"  ...and {len(overdue) - 15} more")
