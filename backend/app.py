@@ -3559,6 +3559,41 @@ def whatsapp_webhook():
     return "OK", 200
 
 
+def _bridge_auth_ok() -> bool:
+    import hmac
+    expected = (os.getenv("WHATSAPP_BRIDGE_TOKEN")
+                or os.getenv("STORAGE_SYNC_TOKEN")
+                or os.getenv("FLASK_SECRET_KEY") or "")
+    if not expected:
+        return False
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.lower().startswith("bearer ") else request.args.get("token", "")
+    return bool(token) and hmac.compare_digest(token, expected)
+
+
+@app.route("/whatsapp/bridge", methods=["POST"])
+@limiter.limit("60 per minute")
+def whatsapp_bridge():
+    """Transport-agnostic entry for the self-hosted Baileys bridge
+    (whatsapp-bridge/). Body: {"from": "<digits>", "text": "<message>"}.
+    Reuses the same agent as the Meta webhook — identity, tools, web
+    search, per-sender context, budget guard all apply. The bridge only
+    ever calls this in response to an inbound message (reply-only)."""
+    if not _bridge_auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    sender = str(data.get("from") or data.get("sender") or "").strip()
+    text = str(data.get("text") or "").strip()
+    if not sender or not text:
+        return jsonify({"error": "from and text required"}), 400
+    try:
+        reply = whatsapp_agent.handle_message(sender, text)
+    except Exception:
+        logger.exception("WhatsApp bridge: agent failed")
+        return jsonify({"reply": "Sorry — I hit an error. Try again in a moment."})
+    return jsonify({"reply": reply})
+
+
 if __name__ == "__main__":
 
     port  = int(os.getenv("FLASK_PORT", 5000))

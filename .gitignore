@@ -37,3 +37,10 @@ build/
 /query_db.py
 /scratch.py
 /*_edit.py
+
+# WhatsApp bridge (Node) — deps + the WhatsApp session credentials
+whatsapp-bridge/node_modules/
+whatsapp-bridge/auth/
+# knowledge-sync local state
+lumina-backups/
+knowledge/
