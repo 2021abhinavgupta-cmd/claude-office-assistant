@@ -379,9 +379,14 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
                 lines = [_fmt_task_line(t, include_assignee=False) for t in tasks[:40]]
                 return "Your tasks:\n" + "\n".join(lines)
             if kind == "client":
-                tasks = _tasks_for_client(
-                    identity["client_name"], identity.get("client_notion_id", "")
-                )
+                # Require a real linked client id — never fall back to
+                # name matching for a client, that risks returning another
+                # client's tasks (see _find_client's loose contains-match).
+                cnid = identity.get("client_notion_id", "")
+                if not cnid:
+                    return ("Your account isn't fully linked yet — ask the "
+                            "team to connect it so I can pull up your work.")
+                tasks = _tasks_for_client(identity["client_name"], cnid)
                 if not tasks:
                     return "You have no deliverables listed right now."
                 lines = [_fmt_task_line(t, include_assignee=False) for t in tasks[:40]]
