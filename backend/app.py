@@ -3547,6 +3547,8 @@ def whatsapp_webhook():
         text = message["text"]["body"]
 
         reply = whatsapp_agent.handle_message(sender, text)
+        if isinstance(reply, dict):
+            reply = reply.get("reply")   # Meta path can't send our local stickers
         if reply:
             send_whatsapp_message(sender, reply)
             logger.info(f"WhatsApp reply sent to {sender}")
@@ -3590,8 +3592,16 @@ def whatsapp_bridge():
     group_name = str(data.get("group_name") or "").strip() or None
     if not sender or not text:
         return jsonify({"error": "from and text required"}), 400
+
+    # '!stickers ...' management commands are handled by the bridge, not the
+    # agent — return a directive it can act on (DM + employee only).
+    if not group_id:
+        sc = whatsapp_agent.sticker_command(text, whatsapp_agent.identify_sender(sender))
+        if sc:
+            return jsonify({"reply": sc[0], "sticker_cmd": sc[1]})
+
     try:
-        reply = whatsapp_agent.handle_message(
+        result = whatsapp_agent.handle_message(
             sender, text, group_id=group_id, group_name=group_name
         )
     except Exception:
@@ -3599,7 +3609,9 @@ def whatsapp_bridge():
         # stay quiet in a group on error rather than posting noise for everyone
         return jsonify({"reply": None if group_id else
                         "Sorry — I hit an error. Try again in a moment."})
-    return jsonify({"reply": reply})
+    if isinstance(result, dict):
+        return jsonify({"reply": result.get("reply"), "sticker": result.get("sticker")})
+    return jsonify({"reply": result})
 
 
 @app.route("/api/whatsapp/groups", methods=["GET", "POST"])

@@ -30,10 +30,13 @@
  */
 
 import http from "http";
+import fs from "fs";
+import path from "path";
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
 } from "@whiskeysockets/baileys";
 import qrcode from "qrcode-terminal";
 import pino from "pino";
@@ -59,6 +62,68 @@ if (!TOKEN) {
 const log = (...a) => console.log(`[${new Date().toTimeString().slice(0, 8)}]`, ...a);
 
 let currentSock = null;   // set on every (re)connect, used by the send endpoint
+
+// ── stickers ────────────────────────────────────────────────────────────────
+// A local pool the bot can send at random or by mood. You teach it stickers
+// by DMing "!stickers" and then sending it the stickers you want (from your
+// Business app favourites, forwarded here). Files + a _tags.json map live in
+// ./stickers/ (gitignored). Nothing here ever fetches from the internet.
+const STICKER_DIR = process.env.STICKER_DIR || "./stickers";
+const STICKER_TAGS_FILE = path.join(STICKER_DIR, "_tags.json");
+// chance (1 in N) of tacking a random sticker onto a normal DM reply
+const STICKER_RATE = Math.max(0, parseInt(process.env.STICKER_RATE || "4", 10));
+let stickerTags = {};                 // { "file.webp": ["smug","bruh"] }
+const stickerCapture = new Map();     // jid -> { until: ms, lastFile: string|null, lastAt: ms }
+
+function loadStickerTags() {
+  try {
+    stickerTags = JSON.parse(fs.readFileSync(STICKER_TAGS_FILE, "utf8"));
+  } catch {
+    stickerTags = {};
+  }
+}
+function saveStickerTags() {
+  try {
+    fs.writeFileSync(STICKER_TAGS_FILE, JSON.stringify(stickerTags, null, 2));
+  } catch (e) {
+    log(`sticker tags save failed: ${e.message}`);
+  }
+}
+function stickerFiles() {
+  try {
+    return fs.readdirSync(STICKER_DIR).filter((f) => /\.webp$/i.test(f));
+  } catch {
+    return [];
+  }
+}
+function pickSticker(mood) {
+  const files = stickerFiles();
+  if (!files.length) return null;
+  const m = (mood || "").trim().toLowerCase();
+  if (m && m !== "random") {
+    const tagged = files.filter((f) =>
+      (stickerTags[f] || []).some((t) => t.toLowerCase().includes(m) || m.includes(t.toLowerCase()))
+    );
+    if (tagged.length) return path.join(STICKER_DIR, tagged[Math.floor(Math.random() * tagged.length)]);
+  }
+  return path.join(STICKER_DIR, files[Math.floor(Math.random() * files.length)]);
+}
+async function sendSticker(sock, jid, filePath) {
+  try {
+    await sock.sendMessage(jid, { sticker: fs.readFileSync(filePath) });
+    log(`sticker -> ${bareJid(jid)}: ${path.basename(filePath)}`);
+    return true;
+  } catch (e) {
+    log(`sticker send failed: ${e.message}`);
+    return false;
+  }
+}
+try {
+  fs.mkdirSync(STICKER_DIR, { recursive: true });
+} catch {
+  /* ignore */
+}
+loadStickerTags();
 
 function startSendServer() {
   const srv = http.createServer((req, res) => {
@@ -182,8 +247,7 @@ async function askLumina(from, text, groupId, groupNm) {
     const bodyTxt = await res.text().catch(() => "");
     throw new Error(`Lumina ${res.status}: ${bodyTxt.slice(0, 200)}`);
   }
-  const data = await res.json();
-  return data.reply || null;
+  return await res.json();   // { reply, sticker?, sticker_cmd? }
 }
 
 async function start() {
@@ -245,7 +309,41 @@ async function start() {
 
         const isGroup = jid.endsWith("@g.us");
         const rawText = extractText(msg.message);
+
+        // ── sticker capture (DM only) ──────────────────────────────────────
+        const cap = !isGroup ? stickerCapture.get(jid) : null;
+        const capActive = cap && cap.until > Date.now();
+        if (!isGroup && msg.message?.stickerMessage) {
+          if (!capActive) continue;    // not teaching right now — ignore stray stickers
+          try {
+            const buf = await downloadMediaMessage(msg, "buffer", {}, {
+              reuploadRequest: sock.updateMediaMessage,
+            });
+            const fname = `s_${Date.now().toString(36)}.webp`;
+            fs.writeFileSync(path.join(STICKER_DIR, fname), buf);
+            cap.lastFile = fname;
+            cap.lastAt = Date.now();
+            const n = stickerFiles().length;
+            await sock.sendMessage(jid, { text: `Saved (${n} total). Send a one-word tag now to categorise it, or another sticker. "!stickers done" to stop.` });
+            log(`sticker saved from ${bareJid(jid)}: ${fname} (${n} total)`);
+          } catch (e) {
+            log(`sticker capture failed: ${e.message}`);
+            await sock.sendMessage(jid, { text: "Couldn't save that one, try again." }).catch(() => {});
+          }
+          continue;
+        }
         if (!rawText) continue;
+
+        // during capture, a short word right after a saved sticker = its tag(s)
+        if (capActive && cap.lastFile && Date.now() - (cap.lastAt || 0) < 45000
+            && !/^!/.test(rawText) && rawText.trim().split(/\s+/).length <= 3) {
+          const tags = rawText.toLowerCase().split(/[\s,]+/).filter(Boolean);
+          stickerTags[cap.lastFile] = Array.from(new Set([...(stickerTags[cap.lastFile] || []), ...tags]));
+          saveStickerTags();
+          cap.lastAt = 0;   // one tag set per sticker
+          await sock.sendMessage(jid, { text: `Tagged: ${tags.join(", ")}` });
+          continue;
+        }
 
         let text = rawText;
         let groupId = null;
@@ -293,21 +391,49 @@ async function start() {
         await sock.readMessages([msg.key]).catch(() => {});
         await sock.sendPresenceUpdate("composing", jid).catch(() => {});
 
-        let reply;
+        let data;
         try {
-          reply = await askLumina(from, text, groupId, groupNm);
+          data = await askLumina(from, text, groupId, groupNm);
         } catch (e) {
           log(`Lumina error: ${e.message}`);
           // in a group, stay quiet on error rather than posting noise for all
-          reply = isGroup
-            ? null
-            : "Sorry — I couldn't reach the assistant just now. Try again in a moment.";
+          data = {
+            reply: isGroup
+              ? null
+              : "Sorry — I couldn't reach the assistant just now. Try again in a moment.",
+          };
         }
 
+        // sticker-management directives (DM only, employee-gated by Lumina)
+        if (!isGroup && data?.sticker_cmd) {
+          const c = data.sticker_cmd;
+          if (c === "on") {
+            stickerCapture.set(jid, { until: Date.now() + 5 * 60000, lastFile: null, lastAt: 0 });
+          } else if (c === "off") {
+            stickerCapture.delete(jid);
+          } else if (c === "clear") {
+            for (const f of stickerFiles()) {
+              try { fs.unlinkSync(path.join(STICKER_DIR, f)); } catch { /* ignore */ }
+            }
+            stickerTags = {};
+            saveStickerTags();
+          } else if (c === "list") {
+            const fl = stickerFiles();
+            data.reply = `${fl.length} sticker(s) saved, ${fl.filter((f) => (stickerTags[f] || []).length).length} tagged.`;
+          }
+        }
+
+        const reply = data?.reply || null;
         await sock.sendPresenceUpdate("paused", jid).catch(() => {});
         if (reply) {
           await sock.sendMessage(jid, { text: reply });
           log(`out ${from}: ${reply.slice(0, 80)}`);
+          // a sticker the agent explicitly asked for, or (DM only) random flair
+          let sp = null;
+          if (data?.sticker) sp = pickSticker(data.sticker);
+          else if (!isGroup && STICKER_RATE > 0 && Math.random() < 1 / STICKER_RATE)
+            sp = pickSticker(null);
+          if (sp) await sendSticker(sock, jid, sp);
         } else if (isGroup) {
           log(`  (no reply — group ${bareJid(jid)} not on allow-list, or sender not staff)`);
         }

@@ -956,6 +956,21 @@ _EMPLOYEE_TOOLS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "send_sticker",
+        "description": "React with a sticker from the team's saved pack, sent "
+                       "alongside your text reply. Use it SPARINGLY — only when "
+                       "a sticker genuinely lands (a real win, a groan, a "
+                       "deserved roast), not on ordinary replies. Pass a mood "
+                       "word ('smug', 'bruh', 'nice', 'overdue', 'approved') to "
+                       "match one, or leave it blank for a random sticker.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mood": {"type": "string", "description": "Optional mood/tag to match."}
+            },
+        },
+    },
+    {
         "name": "get_recent_actions",
         "description": "The audit trail of writes you've made on people's behalf "
                        "(tasks created, approved, delegated, standup edits, "
@@ -1006,8 +1021,36 @@ _CLIENT_TOOLS = [
 ]
 
 
+_STICKER_CMD_RE = re.compile(r"^\s*!sticke?rs?\b\s*([a-z]+)?", re.I)
+
+
+def sticker_command(text: str, identity: dict):
+    """If `text` is a '!stickers ...' management command from an employee,
+    return (reply_text, cmd) with cmd in on|off|list|clear|None. Else None.
+    The bridge acts on the cmd; the agent never runs for these."""
+    if identity.get("kind") != "employee":
+        return None
+    m = _STICKER_CMD_RE.match(text or "")
+    if not m:
+        return None
+    sub = (m.group(1) or "on").lower()
+    if sub in ("on", "add", "learn", "teach", "capture", "start"):
+        return ("Sticker capture is on for 5 minutes. Forward me the stickers "
+                "you want (from your WhatsApp favourites). Send a one-word tag "
+                "right after a sticker to label it. Say '!stickers done' when "
+                "you're finished.", "on")
+    if sub in ("off", "done", "stop", "end", "finish"):
+        return ("Sticker capture off.", "off")
+    if sub in ("list", "count", "status"):
+        return ("(count)", "list")   # bridge overwrites with its real number
+    if sub in ("clear", "reset", "wipe", "delete"):
+        return ("Cleared every saved sticker.", "clear")
+    return ("Say '!stickers' to start teaching, '!stickers done' to stop, "
+            "'!stickers list' for a count, '!stickers clear' to wipe.", None)
+
+
 def _run_tool(name: str, tool_input: dict, identity: dict,
-              in_group: bool = False) -> str:
+              in_group: bool = False, turn: dict | None = None) -> str:
     today = _today_ist()
     kind = identity["kind"]
 
@@ -1520,6 +1563,12 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             return (f"Approved: {m.get('title')}" if dec == "approve"
                     else f"Sent back for changes: {m.get('title')}")
 
+        if name == "send_sticker" and kind == "employee":
+            mood = str((tool_input or {}).get("mood", "")).strip().lower()
+            if turn is not None:
+                turn["sticker"] = mood or "random"
+            return "A sticker will go out with your reply. Write the text reply now."
+
         if name == "list_capabilities":
             if kind == "client":
                 return ("I can look up your deliverables and their status, due "
@@ -1775,6 +1824,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "log of writes you've made. Confirm every write in one short line.\n"
             "send_group_message does NOT post immediately — it asks the person "
             "to reply 'yes' first; just relay that.\n"
+            "send_sticker adds a sticker to your reply — use it rarely, only "
+            "when one really fits the moment, never on a routine answer.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
@@ -1805,9 +1856,10 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
 
 def handle_message(sender: str, text: str, *,
                    group_id: str | None = None,
-                   group_name: str | None = None) -> str | None:
+                   group_name: str | None = None):
     """Process one inbound WhatsApp text. Returns the reply string to send
-    back, or None to stay silent.
+    back, None to stay silent, or {"reply": str, "sticker": str} when the
+    agent also wants a sticker sent alongside the text.
 
     `group_id` is set when the message came from a WhatsApp group (the bridge
     only forwards group messages that were addressed to the bot). Group rules:
@@ -1870,6 +1922,7 @@ def handle_message(sender: str, text: str, *,
 
     total_in = total_out = 0
     reply = ""
+    turn = {"sticker": None}
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
             resp = _client.messages.create(
@@ -1890,7 +1943,7 @@ def handle_message(sender: str, text: str, *,
                 for block in resp.content:
                     if getattr(block, "type", "") == "tool_use":
                         out = _run_tool(block.name, block.input or {}, identity,
-                                        in_group=in_group)
+                                        in_group=in_group, turn=turn)
                         if (block.name in _WRITE_TOOLS
                                 and _norm(out).startswith(_SUCCESS_PREFIXES)):
                             _audit("group:" + _norm_group(group_id) if in_group else "dm",
@@ -1944,4 +1997,6 @@ def handle_message(sender: str, text: str, *,
     except Exception:
         logger.debug("whatsapp_agent: usage record failed", exc_info=True)
 
+    if turn["sticker"]:
+        return {"reply": reply, "sticker": turn["sticker"]}
     return reply
