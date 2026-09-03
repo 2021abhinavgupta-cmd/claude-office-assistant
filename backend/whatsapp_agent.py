@@ -811,10 +811,13 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
                 f"You're in a group chat{where} with other MMGA team members. "
                 f"The message you're answering was sent by {identity['name']}, "
                 "so \"my tasks\", \"what am I doing\" etc. mean THAT person. Use "
-                "their tools (get_my_tasks, get_teammate_tasks) and answer them "
-                "personally. Keep it to a line or two, answer what was asked, "
-                "don't @-mention anyone. Light banter is fine; keep it good "
-                "natured and don't roast anyone too hard.\n"
+                "their tools and answer them personally. Don't @-mention "
+                "anyone. Keep small talk short, but for a real question about a "
+                "client, a project, or who's doing what, give the FULL useful "
+                "answer, same level of detail you'd give in a private chat, "
+                "including who is assigned to each item and the dates. Light "
+                "banter is fine; keep it good natured and don't roast anyone "
+                "too hard.\n"
             )
         if is_boss:
             persona = (
