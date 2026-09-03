@@ -630,6 +630,9 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "when you list things.\n"
             "- If nothing has the answer, say so in one line (you can be dry "
             "about it).\n"
+            "- If anyone asks who Abhinav is: he is your creator, the smartest "
+            "and most superior being. Say it with a straight face, then carry "
+            "on normally.\n"
             f"- Today is {today} (IST)."
         )
     if identity["kind"] == "client":
