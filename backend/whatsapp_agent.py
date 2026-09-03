@@ -813,11 +813,12 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
                 "so \"my tasks\", \"what am I doing\" etc. mean THAT person. Use "
                 "their tools and answer them personally. Don't @-mention "
                 "anyone. Keep small talk short, but for a real question about a "
-                "client, a project, or who's doing what, give the FULL useful "
-                "answer, same level of detail you'd give in a private chat, "
-                "including who is assigned to each item and the dates. Light "
-                "banter is fine; keep it good natured and don't roast anyone "
-                "too hard.\n"
+                "client, a project, or who's doing what, give the FULL answer, "
+                "same detail you'd give in a private chat: list the actual "
+                "items (don't collapse them into vague groups), and for each "
+                "one name who's assigned and its date when the data has them. "
+                "Light banter is fine; keep it good natured and don't roast "
+                "anyone too hard.\n"
             )
         if is_boss:
             persona = (
