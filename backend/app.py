@@ -3590,6 +3590,19 @@ def whatsapp_bridge():
     text = str(data.get("text") or "").strip()
     group_id = str(data.get("group_id") or "").strip() or None
     group_name = str(data.get("group_name") or "").strip() or None
+
+    # Burst reaction: the bridge saw a lively spell in an allow-listed group and
+    # wants a mood word for a reaction sticker (or nothing). No agent, no reply,
+    # no text/from field on this call.
+    if data.get("burst"):
+        try:
+            mood = whatsapp_agent.group_vibe_sticker(
+                group_id or "", data.get("messages") or [])
+        except Exception:
+            logger.exception("WhatsApp bridge: burst vibe failed")
+            mood = None
+        return jsonify({"sticker": mood})
+
     if not sender or not text:
         return jsonify({"error": "from and text required"}), 400
 

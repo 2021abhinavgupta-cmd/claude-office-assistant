@@ -75,6 +75,58 @@ const STICKER_RATE = Math.max(0, parseInt(process.env.STICKER_RATE || "4", 10));
 let stickerTags = {};                 // { "file.webp": ["smug","bruh"] }
 const stickerCapture = new Map();     // jid -> { until: ms, lastFile: string|null, lastAt: ms }
 
+// Burst reactions: when a group the bot operates in goes lively (many messages,
+// several people, short window) it reads the recent chat and MAY drop a fitting
+// sticker. Heavily throttled: a long cooldown, and Lumina says "none" most of
+// the time. Only runs for groups where the bot has already answered something
+// (i.e. allow-listed + operational).
+const BURST_WINDOW_MS = parseInt(process.env.BURST_WINDOW_MS || "90000", 10);
+const BURST_COUNT = parseInt(process.env.BURST_COUNT || "6", 10);
+const BURST_COOLDOWN_MS = parseInt(process.env.BURST_COOLDOWN_MS || "1800000", 10); // 30 min
+const groupBuf = new Map();       // jid -> [{ name, text, ts }]
+const lastBurst = new Map();      // jid -> ms of last burst check
+const activeGroups = new Set();   // groups Lumina has replied in at least once
+
+function pushGroupMsg(jid, name, text) {
+  let buf = groupBuf.get(jid);
+  if (!buf) { buf = []; groupBuf.set(jid, buf); }
+  const now = Date.now();
+  buf.push({ name, text, ts: now });
+  while (buf.length > 20 || (buf.length && now - buf[0].ts > 300000)) buf.shift();
+}
+
+async function maybeReactToBurst(sock, jid, groupNm) {
+  if (STICKER_RATE <= 0 || !activeGroups.has(jid) || !stickerFiles().length) return;
+  const now = Date.now();
+  const recent = (groupBuf.get(jid) || []).filter((m) => now - m.ts <= BURST_WINDOW_MS);
+  const people = new Set(recent.map((m) => m.name));
+  if (recent.length < BURST_COUNT || people.size < 2) return;
+  if (now - (lastBurst.get(jid) || 0) < BURST_COOLDOWN_MS) return;
+  lastBurst.set(jid, now);   // start the cooldown whether or not we react
+  try {
+    const res = await fetch(`${LUMINA_URL}/whatsapp/bridge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({
+        burst: true, group_id: jid, group_name: groupNm,
+        messages: recent.map((m) => ({ name: m.name, text: m.text })),
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return;
+    const mood = (await res.json())?.sticker;
+    if (mood) {
+      const sp = pickSticker(mood);
+      if (sp) {
+        await sendSticker(sock, jid, sp);
+        log(`burst react in ${bareJid(jid)}: ${mood}`);
+      }
+    }
+  } catch (e) {
+    log(`burst react error: ${e.message}`);
+  }
+}
+
 function loadStickerTags() {
   try {
     stickerTags = JSON.parse(fs.readFileSync(STICKER_TAGS_FILE, "utf8"));
@@ -359,11 +411,16 @@ async function start() {
           const addressed =
             mentioned.some((m) => botIds.includes(m)) ||
             botIds.includes(bareJid(ctx?.participant)); // reply to the bot's msg
+
+          groupNm = await groupName(sock, jid);
+          // observe every message in the group for burst detection
+          pushGroupMsg(jid, msg.pushName || bareJid(msg.key.participant || "") || "someone", rawText);
+          maybeReactToBurst(sock, jid, groupNm).catch(() => {});
+
           const q = groupQuery(rawText, addressed);
           if (!q) continue;
           text = q;
           groupId = jid;
-          groupNm = await groupName(sock, jid);
         }
 
         // Identity is the person, by phone number. In a DM that's key.senderPn;
@@ -427,6 +484,7 @@ async function start() {
         await sock.sendPresenceUpdate("paused", jid).catch(() => {});
         if (reply) {
           await sock.sendMessage(jid, { text: reply });
+          if (isGroup) activeGroups.add(jid);   // burst detection may run here now
           log(`out ${from}: ${reply.slice(0, 80)}`);
           // a sticker the agent explicitly asked for, or (DM only) random flair
           let sp = null;

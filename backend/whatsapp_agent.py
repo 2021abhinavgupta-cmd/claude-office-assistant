@@ -1021,6 +1021,60 @@ _CLIENT_TOOLS = [
 ]
 
 
+def group_vibe_sticker(group_id: str, messages: list) -> str | None:
+    """The bridge saw a burst of activity in an allow-listed group. Read the
+    recent messages and return a one-word mood for a reaction sticker, or None
+    to stay quiet (which is the usual answer). One cheap Haiku call."""
+    if not group_id or not _group_allowed(group_id) or not messages:
+        return None
+    try:
+        if not check_budget_available().get("allowed"):
+            return None
+    except Exception:
+        return None
+    transcript = "\n".join(
+        f"{(m.get('name') or 'someone')}: {str(m.get('text') or '')[:200]}"
+        for m in messages[-15:] if str(m.get("text") or "").strip()
+    )
+    if not transcript.strip():
+        return None
+    model = get_model_for_task("whatsapp")
+    try:
+        resp = _client.messages.create(
+            model=model["name"],
+            max_tokens=12,
+            system=(
+                "You lurk silently in a team's WhatsApp group. Below is the last "
+                "minute or two of chat during a busy moment. If it CLEARLY calls "
+                "for a single reaction sticker, reply with ONE lowercase word for "
+                "the mood: lol, smug, bruh, oof, nice, celebrate, facepalm, "
+                "shock, agree, cry, fire. If it doesn't clearly call for one — "
+                "which is most of the time — reply exactly: none. One word, "
+                "nothing else."
+            ),
+            messages=[{"role": "user", "content": transcript}],
+        )
+        try:
+            record_usage("whatsapp", model["tier"], model["name"],
+                         resp.usage.input_tokens, resp.usage.output_tokens,
+                         calculate_cost(model["tier"], resp.usage.input_tokens,
+                                        resp.usage.output_tokens),
+                         user_id=f"wa_vibe_{_norm_group(group_id)}")
+        except Exception:
+            pass
+        raw = "".join(getattr(b, "text", "") for b in resp.content
+                      if getattr(b, "type", "") == "text").strip().lower()
+        word = re.sub(r"[^a-z]", "", raw.split()[0]) if raw.split() else ""
+        return word if word in _VIBE_WORDS else None
+    except Exception:
+        logger.exception("whatsapp_agent: group vibe check failed")
+        return None
+
+
+_VIBE_WORDS = {"lol", "smug", "bruh", "oof", "nice", "celebrate", "facepalm",
+               "shock", "agree", "cry", "fire"}
+
+
 _STICKER_CMD_RE = re.compile(r"^\s*!sticke?rs?\b\s*([a-z]+)?", re.I)
 
 
@@ -1824,8 +1878,10 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "log of writes you've made. Confirm every write in one short line.\n"
             "send_group_message does NOT post immediately — it asks the person "
             "to reply 'yes' first; just relay that.\n"
-            "send_sticker adds a sticker to your reply — use it rarely, only "
-            "when one really fits the moment, never on a routine answer.\n"
+            "send_sticker adds a sticker to your reply. Use it when the "
+            "person's message really lands — a genuine win, a good burn, "
+            "something absurd, a facepalm moment — in a DM or the group. Not on "
+            "a routine answer, and at most once in a while.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
