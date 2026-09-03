@@ -478,8 +478,8 @@ _DONE_WORDS = {"done", "completed", "complete"}
 
 
 def _eod_rows(today: str) -> dict:
-    """{user_id: {"pending":[titles], "done":n, "total":n}} from today's
-    standup_tasks, ignoring deleted/delegated rows."""
+    """{user_id: {"pending":[titles], "done_titles":[titles], "done":n, "total":n}}
+    from today's standup_tasks, ignoring deleted/delegated rows."""
     out: dict = {}
     try:
         conn = get_connection()
@@ -493,13 +493,24 @@ def _eod_rows(today: str) -> dict:
         logger.exception("eod-summary: standup query failed")
         return out
     for uid, title, status in rows:
-        d = out.setdefault(uid, {"pending": [], "done": 0, "total": 0})
+        d = out.setdefault(uid, {"pending": [], "done_titles": [], "done": 0, "total": 0})
         d["total"] += 1
         if str(status or "").strip().lower() in _DONE_WORDS:
             d["done"] += 1
+            d["done_titles"].append(title or "(untitled)")
         else:
             d["pending"].append(title or "(untitled)")
     return out
+
+
+# sarcasm for a big day — >5 done. rotated by name+date so it's not identical.
+_RAISE_LINES = [
+    "  {n} tasks done in one day — get this one a raise.",
+    "  {n} done today. An early mark tomorrow seems fair.",
+    "  {n} tasks cleared in a day — someone approve a holiday.",
+    "  {n} done. At this rate they're owed a raise AND an early leave.",
+    "  {n} in one day. Give them the afternoon off, they've earned it.",
+]
 
 
 @companion_bp.route("/api/companion/eod-summary", methods=["GET"])
@@ -558,7 +569,8 @@ def companion_eod_summary():
         with_tasks.append((r, s))
         per_person.append({
             "id": r["id"], "name": r["name"], "whatsapp": r["whatsapp"],
-            "pending": s["pending"], "done": s["done"], "total": s["total"],
+            "pending": s["pending"], "done_titles": s["done_titles"],
+            "done": s["done"], "total": s["total"],
         })
 
     if with_tasks:
@@ -570,12 +582,24 @@ def companion_eod_summary():
     else:
         group_text = ""
 
-    pend_lines = [f"{r['name']}: " + "; ".join(s["pending"][:8])
-                  for r, s in with_tasks if s["pending"]]
-    if pend_lines:
-        leads_text = "EOD check, still not done today:\n" + "\n".join(pend_lines)
+    # full per-person breakdown for the leads: every task today, marked
+    # done / not done, plus a raise-or-holiday jab for a 5+ day.
+    lead_blocks = []
+    for r, s in with_tasks:
+        blk = [f"{r['name']} — {s['done']}/{s['total']} done"]
+        blk += [f"  done: {t}" for t in s["done_titles"][:15]]
+        blk += [f"  not done: {t}" for t in s["pending"][:15]]
+        if s["done"] > 5:
+            line = _RAISE_LINES[(sum(ord(c) for c in r["name"] + today))
+                                % len(_RAISE_LINES)]
+            blk.append(line.format(n=s["done"]))
+        lead_blocks.append("\n".join(blk))
+    if no_standup:
+        lead_blocks.append("No standup submitted: " + ", ".join(no_standup))
+    if lead_blocks:
+        leads_text = "EOD check — everyone's tasks for today:\n\n" + "\n\n".join(lead_blocks)
     else:
-        leads_text = "EOD check: everyone's cleared their standup for today."
+        leads_text = "EOD check: no standup tasks logged today."
 
     by_id = {r["id"]: r for r in roster}
     leads = [{"name": by_id[i]["name"], "whatsapp": by_id[i]["whatsapp"]}

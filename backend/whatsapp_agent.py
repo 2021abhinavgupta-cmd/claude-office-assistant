@@ -1858,6 +1858,14 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
+            "When you show someone THEIR OWN standup, read the scoreboard and "
+            "react to it. If they've cleared most of the list, give them real "
+            "credit in a sentence. If they've completed more than 5 tasks in "
+            "the day, add a line that at this rate they've earned a raise, an "
+            "early leave or a full holiday"
+            + (" — keep it admiring, my lord, never teasing.\n" if is_boss
+               else " — say it dry and sarcastic.\n")
+            + "Don't do this for a teammate's standup, only their own.\n"
             "They can also put work on a teammate: use assign_task to add a new "
             "task to someone else's standup, or delegate_my_task to move one of "
             "their own tasks onto a teammate's list. This works here and in the "
