@@ -359,7 +359,8 @@ def _format_standup(tasks: list, who: str) -> str:
             tail += f" (carried over from {t['carried_from']})"
         if t.get("blocker"):
             tail += f" (blocked by {t['blocker']})"
-        lines.append(f"{prefix}{t['title']}{tail}")
+        # leading "- " is kept in group chats, stripped in DMs by _humanize
+        lines.append(f"- {prefix}{t['title']}{tail}")
     done = sum(1 for t in tasks if str(t["status"]).lower() in done_words)
     head = f"{who} standup today, {done} done and {len(tasks) - done} to go:"
     return head + "\n" + "\n".join(lines)
@@ -451,18 +452,22 @@ def _clip(s, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def _humanize(reply: str) -> str:
-    """Make a reply read like a person texted it: strip leading bullet
-    characters and turn dash punctuation into commas. Hyphens inside words
-    (reverse-engg) are left alone; only spaced dashes and line-leading
-    bullets are touched."""
+def _humanize(reply: str, *, bullets: bool = False) -> str:
+    """Tidy a reply. Always turns em/en dashes used as punctuation into
+    commas (so it doesn't read like a press release). When `bullets` is
+    False it also strips line-leading bullet characters and spaced-hyphen
+    punctuation; when True (group chats) it leaves '- ' list markers alone.
+    Hyphens inside words (reverse-engg) are never touched."""
     lines = []
     for ln in (reply or "").split("\n"):
-        ln = re.sub(r"^(\s*)(?:[-*•‣▪]|\d+[.)])\s+", r"\1", ln)  # leading bullet / "1."
+        if not bullets:
+            ln = re.sub(r"^(\s*)(?:[-*•‣▪]|\d+[.)])\s+", r"\1", ln)
         lines.append(ln)
     out = "\n".join(lines)
-    out = re.sub(r"\s+[—–-]\s+", ", ", out)   # " word — word " -> " word, word "
+    out = re.sub(r"(?<=\S) *[—–] *(?=\S)", ", ", out)      # word — word -> word, word
     out = out.replace("—", ", ").replace("–", ", ")
+    if not bullets:
+        out = re.sub(r"(?<=\S) +- +(?=\S)", ", ", out)     # spaced hyphen -> comma
     out = re.sub(r",\s*,", ",", out)
     out = re.sub(r"[ \t]{2,}", " ", out)
     out = re.sub(r" +([,.!?;:])", r"\1", out)
@@ -831,6 +836,22 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
                 "actual facts; the data, dates and numbers are always exact. "
                 "The attitude is only in how you say it.\n"
             )
+        if in_group:
+            style = (
+                "Write like a person, short and plain. No em dashes. When you "
+                "list tasks or several items, format them as a bullet list: "
+                "each item on its own line starting with \"- \". For a single "
+                "fact just say it in a sentence. No headings or tables.\n"
+            )
+        else:
+            style = (
+                "Write like a person texting a coworker. Short, plain "
+                "sentences. Do NOT use dashes of any kind (no em dash, no "
+                "hyphen as punctuation) and no \"-\" or \"*\" bullet points. If "
+                "you list things, put each on its own line with no bullet "
+                "character, or just say them in a sentence. No markdown, no "
+                "headings, no tables.\n"
+            )
         return (
             "You are Lumina, the in-house assistant for MMGA, a creative agency. "
             f"You're replying on WhatsApp to {identity['name']}"
@@ -848,12 +869,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
-            "Write like a person texting a coworker. Short, plain sentences. "
-            "Do NOT use dashes of any kind: no em dash, no hyphen as "
-            "punctuation, no \"-\" or \"*\" bullet points. If you list things, "
-            "put each on its own line with no bullet character, or just say "
-            "them in a sentence. No markdown, no headings, no tables.\n"
-            "If nothing has the answer, say so in one line.\n"
+            + style
+            + "If nothing has the answer, say so in one line.\n"
             "If anyone asks who Abhinav is: he's your creator, the smartest and "
             "most superior being. Say it straight, then move on.\n"
             f"Today is {today} (IST)."
@@ -975,7 +992,7 @@ def handle_message(sender: str, text: str, *,
     if not reply:
         reply = "Sorry, I couldn't put together an answer for that one."
 
-    reply = _humanize(reply)
+    reply = _humanize(reply, bullets=in_group)
 
     # Persist plain-text turns for follow-up continuity
     _save_context(ctx_key, history + [
