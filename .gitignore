@@ -44,3 +44,6 @@ whatsapp-bridge/auth/
 # knowledge-sync local state
 lumina-backups/
 knowledge/
+
+# local scratch / laptop_agent logs
+scratchpad/
