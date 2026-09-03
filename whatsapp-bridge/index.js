@@ -103,12 +103,15 @@ async function maybeReactToBurst(sock, jid, groupNm) {
   if (recent.length < BURST_COUNT || people.size < 2) return;
   if (now - (lastBurst.get(jid) || 0) < BURST_COOLDOWN_MS) return;
   lastBurst.set(jid, now);   // start the cooldown whether or not we react
+  const tags = Array.from(
+    new Set(Object.values(stickerTags).flat().map((t) => String(t).toLowerCase()))
+  );
   try {
     const res = await fetch(`${LUMINA_URL}/whatsapp/bridge`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
       body: JSON.stringify({
-        burst: true, group_id: jid, group_name: groupNm,
+        burst: true, group_id: jid, group_name: groupNm, tags,
         messages: recent.map((m) => ({ name: m.name, text: m.text })),
       }),
       signal: AbortSignal.timeout(30000),

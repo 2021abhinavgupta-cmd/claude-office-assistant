@@ -1021,10 +1021,11 @@ _CLIENT_TOOLS = [
 ]
 
 
-def group_vibe_sticker(group_id: str, messages: list) -> str | None:
+def group_vibe_sticker(group_id: str, messages: list, tags: list | None = None) -> str | None:
     """The bridge saw a burst of activity in an allow-listed group. Read the
     recent messages and return a one-word mood for a reaction sticker, or None
-    to stay quiet (which is the usual answer). One cheap Haiku call."""
+    to stay quiet (which is the usual answer). `tags` is the bridge's actual
+    sticker-tag vocabulary — the model picks from that. One cheap Haiku call."""
     if not group_id or not _group_allowed(group_id) or not messages:
         return None
     try:
@@ -1038,6 +1039,11 @@ def group_vibe_sticker(group_id: str, messages: list) -> str | None:
     )
     if not transcript.strip():
         return None
+    allowed = set(_VIBE_WORDS)
+    if tags:
+        allowed |= {re.sub(r"[^a-z]", "", str(t).lower()) for t in tags if str(t).strip()}
+        allowed.discard("")
+    vocab = ", ".join(sorted(allowed))
     model = get_model_for_task("whatsapp")
     try:
         resp = _client.messages.create(
@@ -1046,11 +1052,9 @@ def group_vibe_sticker(group_id: str, messages: list) -> str | None:
             system=(
                 "You lurk silently in a team's WhatsApp group. Below is the last "
                 "minute or two of chat during a busy moment. If it CLEARLY calls "
-                "for a single reaction sticker, reply with ONE lowercase word for "
-                "the mood: lol, smug, bruh, oof, nice, celebrate, facepalm, "
-                "shock, agree, cry, fire. If it doesn't clearly call for one — "
-                "which is most of the time — reply exactly: none. One word, "
-                "nothing else."
+                "for a single reaction sticker, reply with ONE word from this "
+                f"list: {vocab}. If it doesn't clearly call for one — which is "
+                "most of the time — reply exactly: none. One word, nothing else."
             ),
             messages=[{"role": "user", "content": transcript}],
         )
@@ -1065,7 +1069,7 @@ def group_vibe_sticker(group_id: str, messages: list) -> str | None:
         raw = "".join(getattr(b, "text", "") for b in resp.content
                       if getattr(b, "type", "") == "text").strip().lower()
         word = re.sub(r"[^a-z]", "", raw.split()[0]) if raw.split() else ""
-        return word if word in _VIBE_WORDS else None
+        return word if word in allowed else None
     except Exception:
         logger.exception("whatsapp_agent: group vibe check failed")
         return None

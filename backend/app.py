@@ -3597,7 +3597,7 @@ def whatsapp_bridge():
     if data.get("burst"):
         try:
             mood = whatsapp_agent.group_vibe_sticker(
-                group_id or "", data.get("messages") or [])
+                group_id or "", data.get("messages") or [], data.get("tags") or None)
         except Exception:
             logger.exception("WhatsApp bridge: burst vibe failed")
             mood = None
