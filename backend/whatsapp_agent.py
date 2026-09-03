@@ -112,6 +112,51 @@ def identify_sender(sender: str) -> dict:
     return {"kind": "unknown"}
 
 
+# ── Group allow-list ────────────────────────────────────────────────────────
+#
+# The bridge only forwards a group message when the bot was addressed (a
+# "@lumina ..." prefix, an @-mention, or a reply to one of its messages).
+# Even then we only act if the group is on this allow-list AND the person
+# who asked is a known employee — because everyone in the group sees the
+# reply, so a client or a stranger in the room must never be able to pull
+# internal data out of it. Allow-list a group only when you know every
+# member is staff.
+#
+# Sources, merged: env WHATSAPP_GROUP_ALLOWLIST (comma/space separated) and
+# the app_settings key 'whatsapp_group_allowlist' (a JSON array, editable
+# at runtime via POST /api/whatsapp/groups). Group ids are numeric, so we
+# compare digits-only and tolerate a full '...@g.us' jid either way.
+
+def _norm_group(x: str) -> str:
+    return re.sub(r"\D", "", str(x or ""))
+
+
+def _group_allowlist() -> set:
+    out: set = set()
+    for tok in re.split(r"[,\s]+", os.getenv("WHATSAPP_GROUP_ALLOWLIST", "")):
+        n = _norm_group(tok)
+        if n:
+            out.add(n)
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM app_settings WHERE key='whatsapp_group_allowlist'")
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0]:
+            for tok in json.loads(row[0]):
+                n = _norm_group(tok)
+                if n:
+                    out.add(n)
+    except Exception:
+        logger.debug("whatsapp_agent: group allowlist load failed", exc_info=True)
+    return out
+
+
+def _group_allowed(group_id: str) -> bool:
+    return _norm_group(group_id) in _group_allowlist()
+
+
 # ── Per-sender conversation context ──────────────────────────────────────────
 
 def _load_context(sender: str) -> list:
@@ -489,15 +534,24 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
 
 # ── System prompt ───────────────────────────────────────────────────────────
 
-def _system_prompt(identity: dict) -> str:
+def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = "") -> str:
     today = _today_ist()
     if identity["kind"] == "employee":
+        grp = ""
+        if in_group:
+            where = f" \"{group_name}\"" if group_name else ""
+            grp = (
+                f"- You are in a group chat{where} with other MMGA team members. "
+                "Keep it to one or two lines, answer only what was asked, and "
+                "don't @-mention anyone.\n"
+            )
         return (
             "You are the internal assistant for MMGA, a creative agency. You are "
             f"replying on WhatsApp to {identity['name']}"
             + (f" ({identity['role']})" if identity.get("role") else "")
             + ".\n"
-            "- Use the tools to look up real client, task, deadline and document "
+            + grp
+            + "- Use the tools to look up real client, task, deadline and document "
             "data before answering. Never guess a task's status or date.\n"
             "- You can use web_search for current or external information (news, "
             "trends, competitor info, general facts) the CRM and knowledge base "
@@ -522,15 +576,37 @@ def _system_prompt(identity: dict) -> str:
 
 # ── Entry point ─────────────────────────────────────────────────────────────
 
-def handle_message(sender: str, text: str) -> str | None:
+def handle_message(sender: str, text: str, *,
+                   group_id: str | None = None,
+                   group_name: str | None = None) -> str | None:
     """Process one inbound WhatsApp text. Returns the reply string to send
-    back, or None to stay silent."""
+    back, or None to stay silent.
+
+    `group_id` is set when the message came from a WhatsApp group (the bridge
+    only forwards group messages that were addressed to the bot). Group rules:
+    the group must be on the allow-list AND the asker must be a known
+    employee — otherwise stay silent, because the whole group sees the reply.
+    """
     text = (text or "").strip()
     if not text:
         return None
 
+    in_group = bool(group_id)
+    if in_group and not _group_allowed(group_id):
+        logger.info("whatsapp_agent: group %s (%s) not on allow-list — ignoring",
+                    group_id, group_name or "")
+        return None
+
     identity = identify_sender(sender)
-    if identity["kind"] == "unknown":
+
+    if in_group:
+        # Everyone in the group can read the answer — only ever respond to a
+        # known employee. A client or a stranger in the room gets nothing.
+        if identity["kind"] != "employee":
+            logger.info("whatsapp_agent: group %s — sender not an employee, ignoring",
+                        group_id)
+            return None
+    elif identity["kind"] == "unknown":
         return (
             "Hi! This number isn't linked to an MMGA account yet, so I can't "
             "look anything up for you. Please contact the team to get set up."
@@ -543,7 +619,9 @@ def handle_message(sender: str, text: str) -> str | None:
     tools = _EMPLOYEE_TOOLS if identity["kind"] == "employee" else _CLIENT_TOOLS
     model = get_model_for_task("whatsapp")
 
-    history = _load_context(sender)
+    # Keep each person's group thread separate from their DM thread.
+    ctx_key = sender if not in_group else f"{sender}|{_norm_group(group_id)}"
+    history = _load_context(ctx_key)
     messages = history + [{"role": "user", "content": text}]
 
     total_in = total_out = 0
@@ -553,7 +631,8 @@ def handle_message(sender: str, text: str) -> str | None:
             resp = _client.messages.create(
                 model=model["name"],
                 max_tokens=1200,
-                system=_system_prompt(identity),
+                system=_system_prompt(identity, in_group=in_group,
+                                      group_name=group_name or ""),
                 tools=tools,
                 messages=messages,
             )
@@ -596,7 +675,7 @@ def handle_message(sender: str, text: str) -> str | None:
         reply = "Sorry, I couldn't put together an answer for that one."
 
     # Persist plain-text turns for follow-up continuity
-    _save_context(sender, history + [
+    _save_context(ctx_key, history + [
         {"role": "user", "content": text},
         {"role": "assistant", "content": reply},
     ])
@@ -609,7 +688,7 @@ def handle_message(sender: str, text: str) -> str | None:
             input_tokens=total_in,
             output_tokens=total_out,
             cost=calculate_cost(model["tier"], total_in, total_out),
-            user_id=f"wa_{sender}",
+            user_id=f"wa_{ctx_key}",
         )
     except Exception:
         logger.debug("whatsapp_agent: usage record failed", exc_info=True)

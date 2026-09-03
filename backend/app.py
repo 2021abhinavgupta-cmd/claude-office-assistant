@@ -3586,14 +3586,77 @@ def whatsapp_bridge():
     data = request.get_json(silent=True) or {}
     sender = str(data.get("from") or data.get("sender") or "").strip()
     text = str(data.get("text") or "").strip()
+    group_id = str(data.get("group_id") or "").strip() or None
+    group_name = str(data.get("group_name") or "").strip() or None
     if not sender or not text:
         return jsonify({"error": "from and text required"}), 400
     try:
-        reply = whatsapp_agent.handle_message(sender, text)
+        reply = whatsapp_agent.handle_message(
+            sender, text, group_id=group_id, group_name=group_name
+        )
     except Exception:
         logger.exception("WhatsApp bridge: agent failed")
-        return jsonify({"reply": "Sorry — I hit an error. Try again in a moment."})
+        # stay quiet in a group on error rather than posting noise for everyone
+        return jsonify({"reply": None if group_id else
+                        "Sorry — I hit an error. Try again in a moment."})
     return jsonify({"reply": reply})
+
+
+@app.route("/api/whatsapp/groups", methods=["GET", "POST"])
+@limiter.limit("30 per minute")
+def whatsapp_groups():
+    """Manage the WhatsApp group allow-list (which groups the assistant will
+    answer in). Token-gated, same scheme as /whatsapp/bridge.
+
+      GET                       -> {stored, env, effective}
+      POST {"add": "<id>"}      -> add a group (numeric id or full ...@g.us)
+      POST {"remove": "<id>"}   -> remove one
+
+    `stored` lives in app_settings and is editable here at runtime; `env` is
+    the read-only WHATSAPP_GROUP_ALLOWLIST fallback; `effective` is the
+    digits-only union actually enforced."""
+    if not _bridge_auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from db import get_connection
+
+    def _digits(s):
+        return re.sub(r"\D", "", str(s or ""))
+
+    def _load():
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM app_settings WHERE key='whatsapp_group_allowlist'")
+            row = cur.fetchone()
+            conn.close()
+            return json.loads(row[0]) if row and row[0] else []
+        except Exception:
+            return []
+
+    def _store(lst):
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES ('whatsapp_group_allowlist', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (json.dumps(lst),),
+            )
+        conn.close()
+
+    stored = _load()
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        add = _digits(body.get("add"))
+        rem = _digits(body.get("remove"))
+        if add and add not in [_digits(x) for x in stored]:
+            stored.append(add)
+        if rem:
+            stored = [x for x in stored if _digits(x) != rem]
+        _store(stored)
+
+    env_toks = [t for t in re.split(r"[,\s]+", os.getenv("WHATSAPP_GROUP_ALLOWLIST", "")) if t]
+    effective = sorted({_digits(x) for x in stored} | {_digits(x) for x in env_toks} - {""})
+    return jsonify({"stored": stored, "env": env_toks, "effective": effective})
 
 
 if __name__ == "__main__":

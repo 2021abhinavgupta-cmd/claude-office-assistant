@@ -36,6 +36,26 @@ and your uploaded documents. It only replies — it never messages first.
 WhatsApp number (with country code) to `config/employees.json` for staff, or to
 the client's portal account in the Client Admin screen.
 
+### Using it in a group chat
+
+You can add the assistant's number to a WhatsApp **group**. Rules:
+
+- It **only answers when spoken to** — start your message with `lumina ...`
+  (or `@lumina ...`, `/ask ...`), @-mention it, or reply to one of its messages.
+  It ignores everything else in the group, so it's never chatty.
+- The group must be **on the allow-list**, and **only team members get answers**
+  in a group (a client or an outsider in the room gets nothing — everyone would
+  see the reply, so it won't leak internal data).
+- **Allow a group:** first, someone messages the bot in that group once — the
+  bridge log on the laptop prints the group's id. Then either add that id to the
+  `WHATSAPP_GROUP_ALLOWLIST` setting on Railway, or (no redeploy) run:
+  ```
+  curl -X POST https://lumina.mmga.agency/api/whatsapp/groups \
+    -H "Authorization: Bearer <STORAGE_SYNC_TOKEN>" \
+    -H "Content-Type: application/json" -d "{\"add\":\"<group id>\"}"
+  ```
+  `GET` the same URL to see what's allowed; `{"remove":"<id>"}` takes one off.
+
 ---
 
 ## 2. The knowledge folder (using the laptop as storage)
