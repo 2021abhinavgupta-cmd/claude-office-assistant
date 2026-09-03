@@ -490,6 +490,61 @@ def companion_eod_summary():
     })
 
 
+@companion_bp.route("/api/companion/weekly-summary", methods=["GET"])
+def companion_weekly_summary():
+    """Per-person completed-vs-total standup tasks for the current week
+    (Monday -> today). Powers the Friday 6pm group wrap-up."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    today = utils.today_ist()
+    try:
+        d0 = datetime.strptime(today, "%Y-%m-%d")
+    except Exception:
+        return jsonify({"error": "bad date"}), 500
+    monday = (d0 - timedelta(days=d0.weekday())).strftime("%Y-%m-%d")
+
+    agg: dict = {}
+    try:
+        conn = get_connection()
+        for uid, st, ct in conn.execute(
+            "SELECT user_id, status, COUNT(*) FROM standup_tasks "
+            "WHERE date >= ? AND date <= ? AND status NOT IN ('deleted','delegated') "
+            "GROUP BY user_id, status", (monday, today)
+        ).fetchall():
+            a = agg.setdefault(uid, [0, 0])
+            a[1] += ct
+            if str(st or "").strip().lower() in _DONE_WORDS:
+                a[0] += ct
+        conn.close()
+    except Exception:
+        logger.exception("weekly-summary: query failed")
+        return jsonify({"error": "query failed"}), 500
+
+    active = {}
+    try:
+        for e in utils._load_employees().get("employees", []):
+            if str(e.get("status", "active")).strip().lower() in _INACTIVE:
+                continue
+            active[e.get("id", "")] = e.get("name") or e.get("id", "")
+    except Exception:
+        pass
+
+    people = sorted(
+        ((active[u], a[0], a[1]) for u, a in agg.items() if u in active),
+        key=lambda x: (-x[1], x[0]),
+    )
+    td = sum(p[1] for p in people)
+    tt = sum(p[2] for p in people)
+    if people:
+        lines = [f"Week wrap ({monday} to {today}): {td}/{tt} tasks done."]
+        lines += [f"{n} {d}/{t}" for n, d, t in people]
+        text = "\n".join(lines)
+    else:
+        text = ""
+    return jsonify({"date": today, "monday": monday, "weekday": d0.weekday(),
+                    "done": td, "total": tt, "text": text})
+
+
 @companion_bp.route("/api/companion/digest", methods=["GET"])
 def companion_digest():
     if not _auth_ok():

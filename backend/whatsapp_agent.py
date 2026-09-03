@@ -44,7 +44,7 @@ _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # Rolling per-sender context. Older than this and we start a fresh thread.
 _CONTEXT_TTL_HOURS = 6
 _CONTEXT_MAX_TURNS = 6          # user/assistant pairs kept between messages
-_MAX_TOOL_ROUNDS = 8           # hard cap on the tool-use loop (pause_turn can eat rounds)
+_MAX_TOOL_ROUNDS = 10          # hard cap on the tool-use loop (pause_turn can eat rounds)
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -455,6 +455,39 @@ def _match_standup_task(user_id: str, query: str) -> dict | None:
     return best if score >= 2 else None
 
 
+def _find_notion_task(query: str, pool: list) -> dict | None:
+    """Loose title match of `query` against a small list of Notion task dicts
+    (exact -> substring -> word-overlap). None if nothing is confident."""
+    q = (query or "").strip().lower()
+    if not q or not pool:
+        return None
+    for t in pool:
+        if (t.get("title") or "").strip().lower() == q:
+            return t
+    for t in pool:
+        tl = (t.get("title") or "").lower()
+        if q in tl or (len(tl) > 4 and tl in q):
+            return t
+    qt = set(re.findall(r"\w+", q))
+    best, sc = None, 0
+    for t in pool:
+        ct = set(re.findall(r"\w+", (t.get("title") or "").lower()))
+        s = len(qt & ct)
+        if s > sc:
+            best, sc = t, s
+    return best if sc >= 2 else None
+
+
+_APPROVAL_STATUSES = {
+    "need for approval", "need approval", "needs approval",
+    "pending review", "in review", "for approval",
+}
+_CLOSED_STATUSES = {
+    "done", "approved", "posted", "final", "complete", "completed",
+    "cancelled", "canceled", "need_for_approval",
+}
+
+
 def _kb_search(query: str, limit: int = 6) -> list:
     """Search the whole knowledge base, no project/user scoping (every
     employee is admin-tier here). Keyword (bm25) always; semantic hits
@@ -733,6 +766,112 @@ _EMPLOYEE_TOOLS = [
         "description": "A quick snapshot: number of clients, open tasks, and "
                        "overdue tasks across the whole agency.",
         "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "create_task",
+        "description": "Create a real task on the Notion board AND put it on the "
+                       "assignee's daily standup for today. Use for 'add task: "
+                       "shoot the Omotec reel, Friday, assign Happy'. Convert "
+                       "relative dates ('Friday', 'tomorrow') to YYYY-MM-DD "
+                       "yourself. Leave assignee/client/date out if not given.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "The task."},
+                "client": {"type": "string", "description": "Client name, if any."},
+                "assignee": {"type": "string", "description": "Who it's for; blank = unassigned."},
+                "due_date": {"type": "string", "description": "YYYY-MM-DD, if given."},
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "set_task_meta",
+        "description": "Add or clear a blocker, or change the due date, on one "
+                       "of the person's own standup tasks for today. Use for "
+                       "'blocked on client feedback for X', 'push the deck to "
+                       "Monday', 'clear the blocker on Y'. Match the task by a "
+                       "few words; dates as YYYY-MM-DD.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "A few words identifying the task."},
+                "blocker": {"type": "string", "description": "Blocker text, or empty string to clear it."},
+                "due_date": {"type": "string", "description": "New due date YYYY-MM-DD, or empty to clear."},
+            },
+            "required": ["task"],
+        },
+    },
+    {
+        "name": "get_task_schedule",
+        "description": "Board tasks by deadline: what's overdue, due today, or "
+                       "due this week. Use for 'what's overdue for Omotec', "
+                       "'what's due this week', 'what is Happy behind on'. "
+                       "Optionally narrow by client or by person.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "when": {"type": "string", "enum": ["overdue", "today", "week"],
+                         "description": "Which window (default week)."},
+                "client": {"type": "string", "description": "Narrow to one client."},
+                "person": {"type": "string", "description": "Narrow to one assignee."},
+            },
+        },
+    },
+    {
+        "name": "get_attendance",
+        "description": "Who has checked in / out today, and who hasn't checked "
+                       "in yet. Use for 'who's in', 'is Nupur working today'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "set_attendance",
+        "description": "Check the person in or out for today. Use for "
+                       "'checking in', 'I'm here', 'leaving for the day', 'done "
+                       "for today'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["in", "out"]},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "get_daily_brief",
+        "description": "The assembled daily brief: overdue / due-today / "
+                       "due-tomorrow tasks, standups in, sheet-sync health, API "
+                       "budget. Use for 'summarise today', 'what's the status', "
+                       "'end of day rundown'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "window": {"type": "string", "enum": ["morning", "evening"],
+                           "description": "morning = look ahead, evening = wrap-up (default)."},
+            },
+        },
+    },
+    {
+        "name": "get_pending_approvals",
+        "description": "Tasks currently waiting on approval / review across the "
+                       "board. Use for 'what's pending approval', 'anything for "
+                       "me to review'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "review_task",
+        "description": "Approve a task that's waiting on approval, or send it "
+                       "back for changes. Use for 'approve the Omotec reel', "
+                       "'reject X', 'send Y back'. Match by a few words from "
+                       "the title.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "A few words from the task title."},
+                "decision": {"type": "string", "enum": ["approve", "reject"]},
+            },
+            "required": ["task", "decision"],
+        },
     },
     # Anthropic-hosted web search — Claude runs the query server-side and
     # gets cited results. Same tool spec the chat stream endpoint uses.
@@ -1020,6 +1159,251 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 f"Overdue: {overdue}"
             )
 
+        if name == "create_task" and kind == "employee":
+            title = (tool_input or {}).get("title", "").strip()
+            if not title:
+                return "(no task title — ask what the task is)"
+            cli = (tool_input or {}).get("client", "").strip()
+            who = (tool_input or {}).get("assignee", "").strip()
+            due = (tool_input or {}).get("due_date", "").strip()
+            if due and not re.match(r"^\d{4}-\d{2}-\d{2}$", due):
+                due = ""
+            emp = _resolve_employee(who) if who else None
+            if who and not emp:
+                names = ", ".join(e["name"] for e in _active_employees())
+                return f"Don't know who '{who}' is. Team: {names}."
+            c = _find_client(cli) if cli else None
+            cname = (c or {}).get("name", "") or cli
+            cnid = (c or {}).get("notion_id", "")
+            nid = ""
+            if notion_store.is_configured():
+                try:
+                    res = notion_store.create_task(
+                        title=title, client_name=cname, client_notion_id=cnid,
+                        assigned_to=(emp["name"] if emp else ""),
+                        due_date=due, creation_date=today,
+                    )
+                    nid = (res or {}).get("notion_id", "")
+                except Exception:
+                    logger.exception("whatsapp_agent: create_task notion failed")
+            su_uid = emp["id"] if emp else identity["id"]
+            try:
+                conn = get_connection()
+                with conn:
+                    conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, status, notion_id, due_date, delegated_from) "
+                        "VALUES (?, ?, ?, 'pending', ?, ?, ?)",
+                        (su_uid, today, title[:500], (nid or None), (due or None),
+                         (identity["name"] if emp and emp["id"] != identity["id"] else None)),
+                    )
+                conn.close()
+            except Exception:
+                logger.exception("whatsapp_agent: create_task standup insert failed")
+            if emp and emp["id"] != identity["id"]:
+                jid = _wa_jid(emp.get("whatsapp"))
+                if jid:
+                    _enqueue_outbound(
+                        jid,
+                        f"{identity['name']} created a task for you"
+                        + (f" ({cname})" if cname else "") + f": {title[:300]}"
+                        + (f", due {due}" if due else ""),
+                    )
+            bits = ["Created: " + title[:120]]
+            if cname:
+                bits.append(f"client {cname}")
+            bits.append(f"for {emp['name']}" if emp else "unassigned")
+            if due:
+                bits.append(f"due {due}")
+            if not nid and notion_store.is_configured():
+                bits.append("(on the standup only, Notion write failed)")
+            return ", ".join(bits) + "."
+
+        if name == "set_task_meta" and kind == "employee":
+            q = (tool_input or {}).get("task", "")
+            blk = (tool_input or {}).get("blocker", None)
+            due = (tool_input or {}).get("due_date", None)
+            if due not in (None, "") and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(due)):
+                return "Give the date as YYYY-MM-DD."
+            m = _match_standup_task(identity["id"], q)
+            if not m:
+                have = _standup_tasks_today(identity["id"])
+                names = "; ".join(t["title"] for t in have) or "nothing yet"
+                return f"Couldn't find a task matching '{q}'. Today's list: {names}."
+            sets, params = [], []
+            if blk is not None:
+                sets.append("blocker=?")
+                params.append(str(blk)[:300] or None)
+            if due is not None:
+                sets.append("due_date=?")
+                params.append(str(due) or None)
+            if not sets:
+                return "(nothing to change — give a blocker or a due date)"
+            try:
+                conn = get_connection()
+                with conn:
+                    conn.execute(
+                        f"UPDATE standup_tasks SET {', '.join(sets)} WHERE id=?",
+                        (*params, m["id"]),
+                    )
+                conn.close()
+            except Exception:
+                logger.exception("whatsapp_agent: set_task_meta failed")
+                return "(couldn't update that just now)"
+            if due is not None and m.get("notion_id"):
+                try:
+                    notion_store.update_task(m["notion_id"], due_date=str(due))
+                except Exception:
+                    logger.debug("whatsapp_agent: notion due mirror failed", exc_info=True)
+            done_bits = []
+            if blk is not None:
+                done_bits.append(f"blocker: {blk}" if blk else "blocker cleared")
+            if due is not None:
+                done_bits.append(f"due {due}" if due else "due date cleared")
+            return f"Updated '{m['title']}': " + ", ".join(done_bits) + "."
+
+        if name == "get_task_schedule" and kind == "employee":
+            when = str((tool_input or {}).get("when", "week")).strip().lower()
+            cf = str((tool_input or {}).get("client", "")).strip().lower()
+            pf = str((tool_input or {}).get("person", "")).strip().lower()
+            try:
+                tasks = notion_store.list_tasks() if notion_store.is_configured() else []
+            except Exception:
+                tasks = []
+            wk_end = (datetime.strptime(today, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
+
+            def _keep(t):
+                if (t.get("status") or "").strip().lower().replace(" ", "_") in _CLOSED_STATUSES:
+                    return False
+                due = str(t.get("due_date") or "")[:10]
+                if not re.match(r"^\d{4}-\d{2}-\d{2}$", due):
+                    return False
+                if when == "overdue" and not (due < today):
+                    return False
+                if when in ("today", "day") and due != today:
+                    return False
+                if when not in ("overdue", "today", "day") and due > wk_end:
+                    return False
+                if cf and cf not in (t.get("client_name") or "").lower():
+                    return False
+                if pf and pf not in (t.get("assigned_to") or "").lower():
+                    return False
+                return True
+
+            hits = sorted((t for t in tasks if _keep(t)), key=lambda t: str(t.get("due_date")))
+            if not hits:
+                return "Nothing matches that."
+            lines = []
+            for t in hits[:25]:
+                od = " OVERDUE" if _is_overdue(t.get("due_date"), today) else ""
+                lines.append(
+                    f"{t.get('title')} | {t.get('client_name') or 'no client'} | "
+                    f"{t.get('assigned_to') or 'unassigned'} | due {t.get('due_date')}{od}"
+                )
+            head = {"overdue": "Overdue", "today": "Due today", "day": "Due today"}.get(when, "This week")
+            return f"{head} ({len(hits)}):\n" + "\n".join(lines)
+
+        if name == "get_attendance" and kind == "employee":
+            try:
+                conn = get_connection()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT user_id, checkin_time, checkout_time FROM daily_attendance WHERE date=?",
+                    (today,),
+                )
+                rows = cur.fetchall()
+                conn.close()
+            except Exception:
+                rows = []
+            names = {e["id"]: e["name"] for e in _active_employees()}
+            inn, out, seen = [], [], set()
+            for uid, ci, co in rows:
+                seen.add(uid)
+                nm = names.get(uid, uid)
+                if ci and co:
+                    out.append(f"{nm} (left {str(co)[:5]})")
+                elif ci:
+                    inn.append(f"{nm} (in {str(ci)[:5]})")
+            missing = sorted(n for i, n in names.items() if i not in seen)
+            parts = []
+            if inn:
+                parts.append("In now: " + ", ".join(sorted(inn)))
+            if out:
+                parts.append("Left: " + ", ".join(sorted(out)))
+            if missing:
+                parts.append("No check-in: " + ", ".join(missing))
+            return "\n".join(parts) if parts else "No attendance recorded yet today."
+
+        if name == "set_attendance" and kind == "employee":
+            action = str((tool_input or {}).get("action", "")).strip().lower()
+            try:
+                if action.startswith("in") or action in ("here", "arrive", "start"):
+                    from routes.attendance import _attendance_checkin
+                    _attendance_checkin(identity["id"])
+                    return "Checked you in for today."
+                if action.startswith("out") or action in ("leave", "leaving", "done", "bye"):
+                    from routes.attendance import _attendance_checkout
+                    _attendance_checkout(identity["id"])
+                    return "Checked you out. See you tomorrow."
+            except Exception:
+                logger.exception("whatsapp_agent: set_attendance failed")
+                return "(couldn't update attendance just now)"
+            return "Say 'in' to check in or 'out' to check out."
+
+        if name == "get_daily_brief" and kind == "employee":
+            win = str((tool_input or {}).get("window", "")).strip().lower()
+            win = "morning" if win in ("morning", "am", "today", "ahead") else "evening"
+            try:
+                from routes.companion import _build_digest
+                return _build_digest(win).get("text") or "Nothing to report."
+            except Exception:
+                logger.exception("whatsapp_agent: daily brief failed")
+                return "(couldn't build the brief just now)"
+
+        if name == "get_pending_approvals" and kind == "employee":
+            try:
+                tasks = notion_store.list_tasks() if notion_store.is_configured() else []
+            except Exception:
+                tasks = []
+            pend = [t for t in tasks
+                    if (t.get("status") or "").strip().lower() in _APPROVAL_STATUSES]
+            if not pend:
+                return "Nothing is waiting on approval right now."
+            lines = [
+                f"{t.get('title')} | {t.get('client_name') or 'no client'} | "
+                f"{t.get('assigned_to') or 'unassigned'}"
+                for t in pend[:25]
+            ]
+            return (f"Waiting on approval ({len(pend)}):\n" + "\n".join(lines)
+                    + "\n\nSay 'approve <name>' or 'reject <name>'.")
+
+        if name == "review_task" and kind == "employee":
+            q = (tool_input or {}).get("task", "")
+            dec = str((tool_input or {}).get("decision", "approve")).strip().lower()
+            dec = "reject" if dec in ("reject", "rejected", "deny", "decline", "send back") else "approve"
+            try:
+                tasks = notion_store.list_tasks() if notion_store.is_configured() else []
+            except Exception:
+                tasks = []
+            pend = [t for t in tasks
+                    if (t.get("status") or "").strip().lower() in _APPROVAL_STATUSES]
+            if not pend:
+                return "Nothing is waiting on approval right now."
+            m = _find_notion_task(q, pend)
+            if not m:
+                opts = "; ".join(t.get("title") for t in pend[:10])
+                return f"Not sure which one you mean. Pending: {opts}"
+            try:
+                ok = notion_store.update_task(
+                    m["notion_id"], status=("approved" if dec == "approve" else "in_progress")
+                )
+            except Exception:
+                logger.exception("whatsapp_agent: review_task failed")
+                ok = False
+            if not ok:
+                return "(Notion didn't accept that update)"
+            return (f"Approved: {m.get('title')}" if dec == "approve"
+                    else f"Sent back for changes: {m.get('title')}")
+
         return f"(tool '{name}' is not available to you)"
     except Exception:
         logger.exception("whatsapp_agent: tool %s failed", name)
@@ -1108,6 +1492,16 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "WhatsApp nudge about anything (it doesn't touch their standup), "
             "or send_group_message to post an announcement into the team "
             "group for them. Neither is available from the group.\n"
+            "Other things you can do: create_task makes a real board task + "
+            "standup entry (turn 'Friday'/'tomorrow' into a YYYY-MM-DD date "
+            "yourself). set_task_meta adds a blocker or moves a due date on one "
+            "of their tasks. get_task_schedule answers what's overdue / due "
+            "today / due this week (optionally per client or per person). "
+            "get_attendance / set_attendance for who's in and checking in or "
+            "out. get_daily_brief for a full status rundown. "
+            "get_pending_approvals lists what's awaiting sign-off and "
+            "review_task approves or sends one back. Confirm every write in "
+            "one short line.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"

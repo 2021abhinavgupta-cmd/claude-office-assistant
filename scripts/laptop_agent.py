@@ -23,6 +23,10 @@ Jobs it runs (each skips itself automatically if not configured):
                           "remind X to do Y") via the local bridge            (20s)
  11. lunch nudge         — 14:00: post a "go for lunch" message to the team
                           WhatsApp group (needs --rollcall-group + bridge)
+ 12. eod summary         — 17:00 group "tasks done today" + 19:30 personal
+                          "still open" DMs + leads report (needs bridge)
+ 13. weekly wrap         — Friday 18:00: per-person completed count for the
+                          week, to the group (needs --rollcall-group + bridge)
 
 Setup:
     pip install -r scripts/requirements.txt
@@ -560,6 +564,21 @@ def job_lunch(cfg: dict) -> None:
         _log("lunch: sent")
 
 
+def job_weekly_wrap(cfg: dict) -> None:
+    """Friday 18:00 — per-person completed count for the week, to the group."""
+    grp = cfg["rollcall_group"]
+    if not grp:
+        return
+    if datetime.now().weekday() != 4:      # Friday only
+        return
+    j = _companion_get(cfg, "/api/companion/weekly-summary")
+    if not j:
+        return
+    text = j.get("text")
+    if text and _bridge_send(cfg, grp, text):
+        _log("weekly-wrap: sent")
+
+
 def job_eod_group(cfg: dict) -> None:
     """17:00 — post a short per-person 'tasks done today' summary to the group."""
     grp = cfg["rollcall_group"]
@@ -697,6 +716,9 @@ def main() -> None:
     ap.add_argument("--eod-personal-time", default="19:30",
                     help="daily time to DM everyone their still-open tasks + the leads report")
     ap.add_argument("--no-eod", action="store_true")
+    ap.add_argument("--weekly-wrap-time", default="18:00",
+                    help="Friday time to post the weekly completed-tasks wrap to the group")
+    ap.add_argument("--no-weekly", action="store_true")
     ap.add_argument("--standup-nudge-time", default="11:30",
                     help="daily time to DM people who haven't added a standup task")
     ap.add_argument("--no-standup-nudge", action="store_true")
@@ -765,6 +787,8 @@ def main() -> None:
         if cfg["rollcall_group"]:
             daily_jobs.append(("eod-group", job_eod_group, args.eod_group_time))
         daily_jobs.append(("eod-personal", job_eod_personal, args.eod_personal_time))
+    if not args.no_weekly and cfg["rollcall_group"]:
+        daily_jobs.append(("weekly-wrap", job_weekly_wrap, args.weekly_wrap_time))
     if not args.no_standup_nudge:
         daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
 
@@ -803,6 +827,10 @@ def main() -> None:
         "OFF (--no-eod)" if args.no_eod else
         f"group {args.eod_group_time} / personal {args.eod_personal_time}" if tok
         else "OFF (no token)"))
+    _log("  weekly-wrap {}".format(
+        "OFF (--no-weekly)" if args.no_weekly else
+        f"Fri {args.weekly_wrap_time}" if (cfg["rollcall_group"] and tok)
+        else "OFF (no group)"))
     ch = (f"apprise x{len(cfg['alert_targets'])}" if cfg["alert_targets"] and apprise
           else "webhook" if cfg["alert_webhook"] else "console-only")
     _log(f"  alert channel: {ch}")
