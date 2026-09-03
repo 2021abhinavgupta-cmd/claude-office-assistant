@@ -412,6 +412,24 @@ def _clip(s, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def _humanize(reply: str) -> str:
+    """Make a reply read like a person texted it: strip leading bullet
+    characters and turn dash punctuation into commas. Hyphens inside words
+    (reverse-engg) are left alone; only spaced dashes and line-leading
+    bullets are touched."""
+    lines = []
+    for ln in (reply or "").split("\n"):
+        ln = re.sub(r"^(\s*)(?:[-*•‣▪]|\d+[.)])\s+", r"\1", ln)  # leading bullet / "1."
+        lines.append(ln)
+    out = "\n".join(lines)
+    out = re.sub(r"\s+[—–-]\s+", ", ", out)   # " word — word " -> " word, word "
+    out = out.replace("—", ", ").replace("–", ", ")
+    out = re.sub(r",\s*,", ",", out)
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r" +([,.!?;:])", r"\1", out)
+    return out.strip()
+
+
 def _fmt_task_line(t: dict, *, include_assignee: bool = True, detail: bool = False) -> str:
     bits = [t.get("title") or "(untitled)"]
     if t.get("type"):
@@ -693,9 +711,12 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             where = f" \"{group_name}\"" if group_name else ""
             grp = (
                 f"You're in a group chat{where} with other MMGA team members. "
-                "Keep it to a line or two, answer what was asked, don't "
-                "@-mention anyone. Light banter is fine; keep it good natured "
-                "and don't roast anyone too hard.\n"
+                f"The message you're answering was sent by {identity['name']}, "
+                "so \"my tasks\", \"what am I doing\" etc. mean THAT person. Use "
+                "their tools (get_my_tasks, get_teammate_tasks) and answer them "
+                "personally. Keep it to a line or two, answer what was asked, "
+                "don't @-mention anyone. Light banter is fine; keep it good "
+                "natured and don't roast anyone too hard.\n"
             )
         if is_boss:
             persona = (
@@ -855,10 +876,12 @@ def handle_message(sender: str, text: str, *,
             break
     except Exception:
         logger.exception("whatsapp_agent: model loop failed")
-        return "Sorry — I hit an error looking that up. Try again in a moment."
+        return "Sorry, I hit an error looking that up. Try again in a moment."
 
     if not reply:
         reply = "Sorry, I couldn't put together an answer for that one."
+
+    reply = _humanize(reply)
 
     # Persist plain-text turns for follow-up continuity
     _save_context(ctx_key, history + [
