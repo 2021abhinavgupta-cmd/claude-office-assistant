@@ -133,7 +133,7 @@ async function start() {
       try {
         if (!msg.message || msg.key.fromMe) continue;
         if (alreadyHandled(msg.key.id)) continue;
-        const jid = msg.key.remoteJid || "";
+        const jid = msg.key.remoteJid || "";   // conversation address (may be a @lid)
         // DMs only — no groups, no status, no channels/newsletters
         if (
           jid === "status@broadcast" ||
@@ -146,7 +146,21 @@ async function start() {
         const text = extractText(msg.message);
         if (!text) continue;
 
-        const from = jid.split("@")[0].split(":")[0]; // digits only
+        // When WhatsApp addresses a contact by LID (privacy identifier) the
+        // real phone number is on key.senderPn. Fall back to the LID map, then
+        // to the raw jid. Lumina identifies the user by phone number.
+        let idJid = msg.key.senderPn || "";
+        if (!idJid && jid.endsWith("@lid")) {
+          try {
+            idJid = (await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)) || "";
+          } catch { /* not available on this Baileys build */ }
+        }
+        if (!idJid) idJid = jid;
+        const from = idJid.split("@")[0].split(":")[0]; // digits only
+        if (jid.endsWith("@lid") && idJid !== jid)
+          log(`  (resolved ${jid.split("@")[0]} -> ${from})`);
+        else if (jid.endsWith("@lid"))
+          log(`  (WARN: LID ${jid.split("@")[0]} — no phone number available)`);
         log(`in  ${from}: ${text.slice(0, 80)}`);
 
         await sock.readMessages([msg.key]).catch(() => {});
