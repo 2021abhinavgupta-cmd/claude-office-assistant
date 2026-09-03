@@ -50,7 +50,7 @@
       "role": "Media",
       "whatsapp": "+918485805119",
       "department": "General",
-      "status": "active",
+      "status": "inactive",
       "pin": "7861",
       "tone_profile": "Persuasive, brief, and action-oriented.",
       "checkins": []
@@ -61,7 +61,7 @@
       "role": "Intern",
       "whatsapp": "+918369735961",
       "department": "General",
-      "status": "active",
+      "status": "inactive",
       "pin": "1704",
       "tone_profile": "Professional, precise, and eager to learn.",
       "checkins": []
@@ -94,7 +94,7 @@
       "role": "1Founder",
       "whatsapp": "",
       "department": "General",
-      "status": "active",
+      "status": "inactive",
       "pin": "0000",
       "tone_profile": "Direct, strategic, and high-level.",
       "checkins": []
@@ -108,6 +108,17 @@
       "status": "active",
       "pin": "2006",
       "tone_profile": "Clear, engaging, and audience-focused.",
+      "checkins": []
+    },
+    {
+      "id": "emp012",
+      "name": "Saurav Gupta",
+      "role": "Video Editor",
+      "whatsapp": "",
+      "department": "Media",
+      "status": "active",
+      "pin": "1427",
+      "tone_profile": "Creative, detail-oriented, and focused on edit pacing and story.",
       "checkins": []
     }
   ]

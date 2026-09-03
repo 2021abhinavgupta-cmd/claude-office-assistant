@@ -101,7 +101,15 @@ function startSendServer() {
       }
     });
   });
-  srv.on("error", (e) => log(`send server error: ${e.message}`));
+  srv.on("error", (e) => {
+    if (e.code === "EADDRINUSE") {
+      // a previous instance hasn't released the port yet — retry
+      log(`send port ${SEND_PORT} busy, retrying in 3s`);
+      setTimeout(() => srv.listen(SEND_PORT, "127.0.0.1"), 3000);
+    } else {
+      log(`send server error: ${e.message}`);
+    }
+  });
   srv.listen(SEND_PORT, "127.0.0.1", () => log(`send endpoint on 127.0.0.1:${SEND_PORT}`));
 }
 
