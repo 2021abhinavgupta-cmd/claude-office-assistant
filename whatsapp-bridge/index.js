@@ -132,13 +132,15 @@ function bareJid(j) {
   return (j || "").split("@")[0].split(":")[0];
 }
 
-// In a group we only act when the bot was addressed: a "lumina ..." prefix,
-// an @-mention of the bot, or a reply to one of its own messages. Returns the
-// cleaned question, or null to ignore the message.
+// In a group we act when the bot was addressed: the word "lumina" anywhere in
+// the message, an @-mention of the bot, or a reply to one of its own messages.
+// Returns the question to forward, or null to ignore the message.
 const GROUP_PREFIX = /^\s*(@?lumina|@?assistant)[\s:,\-]+|^\s*[/!](ask|lumina)\s+/i;
+const GROUP_NAME_RE = /\blumina\b/i;
 function groupQuery(text, addressed) {
   if (GROUP_PREFIX.test(text)) return text.replace(GROUP_PREFIX, "").trim();
-  if (addressed) return text.replace(/@\d{5,}/g, "").trim(); // strip mention tokens
+  if (GROUP_NAME_RE.test(text)) return text.trim();          // name mentioned anywhere
+  if (addressed) return text.replace(/@\d{5,}/g, "").trim(); // @-mention or reply
   return null;
 }
 

@@ -195,6 +195,17 @@ def _build_digest(window: str) -> dict:
 
 _INACTIVE = {"inactive", "disabled", "left", "removed", "archived", "former"}
 
+# a few lines so the noon roll-call isn't word-for-word identical every day
+_ROLLCALL_LINES = [
+    "Noon roll-call. Still missing in action: {names}. The login button doesn't bite. ⏰",
+    "It's 12 o'clock and {names} still haven't graced the attendance sheet with their presence. 👀",
+    "Half the day's gone and {names} are yet to clock in. Bold strategy.",
+    "Roll-call: {names} officially 'not logged in yet'. We'll wait. ⏰",
+    "12 o'clock headcount — {names} unaccounted for. Send a search party?",
+    "{names}: the check-in button misses you. It's a two-second job, promise. 🙂",
+]
+_ROLLCALL_ALL_IN = "Noon roll-call: everyone's actually logged in. Someone mark the calendar. ✅"
+
 
 @companion_bp.route("/api/companion/attendance-missing", methods=["GET"])
 def companion_attendance_missing():
@@ -239,10 +250,12 @@ def companion_attendance_missing():
     if weekend:
         text = ""
     elif not missing:
-        text = f"Attendance check ({today}) — everyone's logged in."
+        text = _ROLLCALL_ALL_IN
     else:
-        text = (f"Attendance check ({today})\n"
-                f"Not logged in yet: {', '.join(missing)}")
+        names = ", ".join(missing)
+        # rotate the wording by date so it's not a copy-paste every day
+        line = _ROLLCALL_LINES[sum(ord(c) for c in today) % len(_ROLLCALL_LINES)]
+        text = line.format(names=names)
 
     return jsonify({
         "date": today,
