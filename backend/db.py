@@ -421,6 +421,30 @@ def init_db():
             sent_at    TEXT
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_outbox_status ON whatsapp_outbox (status, id)")
+        for _col in ("attempts INTEGER DEFAULT 0", "wa_message_id TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE whatsapp_outbox ADD COLUMN {_col}")
+            except Exception:
+                pass
+
+        # One pending "reply yes to confirm" broadcast per employee (send_group_message).
+        conn.execute("""CREATE TABLE IF NOT EXISTS wa_pending_action (
+            sender     TEXT PRIMARY KEY,
+            kind       TEXT NOT NULL,
+            payload    TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""")
+
+        # Audit trail of every write the WhatsApp agent makes on someone's behalf.
+        conn.execute("""CREATE TABLE IF NOT EXISTS wa_action_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender      TEXT,
+            sender_name TEXT,
+            scope       TEXT,
+            action      TEXT NOT NULL,
+            detail      TEXT,
+            created_at  TEXT NOT NULL
+        )""")
 
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.

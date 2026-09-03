@@ -460,14 +460,18 @@ def job_wa_outbox(cfg: dict) -> None:
         to, text, mid = m.get("to"), m.get("text"), m.get("id")
         if not (to and text and mid):
             continue
-        (sent if _bridge_send(cfg, to, text) else failed).append(mid)
+        ok, wid = _bridge_send_msg(cfg, to, text)
+        if ok:
+            sent.append({"id": mid, "wa_id": wid})
+        else:
+            failed.append(mid)
     try:
         requests.post(f"{cfg['url']}/api/companion/whatsapp-outbox/ack",
                       json={"sent": sent, "failed": failed},
                       headers={"Authorization": f"Bearer {tok}"}, timeout=30)
     except Exception as e:
         _log(f"wa-outbox ack error: {e}")
-    _log(f"wa-outbox: {len(sent)} sent, {len(failed)} failed")
+    _log(f"wa-outbox: {len(sent)} sent, {len(failed)} failed/retry")
 
 
 def _alert_dm(cfg: dict, text: str) -> int:
@@ -498,13 +502,13 @@ INTERVAL_JOBS = [
 
 # ── job 8: noon attendance roll-call to the team WhatsApp group ───────────
 
-def _bridge_send(cfg: dict, to: str, text: str) -> bool:
-    """POST a proactive message to the local Baileys bridge's send endpoint."""
+def _bridge_send_msg(cfg: dict, to: str, text: str):
+    """POST to the local Baileys bridge /send. Returns (ok, wa_message_id|None)."""
     tok = (os.getenv("WHATSAPP_BRIDGE_TOKEN") or cfg["storage_token"]
            or cfg["db_secret"])
     if not tok:
         _log("bridge send: no token")
-        return False
+        return False, None
     try:
         r = requests.post(
             f"http://127.0.0.1:{cfg['bridge_http_port']}/send",
@@ -513,11 +517,20 @@ def _bridge_send(cfg: dict, to: str, text: str) -> bool:
         )
         if r.ok:
             _log(f"bridge send -> {to} ({len(text)} chars)")
-            return True
+            wid = None
+            try:
+                wid = (r.json() or {}).get("id")
+            except Exception:
+                pass
+            return True, wid
         _log(f"bridge send: HTTP {r.status_code} {r.text[:120]}")
     except Exception as e:
         _log(f"bridge send error: {e}")
-    return False
+    return False, None
+
+
+def _bridge_send(cfg: dict, to: str, text: str) -> bool:
+    return _bridge_send_msg(cfg, to, text)[0]
 
 
 def job_standup_nudge(cfg: dict) -> None:

@@ -90,10 +90,11 @@ function startSendServer() {
           res.end('{"error":"not connected"}');
           return;
         }
-        await currentSock.sendMessage(String(to), { text: String(text) });
+        const sent = await currentSock.sendMessage(String(to), { text: String(text) });
+        const waId = sent?.key?.id || null;
         log(`push -> ${to}: ${String(text).slice(0, 80)}`);
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end('{"ok":true}');
+        res.end(JSON.stringify({ ok: true, id: waId }));
       } catch (e) {
         log(`push error: ${e.message}`);
         res.writeHead(500);

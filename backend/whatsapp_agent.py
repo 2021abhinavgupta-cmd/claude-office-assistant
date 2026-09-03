@@ -355,6 +355,88 @@ def _team_group_jid() -> str:
     return f"{gl[0]}@g.us" if gl else ""
 
 
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", str(s or "").strip().lower())
+
+
+# ── confirm-before-broadcast (send_group_message) ───────────────────────────
+
+_PENDING_TTL_MIN = 10
+
+
+def _set_pending_broadcast(emp_id: str, message: str) -> None:
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO wa_pending_action (sender, kind, payload, created_at) "
+                "VALUES (?, 'broadcast', ?, ?) "
+                "ON CONFLICT(sender) DO UPDATE SET kind=excluded.kind, "
+                "payload=excluded.payload, created_at=excluded.created_at",
+                (emp_id, message, datetime.now(timezone.utc).isoformat()),
+            )
+        conn.close()
+    except Exception:
+        logger.exception("whatsapp_agent: set pending broadcast failed")
+
+
+def _pop_pending_broadcast(emp_id: str) -> str | None:
+    """Return the pending broadcast text for this employee (and delete it).
+    None if there isn't one or it's older than _PENDING_TTL_MIN."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT payload, created_at FROM wa_pending_action "
+                    "WHERE sender=? AND kind='broadcast'", (emp_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return None
+        with conn:
+            conn.execute("DELETE FROM wa_pending_action WHERE sender=?", (emp_id,))
+        conn.close()
+        try:
+            ts = datetime.fromisoformat(str(row[1]).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - ts > timedelta(minutes=_PENDING_TTL_MIN):
+                return None
+        except ValueError:
+            pass
+        return row[0]
+    except Exception:
+        logger.exception("whatsapp_agent: pop pending broadcast failed")
+        return None
+
+
+# ── audit log ──────────────────────────────────────────────────────────────
+
+_WRITE_TOOLS = {
+    "assign_task", "delegate_my_task", "remind_teammate", "send_group_message",
+    "add_standup_task", "update_standup_task", "create_task", "set_task_meta",
+    "set_attendance", "review_task",
+}
+_SUCCESS_PREFIXES = (
+    "added", "created", "handed", "updated", "marked", "reopened",
+    "approved", "sent", "posted", "checked",
+)
+
+
+def _audit(scope: str, identity: dict, action: str, detail: str) -> None:
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO wa_action_log (sender, sender_name, scope, action, detail, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (identity.get("id", ""), identity.get("name", ""), scope, action,
+                 str(detail)[:400], datetime.now(timezone.utc).isoformat()),
+            )
+        conn.close()
+    except Exception:
+        logger.debug("whatsapp_agent: audit write failed", exc_info=True)
+
+
 def _enqueue_outbound(jid: str, text: str) -> bool:
     """Queue a proactive WhatsApp message. The laptop companion polls
     /api/companion/whatsapp-outbox and delivers it via the local bridge —
@@ -839,6 +921,54 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "get_content_calendar",
+        "description": "What's scheduled to be posted across ALL social-media "
+                       "clients in the next few days. Use for 'what are we "
+                       "posting this week', 'what's going out tomorrow'. Groups "
+                       "by day and shows client, post type, assignee and "
+                       "whether the caption is written.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "description": "How many days ahead (default 7)."}
+            },
+        },
+    },
+    {
+        "name": "get_client_status",
+        "description": "A full snapshot for one client in a single reply: open "
+                       "task count, overdue items, what's due in the next 7 "
+                       "days, anything awaiting approval, blockers, and the last "
+                       "time the client did something in their portal. Use for "
+                       "'status on Omotec', 'where are we with Mellow'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client": {"type": "string", "description": "The client's name."}
+            },
+            "required": ["client"],
+        },
+    },
+    {
+        "name": "list_capabilities",
+        "description": "Explain what you can do for this person. Use when they "
+                       "ask 'what can you do', 'help', 'what do you know'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_recent_actions",
+        "description": "The audit trail of writes you've made on people's behalf "
+                       "(tasks created, approved, delegated, standup edits, "
+                       "check-ins). Use for 'what have you done today', 'show "
+                       "the log'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "How many entries (default 15)."}
+            },
+        },
+    },
+    {
         "name": "get_pending_approvals",
         "description": "Tasks currently waiting on approval / review across the "
                        "board. Use for 'what's pending approval', 'anything for "
@@ -1084,14 +1214,13 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             msg = (tool_input or {}).get("message", "").strip()
             if not msg:
                 return "(no message text — ask what to post)"
-            gjid = _team_group_jid()
-            if not gjid:
+            if not _team_group_jid():
                 return ("No team group is set up for me to post to. Add one "
                         "with the whatsapp_team_group setting or the group "
                         "allow-list.")
-            if _enqueue_outbound(gjid, msg[:1500]):
-                return f"Posted to the group: {msg[:180]}"
-            return "(couldn't queue that group message just now)"
+            _set_pending_broadcast(identity["id"], msg[:1500])
+            return (f"Ready to post this to the team group:\n\n\"{msg[:400]}\"\n\n"
+                    "Reply 'yes' to send it, or 'no' to cancel.")
 
         if name == "remind_teammate" and kind == "employee":
             if in_group:
@@ -1391,6 +1520,158 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             return (f"Approved: {m.get('title')}" if dec == "approve"
                     else f"Sent back for changes: {m.get('title')}")
 
+        if name == "list_capabilities":
+            if kind == "client":
+                return ("I can look up your deliverables and their status, due "
+                        "dates, and the content details (post type, brief, "
+                        "script, caption). Just ask.")
+            extra = "" if in_group else (
+                " In a private chat I can also send a reminder to a teammate, "
+                "post an announcement to the group (with a confirm step), check "
+                "you in or out, and give you the full daily brief.")
+            return (
+                "Ask me about: your standup tasks, a teammate's tasks, the whole "
+                "team's standup, any client's tasks and content calendar, what's "
+                "overdue or due this week, what's pending approval, the "
+                "knowledge base, and general web search.\n"
+                "I can also: add a task to your or a teammate's standup, create "
+                "a real board task, mark tasks done, add a blocker or move a due "
+                "date, delegate a task, approve or send back a task, and show "
+                "who's checked in." + extra
+            )
+
+        if name == "get_recent_actions" and kind == "employee":
+            lim = (tool_input or {}).get("limit", 15)
+            try:
+                lim = max(1, min(int(lim), 40))
+            except Exception:
+                lim = 15
+            try:
+                conn = get_connection()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT created_at, sender_name, action, detail FROM wa_action_log "
+                    "ORDER BY id DESC LIMIT ?", (lim,),
+                )
+                rows = cur.fetchall()
+                conn.close()
+            except Exception:
+                rows = []
+            if not rows:
+                return "No logged actions yet."
+            return "Recent actions:\n" + "\n".join(
+                f"{str(r[0])[:16].replace('T', ' ')}  {r[1]}: {r[2]}"
+                + (f" — {str(r[3])[:80]}" if r[3] else "")
+                for r in rows
+            )
+
+        if name == "get_content_calendar" and kind == "employee":
+            try:
+                days = max(1, min(int((tool_input or {}).get("days", 7) or 7), 31))
+            except Exception:
+                days = 7
+            try:
+                tasks = notion_store.list_tasks() if notion_store.is_configured() else []
+            except Exception:
+                tasks = []
+            end = (datetime.strptime(today, "%Y-%m-%d") + timedelta(days=days)).strftime("%Y-%m-%d")
+
+            def _social(t):
+                ty = (t.get("type") or t.get("service") or "").lower()
+                return ("social" in ty) or bool(re.search(
+                    r"\[(story|reel|static|carousel|post|video)\]",
+                    t.get("title") or "", re.I))
+
+            rows = [t for t in tasks
+                    if re.match(r"^\d{4}-\d{2}-\d{2}$", str(t.get("due_date") or "")[:10])
+                    and today <= str(t.get("due_date"))[:10] <= end
+                    and _social(t)
+                    and (t.get("status") or "").strip().lower() not in ("cancelled", "canceled")]
+            if not rows:
+                return f"Nothing scheduled to post in the next {days} days."
+            rows.sort(key=lambda t: (str(t.get("due_date"))[:10], t.get("client_name") or ""))
+            out, cur_day = [], None
+            for t in rows:
+                d = str(t.get("due_date"))[:10]
+                if d != cur_day:
+                    out.append(f"\n{d}:")
+                    cur_day = d
+                cap = "caption ready" if (t.get("caption") or "").strip() else "no caption"
+                out.append(
+                    f"  {t.get('client_name') or '?'} | {t.get('type') or 'post'} | "
+                    f"{t.get('title')} | {t.get('assigned_to') or 'unassigned'} | "
+                    f"{(t.get('status') or '').lower() or 'planned'} | {cap}"
+                )
+            return f"Posting in the next {days} days ({len(rows)}):" + "\n".join(out)
+
+        if name == "get_client_status" and kind == "employee":
+            cli = (tool_input or {}).get("client", "").strip()
+            c = _find_client(cli)
+            cname = (c or {}).get("name", "") or cli
+            cnid = (c or {}).get("notion_id", "")
+            if not cname:
+                return "Which client? Use get_clients for the list."
+            try:
+                tasks = _tasks_for_client(cname, cnid)
+            except Exception:
+                tasks = []
+            wk_end = (datetime.strptime(today, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
+            open_t = [t for t in tasks
+                      if (t.get("status") or "").strip().lower().replace(" ", "_") not in _CLOSED_STATUSES]
+            overdue = [t for t in open_t if _is_overdue(t.get("due_date"), today)]
+            upcoming = sorted(
+                (t for t in open_t
+                 if re.match(r"^\d{4}-\d{2}-\d{2}$", str(t.get("due_date") or "")[:10])
+                 and today <= str(t.get("due_date"))[:10] <= wk_end),
+                key=lambda t: str(t.get("due_date")))
+            appr = [t for t in tasks
+                    if (t.get("status") or "").strip().lower() in _APPROVAL_STATUSES]
+            lines = [f"{cname}:"]
+            lines.append(f"Open tasks: {len(open_t)}"
+                         + (f", {len(overdue)} overdue" if overdue else ""))
+            if overdue:
+                lines.append("Overdue: " + "; ".join(
+                    f"{t.get('title')} ({t.get('assigned_to') or '?'})" for t in overdue[:6]))
+            if upcoming:
+                lines.append("Next 7 days: " + "; ".join(
+                    f"{t.get('title')} {str(t.get('due_date'))[:10]}" for t in upcoming[:6]))
+            if appr:
+                lines.append(f"Awaiting approval ({len(appr)}): "
+                             + "; ".join(t.get("title") for t in appr[:5]))
+            ctitles = {_norm(t.get("title") or "") for t in tasks if t.get("title")}
+            try:
+                conn = get_connection()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT title, blocker FROM standup_tasks "
+                    "WHERE date=? AND blocker IS NOT NULL AND blocker<>''", (today,))
+                for tt, bb in cur.fetchall():
+                    nt = _norm(tt)
+                    if any(nt == ct or (len(ct) > 5 and (nt in ct or ct in nt)) for ct in ctitles):
+                        lines.append(f"Blocked: {tt} — {bb}")
+                conn.close()
+            except Exception:
+                pass
+            try:
+                conn = get_connection()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id FROM client_users WHERE lower(client_name)=lower(?) "
+                    "OR (client_notion_id<>'' AND client_notion_id=?)", (cname, cnid))
+                cu = cur.fetchone()
+                if cu:
+                    cur.execute("SELECT MAX(created_at) FROM client_dependencies WHERE client_id=?",
+                                (str(cu[0]),))
+                    r = cur.fetchone()
+                    if r and r[0]:
+                        lines.append(f"Last portal activity: {str(r[0])[:16].replace('T', ' ')}")
+                conn.close()
+            except Exception:
+                pass
+            if len(lines) == 2 and not open_t:
+                return f"{cname}: no open tasks, nothing pending."
+            return "\n".join(lines)
+
         return f"(tool '{name}' is not available to you)"
     except Exception:
         logger.exception("whatsapp_agent: tool %s failed", name)
@@ -1487,8 +1768,13 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "get_attendance / set_attendance for who's in and checking in or "
             "out. get_daily_brief for a full status rundown. "
             "get_pending_approvals lists what's awaiting sign-off and "
-            "review_task approves or sends one back. Confirm every write in "
-            "one short line.\n"
+            "review_task approves or sends one back. get_content_calendar shows "
+            "what's being posted across all social clients this week; "
+            "get_client_status gives a one-shot snapshot for one client. "
+            "list_capabilities explains what you do; get_recent_actions is the "
+            "log of writes you've made. Confirm every write in one short line.\n"
+            "send_group_message does NOT post immediately — it asks the person "
+            "to reply 'yes' first; just relay that.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
@@ -1553,6 +1839,23 @@ def handle_message(sender: str, text: str, *,
             "look anything up for you. Please contact the team to get set up."
         )
 
+    # Confirm-before-broadcast: a pending send_group_message waiting on a yes/no.
+    if identity["kind"] == "employee" and not in_group:
+        pending = _pop_pending_broadcast(identity["id"])
+        if pending is not None:
+            low = _norm(text).rstrip("!. ")
+            if low in ("yes", "y", "yeah", "yep", "send", "send it", "confirm",
+                       "do it", "go", "ok", "okay", "post it"):
+                gjid = _team_group_jid()
+                if gjid and _enqueue_outbound(gjid, pending):
+                    _audit("dm", identity, "send_group_message", pending[:200])
+                    return "Posted to the group."
+                return "(couldn't send that to the group just now)"
+            if low in ("no", "n", "nope", "cancel", "stop", "nvm", "nevermind",
+                       "never mind", "don't", "dont"):
+                return "Cancelled, nothing was sent."
+            # anything else -> treat as a fresh message (pending already cleared)
+
     budget = check_budget_available()
     if not budget["allowed"]:
         return "The monthly usage limit has been reached. Please try again next month."
@@ -1588,6 +1891,10 @@ def handle_message(sender: str, text: str, *,
                     if getattr(block, "type", "") == "tool_use":
                         out = _run_tool(block.name, block.input or {}, identity,
                                         in_group=in_group)
+                        if (block.name in _WRITE_TOOLS
+                                and _norm(out).startswith(_SUCCESS_PREFIXES)):
+                            _audit("group:" + _norm_group(group_id) if in_group else "dm",
+                                   identity, block.name, out)
                         results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,

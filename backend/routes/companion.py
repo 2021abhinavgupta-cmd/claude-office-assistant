@@ -395,29 +395,83 @@ def companion_whatsapp_outbox():
     return jsonify({"messages": [{"id": r[0], "to": r[1], "text": r[2]} for r in rows]})
 
 
+_OUTBOX_MAX_ATTEMPTS = 3
+
+
 @companion_bp.route("/api/companion/whatsapp-outbox/ack", methods=["POST"])
 def companion_whatsapp_outbox_ack():
-    """Laptop reports which queued messages it delivered (or failed to)."""
+    """Laptop reports which queued messages it delivered (or failed to).
+    `sent` may be bare ids or {id, wa_id} objects (the WhatsApp message id
+    from the bridge, for a delivery receipt). A failed row stays 'pending'
+    for retry until it has missed _OUTBOX_MAX_ATTEMPTS times, then 'failed'."""
     if not _auth_ok():
         return jsonify({"error": "unauthorized"}), 401
     body = request.get_json(silent=True) or {}
-    sent = [int(i) for i in (body.get("sent") or []) if str(i).isdigit()]
-    failed = [int(i) for i in (body.get("failed") or []) if str(i).isdigit()]
+    sent, failed = [], []
+    for item in (body.get("sent") or []):
+        if isinstance(item, dict) and str(item.get("id", "")).isdigit():
+            sent.append((int(item["id"]), item.get("wa_id") or None))
+        elif str(item).isdigit():
+            sent.append((int(item), None))
+    for i in (body.get("failed") or []):
+        if str(i).isdigit():
+            failed.append(int(i))
     now = datetime.utcnow().isoformat()
+    gave_up = 0
     try:
         conn = get_connection()
         with conn:
-            for i in sent:
-                conn.execute("UPDATE whatsapp_outbox SET status='sent', sent_at=? WHERE id=?",
-                             (now, i))
+            for i, wa_id in sent:
+                conn.execute(
+                    "UPDATE whatsapp_outbox SET status='sent', sent_at=?, wa_message_id=? WHERE id=?",
+                    (now, wa_id, i),
+                )
             for i in failed:
-                conn.execute("UPDATE whatsapp_outbox SET status='failed', sent_at=? WHERE id=?",
-                             (now, i))
+                row = conn.execute(
+                    "SELECT COALESCE(attempts,0) FROM whatsapp_outbox WHERE id=?", (i,)
+                ).fetchone()
+                att = (row[0] if row else 0) + 1
+                if att >= _OUTBOX_MAX_ATTEMPTS:
+                    conn.execute(
+                        "UPDATE whatsapp_outbox SET status='failed', attempts=?, sent_at=? WHERE id=?",
+                        (att, now, i),
+                    )
+                    gave_up += 1
+                else:
+                    conn.execute(
+                        "UPDATE whatsapp_outbox SET attempts=? WHERE id=?", (att, i)
+                    )
         conn.close()
     except Exception:
         logger.exception("companion whatsapp-outbox ack failed")
         return jsonify({"error": "failed"}), 500
-    return jsonify({"ok": True, "sent": len(sent), "failed": len(failed)})
+    return jsonify({"ok": True, "sent": len(sent), "retrying": len(failed) - gave_up,
+                    "failed": gave_up})
+
+
+@companion_bp.route("/api/companion/wa-audit", methods=["GET"])
+def companion_wa_audit():
+    """Recent writes the WhatsApp agent made on someone's behalf."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 200))
+    except Exception:
+        limit = 50
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT created_at, sender_name, scope, action, detail FROM wa_action_log "
+            "ORDER BY id DESC LIMIT ?", (limit,),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("companion wa-audit failed")
+        return jsonify({"error": "failed"}), 500
+    return jsonify({"actions": [
+        {"at": r[0], "by": r[1], "scope": r[2], "action": r[3], "detail": r[4]}
+        for r in rows
+    ]})
 
 
 _DONE_WORDS = {"done", "completed", "complete"}
