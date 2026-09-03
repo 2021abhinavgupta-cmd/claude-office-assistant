@@ -409,6 +409,20 @@ _EMPLOYEE_TOOLS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "add_standup_task",
+        "description": "Add a task to the person's daily standup (today's task "
+                       "list) in Lumina. Use this when they tell you something "
+                       "they're working on / want on their list for today.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string",
+                         "description": "The task text, roughly as they said it."}
+            },
+            "required": ["task"],
+        },
+    },
+    {
         "name": "search_knowledge_base",
         "description": "Search the agency's uploaded documents / knowledge base "
                        "(briefs, notes, brand guidelines, strategy docs) for a "
@@ -494,6 +508,23 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
                     _fmt_task_line(t, include_assignee=False, detail=True) for t in shown
                 )
 
+        if name == "add_standup_task" and kind == "employee":
+            task = (tool_input or {}).get("task", "").strip()
+            if not task:
+                return "(no task text — ask them what to add)"
+            try:
+                conn = get_connection()
+                with conn:
+                    conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title) VALUES (?, ?, ?)",
+                        (identity["id"], today, task[:500]),
+                    )
+                conn.close()
+                return f"Added to today's standup: {task[:120]}"
+            except Exception:
+                logger.exception("whatsapp_agent: add_standup_task failed")
+                return "(couldn't add that to the standup just now)"
+
         if name == "search_knowledge_base" and kind == "employee":
             q = (tool_input or {}).get("query", "")
             hits = _kb_search(q)
@@ -559,6 +590,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "how you say it.\n"
             "- Use the tools to look up real client, task, deadline and document "
             "data before answering. Never guess a task's status or date.\n"
+            "- If they tell you what they're working on today, add it to their "
+            "standup with add_standup_task and confirm it in one line.\n"
             "- You can use web_search for current or external information (news, "
             "trends, competitor info, general facts) the CRM and knowledge base "
             "don't have. Prefer internal tools first; name the source briefly.\n"

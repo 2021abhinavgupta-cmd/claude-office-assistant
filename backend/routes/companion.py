@@ -17,6 +17,7 @@ import hmac
 import io
 import logging
 import os
+import re
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -264,6 +265,60 @@ def companion_attendance_missing():
         "missing": missing,
         "roster_count": len(roster),
         "text": text,
+    })
+
+
+# ── standup nudge ──────────────────────────────────────────────────────────
+
+@companion_bp.route("/api/companion/standup-missing", methods=["GET"])
+def companion_standup_missing():
+    """Active employees (with a WhatsApp number) who have NOT added a fresh
+    task to today's standup — i.e. they have no `standup_tasks` row for today
+    that isn't just a carry-over. Powers the 11:30 personal nudge."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+
+    today = utils.today_ist()
+    try:
+        weekend = datetime.strptime(today, "%Y-%m-%d").weekday() >= 5
+    except Exception:
+        weekend = False
+
+    emps = []
+    try:
+        for e in utils._load_employees().get("employees", []):
+            if str(e.get("status", "active")).strip().lower() in _INACTIVE:
+                continue
+            wa = re.sub(r"\D", "", e.get("whatsapp", "") or "")
+            if not wa:
+                continue
+            emps.append({"id": e.get("id", ""),
+                         "name": e.get("name") or e.get("id", ""),
+                         "whatsapp": wa})
+    except Exception:
+        logger.exception("standup-missing: roster load failed")
+        return jsonify({"error": "roster load failed"}), 500
+
+    have = set()
+    try:
+        conn = get_connection()
+        for row in conn.execute(
+            "SELECT DISTINCT user_id FROM standup_tasks "
+            "WHERE date=? AND (carried_from IS NULL OR carried_from='')",
+            (today,),
+        ).fetchall():
+            have.add(row[0])
+        conn.close()
+    except Exception:
+        logger.exception("standup-missing: query failed")
+        return jsonify({"error": "query failed"}), 500
+
+    missing = [e for e in emps if e["id"] not in have]
+    return jsonify({
+        "date": today,
+        "weekend": weekend,
+        "checked": len(emps),
+        "missing": missing,
     })
 
 

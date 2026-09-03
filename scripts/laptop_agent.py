@@ -17,6 +17,8 @@ Jobs it runs (each skips itself automatically if not configured):
                           auto-pull with --sheets-autopull
   8. attendance roll-call — 12:00: post who hasn't logged in yet to the
                           team WhatsApp group (needs --rollcall-group + bridge)
+  9. standup nudge       — 11:30: DM anyone who hasn't added a task to today's
+                          standup ("reply here and I'll add it") (needs bridge)
 
 Setup:
     pip install -r scripts/requirements.txt
@@ -436,6 +438,46 @@ def _bridge_send(cfg: dict, to: str, text: str) -> bool:
     return False
 
 
+def job_standup_nudge(cfg: dict) -> None:
+    """11:30 — DM anyone who hasn't put a fresh task on today's standup."""
+    tok = _api_token(cfg)
+    if not tok:
+        _log("standup nudge: no token")
+        return
+    try:
+        r = requests.get(f"{cfg['url']}/api/companion/standup-missing",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=45)
+        if not r.ok:
+            _log(f"standup nudge: HTTP {r.status_code}")
+            return
+        j = r.json() or {}
+    except Exception as e:
+        _log(f"standup nudge error: {e}")
+        return
+    if j.get("weekend"):
+        _log("standup nudge: weekend — skipping")
+        return
+    missing = j.get("missing") or []
+    if not missing:
+        _log("standup nudge: everyone's added a task")
+        return
+    sent = 0
+    for p in missing:
+        wa = re.sub(r"\D", "", p.get("whatsapp", ""))
+        if not wa:
+            continue
+        name = p.get("name") or "there"
+        text = (
+            f"Morning {name} — it's gone 11:30 and your standup for today is "
+            "still a blank canvas. Add a task or two when you get a moment.\n\n"
+            "Shortcut: just reply here with what you're working on and I'll drop "
+            "it straight into your standup for you."
+        )
+        if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
+            sent += 1
+    _log(f"standup nudge: {sent}/{len(missing)} DMs sent")
+
+
 def job_rollcall(cfg: dict) -> None:
     grp = cfg["rollcall_group"]
     if not grp:
@@ -519,6 +561,9 @@ def main() -> None:
                     help="WhatsApp group id (digits or ...@g.us) for the roll-call; "
                          "empty = feature off")
     ap.add_argument("--no-rollcall", action="store_true")
+    ap.add_argument("--standup-nudge-time", default="11:30",
+                    help="daily time to DM people who haven't added a standup task")
+    ap.add_argument("--no-standup-nudge", action="store_true")
     ap.add_argument("--bridge-dir", default="",
                     help="path to whatsapp-bridge/ (default: sibling of this repo's scripts/)")
     ap.add_argument("--no-bridge", action="store_true", help="don't supervise the WhatsApp bridge")
@@ -577,6 +622,8 @@ def main() -> None:
         ]
     if not args.no_rollcall and cfg["rollcall_group"]:
         daily_jobs.append(("rollcall", job_rollcall, args.rollcall_time))
+    if not args.no_standup_nudge:
+        daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
 
     if not bridge_ok and not args.no_bridge:
         reason = ("node not on PATH" if not node
@@ -600,6 +647,9 @@ def main() -> None:
         else "OFF (no group)" if not cfg["rollcall_group"] else "OFF",
         bridge_note,
     ))
+    _log("  standup-nudge {}".format(
+        args.standup_nudge_time if (not args.no_standup_nudge and tok)
+        else "OFF (--no-standup-nudge)" if args.no_standup_nudge else "OFF (no token)"))
     ch = (f"apprise x{len(cfg['alert_targets'])}" if cfg["alert_targets"] and apprise
           else "webhook" if cfg["alert_webhook"] else "console-only")
     _log(f"  alert channel: {ch}")
