@@ -221,7 +221,8 @@ async function start() {
         else if (rawPart.endsWith("@lid"))
           log(`  (WARN: LID ${bareJid(rawPart)} — no phone number available)`);
 
-        if (isGroup) log(`grp ${groupNm || bareJid(jid)} <- ${from}: ${text.slice(0, 80)}`);
+        if (isGroup)
+          log(`grp ${bareJid(jid)}${groupNm ? ` (${groupNm})` : ""} <- ${from}: ${text.slice(0, 80)}`);
         else log(`in  ${from}: ${text.slice(0, 80)}`);
 
         await sock.readMessages([msg.key]).catch(() => {});
@@ -243,7 +244,7 @@ async function start() {
           await sock.sendMessage(jid, { text: reply });
           log(`out ${from}: ${reply.slice(0, 80)}`);
         } else if (isGroup) {
-          log(`  (no reply — group not enabled or sender not staff)`);
+          log(`  (no reply — group ${bareJid(jid)} not on allow-list, or sender not staff)`);
         }
       } catch (e) {
         log(`handler error: ${e.message}`);
