@@ -365,6 +365,45 @@ def _format_standup(tasks: list, who: str) -> str:
     return head + "\n" + "\n".join(lines)
 
 
+def _match_standup_task(user_id: str, query: str) -> dict | None:
+    """Find one of today's standup rows for this user by a loose description
+    ('whatsapp bot testing' -> 'testing of the whatsapp bot'). Returns
+    {id, title, status, notion_id} or None."""
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, title, status, notion_id FROM standup_tasks "
+            "WHERE user_id=? AND date=? ORDER BY id",
+            (user_id, _today_ist()),
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("whatsapp_agent: standup match query failed")
+        return None
+    cand = [{"id": r[0], "title": r[1] or "", "status": (r[2] or "pending"),
+             "notion_id": r[3]} for r in rows]
+    for c in cand:
+        if c["title"].strip().lower() == q:
+            return c
+    for c in cand:
+        tl = c["title"].lower()
+        if q in tl or (len(tl) > 4 and tl in q):
+            return c
+    qt = set(re.findall(r"\w+", q))
+    best, score = None, 0
+    for c in cand:
+        ct = set(re.findall(r"\w+", c["title"].lower()))
+        s = len(qt & ct)
+        if s > score:
+            best, score = c, s
+    return best if score >= 2 else None
+
+
 def _kb_search(query: str, limit: int = 6) -> list:
     """Search the whole knowledge base, no project/user scoping (every
     employee is admin-tier here). Keyword (bm25) always; semantic hits
@@ -512,6 +551,23 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "update_standup_task",
+        "description": "Mark one of the person's standup tasks for today as "
+                       "done, or reopen it. Use for 'mark X as done', 'X is "
+                       "complete', 'finished X', 'reopen X'. Match the task by "
+                       "a few words from what they call it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string",
+                         "description": "A few words identifying the task."},
+                "status": {"type": "string", "enum": ["done", "pending"],
+                           "description": "done (default) or pending to reopen."},
+            },
+            "required": ["task"],
+        },
+    },
+    {
         "name": "get_teammate_tasks",
         "description": "Another team member's live daily-standup task list for "
                        "today — use this for 'what is Nupur working on', 'what "
@@ -592,6 +648,43 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
             if len(tasks) > len(shown):
                 head += f" (first {len(shown)} of {len(tasks)} — ask about a specific post for the rest)"
             return head + ":\n" + "\n".join(_fmt_task_line(t, detail=True) for t in shown)
+
+        if name == "update_standup_task" and kind == "employee":
+            q = (tool_input or {}).get("task", "")
+            new_status = str((tool_input or {}).get("status", "done")).strip().lower()
+            if new_status in ("complete", "completed", "finished"):
+                new_status = "done"
+            if new_status not in ("done", "pending"):
+                new_status = "done"
+            m = _match_standup_task(identity["id"], q)
+            if not m:
+                have = _standup_tasks_today(identity["id"])
+                names = "; ".join(t["title"] for t in have) or "nothing yet"
+                return f"Couldn't find a task matching '{q}'. Today's list: {names}."
+            try:
+                conn = get_connection()
+                with conn:
+                    conn.execute("UPDATE standup_tasks SET status=? WHERE id=?",
+                                 (new_status, m["id"]))
+                conn.close()
+            except Exception:
+                logger.exception("whatsapp_agent: update_standup_task failed")
+                return "(couldn't update that just now)"
+            # mirror board-linked rows to Notion, matching the Standup screen
+            # (social-media tasks go to 'need approval', not straight to done)
+            if m.get("notion_id"):
+                try:
+                    ttype = (notion_store.get_task_type(m["notion_id"]) or "").lower()
+                    if new_status == "done":
+                        nst = "need_for_approval" if "social" in ttype else "done"
+                    else:
+                        nst = "in_progress"
+                    notion_store.update_task(m["notion_id"], status=nst)
+                except Exception:
+                    logger.debug("whatsapp_agent: notion status mirror failed",
+                                 exc_info=True)
+            return (f"Marked done: {m['title']}" if new_status == "done"
+                    else f"Reopened: {m['title']}")
 
         if name == "get_teammate_tasks" and kind == "employee":
             who = (tool_input or {}).get("name", "")
@@ -750,7 +843,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "The team is open: anyone can ask what a teammate is doing. Use "
             "get_teammate_tasks for one person, get_team_standup for everyone.\n"
             "If they tell you what they're working on today, add it with "
-            "add_standup_task and confirm it in one line.\n"
+            "add_standup_task. If they say a task is done or finished, mark it "
+            "with update_standup_task. Confirm either in one line.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
