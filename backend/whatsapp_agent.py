@@ -335,6 +335,26 @@ def _wa_jid(raw: str) -> str:
     return f"{d}@s.whatsapp.net" if d else ""
 
 
+def _team_group_jid() -> str:
+    """The team WhatsApp group to post to for 'send this to the group'.
+    Explicit app_settings key 'whatsapp_team_group' wins; otherwise the
+    sole allow-listed group (the common case)."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM app_settings WHERE key='whatsapp_team_group'")
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0]:
+            d = _norm_group(row[0])
+            if d:
+                return f"{d}@g.us"
+    except Exception:
+        logger.debug("whatsapp_agent: team group lookup failed", exc_info=True)
+    gl = sorted(_group_allowlist())
+    return f"{gl[0]}@g.us" if gl else ""
+
+
 def _enqueue_outbound(jid: str, text: str) -> bool:
     """Queue a proactive WhatsApp message. The laptop companion polls
     /api/companion/whatsapp-outbox and delivers it via the local bridge —
@@ -640,6 +660,23 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "send_group_message",
+        "description": "Post a message into the team's WhatsApp group on this "
+                       "person's behalf. Use when they say 'send/post/text the "
+                       "group ...', 'tell everyone ...', 'announce ... in the "
+                       "group', 'message the group to ...'. Compose the message "
+                       "the way they asked for it. Only works from a private "
+                       "chat, not from inside the group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string",
+                            "description": "The exact message to post in the group."}
+            },
+            "required": ["message"],
+        },
+    },
+    {
         "name": "remind_teammate",
         "description": "Send another team member a WhatsApp nudge about something "
                        "— 'remind Nupur to finish the deck', 'ping Happy about the "
@@ -915,6 +952,21 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             return (f"Handed '{m['title']}' to {emp['name']}. Off your list, "
                     "on theirs for today.")
 
+        if name == "send_group_message" and kind == "employee":
+            if in_group:
+                return "We're already in the group, so just say it here."
+            msg = (tool_input or {}).get("message", "").strip()
+            if not msg:
+                return "(no message text — ask what to post)"
+            gjid = _team_group_jid()
+            if not gjid:
+                return ("No team group is set up for me to post to. Add one "
+                        "with the whatsapp_team_group setting or the group "
+                        "allow-list.")
+            if _enqueue_outbound(gjid, msg[:1500]):
+                return f"Posted to the group: {msg[:180]}"
+            return "(couldn't queue that group message just now)"
+
         if name == "remind_teammate" and kind == "employee":
             if in_group:
                 return ("Reminders only work from our private chat, not the "
@@ -1053,8 +1105,9 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "group. The teammate gets a WhatsApp nudge that it came from this "
             "person. Confirm in one line and say whose list it landed on.\n"
             "In a private chat only, use remind_teammate to send someone a "
-            "WhatsApp nudge about anything (it doesn't touch their standup). "
-            "Not available from the group.\n"
+            "WhatsApp nudge about anything (it doesn't touch their standup), "
+            "or send_group_message to post an announcement into the team "
+            "group for them. Neither is available from the group.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"

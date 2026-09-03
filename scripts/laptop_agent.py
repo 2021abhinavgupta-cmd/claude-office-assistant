@@ -21,6 +21,8 @@ Jobs it runs (each skips itself automatically if not configured):
                           standup ("reply here and I'll add it") (needs bridge)
  10. WhatsApp outbox     — deliver queued proactive DMs (task-assigned nudges,
                           "remind X to do Y") via the local bridge            (20s)
+ 11. lunch nudge         — 14:00: post a "go for lunch" message to the team
+                          WhatsApp group (needs --rollcall-group + bridge)
 
 Setup:
     pip install -r scripts/requirements.txt
@@ -519,6 +521,28 @@ def job_standup_nudge(cfg: dict) -> None:
     _log(f"standup nudge: {sent}/{len(missing)} DMs sent")
 
 
+_LUNCH_LINES = [
+    "It's 2 o'clock. Lunch. Step away from the screen, go eat something. 🍽",
+    "2pm — lunch break, everyone. Food first, deadlines after.",
+    "Lunchtime. Close the laptop for a bit and go grab a proper meal. 🍛",
+    "It's 2. Go have lunch, the tasks will still be here when you're back.",
+    "2pm lunch call — take the break, you've earned it. 🍴",
+]
+
+
+def job_lunch(cfg: dict) -> None:
+    """14:00 — nudge the team WhatsApp group to go for lunch."""
+    grp = cfg["rollcall_group"]
+    if not grp:
+        return
+    if datetime.now().weekday() >= 5:      # Sat/Sun
+        _log("lunch: weekend — skipping")
+        return
+    idx = datetime.now().timetuple().tm_yday % len(_LUNCH_LINES)
+    if _bridge_send(cfg, grp, _LUNCH_LINES[idx]):
+        _log("lunch: sent")
+
+
 def job_rollcall(cfg: dict) -> None:
     grp = cfg["rollcall_group"]
     if not grp:
@@ -604,6 +628,9 @@ def main() -> None:
                     help="WhatsApp group id (digits or ...@g.us) for the roll-call; "
                          "empty = feature off")
     ap.add_argument("--no-rollcall", action="store_true")
+    ap.add_argument("--lunch-time", default="14:00",
+                    help="daily time to post the 'go for lunch' nudge to the group")
+    ap.add_argument("--no-lunch", action="store_true")
     ap.add_argument("--standup-nudge-time", default="11:30",
                     help="daily time to DM people who haven't added a standup task")
     ap.add_argument("--no-standup-nudge", action="store_true")
@@ -666,6 +693,8 @@ def main() -> None:
         ]
     if not args.no_rollcall and cfg["rollcall_group"]:
         daily_jobs.append(("rollcall", job_rollcall, args.rollcall_time))
+    if not args.no_lunch and cfg["rollcall_group"]:
+        daily_jobs.append(("lunch", job_lunch, args.lunch_time))
     if not args.no_standup_nudge:
         daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
 
@@ -697,6 +726,9 @@ def main() -> None:
     _log("  wa-outbox {}".format(
         f"every {args.outbox_every}s" if (cfg["bridge_ok"] and tok)
         else "OFF (needs bridge + token)"))
+    _log("  lunch nudge {}".format(
+        args.lunch_time if (cfg["rollcall_group"] and not args.no_lunch)
+        else "OFF (--no-lunch)" if args.no_lunch else "OFF (no group)"))
     ch = (f"apprise x{len(cfg['alert_targets'])}" if cfg["alert_targets"] and apprise
           else "webhook" if cfg["alert_webhook"] else "console-only")
     _log(f"  alert channel: {ch}")
