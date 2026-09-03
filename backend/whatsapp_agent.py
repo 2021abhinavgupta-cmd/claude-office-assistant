@@ -288,13 +288,27 @@ def _tasks_for_client(client_name: str, client_notion_id: str = "") -> list:
     return _sqlite_tasks_for_client(client_name)
 
 
-def _tasks_for_employee(name: str) -> list:
-    if notion_store.is_configured():
-        try:
-            return notion_store.list_tasks(assigned_to=name)
-        except Exception:
-            logger.exception("whatsapp_agent: notion list_tasks (employee) failed")
-    return []
+def _standup_tasks_today(user_id: str) -> list:
+    """The rows on this person's daily standup for today — the live task
+    list they see in Lumina's Standup screen (NOT the whole Notion board)."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT title, status, blocker, carried_from FROM standup_tasks "
+            "WHERE user_id=? AND date=? ORDER BY id",
+            (user_id, _today_ist()),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return [
+            {"title": r[0], "status": (r[1] or "pending"),
+             "blocker": (r[2] or ""), "carried_from": (r[3] or "")}
+            for r in rows
+        ]
+    except Exception:
+        logger.exception("whatsapp_agent: standup task lookup failed")
+        return []
 
 
 def _kb_search(query: str, limit: int = 6) -> list:
@@ -404,8 +418,11 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "get_my_tasks",
-        "description": "List the tasks currently assigned to the person you are "
-                       "chatting with.",
+        "description": "The person's live daily-standup task list for today "
+                       "(what shows on their Lumina Standup screen) — with done "
+                       "/ pending status, blockers and carried-over items. This "
+                       "is the ONLY source for 'what are my tasks' — do not use "
+                       "the wider Notion board for that.",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
@@ -484,11 +501,24 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
 
         if name == "get_my_tasks":
             if kind == "employee":
-                tasks = _tasks_for_employee(identity["name"])
+                tasks = _standup_tasks_today(identity["id"])
                 if not tasks:
-                    return "You have no tasks assigned right now."
-                lines = [_fmt_task_line(t, include_assignee=False) for t in tasks[:40]]
-                return "Your tasks:\n" + "\n".join(lines)
+                    return ("Nothing on your standup for today yet. Tell me what "
+                            "you're working on and I'll add it.")
+                done_words = ("done", "completed", "complete")
+                lines = []
+                for t in tasks:
+                    is_done = str(t["status"]).lower() in done_words
+                    mark = "[done] " if is_done else "- "
+                    tail = ""
+                    if t["carried_from"]:
+                        tail += f" (carried from {t['carried_from']})"
+                    if t["blocker"]:
+                        tail += f" — blocked: {t['blocker']}"
+                    lines.append(f"{mark}{t['title']}{tail}")
+                done = sum(1 for t in tasks if str(t["status"]).lower() in done_words)
+                head = f"Your standup today — {done} done, {len(tasks) - done} to go:"
+                return head + "\n" + "\n".join(lines)
             if kind == "client":
                 # Require a real linked client id — never fall back to
                 # name matching for a client, that risks returning another
