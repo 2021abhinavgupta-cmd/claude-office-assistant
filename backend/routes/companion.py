@@ -322,6 +322,58 @@ def companion_standup_missing():
     })
 
 
+@companion_bp.route("/api/companion/whatsapp-outbox", methods=["GET"])
+def companion_whatsapp_outbox():
+    """Pending proactive WhatsApp messages for the laptop companion to deliver
+    via the local Baileys bridge. Messages older than 24h are expired first
+    (a stale 'remind X' nudge delivered a day late is worse than not at all)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "UPDATE whatsapp_outbox SET status='expired' "
+                "WHERE status='pending' AND created_at < ?",
+                (cutoff,),
+            )
+        rows = conn.execute(
+            "SELECT id, to_number, body FROM whatsapp_outbox "
+            "WHERE status='pending' ORDER BY id LIMIT 50"
+        ).fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("companion whatsapp-outbox failed")
+        return jsonify({"error": "failed"}), 500
+    return jsonify({"messages": [{"id": r[0], "to": r[1], "text": r[2]} for r in rows]})
+
+
+@companion_bp.route("/api/companion/whatsapp-outbox/ack", methods=["POST"])
+def companion_whatsapp_outbox_ack():
+    """Laptop reports which queued messages it delivered (or failed to)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sent = [int(i) for i in (body.get("sent") or []) if str(i).isdigit()]
+    failed = [int(i) for i in (body.get("failed") or []) if str(i).isdigit()]
+    now = datetime.utcnow().isoformat()
+    try:
+        conn = get_connection()
+        with conn:
+            for i in sent:
+                conn.execute("UPDATE whatsapp_outbox SET status='sent', sent_at=? WHERE id=?",
+                             (now, i))
+            for i in failed:
+                conn.execute("UPDATE whatsapp_outbox SET status='failed', sent_at=? WHERE id=?",
+                             (now, i))
+        conn.close()
+    except Exception:
+        logger.exception("companion whatsapp-outbox ack failed")
+        return jsonify({"error": "failed"}), 500
+    return jsonify({"ok": True, "sent": len(sent), "failed": len(failed)})
+
+
 @companion_bp.route("/api/companion/digest", methods=["GET"])
 def companion_digest():
     if not _auth_ok():

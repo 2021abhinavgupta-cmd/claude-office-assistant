@@ -408,6 +408,20 @@ def init_db():
             updated_at TEXT NOT NULL
         )""")
 
+        # Outbound WhatsApp queue. The backend runs on Railway and can't reach
+        # the Baileys bridge (loopback on the laptop), so proactive messages
+        # (task-assigned nudges, "remind X to do Y") are queued here and the
+        # laptop companion (scripts/laptop_agent.py) polls + delivers them.
+        conn.execute("""CREATE TABLE IF NOT EXISTS whatsapp_outbox (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            to_number  TEXT NOT NULL,
+            body       TEXT NOT NULL,
+            status     TEXT DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            sent_at    TEXT
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_outbox_status ON whatsapp_outbox (status, id)")
+
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
         try:

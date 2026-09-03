@@ -19,6 +19,8 @@ Jobs it runs (each skips itself automatically if not configured):
                           team WhatsApp group (needs --rollcall-group + bridge)
   9. standup nudge       — 11:30: DM anyone who hasn't added a task to today's
                           standup ("reply here and I'll add it") (needs bridge)
+ 10. WhatsApp outbox     — deliver queued proactive DMs (task-assigned nudges,
+                          "remind X to do Y") via the local bridge            (20s)
 
 Setup:
     pip install -r scripts/requirements.txt
@@ -404,6 +406,44 @@ def job_sheets_watchdog(cfg: dict) -> None:
         _SHEETS["alerted"] = ""
 
 
+# ── job 10: deliver queued proactive WhatsApp messages ───────────────────
+#
+# The Railway backend can't reach the Baileys bridge (loopback on this
+# laptop), so whatsapp_agent queues "X assigned you a task" / "remind Y"
+# messages in the DB. We poll for them and send via the local bridge.
+
+def job_wa_outbox(cfg: dict) -> None:
+    if not cfg["bridge_ok"]:
+        return
+    tok = _api_token(cfg)
+    if not tok:
+        return
+    try:
+        r = requests.get(f"{cfg['url']}/api/companion/whatsapp-outbox",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=30)
+        if not r.ok:
+            return
+        msgs = (r.json() or {}).get("messages") or []
+    except Exception as e:
+        _log(f"wa-outbox error: {e}")
+        return
+    if not msgs:
+        return
+    sent, failed = [], []
+    for m in msgs:
+        to, text, mid = m.get("to"), m.get("text"), m.get("id")
+        if not (to and text and mid):
+            continue
+        (sent if _bridge_send(cfg, to, text) else failed).append(mid)
+    try:
+        requests.post(f"{cfg['url']}/api/companion/whatsapp-outbox/ack",
+                      json={"sent": sent, "failed": failed},
+                      headers={"Authorization": f"Bearer {tok}"}, timeout=30)
+    except Exception as e:
+        _log(f"wa-outbox ack error: {e}")
+    _log(f"wa-outbox: {len(sent)} sent, {len(failed)} failed")
+
+
 INTERVAL_JOBS = [
     ("sync", job_sync, "sync_every"),
     ("research", job_research, "research_every"),
@@ -411,6 +451,7 @@ INTERVAL_JOBS = [
     ("health", job_health, "health_every"),
     ("bridge", job_bridge, "bridge_every"),
     ("sheets", job_sheets_watchdog, "sheets_every"),
+    ("wa-outbox", job_wa_outbox, "outbox_every"),
 ]
 
 
@@ -549,6 +590,8 @@ def main() -> None:
     ap.add_argument("--backup-every", type=int, default=86400)
     ap.add_argument("--health-every", type=int, default=300)
     ap.add_argument("--sheets-every", type=int, default=1200)
+    ap.add_argument("--outbox-every", type=int, default=20,
+                    help="how often to check for queued proactive WhatsApp messages")
     ap.add_argument("--sheets-autopull", action="store_true",
                     help="also force a reconcile when a sheet looks out of sync")
     ap.add_argument("--slow-ms", type=int, default=8000, help="alert if /api/health is slower than this")
@@ -608,6 +651,7 @@ def main() -> None:
         "backup_every": args.backup_every,
         "health_every": args.health_every,
         "sheets_every": args.sheets_every,
+        "outbox_every": args.outbox_every,
         "bridge_every": 15,
         "bridge_http_port": int(os.getenv("BRIDGE_HTTP_PORT", "8787")),
         "rollcall_group": (lambda d: f"{d}@g.us" if d else "")(
@@ -650,6 +694,9 @@ def main() -> None:
     _log("  standup-nudge {}".format(
         args.standup_nudge_time if (not args.no_standup_nudge and tok)
         else "OFF (--no-standup-nudge)" if args.no_standup_nudge else "OFF (no token)"))
+    _log("  wa-outbox {}".format(
+        f"every {args.outbox_every}s" if (cfg["bridge_ok"] and tok)
+        else "OFF (needs bridge + token)"))
     ch = (f"apprise x{len(cfg['alert_targets'])}" if cfg["alert_targets"] and apprise
           else "webhook" if cfg["alert_webhook"] else "console-only")
     _log(f"  alert channel: {ch}")

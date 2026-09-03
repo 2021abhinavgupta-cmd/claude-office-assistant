@@ -313,7 +313,7 @@ def _standup_tasks_today(user_id: str) -> list:
 
 
 def _active_employees() -> list:
-    """[{id, name}] for every active employee — the internal roster."""
+    """[{id, name, whatsapp}] for every active employee — the internal roster."""
     out = []
     try:
         for e in utils._load_employees().get("employees", []):
@@ -321,10 +321,38 @@ def _active_employees() -> list:
                 "inactive", "disabled", "left", "removed", "archived", "former"
             ):
                 continue
-            out.append({"id": e.get("id", ""), "name": e.get("name") or e.get("id", "")})
+            out.append({"id": e.get("id", ""),
+                        "name": e.get("name") or e.get("id", ""),
+                        "whatsapp": e.get("whatsapp", "") or ""})
     except Exception:
         logger.exception("whatsapp_agent: roster load failed")
     return out
+
+
+def _wa_jid(raw: str) -> str:
+    """A WhatsApp DM JID from a stored number ('+91 97029 08716' -> ...)."""
+    d = re.sub(r"\D", "", raw or "")
+    return f"{d}@s.whatsapp.net" if d else ""
+
+
+def _enqueue_outbound(jid: str, text: str) -> bool:
+    """Queue a proactive WhatsApp message. The laptop companion polls
+    /api/companion/whatsapp-outbox and delivers it via the local bridge —
+    the Railway backend can't reach the bridge directly."""
+    if not jid or not text:
+        return False
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO whatsapp_outbox (to_number, body, created_at) VALUES (?, ?, ?)",
+                (jid, text[:1500], datetime.now(timezone.utc).isoformat()),
+            )
+        conn.close()
+        return True
+    except Exception:
+        logger.exception("whatsapp_agent: outbox enqueue failed")
+        return False
 
 
 def _resolve_employee(name: str) -> dict | None:
@@ -612,6 +640,23 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "remind_teammate",
+        "description": "Send another team member a WhatsApp nudge about something "
+                       "— 'remind Nupur to finish the deck', 'ping Happy about the "
+                       "edit', 'tell Kshitij to reply to the client'. They get a "
+                       "direct message from Lumina saying it came from you. Only "
+                       "works in a private chat with you, not from the group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The teammate to nudge."},
+                "message": {"type": "string",
+                            "description": "What to remind them about, in your words."},
+            },
+            "required": ["name", "message"],
+        },
+    },
+    {
         "name": "get_teammate_tasks",
         "description": "Another team member's live daily-standup task list for "
                        "today — use this for 'what is Nupur working on', 'what "
@@ -668,7 +713,8 @@ _CLIENT_TOOLS = [
 ]
 
 
-def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
+def _run_tool(name: str, tool_input: dict, identity: dict,
+              in_group: bool = False) -> str:
     today = _today_ist()
     kind = identity["kind"]
 
@@ -819,10 +865,16 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
                         (emp["id"], today, task[:500], identity["name"]),
                     )
                 conn.close()
-                return f"Added to {emp['name']}'s standup for today: {task[:120]}"
             except Exception:
                 logger.exception("whatsapp_agent: assign_task failed")
                 return "(couldn't add that to their standup just now)"
+            jid = _wa_jid(emp.get("whatsapp"))
+            notified = _enqueue_outbound(
+                jid, f"{identity['name']} put a task on your standup for today: "
+                     f"{task[:400]}"
+            ) if jid else False
+            tail = "" if notified else " (they'll see it on their standup; no WhatsApp number on file to ping them)"
+            return f"Added to {emp['name']}'s standup for today: {task[:120]}." + tail
 
         if name == "delegate_my_task" and kind == "employee":
             who = (tool_input or {}).get("name", "")
@@ -855,8 +907,34 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
             except Exception:
                 logger.exception("whatsapp_agent: delegate_my_task failed")
                 return "(couldn't hand that over just now)"
+            jid = _wa_jid(emp.get("whatsapp"))
+            note = f"{identity['name']} handed you a task for today: {m['title'][:400]}"
+            if m.get("blocker"):
+                note += f" (blocked by {m['blocker']})"
+            _enqueue_outbound(jid, note) if jid else None
             return (f"Handed '{m['title']}' to {emp['name']}. Off your list, "
                     "on theirs for today.")
+
+        if name == "remind_teammate" and kind == "employee":
+            if in_group:
+                return ("Reminders only work from our private chat, not the "
+                        "group. Message me directly and I'll ping them.")
+            who = (tool_input or {}).get("name", "")
+            msg = (tool_input or {}).get("message", "").strip()
+            emp = _resolve_employee(who)
+            if not emp:
+                names = ", ".join(e["name"] for e in _active_employees())
+                return f"Don't know who '{who}' is. Team: {names}."
+            if not msg:
+                return "(no reminder text — ask what to remind them about)"
+            if emp["id"] == identity["id"]:
+                return "That's you — no need to remind yourself through me."
+            jid = _wa_jid(emp.get("whatsapp"))
+            if not jid:
+                return f"{emp['name']} has no WhatsApp number on file, so I can't reach them."
+            if _enqueue_outbound(jid, f"Reminder from {identity['name']}: {msg[:600]}"):
+                return f"Sent {emp['name']} a reminder about that."
+            return "(couldn't queue that reminder just now)"
 
         if name == "search_knowledge_base" and kind == "employee":
             q = (tool_input or {}).get("query", "")
@@ -972,7 +1050,11 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "They can also put work on a teammate: use assign_task to add a new "
             "task to someone else's standup, or delegate_my_task to move one of "
             "their own tasks onto a teammate's list. This works here and in the "
-            "group. Confirm in one line and say whose list it landed on.\n"
+            "group. The teammate gets a WhatsApp nudge that it came from this "
+            "person. Confirm in one line and say whose list it landed on.\n"
+            "In a private chat only, use remind_teammate to send someone a "
+            "WhatsApp nudge about anything (it doesn't touch their standup). "
+            "Not available from the group.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
@@ -1070,7 +1152,8 @@ def handle_message(sender: str, text: str, *,
                 results = []
                 for block in resp.content:
                     if getattr(block, "type", "") == "tool_use":
-                        out = _run_tool(block.name, block.input or {}, identity)
+                        out = _run_tool(block.name, block.input or {}, identity,
+                                        in_group=in_group)
                         results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
