@@ -330,6 +330,33 @@
     </div>
   </section>
 
+  <!-- WhatsApp Assistant cost -->
+  <div class="panel" style="margin-bottom:24px">
+    <h2>WhatsApp Assistant</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:20px">
+      <div>
+        <div class="kpi-label">All-time cost</div>
+        <div style="font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums" id="wa-alltime-cost">—</div>
+        <div class="kpi-sub" id="wa-alltime-calls">— messages</div>
+      </div>
+      <div>
+        <div class="kpi-label">This month</div>
+        <div style="font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums" id="wa-month-cost">—</div>
+        <div class="kpi-sub" id="wa-month-calls">— messages</div>
+      </div>
+      <div>
+        <div class="kpi-label">Avg / message</div>
+        <div style="font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums" id="wa-avg">—</div>
+        <div class="kpi-sub">Haiku tier</div>
+      </div>
+      <div>
+        <div class="kpi-label">In the totals above?</div>
+        <div style="font-size:1.7rem;font-weight:700;color:var(--green)">Yes</div>
+        <div class="kpi-sub">counted in Monthly &amp; All-Time Spend</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Two column row -->
   <div class="two-col">
 
@@ -595,6 +622,15 @@ function renderDashboard(d) {
   } else {
     banner.className = "alert-banner";
   }
+
+  // WhatsApp Assistant line item
+  const wa = d.whatsapp || {};
+  const setWa = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setWa("wa-alltime-cost", formatCost(wa.alltime_cost || 0, 4));
+  setWa("wa-alltime-calls", (wa.alltime_calls || 0) + " messages answered");
+  setWa("wa-month-cost", formatCost(wa.month_cost || 0, 4));
+  setWa("wa-month-calls", (wa.month_calls || 0) + " messages this month");
+  setWa("wa-avg", formatCost(wa.avg_cost_per_msg || 0, 5));
 
   // Model split
   document.getElementById("haiku-count").textContent  = d.haiku_calls  || 0;

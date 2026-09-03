@@ -134,15 +134,24 @@ def get_usage_summary(all_calls: bool = False, month_key: str = None) -> dict:
     row = cursor.fetchone()
     total_spent_ever = float(row[0]) if row else monthly_spend # fallback
     
-    # Get calls for this month
+    # Get calls for this month (and, in the same pass, an all-time tally for
+    # the WhatsApp assistant so the dashboard can show its own line item)
     cursor.execute("SELECT data FROM usage_logs")
     all_logs = []
+    wa_all_calls = 0
+    wa_all_cost = 0.0
+    wa_all_tokens = 0
     for (data_str,) in cursor.fetchall():
         try:
             log = json.loads(data_str)
-            if log.get("month") == month_key:
-                all_logs.append(log)
-        except: pass
+        except Exception:
+            continue
+        if log.get("task_type") == "whatsapp":
+            wa_all_calls += 1
+            wa_all_cost += log.get("cost_usd", 0.0)
+            wa_all_tokens += (log.get("input_tokens", 0) or 0) + (log.get("output_tokens", 0) or 0)
+        if log.get("month") == month_key:
+            all_logs.append(log)
     conn.close()
     
     haiku_calls  = sum(1 for c in all_logs if c.get("model_tier") == "haiku")
@@ -172,6 +181,16 @@ def get_usage_summary(all_calls: bool = False, month_key: str = None) -> dict:
     all_logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     calls_to_return = all_logs if all_calls else all_logs[:100]
 
+    wa_month = task_breakdown.get("whatsapp", {"calls": 0, "cost": 0.0})
+    whatsapp_summary = {
+        "month_calls":      wa_month["calls"],
+        "month_cost":       round(wa_month["cost"], 4),
+        "alltime_calls":    wa_all_calls,
+        "alltime_cost":     round(wa_all_cost, 4),
+        "alltime_tokens":   wa_all_tokens,
+        "avg_cost_per_msg": round(wa_all_cost / wa_all_calls, 5) if wa_all_calls else 0.0,
+    }
+
     return {
         "month":            month_key,
         "available_months": get_available_months(),
@@ -186,6 +205,7 @@ def get_usage_summary(all_calls: bool = False, month_key: str = None) -> dict:
         "recent_calls":     calls_to_return,
         "top_users":        top_users,
         "task_breakdown":   task_breakdown,
+        "whatsapp":         whatsapp_summary,
     }
 
 def get_all_calls_csv() -> str:
