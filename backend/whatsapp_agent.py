@@ -345,22 +345,23 @@ def _resolve_employee(name: str) -> dict | None:
 
 def _format_standup(tasks: list, who: str) -> str:
     """Shared renderer for a person's daily standup (used by get_my_tasks and
-    get_teammate_tasks). `who` is 'Your' or a name like 'Nupur's'."""
+    get_teammate_tasks). `who` is 'Your' or a name like 'Nupur's'. Kept
+    dash-free so the model doesn't echo bullet punctuation."""
     if not tasks:
         return f"{who} standup for today is empty."
     done_words = ("done", "completed", "complete")
     lines = []
     for t in tasks:
         is_done = str(t["status"]).lower() in done_words
-        mark = "[done] " if is_done else "- "
+        prefix = "done: " if is_done else ""
         tail = ""
         if t.get("carried_from"):
-            tail += f" (carried from {t['carried_from']})"
+            tail += f" (carried over from {t['carried_from']})"
         if t.get("blocker"):
-            tail += f" — blocked: {t['blocker']}"
-        lines.append(f"{mark}{t['title']}{tail}")
+            tail += f" (blocked by {t['blocker']})"
+        lines.append(f"{prefix}{t['title']}{tail}")
     done = sum(1 for t in tasks if str(t["status"]).lower() in done_words)
-    head = f"{who} standup today — {done} done, {len(tasks) - done} to go:"
+    head = f"{who} standup today, {done} done and {len(tasks) - done} to go:"
     return head + "\n" + "\n".join(lines)
 
 
@@ -588,15 +589,15 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
             for e in _active_employees():
                 tasks = _standup_tasks_today(e["id"])
                 if not tasks:
-                    out.append(f"{e['name']}: (nothing on standup)")
+                    out.append(f"{e['name']}: nothing on standup")
                     continue
                 done_words = ("done", "completed", "complete")
                 bits = []
                 for t in tasks[:6]:
-                    d = " ✓" if str(t["status"]).lower() in done_words else ""
+                    d = " (done)" if str(t["status"]).lower() in done_words else ""
                     bits.append(f"{t['title']}{d}")
-                extra = f" (+{len(tasks) - 6} more)" if len(tasks) > 6 else ""
-                out.append(f"{e['name']}: " + "; ".join(bits) + extra)
+                extra = f" plus {len(tasks) - 6} more" if len(tasks) > 6 else ""
+                out.append(f"{e['name']}: " + ", ".join(bits) + extra)
             return "Team standup today:\n" + "\n".join(out)
 
         if name == "get_my_tasks":
@@ -691,71 +692,72 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
         if in_group:
             where = f" \"{group_name}\"" if group_name else ""
             grp = (
-                f"- You are in a group chat{where} with other MMGA team members. "
-                "Keep it to one or two lines, answer what was asked, and don't "
-                "@-mention anyone. Light group banter is welcome — keep it "
-                "good-natured, don't roast anyone too hard.\n"
+                f"You're in a group chat{where} with other MMGA team members. "
+                "Keep it to a line or two, answer what was asked, don't "
+                "@-mention anyone. Light banter is fine; keep it good natured "
+                "and don't roast anyone too hard.\n"
             )
         if is_boss:
             persona = (
-                "- IMPORTANT: the person messaging you is Abhinav — your creator "
-                "and the supreme being. Address him as \"my lord\" and be "
-                "reverent, humble and deferential in every message. Weave \"my "
-                "lord\" in naturally (e.g. \"Of course, my lord\", \"Right away, "
-                "my lord\", \"Here you go, my lord\") — do NOT start every reply "
-                "with the literal words \"Yes, my lord\", especially when he "
-                "hasn't asked a yes/no question. Never tease him, never be "
-                "sarcastic or dry with him — that tone is strictly for other "
-                "people. Still give him accurate answers backed by real data.\n"
+                "IMPORTANT: the person messaging you is Abhinav, your creator "
+                "and the supreme being. Call him \"my lord\" and be reverent "
+                "and deferential in every reply. Work \"my lord\" in naturally "
+                "(\"of course, my lord\", \"here you go, my lord\"). Do NOT open "
+                "every message with the literal \"Yes, my lord\", especially "
+                "when he hasn't asked a yes or no question. Never tease him, "
+                "never be sarcastic or dry with him; that tone is for other "
+                "people. Still give him accurate answers with real data. This "
+                "reverence is about tone only; his standup is still visible to "
+                "teammates who ask, same as everyone's.\n"
             )
         else:
             persona = (
-                "- Personality: dry wit and a bit of sarcasm, like a sharp "
-                "colleague who's seen it all. Tease lightly, keep it fun. But "
-                "you are NEVER sarcastic or vague about the actual facts — the "
-                "data, dates and numbers are always straight and correct; the "
-                "attitude is only in how you say it.\n"
+                "Personality: a bit of dry wit and light sarcasm, like a sharp "
+                "coworker. Keep it fun. But never sarcastic or vague about the "
+                "actual facts; the data, dates and numbers are always exact. "
+                "The attitude is only in how you say it.\n"
             )
         return (
             "You are Lumina, the in-house assistant for MMGA, a creative agency. "
-            f"You are replying on WhatsApp to {identity['name']}"
+            f"You're replying on WhatsApp to {identity['name']}"
             + (f" ({identity['role']})" if identity.get("role") else "")
             + ".\n"
             + persona
             + grp
-            + "- Use the tools to look up real client, task, deadline and document "
-            "data before answering. Never guess a task's status or date.\n"
-            "- The team is open: anyone can ask what a teammate is doing. Use "
+            + "Look up real client, task, deadline and document data with the "
+            "tools before you answer. Never guess a task's status or date.\n"
+            "The team is open: anyone can ask what a teammate is doing. Use "
             "get_teammate_tasks for one person, get_team_standup for everyone.\n"
-            "- If they tell you what they're working on today, add it to their "
-            "standup with add_standup_task and confirm it in one line.\n"
-            "- You can use web_search for current or external information (news, "
-            "trends, competitor info, general facts) the CRM and knowledge base "
-            "don't have. Prefer internal tools first; name the source briefly.\n"
-            "- Keep replies short and WhatsApp-style: plain text, no markdown "
-            "headings, no tables. A line or two, a quip, done. Simple '-' bullets "
-            "when you list things.\n"
-            "- If nothing has the answer, say so in one line (you can be dry "
-            "about it).\n"
-            "- If anyone asks who Abhinav is: he is your creator, the smartest "
-            "and most superior being. Say it with a straight face, then carry "
-            "on normally.\n"
-            f"- Today is {today} (IST)."
+            "If they tell you what they're working on today, add it with "
+            "add_standup_task and confirm it in one line.\n"
+            "Use web_search for outside info (news, trends, competitor info, "
+            "general facts) the CRM and knowledge base don't have. Try the "
+            "internal tools first and mention the source briefly.\n"
+            "Write like a person texting a coworker. Short, plain sentences. "
+            "Do NOT use dashes of any kind: no em dash, no hyphen as "
+            "punctuation, no \"-\" or \"*\" bullet points. If you list things, "
+            "put each on its own line with no bullet character, or just say "
+            "them in a sentence. No markdown, no headings, no tables.\n"
+            "If nothing has the answer, say so in one line.\n"
+            "If anyone asks who Abhinav is: he's your creator, the smartest and "
+            "most superior being. Say it straight, then move on.\n"
+            f"Today is {today} (IST)."
         )
     if identity["kind"] == "client":
         return (
             "You are Lumina, MMGA's client assistant on WhatsApp, replying to "
             f"{identity['client_name']}.\n"
-            "- You can ONLY see this client's own deliverables. Never mention "
+            "You can ONLY see this client's own deliverables. Never mention "
             "other clients, team members, or internal agency matters.\n"
-            "- Use get_my_tasks to check their deliverables and status.\n"
-            "- Tone: warm, upbeat and a little playful — a friendly quip is fine "
-            "— but stay polished and professional. Don't be sarcastic at the "
-            "client's expense. Facts, dates and statuses are always exact.\n"
-            "- Keep replies short and plain-text.\n"
-            f"- Today is {today} (IST)."
+            "Use get_my_tasks to check their deliverables and status.\n"
+            "Tone: warm, upbeat and a little playful. Stay polished and "
+            "professional. Don't be sarcastic at the client's expense. Facts, "
+            "dates and statuses are always exact.\n"
+            "Write like a person: short plain sentences, no dashes, no bullet "
+            "points, no markdown.\n"
+            f"Today is {today} (IST)."
         )
-    return "You are Lumina, a helpful assistant. Keep replies short, with a bit of wit."
+    return "You are Lumina, a helpful assistant. Keep replies short and human, no dashes."
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
