@@ -85,6 +85,23 @@ def _api_token(cfg: dict) -> str:
     return cfg["storage_token"] or cfg["db_secret"]
 
 
+def _companion_get(cfg: dict, path: str, timeout: int = 45):
+    """GET a token-gated /api/companion/* endpoint -> parsed JSON or None."""
+    tok = _api_token(cfg)
+    if not tok:
+        return None
+    try:
+        r = requests.get(f"{cfg['url']}{path}",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=timeout)
+        if not r.ok:
+            _log(f"{path}: HTTP {r.status_code}")
+            return None
+        return r.json() or {}
+    except Exception as e:
+        _log(f"{path} error: {e}")
+        return None
+
+
 # ── notify ─────────────────────────────────────────────────────────────────
 
 def _send(targets: list, webhook: str, title: str, body: str) -> bool:
@@ -543,6 +560,50 @@ def job_lunch(cfg: dict) -> None:
         _log("lunch: sent")
 
 
+def job_eod_group(cfg: dict) -> None:
+    """17:00 — post a short per-person 'tasks done today' summary to the group."""
+    grp = cfg["rollcall_group"]
+    if not grp:
+        return
+    j = _companion_get(cfg, "/api/companion/eod-summary")
+    if not j or j.get("weekend"):
+        return
+    text = j.get("group_text")
+    if text and _bridge_send(cfg, grp, text):
+        _log("eod-group: sent")
+
+
+def job_eod_personal(cfg: dict) -> None:
+    """19:30 — DM each person their still-open tasks for today, and DM the
+    leads (Vidit/Kshitij) the cross-team 'not done' list."""
+    if not cfg["bridge_ok"]:
+        return
+    j = _companion_get(cfg, "/api/companion/eod-summary")
+    if not j or j.get("weekend"):
+        return
+    sent = 0
+    for p in j.get("per_person", []):
+        pend = p.get("pending") or []
+        wa = re.sub(r"\D", "", p.get("whatsapp", ""))
+        if not pend or not wa:
+            continue
+        body = "\n".join(f"- {t}" for t in pend)
+        text = (
+            f"Wrapping up for the day, {p.get('name', 'there')}. Still open on "
+            f"your standup for today:\n{body}\n\n"
+            "Mark them done here if they're finished, otherwise they carry to tomorrow."
+        )
+        if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
+            sent += 1
+    lt = j.get("leads_text")
+    leads = j.get("leads") or []
+    for lead in leads:
+        wa = re.sub(r"\D", "", lead.get("whatsapp", ""))
+        if wa and lt:
+            _bridge_send(cfg, f"{wa}@s.whatsapp.net", lt)
+    _log(f"eod-personal: {sent} DMs + {len(leads)} lead report(s)")
+
+
 def job_rollcall(cfg: dict) -> None:
     grp = cfg["rollcall_group"]
     if not grp:
@@ -631,6 +692,11 @@ def main() -> None:
     ap.add_argument("--lunch-time", default="14:00",
                     help="daily time to post the 'go for lunch' nudge to the group")
     ap.add_argument("--no-lunch", action="store_true")
+    ap.add_argument("--eod-group-time", default="17:00",
+                    help="daily time to post the 'tasks done today' summary to the group")
+    ap.add_argument("--eod-personal-time", default="19:30",
+                    help="daily time to DM everyone their still-open tasks + the leads report")
+    ap.add_argument("--no-eod", action="store_true")
     ap.add_argument("--standup-nudge-time", default="11:30",
                     help="daily time to DM people who haven't added a standup task")
     ap.add_argument("--no-standup-nudge", action="store_true")
@@ -695,6 +761,10 @@ def main() -> None:
         daily_jobs.append(("rollcall", job_rollcall, args.rollcall_time))
     if not args.no_lunch and cfg["rollcall_group"]:
         daily_jobs.append(("lunch", job_lunch, args.lunch_time))
+    if not args.no_eod:
+        if cfg["rollcall_group"]:
+            daily_jobs.append(("eod-group", job_eod_group, args.eod_group_time))
+        daily_jobs.append(("eod-personal", job_eod_personal, args.eod_personal_time))
     if not args.no_standup_nudge:
         daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
 
@@ -729,6 +799,10 @@ def main() -> None:
     _log("  lunch nudge {}".format(
         args.lunch_time if (cfg["rollcall_group"] and not args.no_lunch)
         else "OFF (--no-lunch)" if args.no_lunch else "OFF (no group)"))
+    _log("  eod {}".format(
+        "OFF (--no-eod)" if args.no_eod else
+        f"group {args.eod_group_time} / personal {args.eod_personal_time}" if tok
+        else "OFF (no token)"))
     ch = (f"apprise x{len(cfg['alert_targets'])}" if cfg["alert_targets"] and apprise
           else "webhook" if cfg["alert_webhook"] else "console-only")
     _log(f"  alert channel: {ch}")

@@ -374,6 +374,122 @@ def companion_whatsapp_outbox_ack():
     return jsonify({"ok": True, "sent": len(sent), "failed": len(failed)})
 
 
+_DONE_WORDS = {"done", "completed", "complete"}
+
+
+def _eod_rows(today: str) -> dict:
+    """{user_id: {"pending":[titles], "done":n, "total":n}} from today's
+    standup_tasks, ignoring deleted/delegated rows."""
+    out: dict = {}
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT user_id, title, status FROM standup_tasks "
+            "WHERE date=? AND status NOT IN ('deleted','delegated') ORDER BY id",
+            (today,),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("eod-summary: standup query failed")
+        return out
+    for uid, title, status in rows:
+        d = out.setdefault(uid, {"pending": [], "done": 0, "total": 0})
+        d["total"] += 1
+        if str(status or "").strip().lower() in _DONE_WORDS:
+            d["done"] += 1
+        else:
+            d["pending"].append(title or "(untitled)")
+    return out
+
+
+@companion_bp.route("/api/companion/eod-summary", methods=["GET"])
+def companion_eod_summary():
+    """End-of-day standup rollup for the laptop companion:
+      group_text  -- 5pm: short per-person done-count line for the team group
+      per_person  -- 7:30pm: each person's still-open tasks for their own DM
+      leads_text / leads -- 7:30pm: cross-team 'not done' list for the leads
+    """
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+
+    today = utils.today_ist()
+    try:
+        weekend = datetime.strptime(today, "%Y-%m-%d").weekday() >= 5
+    except Exception:
+        weekend = False
+
+    roster = []
+    try:
+        for e in utils._load_employees().get("employees", []):
+            if str(e.get("status", "active")).strip().lower() in _INACTIVE:
+                continue
+            roster.append({
+                "id": e.get("id", ""),
+                "name": e.get("name") or e.get("id", ""),
+                "whatsapp": re.sub(r"\D", "", e.get("whatsapp", "") or ""),
+            })
+    except Exception:
+        logger.exception("eod-summary: roster load failed")
+        return jsonify({"error": "roster load failed"}), 500
+
+    stats = _eod_rows(today)
+
+    lead_ids = ["emp001", "emp004"]   # Vidit, Kshitij — overridable
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='eod_lead_ids'"
+        ).fetchone()
+        conn.close()
+        if row and row[0]:
+            lead_ids = [x.strip() for x in str(row[0]).replace(",", " ").split() if x.strip()]
+    except Exception:
+        pass
+
+    per_person, with_tasks, no_standup = [], [], []
+    done_total = task_total = 0
+    for r in roster:
+        s = stats.get(r["id"])
+        if not s:
+            no_standup.append(r["name"])
+            continue
+        done_total += s["done"]
+        task_total += s["total"]
+        with_tasks.append((r, s))
+        per_person.append({
+            "id": r["id"], "name": r["name"], "whatsapp": r["whatsapp"],
+            "pending": s["pending"], "done": s["done"], "total": s["total"],
+        })
+
+    if with_tasks:
+        gl = [f"Tasks done today: {done_total}/{task_total} across the team."]
+        gl += [f"{r['name']} {s['done']}/{s['total']}" for r, s in with_tasks]
+        if no_standup:
+            gl.append("No standup yet: " + ", ".join(no_standup))
+        group_text = "\n".join(gl)
+    else:
+        group_text = ""
+
+    pend_lines = [f"{r['name']}: " + "; ".join(s["pending"][:8])
+                  for r, s in with_tasks if s["pending"]]
+    if pend_lines:
+        leads_text = "EOD check, still not done today:\n" + "\n".join(pend_lines)
+    else:
+        leads_text = "EOD check: everyone's cleared their standup for today."
+
+    by_id = {r["id"]: r for r in roster}
+    leads = [{"name": by_id[i]["name"], "whatsapp": by_id[i]["whatsapp"]}
+             for i in lead_ids if i in by_id and by_id[i]["whatsapp"]]
+
+    return jsonify({
+        "date": today, "weekend": weekend,
+        "group_text": group_text,
+        "leads_text": leads_text,
+        "leads": leads,
+        "per_person": per_person,
+    })
+
+
 @companion_bp.route("/api/companion/digest", methods=["GET"])
 def companion_digest():
     if not _auth_ok():
