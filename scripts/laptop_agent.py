@@ -15,17 +15,20 @@ Jobs it runs (each skips itself automatically if not configured):
   6. daily brief        — 09:00 & 19:00: fetch /api/companion/digest, send it
   7. sheets watchdog    — check Google-Sheet sync health, alert; optional  (20m)
                           auto-pull with --sheets-autopull
+  8. attendance roll-call — 12:00: post who hasn't logged in yet to the
+                          team WhatsApp group (needs --rollcall-group + bridge)
 
 Setup:
     pip install -r scripts/requirements.txt
     set LUMINA_URL=https://lumina.mmga.agency
-    set STORAGE_SYNC_TOKEN=<token you set on Railway>       (jobs 1, 6, 7)
+    set STORAGE_SYNC_TOKEN=<token you set on Railway>       (jobs 1, 6, 7, 8)
     set FLASK_SECRET_KEY=<Railway FLASK_SECRET_KEY>          (job 3)
     set ALERT_TARGETS=tgram://token/chatid,mailto://...      (job 4 alerts; apprise URLs)
     set DIGEST_TARGETS=tgram://token/chatid                  (job 6; falls back to ALERT_TARGETS)
     set ALERT_WEBHOOK=<Slack/Discord webhook>                (fallback if no *_TARGETS)
     set BACKUP_RCLONE_REMOTE=myremote:lumina-backups         (job 3 offsite, optional)
     set WHATSAPP_BRIDGE_TOKEN=<token you set on Railway>      (job 5)
+    set ROLLCALL_GROUP_ID=<group id>                         (job 8; or --rollcall-group)
 
 Run:
     python scripts/laptop_agent.py --dir "C:\\Users\\me\\LuminaKnowledge"
@@ -37,6 +40,7 @@ Autostart: Task Scheduler → "At log on" →
 from __future__ import annotations
 
 import os
+import re
 import sys
 import json
 import time
@@ -408,6 +412,59 @@ INTERVAL_JOBS = [
 ]
 
 
+# ── job 8: noon attendance roll-call to the team WhatsApp group ───────────
+
+def _bridge_send(cfg: dict, to: str, text: str) -> bool:
+    """POST a proactive message to the local Baileys bridge's send endpoint."""
+    tok = (os.getenv("WHATSAPP_BRIDGE_TOKEN") or cfg["storage_token"]
+           or cfg["db_secret"])
+    if not tok:
+        _log("bridge send: no token")
+        return False
+    try:
+        r = requests.post(
+            f"http://127.0.0.1:{cfg['bridge_http_port']}/send",
+            json={"to": to, "text": text},
+            headers={"Authorization": f"Bearer {tok}"}, timeout=30,
+        )
+        if r.ok:
+            _log(f"bridge send -> {to} ({len(text)} chars)")
+            return True
+        _log(f"bridge send: HTTP {r.status_code} {r.text[:120]}")
+    except Exception as e:
+        _log(f"bridge send error: {e}")
+    return False
+
+
+def job_rollcall(cfg: dict) -> None:
+    grp = cfg["rollcall_group"]
+    if not grp:
+        return
+    tok = _api_token(cfg)
+    if not tok:
+        _log("rollcall: no token (set STORAGE_SYNC_TOKEN)")
+        return
+    try:
+        r = requests.get(f"{cfg['url']}/api/companion/attendance-missing",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=45)
+        if not r.ok:
+            _log(f"rollcall: HTTP {r.status_code}")
+            return
+        j = r.json() or {}
+    except Exception as e:
+        _log(f"rollcall error: {e}")
+        return
+    if j.get("weekend"):
+        _log("rollcall: weekend — skipping")
+        return
+    missing = j.get("missing") or []
+    if not missing:
+        _log("rollcall: everyone logged in — no message sent")
+        return
+    text = j.get("text") or ("Not logged in yet: " + ", ".join(missing))
+    _bridge_send(cfg, grp, text)
+
+
 # ── wall-clock daily jobs ────────────────────────────────────────────────
 _daily_fired: dict = {}
 
@@ -456,6 +513,12 @@ def main() -> None:
     ap.add_argument("--digest-morning", default="09:00")
     ap.add_argument("--digest-evening", default="19:00")
     ap.add_argument("--no-digest", action="store_true")
+    ap.add_argument("--rollcall-time", default="12:00",
+                    help="daily time to post the attendance roll-call to the group")
+    ap.add_argument("--rollcall-group", default=os.getenv("ROLLCALL_GROUP_ID", ""),
+                    help="WhatsApp group id (digits or ...@g.us) for the roll-call; "
+                         "empty = feature off")
+    ap.add_argument("--no-rollcall", action="store_true")
     ap.add_argument("--bridge-dir", default="",
                     help="path to whatsapp-bridge/ (default: sibling of this repo's scripts/)")
     ap.add_argument("--no-bridge", action="store_true", help="don't supervise the WhatsApp bridge")
@@ -501,14 +564,19 @@ def main() -> None:
         "health_every": args.health_every,
         "sheets_every": args.sheets_every,
         "bridge_every": 15,
+        "bridge_http_port": int(os.getenv("BRIDGE_HTTP_PORT", "8787")),
+        "rollcall_group": (lambda d: f"{d}@g.us" if d else "")(
+            re.sub(r"\D", "", args.rollcall_group or "")),
     }
 
     daily_jobs = []
     if not args.no_digest:
-        daily_jobs = [
+        daily_jobs += [
             ("digest-morning", job_digest_morning, args.digest_morning),
             ("digest-evening", job_digest_evening, args.digest_evening),
         ]
+    if not args.no_rollcall and cfg["rollcall_group"]:
+        daily_jobs.append(("rollcall", job_rollcall, args.rollcall_time))
 
     if not bridge_ok and not args.no_bridge:
         reason = ("node not on PATH" if not node
@@ -520,7 +588,7 @@ def main() -> None:
 
     tok = cfg["storage_token"] or cfg["db_secret"]
     _log(f"laptop_agent up — {root}  <->  {cfg['url']}")
-    _log("  sync {} | research {} | backup {}{} | health on | sheets {} | digest {} | bridge {}".format(
+    _log("  sync {} | research {} | backup {}{} | health on | sheets {} | digest {} | rollcall {} | bridge {}".format(
         "on" if cfg["storage_token"] else "OFF (no STORAGE_SYNC_TOKEN)",
         "on" if (root / research_feed.SOURCES_FILE).exists() else "OFF (no research_sources.txt)",
         "on" if cfg["db_secret"] else "OFF (no FLASK_SECRET_KEY)",
@@ -528,6 +596,8 @@ def main() -> None:
         "on" if tok else "OFF (no token)",
         "OFF (--no-digest)" if args.no_digest else (
             f"{args.digest_morning}/{args.digest_evening}" if tok else "OFF (no token)"),
+        f"{args.rollcall_time}" if (cfg["rollcall_group"] and not args.no_rollcall and tok)
+        else "OFF (no group)" if not cfg["rollcall_group"] else "OFF",
         bridge_note,
     ))
     ch = (f"apprise x{len(cfg['alert_targets'])}" if cfg["alert_targets"] and apprise

@@ -191,6 +191,69 @@ def _build_digest(window: str) -> dict:
     return data
 
 
+# ── attendance roll-call ───────────────────────────────────────────────────
+
+_INACTIVE = {"inactive", "disabled", "left", "removed", "archived", "former"}
+
+
+@companion_bp.route("/api/companion/attendance-missing", methods=["GET"])
+def companion_attendance_missing():
+    """Who on the active roster has NOT checked in today. Powers the laptop
+    companion's noon roll-call message to the team WhatsApp group."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+
+    today = utils.today_ist()
+    try:
+        weekend = datetime.strptime(today, "%Y-%m-%d").weekday() >= 5  # 5=Sat 6=Sun
+    except Exception:
+        weekend = False
+
+    roster = []
+    try:
+        for e in utils._load_employees().get("employees", []):
+            if str(e.get("status", "active")).strip().lower() in _INACTIVE:
+                continue
+            roster.append((e.get("id", ""), e.get("name") or e.get("id", "")))
+    except Exception:
+        logger.exception("attendance-missing: roster load failed")
+        return jsonify({"error": "roster load failed"}), 500
+
+    checked_in = set()
+    try:
+        conn = get_connection()
+        for row in conn.execute(
+            "SELECT user_id FROM daily_attendance "
+            "WHERE date=? AND checkin_time IS NOT NULL AND checkin_time<>''",
+            (today,),
+        ).fetchall():
+            checked_in.add(row[0])
+        conn.close()
+    except Exception:
+        logger.exception("attendance-missing: query failed")
+        return jsonify({"error": "query failed"}), 500
+
+    present = [n for (i, n) in roster if i in checked_in]
+    missing = [n for (i, n) in roster if i not in checked_in]
+
+    if weekend:
+        text = ""
+    elif not missing:
+        text = f"Attendance check ({today}) — everyone's logged in."
+    else:
+        text = (f"Attendance check ({today})\n"
+                f"Not logged in yet: {', '.join(missing)}")
+
+    return jsonify({
+        "date": today,
+        "weekend": weekend,
+        "present": present,
+        "missing": missing,
+        "roster_count": len(roster),
+        "text": text,
+    })
+
+
 @companion_bp.route("/api/companion/digest", methods=["GET"])
 def companion_digest():
     if not _auth_ok():

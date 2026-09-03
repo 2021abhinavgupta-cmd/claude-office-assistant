@@ -29,6 +29,7 @@
  *   node.exe <path>\whatsapp-bridge\index.js
  */
 
+import http from "http";
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -44,6 +45,11 @@ const TOKEN =
   process.env.FLASK_SECRET_KEY ||
   "";
 const AUTH_DIR = process.env.AUTH_DIR || "./auth";
+// loopback-only endpoint the laptop companion uses to push a proactive
+// message (e.g. the noon attendance roll-call). Strangers still only ever
+// get a reply — nothing on WhatsApp can trigger an outbound, only something
+// on this machine holding TOKEN.
+const SEND_PORT = parseInt(process.env.BRIDGE_HTTP_PORT || "8787", 10);
 
 if (!TOKEN) {
   console.error("bridge: set WHATSAPP_BRIDGE_TOKEN (or STORAGE_SYNC_TOKEN / FLASK_SECRET_KEY).");
@@ -51,6 +57,53 @@ if (!TOKEN) {
 }
 
 const log = (...a) => console.log(`[${new Date().toTimeString().slice(0, 8)}]`, ...a);
+
+let currentSock = null;   // set on every (re)connect, used by the send endpoint
+
+function startSendServer() {
+  const srv = http.createServer((req, res) => {
+    if (req.method !== "POST" || req.url !== "/send") {
+      res.writeHead(404);
+      res.end("not found");
+      return;
+    }
+    if ((req.headers["authorization"] || "") !== `Bearer ${TOKEN}`) {
+      res.writeHead(401);
+      res.end("unauthorized");
+      return;
+    }
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 65536) req.destroy();
+    });
+    req.on("end", async () => {
+      try {
+        const { to, text } = JSON.parse(body || "{}");
+        if (!to || !text) {
+          res.writeHead(400);
+          res.end('{"error":"to and text required"}');
+          return;
+        }
+        if (!currentSock) {
+          res.writeHead(503);
+          res.end('{"error":"not connected"}');
+          return;
+        }
+        await currentSock.sendMessage(String(to), { text: String(text) });
+        log(`push -> ${to}: ${String(text).slice(0, 80)}`);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end('{"ok":true}');
+      } catch (e) {
+        log(`push error: ${e.message}`);
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+  });
+  srv.on("error", (e) => log(`send server error: ${e.message}`));
+  srv.listen(SEND_PORT, "127.0.0.1", () => log(`send endpoint on 127.0.0.1:${SEND_PORT}`));
+}
 
 // Baileys redelivers messages on reconnect — remember the last N ids so a
 // redelivery doesn't trigger a second reply.
@@ -134,6 +187,7 @@ async function start() {
     markOnlineOnConnect: false,
     syncFullHistory: false,
   });
+  currentSock = sock;
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -252,6 +306,8 @@ async function start() {
     }
   });
 }
+
+startSendServer();
 
 start().catch((e) => {
   console.error("bridge failed to start:", e);
