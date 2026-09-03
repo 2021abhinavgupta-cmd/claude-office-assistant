@@ -311,6 +311,59 @@ def _standup_tasks_today(user_id: str) -> list:
         return []
 
 
+def _active_employees() -> list:
+    """[{id, name}] for every active employee — the internal roster."""
+    out = []
+    try:
+        for e in utils._load_employees().get("employees", []):
+            if str(e.get("status", "active")).strip().lower() in (
+                "inactive", "disabled", "left", "removed", "archived", "former"
+            ):
+                continue
+            out.append({"id": e.get("id", ""), "name": e.get("name") or e.get("id", "")})
+    except Exception:
+        logger.exception("whatsapp_agent: roster load failed")
+    return out
+
+
+def _resolve_employee(name: str) -> dict | None:
+    """Best-effort name -> {id, name}. Exact (case-insensitive) first, then a
+    first-name / substring match. None if nothing sensible matches."""
+    n = (name or "").strip().lower()
+    if not n:
+        return None
+    roster = _active_employees()
+    for e in roster:
+        if e["name"].strip().lower() == n:
+            return e
+    for e in roster:
+        first = e["name"].strip().lower().split()[0] if e["name"].strip() else ""
+        if first == n or n in e["name"].strip().lower() or (first and first.startswith(n)):
+            return e
+    return None
+
+
+def _format_standup(tasks: list, who: str) -> str:
+    """Shared renderer for a person's daily standup (used by get_my_tasks and
+    get_teammate_tasks). `who` is 'Your' or a name like 'Nupur's'."""
+    if not tasks:
+        return f"{who} standup for today is empty."
+    done_words = ("done", "completed", "complete")
+    lines = []
+    for t in tasks:
+        is_done = str(t["status"]).lower() in done_words
+        mark = "[done] " if is_done else "- "
+        tail = ""
+        if t.get("carried_from"):
+            tail += f" (carried from {t['carried_from']})"
+        if t.get("blocker"):
+            tail += f" — blocked: {t['blocker']}"
+        lines.append(f"{mark}{t['title']}{tail}")
+    done = sum(1 for t in tasks if str(t["status"]).lower() in done_words)
+    head = f"{who} standup today — {done} done, {len(tasks) - done} to go:"
+    return head + "\n" + "\n".join(lines)
+
+
 def _kb_search(query: str, limit: int = 6) -> list:
     """Search the whole knowledge base, no project/user scoping (every
     employee is admin-tier here). Keyword (bm25) always; semantic hits
@@ -440,6 +493,28 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "get_teammate_tasks",
+        "description": "Another team member's live daily-standup task list for "
+                       "today — use this for 'what is Nupur working on', 'what "
+                       "are Kshitij's tasks', 'is Happy doing anything today'. "
+                       "Everyone on the team can see everyone else's standup.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string",
+                         "description": "The teammate's name or first name."}
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "get_team_standup",
+        "description": "A roll-up of the whole team's daily standup for today — "
+                       "each person and what's on their list. Use for 'what's "
+                       "the team doing today', 'who's working on what'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "search_knowledge_base",
         "description": "Search the agency's uploaded documents / knowledge base "
                        "(briefs, notes, brand guidelines, strategy docs) for a "
@@ -499,26 +574,38 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
                 head += f" (first {len(shown)} of {len(tasks)} — ask about a specific post for the rest)"
             return head + ":\n" + "\n".join(_fmt_task_line(t, detail=True) for t in shown)
 
+        if name == "get_teammate_tasks" and kind == "employee":
+            who = (tool_input or {}).get("name", "")
+            emp = _resolve_employee(who)
+            if not emp:
+                names = ", ".join(e["name"] for e in _active_employees())
+                return f"Don't know who '{who}' is. Team: {names}."
+            tasks = _standup_tasks_today(emp["id"])
+            return _format_standup(tasks, f"{emp['name']}'s")
+
+        if name == "get_team_standup" and kind == "employee":
+            out = []
+            for e in _active_employees():
+                tasks = _standup_tasks_today(e["id"])
+                if not tasks:
+                    out.append(f"{e['name']}: (nothing on standup)")
+                    continue
+                done_words = ("done", "completed", "complete")
+                bits = []
+                for t in tasks[:6]:
+                    d = " ✓" if str(t["status"]).lower() in done_words else ""
+                    bits.append(f"{t['title']}{d}")
+                extra = f" (+{len(tasks) - 6} more)" if len(tasks) > 6 else ""
+                out.append(f"{e['name']}: " + "; ".join(bits) + extra)
+            return "Team standup today:\n" + "\n".join(out)
+
         if name == "get_my_tasks":
             if kind == "employee":
                 tasks = _standup_tasks_today(identity["id"])
                 if not tasks:
                     return ("Nothing on your standup for today yet. Tell me what "
                             "you're working on and I'll add it.")
-                done_words = ("done", "completed", "complete")
-                lines = []
-                for t in tasks:
-                    is_done = str(t["status"]).lower() in done_words
-                    mark = "[done] " if is_done else "- "
-                    tail = ""
-                    if t["carried_from"]:
-                        tail += f" (carried from {t['carried_from']})"
-                    if t["blocker"]:
-                        tail += f" — blocked: {t['blocker']}"
-                    lines.append(f"{mark}{t['title']}{tail}")
-                done = sum(1 for t in tasks if str(t["status"]).lower() in done_words)
-                head = f"Your standup today — {done} done, {len(tasks) - done} to go:"
-                return head + "\n" + "\n".join(lines)
+                return _format_standup(tasks, "Your")
             if kind == "client":
                 # Require a real linked client id — never fall back to
                 # name matching for a client, that risks returning another
@@ -638,6 +725,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             + grp
             + "- Use the tools to look up real client, task, deadline and document "
             "data before answering. Never guess a task's status or date.\n"
+            "- The team is open: anyone can ask what a teammate is doing. Use "
+            "get_teammate_tasks for one person, get_team_standup for everyone.\n"
             "- If they tell you what they're working on today, add it to their "
             "standup with add_standup_task and confirm it in one line.\n"
             "- You can use web_search for current or external information (news, "
