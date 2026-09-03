@@ -253,7 +253,8 @@ def job_health(cfg: dict) -> None:
 
 
 # ── job 5: keep the Baileys WhatsApp bridge alive ─────────────────────────
-_BRIDGE: dict = {"proc": None, "started": 0.0, "dead_at": 0.0, "backoff": 0.0, "fails": 0}
+_BRIDGE: dict = {"proc": None, "started": 0.0, "dead_at": 0.0, "backoff": 0.0,
+                 "fails": 0, "logf": None}
 
 
 def job_bridge(cfg: dict) -> None:
@@ -272,6 +273,12 @@ def job_bridge(cfg: dict) -> None:
         _BRIDGE["backoff"] = min(60.0, 5.0 * _BRIDGE["fails"])
         _BRIDGE["dead_at"] = now
         _BRIDGE["proc"] = None
+        try:
+            if _BRIDGE.get("logf"):
+                _BRIDGE["logf"].close()
+                _BRIDGE["logf"] = None
+        except Exception:
+            pass
         _log(f"bridge exited (code {proc.returncode}, up {up:.0f}s); "
              f"restart in {_BRIDGE['backoff']:.0f}s")
         return
@@ -282,11 +289,21 @@ def job_bridge(cfg: dict) -> None:
     env = dict(os.environ)
     env.setdefault("LUMINA_URL", cfg["url"])
     try:
+        cfg["log_dir"].mkdir(parents=True, exist_ok=True)
+        logp = cfg["log_dir"] / "bridge.log"
+        # keep the log from growing forever
+        try:
+            if logp.exists() and logp.stat().st_size > 2_000_000:
+                logp.replace(cfg["log_dir"] / "bridge.log.1")
+        except Exception:
+            pass
+        _BRIDGE["logf"] = open(logp, "a", buffering=1, encoding="utf-8", errors="replace")
         _BRIDGE["proc"] = subprocess.Popen(
             [cfg["node"], "index.js"], cwd=str(cfg["bridge_dir"]), env=env,
+            stdout=_BRIDGE["logf"], stderr=subprocess.STDOUT,
         )
         _BRIDGE["started"] = now
-        _log(f"bridge started (pid {_BRIDGE['proc'].pid})")
+        _log(f"bridge started (pid {_BRIDGE['proc'].pid}) -> {logp}")
     except Exception as e:
         _BRIDGE["dead_at"] = now
         _BRIDGE["backoff"] = 30.0
@@ -305,6 +322,12 @@ def _stop_bridge() -> None:
             proc.kill()
         except Exception:
             pass
+    try:
+        if _BRIDGE.get("logf"):
+            _BRIDGE["logf"].close()
+            _BRIDGE["logf"] = None
+    except Exception:
+        pass
 
 
 # ── job 6: daily brief ────────────────────────────────────────────────────
