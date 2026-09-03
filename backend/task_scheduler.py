@@ -165,10 +165,74 @@ def check_overdue_tasks():
         for a in alerts_fired:
             logger.warning(f"[TASK ALERT][{a['level']}] {a['message']}")
         _send_alert_to_dashboard(alerts_fired)
+        _whatsapp_escalation(alerts_fired)
     else:
         logger.info(" No new overdue alerts today.")
 
+    _check_budget_alert()
     return alerts_fired
+
+
+def _whatsapp_escalation(alerts: list) -> None:
+    """DM the assignee about each fired overdue alert (and the alert
+    recipients for day2+). Best-effort -- never breaks the daily check."""
+    try:
+        import wa_outbox
+    except Exception:
+        return
+    for a in alerts:
+        try:
+            who = a.get("assignee", "")
+            title = a.get("task", "a task")
+            client = a.get("client", "")
+            days = a.get("days", 0)
+            line = (f"Heads up: '{title}'"
+                    + (f" for {client}" if client and client != "Unknown" else "")
+                    + f" is {days} day(s) overdue. Can you close it out or move the date?")
+            jid = wa_outbox.jid_for_name(who)
+            if jid:
+                wa_outbox.enqueue(jid, line)
+            if a.get("level") in ("WARNING", "AT_RISK", "CRITICAL"):
+                wa_outbox.notify_alert(
+                    f"[{a.get('level')}] {who}'s '{title}'"
+                    + (f" ({client})" if client and client != "Unknown" else "")
+                    + f" is {days} day(s) overdue."
+                )
+        except Exception:
+            logger.debug("task_scheduler: whatsapp escalation row failed", exc_info=True)
+
+
+def _check_budget_alert() -> None:
+    """Once per calendar month, DM the alert recipients if API spend has
+    crossed 80% of the monthly budget."""
+    try:
+        import wa_outbox
+        from budget_tracker import get_usage_summary, get_current_month_key
+        s = get_usage_summary()
+        pct = s.get("percent_used", 0) or 0
+        if pct < 80:
+            return
+        month = get_current_month_key()
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='budget_alert_month'"
+        ).fetchone()
+        if row and row[0] == month:
+            conn.close()
+            return
+        with conn:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES ('budget_alert_month', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (month,),
+            )
+        conn.close()
+        wa_outbox.notify_alert(
+            f"API budget alert: {pct}% of this month's ${s.get('budget_limit', '?')} "
+            f"limit used (${s.get('monthly_spend', '?')} spent)."
+        )
+    except Exception:
+        logger.debug("task_scheduler: budget alert check failed", exc_info=True)
 
 def _send_alert_to_dashboard(alerts):
     """Store alerts in DB so founder dashboard can display them."""

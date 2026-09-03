@@ -19,6 +19,7 @@ Jobs it runs (each skips itself automatically if not configured):
                           team WhatsApp group (needs --rollcall-group + bridge)
   9. standup nudge       — 11:30: DM anyone who hasn't added a task to today's
                           standup ("reply here and I'll add it") (needs bridge)
+     attendance nag      — 10:30: DM anyone not checked in yet (needs bridge)
  10. WhatsApp outbox     — deliver queued proactive DMs (task-assigned nudges,
                           "remind X to do Y") via the local bridge            (20s)
  11. lunch nudge         — 14:00: post a "go for lunch" message to the team
@@ -417,6 +418,8 @@ def job_sheets_watchdog(cfg: dict) -> None:
         names = ", ".join(l.get("client_name") or l.get("client_id") for l in bad)
         if names != _SHEETS["alerted"]:      # only re-alert when the set changes
             _notify(cfg, f"Google Sheet sync issue for: {names}")
+            _alert_dm(cfg, f"Google Sheet sync issue for: {names}. Check the "
+                           "Connect Google Sheet panel for that client.")
             _SHEETS["alerted"] = names
         if cfg["sheets_autopull"]:
             try:
@@ -465,6 +468,21 @@ def job_wa_outbox(cfg: dict) -> None:
     except Exception as e:
         _log(f"wa-outbox ack error: {e}")
     _log(f"wa-outbox: {len(sent)} sent, {len(failed)} failed")
+
+
+def _alert_dm(cfg: dict, text: str) -> int:
+    """DM an ops alert to every configured alert recipient via the bridge."""
+    if not cfg["bridge_ok"]:
+        return 0
+    j = _companion_get(cfg, "/api/companion/alert-recipients")
+    if not j:
+        return 0
+    n = 0
+    for r in j.get("recipients", []):
+        wa = re.sub(r"\D", "", r.get("whatsapp", ""))
+        if wa and _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
+            n += 1
+    return n
 
 
 INTERVAL_JOBS = [
@@ -623,6 +641,27 @@ def job_eod_personal(cfg: dict) -> None:
     _log(f"eod-personal: {sent} DMs + {len(leads)} lead report(s)")
 
 
+def job_attendance_nag(cfg: dict) -> None:
+    """10:30 -- DM anyone on the active roster who hasn't checked in yet."""
+    if not cfg["bridge_ok"]:
+        return
+    j = _companion_get(cfg, "/api/companion/attendance-missing")
+    if not j or j.get("weekend"):
+        return
+    sent = 0
+    for p in j.get("missing_detail", []):
+        wa = re.sub(r"\D", "", p.get("whatsapp", ""))
+        if not wa:
+            continue
+        name = p.get("name") or "there"
+        text = (f"Morning {name}, it's 10:30 and you're not checked in on Lumina "
+                "yet. Tap check-in when you get a sec, or reply 'checking in' here "
+                "and I'll do it for you.")
+        if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
+            sent += 1
+    _log(f"attendance-nag: {sent} DM(s)")
+
+
 def job_rollcall(cfg: dict) -> None:
     grp = cfg["rollcall_group"]
     if not grp:
@@ -722,6 +761,9 @@ def main() -> None:
     ap.add_argument("--standup-nudge-time", default="11:30",
                     help="daily time to DM people who haven't added a standup task")
     ap.add_argument("--no-standup-nudge", action="store_true")
+    ap.add_argument("--attendance-nag-time", default="10:30",
+                    help="daily time to DM people who haven't checked in yet")
+    ap.add_argument("--no-attendance-nag", action="store_true")
     ap.add_argument("--bridge-dir", default="",
                     help="path to whatsapp-bridge/ (default: sibling of this repo's scripts/)")
     ap.add_argument("--no-bridge", action="store_true", help="don't supervise the WhatsApp bridge")
@@ -791,6 +833,8 @@ def main() -> None:
         daily_jobs.append(("weekly-wrap", job_weekly_wrap, args.weekly_wrap_time))
     if not args.no_standup_nudge:
         daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
+    if not args.no_attendance_nag:
+        daily_jobs.append(("attendance-nag", job_attendance_nag, args.attendance_nag_time))
 
     if not bridge_ok and not args.no_bridge:
         reason = ("node not on PATH" if not node
@@ -817,6 +861,9 @@ def main() -> None:
     _log("  standup-nudge {}".format(
         args.standup_nudge_time if (not args.no_standup_nudge and tok)
         else "OFF (--no-standup-nudge)" if args.no_standup_nudge else "OFF (no token)"))
+    _log("  attendance-nag {}".format(
+        args.attendance_nag_time if (not args.no_attendance_nag and cfg["bridge_ok"] and tok)
+        else "OFF (--no-attendance-nag)" if args.no_attendance_nag else "OFF (needs bridge + token)"))
     _log("  wa-outbox {}".format(
         f"every {args.outbox_every}s" if (cfg["bridge_ok"] and tok)
         else "OFF (needs bridge + token)"))

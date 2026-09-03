@@ -248,6 +248,18 @@ def companion_attendance_missing():
     present = [n for (i, n) in roster if i in checked_in]
     missing = [n for (i, n) in roster if i not in checked_in]
 
+    # id + whatsapp for the ones missing, for the 10:30 personal nag
+    wa_by_id = {}
+    try:
+        for e in utils._load_employees().get("employees", []):
+            wa_by_id[e.get("id", "")] = re.sub(r"\D", "", e.get("whatsapp", "") or "")
+    except Exception:
+        pass
+    missing_detail = [
+        {"id": i, "name": n, "whatsapp": wa_by_id.get(i, "")}
+        for (i, n) in roster if i not in checked_in
+    ]
+
     if weekend:
         text = ""
     elif not missing:
@@ -263,9 +275,43 @@ def companion_attendance_missing():
         "weekend": weekend,
         "present": present,
         "missing": missing,
+        "missing_detail": missing_detail,
         "roster_count": len(roster),
         "text": text,
     })
+
+
+@companion_bp.route("/api/companion/alert-recipients", methods=["GET"])
+def companion_alert_recipients():
+    """Employee ids in app_settings 'alert_recipient_ids' (default emp003),
+    resolved to name + whatsapp -- who the laptop should DM for ops alerts
+    (budget crossed 80%, sheet sync broke, ...)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    ids = ["emp003"]
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='alert_recipient_ids'"
+        ).fetchone()
+        conn.close()
+        if row and row[0]:
+            ids = [x.strip() for x in str(row[0]).replace(",", " ").split() if x.strip()]
+    except Exception:
+        pass
+    by_id = {}
+    try:
+        for e in utils._load_employees().get("employees", []):
+            by_id[e.get("id", "")] = e
+    except Exception:
+        pass
+    out = []
+    for i in ids:
+        e = by_id.get(i)
+        if e and re.sub(r"\D", "", e.get("whatsapp", "") or ""):
+            out.append({"id": i, "name": e.get("name") or i,
+                        "whatsapp": re.sub(r"\D", "", e.get("whatsapp", ""))})
+    return jsonify({"recipients": out})
 
 
 # ── standup nudge ──────────────────────────────────────────────────────────

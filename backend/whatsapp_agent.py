@@ -36,6 +36,7 @@ import notion_store
 import kb_retriever
 import semantic_kb
 import utils
+import wa_outbox
 
 logger = logging.getLogger(__name__)
 
@@ -331,8 +332,7 @@ def _active_employees() -> list:
 
 def _wa_jid(raw: str) -> str:
     """A WhatsApp DM JID from a stored number ('+91 97029 08716' -> ...)."""
-    d = re.sub(r"\D", "", raw or "")
-    return f"{d}@s.whatsapp.net" if d else ""
+    return wa_outbox.wa_jid(raw)
 
 
 def _team_group_jid() -> str:
@@ -359,20 +359,7 @@ def _enqueue_outbound(jid: str, text: str) -> bool:
     """Queue a proactive WhatsApp message. The laptop companion polls
     /api/companion/whatsapp-outbox and delivers it via the local bridge —
     the Railway backend can't reach the bridge directly."""
-    if not jid or not text:
-        return False
-    try:
-        conn = get_connection()
-        with conn:
-            conn.execute(
-                "INSERT INTO whatsapp_outbox (to_number, body, created_at) VALUES (?, ?, ?)",
-                (jid, text[:1500], datetime.now(timezone.utc).isoformat()),
-            )
-        conn.close()
-        return True
-    except Exception:
-        logger.exception("whatsapp_agent: outbox enqueue failed")
-        return False
+    return wa_outbox.enqueue(jid, text)
 
 
 def _resolve_employee(name: str) -> dict | None:

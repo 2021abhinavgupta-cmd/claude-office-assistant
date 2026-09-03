@@ -6,10 +6,12 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import datetime, timedelta
 
 import notion_store
 import task_scheduler
+import wa_outbox
 from flask import Blueprint, Response, jsonify, request, send_file
 from utils import _load_employees, _save_employees, now_ist, today_ist, IST
 from werkzeug.security import generate_password_hash
@@ -18,6 +20,21 @@ from utils import _is_admin
 
 logger = logging.getLogger(__name__)
 ops_bp = Blueprint("ops", __name__)
+
+
+def _client_activity_bg(client: dict, kind: str, detail: str = "") -> None:
+    """Fire-and-forget: ping the assignees of this client's tasks (+ the alert
+    recipients) that the client did something in the portal."""
+    try:
+        threading.Thread(
+            target=wa_outbox.notify_client_activity,
+            args=(client.get("client_name", ""),
+                  client.get("client_notion_id", "") or "",
+                  kind, detail),
+            daemon=True,
+        ).start()
+    except Exception:
+        logger.debug("ops: client-activity notify failed to start", exc_info=True)
 
 
 def _claude_call(system: str, user: str, max_tokens: int = 1024) -> str:
@@ -2512,6 +2529,10 @@ def submit_task_feedback(task_id):
         logger.error(f"Error saving task feedback: {e}")
         return jsonify({"error": "Failed to save feedback"}), 500
 
+    _client_activity_bg(
+        client, "left feedback on a task",
+        f"{status or ''} {comments or ''}".strip(),
+    )
     return jsonify({"success": True})
 
 
@@ -2565,6 +2586,7 @@ def upload_dependency():
         logger.error(f"Error saving dependency: {e}")
         return jsonify({"error": "Database error"}), 500
 
+    _client_activity_bg(client, "uploaded a file to the portal", original_name)
     return jsonify({"success": True, "id": dep_id, "url": content, "original_name": original_name})
 
 
@@ -2597,6 +2619,7 @@ def save_text_dependency():
         logger.error(f"Error saving dependency: {e}")
         return jsonify({"error": "Database error"}), 500
 
+    _client_activity_bg(client, f"added a {dep_type or 'note'} in the portal", content)
     return jsonify({"success": True, "id": dep_id})
 
 
