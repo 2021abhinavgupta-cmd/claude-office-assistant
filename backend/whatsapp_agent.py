@@ -296,7 +296,8 @@ def _standup_tasks_today(user_id: str) -> list:
         cur = conn.cursor()
         cur.execute(
             "SELECT title, status, blocker, carried_from FROM standup_tasks "
-            "WHERE user_id=? AND date=? ORDER BY id",
+            "WHERE user_id=? AND date=? AND status NOT IN ('deleted','delegated') "
+            "ORDER BY id",
             (user_id, _today_ist()),
         )
         rows = cur.fetchall()
@@ -377,8 +378,9 @@ def _match_standup_task(user_id: str, query: str) -> dict | None:
         conn = get_connection()
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, title, status, notion_id FROM standup_tasks "
-            "WHERE user_id=? AND date=? ORDER BY id",
+            "SELECT id, title, status, notion_id, blocker FROM standup_tasks "
+            "WHERE user_id=? AND date=? AND status NOT IN ('deleted','delegated') "
+            "ORDER BY id",
             (user_id, _today_ist()),
         )
         rows = cur.fetchall()
@@ -387,7 +389,7 @@ def _match_standup_task(user_id: str, query: str) -> dict | None:
         logger.exception("whatsapp_agent: standup match query failed")
         return None
     cand = [{"id": r[0], "title": r[1] or "", "status": (r[2] or "pending"),
-             "notion_id": r[3]} for r in rows]
+             "notion_id": r[3], "blocker": (r[4] or "")} for r in rows]
     for c in cand:
         if c["title"].strip().lower() == q:
             return c
@@ -570,6 +572,43 @@ _EMPLOYEE_TOOLS = [
                            "description": "done (default) or pending to reopen."},
             },
             "required": ["task"],
+        },
+    },
+    {
+        "name": "assign_task",
+        "description": "Add a NEW task to another team member's daily standup "
+                       "for today. Use for 'add X to Nupur's list', 'put X on "
+                       "Kshitij's standup', 'get Happy to do X'. This creates a "
+                       "fresh task on their standup; it does NOT move one of "
+                       "yours. Works the same in a group chat.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string",
+                         "description": "The teammate to add the task for."},
+                "task": {"type": "string",
+                         "description": "The task text, roughly as it was said."},
+            },
+            "required": ["name", "task"],
+        },
+    },
+    {
+        "name": "delegate_my_task",
+        "description": "Hand one of YOUR OWN standup tasks for today over to "
+                       "another team member. It comes off your list and goes "
+                       "onto theirs. Use for 'give my X task to Nupur', "
+                       "'delegate X to Happy', 'pass X to Kshitij'. Match the "
+                       "task by a few words from what you call it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string",
+                         "description": "A few words identifying which of your "
+                                        "tasks to hand over."},
+                "name": {"type": "string",
+                         "description": "The teammate to hand it to."},
+            },
+            "required": ["task", "name"],
         },
     },
     {
@@ -759,6 +798,66 @@ def _run_tool(name: str, tool_input: dict, identity: dict) -> str:
                 logger.exception("whatsapp_agent: add_standup_task failed")
                 return "(couldn't add that to the standup just now)"
 
+        if name == "assign_task" and kind == "employee":
+            who = (tool_input or {}).get("name", "")
+            task = (tool_input or {}).get("task", "").strip()
+            emp = _resolve_employee(who)
+            if not emp:
+                names = ", ".join(e["name"] for e in _active_employees())
+                return f"Don't know who '{who}' is. Team: {names}."
+            if not task:
+                return "(no task text — ask what to add for them)"
+            if emp["id"] == identity["id"]:
+                return ("That's your own list — use add_standup_task for that. "
+                        "Pick a teammate to assign to.")
+            try:
+                conn = get_connection()
+                with conn:
+                    conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, status, delegated_from) "
+                        "VALUES (?, ?, ?, 'pending', ?)",
+                        (emp["id"], today, task[:500], identity["name"]),
+                    )
+                conn.close()
+                return f"Added to {emp['name']}'s standup for today: {task[:120]}"
+            except Exception:
+                logger.exception("whatsapp_agent: assign_task failed")
+                return "(couldn't add that to their standup just now)"
+
+        if name == "delegate_my_task" and kind == "employee":
+            who = (tool_input or {}).get("name", "")
+            q = (tool_input or {}).get("task", "")
+            emp = _resolve_employee(who)
+            if not emp:
+                names = ", ".join(e["name"] for e in _active_employees())
+                return f"Don't know who '{who}' is. Team: {names}."
+            if emp["id"] == identity["id"]:
+                return "That's you — pick a different teammate to hand it to."
+            m = _match_standup_task(identity["id"], q)
+            if not m:
+                have = _standup_tasks_today(identity["id"])
+                names = "; ".join(t["title"] for t in have) or "nothing yet"
+                return f"Couldn't find one of your tasks matching '{q}'. Today's list: {names}."
+            try:
+                conn = get_connection()
+                with conn:
+                    conn.execute(
+                        "UPDATE standup_tasks SET status='delegated', delegated_to=? WHERE id=?",
+                        (emp["name"], m["id"]),
+                    )
+                    conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, status, blocker, delegated_from) "
+                        "VALUES (?, ?, ?, 'pending', ?, ?)",
+                        (emp["id"], today, m["title"][:500],
+                         (m.get("blocker") or None), identity["name"]),
+                    )
+                conn.close()
+            except Exception:
+                logger.exception("whatsapp_agent: delegate_my_task failed")
+                return "(couldn't hand that over just now)"
+            return (f"Handed '{m['title']}' to {emp['name']}. Off your list, "
+                    "on theirs for today.")
+
         if name == "search_knowledge_base" and kind == "employee":
             q = (tool_input or {}).get("query", "")
             hits = _kb_search(q)
@@ -870,6 +969,10 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
+            "They can also put work on a teammate: use assign_task to add a new "
+            "task to someone else's standup, or delegate_my_task to move one of "
+            "their own tasks onto a teammate's list. This works here and in the "
+            "group. Confirm in one line and say whose list it landed on.\n"
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
