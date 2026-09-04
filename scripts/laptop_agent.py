@@ -32,9 +32,9 @@ Jobs it runs (each skips itself automatically if not configured):
                           "still open" DMs + leads report (needs bridge)
  13. weekly wrap         — Friday 18:00: per-person completed count for the
                           week, to the group (needs --rollcall-group + bridge)
- 14. tomorrow-live       — 18:30: DM the content-calendar lead (default Vidit)
-                          everything due to go live tomorrow, read straight
-                          from Lumina Sheets/Notion (needs bridge)
+ 14. tomorrow-live       — 09:30 & 18:30: DM the content-calendar lead (default
+                          Vidit) everything due to go live tomorrow, read
+                          straight from Lumina Sheets/Notion (needs bridge)
 
 Setup:
     pip install -r scripts/requirements.txt
@@ -952,9 +952,9 @@ def job_attendance_nag(cfg: dict) -> None:
 
 
 def job_tomorrow_live(cfg: dict) -> None:
-    """Evening -- DM Vidit (or whoever's configured) everything due to go
-    live tomorrow, read straight from the Lumina Sheets/Notion data, so
-    nothing scheduled for the next day gets missed."""
+    """09:30 and 18:30 -- DM Vidit (or whoever's configured) everything due
+    to go live tomorrow, read straight from the Lumina Sheets/Notion data,
+    so nothing scheduled for the next day gets missed."""
     if not cfg["bridge_ok"]:
         return
     j = _companion_get(cfg, "/api/companion/tomorrow-live")
@@ -1122,9 +1122,11 @@ def main() -> None:
     ap.add_argument("--attendance-nag-time", default="10:30",
                     help="daily time to DM people who haven't checked in yet")
     ap.add_argument("--no-attendance-nag", action="store_true")
-    ap.add_argument("--tomorrow-live-time", default="18:30",
-                    help="daily time to DM the content-calendar lead (default Vidit) "
-                         "everything due to go live tomorrow")
+    ap.add_argument("--tomorrow-live-morning", default="09:30",
+                    help="daily morning time to DM the content-calendar lead (default "
+                         "Vidit) everything due to go live tomorrow")
+    ap.add_argument("--tomorrow-live-evening", default="18:30",
+                    help="daily evening time for the same tomorrow-live reminder")
     ap.add_argument("--no-tomorrow-live", action="store_true")
     ap.add_argument("--bridge-dir", default="",
                     help="path to whatsapp-bridge/ (default: sibling of this repo's scripts/)")
@@ -1223,7 +1225,8 @@ def main() -> None:
     if not args.no_attendance_nag:
         daily_jobs.append(("attendance-nag", job_attendance_nag, args.attendance_nag_time))
     if not args.no_tomorrow_live:
-        daily_jobs.append(("tomorrow-live", job_tomorrow_live, args.tomorrow_live_time))
+        daily_jobs.append(("tomorrow-live-am", job_tomorrow_live, args.tomorrow_live_morning))
+        daily_jobs.append(("tomorrow-live-pm", job_tomorrow_live, args.tomorrow_live_evening))
 
     if not bridge_ok and not args.no_bridge:
         reason = ("node not on PATH" if not node
@@ -1254,7 +1257,8 @@ def main() -> None:
         args.attendance_nag_time if (not args.no_attendance_nag and cfg["bridge_ok"] and tok)
         else "OFF (--no-attendance-nag)" if args.no_attendance_nag else "OFF (needs bridge + token)"))
     _log("  tomorrow-live {}".format(
-        args.tomorrow_live_time if (not args.no_tomorrow_live and cfg["bridge_ok"] and tok)
+        f"{args.tomorrow_live_morning}/{args.tomorrow_live_evening}"
+        if (not args.no_tomorrow_live and cfg["bridge_ok"] and tok)
         else "OFF (--no-tomorrow-live)" if args.no_tomorrow_live else "OFF (needs bridge + token)"))
     _log("  wa-outbox {}".format(
         f"every {args.outbox_every}s" if (cfg["bridge_ok"] and tok)
