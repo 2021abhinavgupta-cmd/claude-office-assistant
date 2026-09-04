@@ -14,6 +14,8 @@ Jobs it runs (each skips itself automatically if not configured):
   5. WhatsApp bridge    — keep whatsapp-bridge/index.js (Baileys) alive,
                           + a health watchdog (3m) that alerts loudly if the
                           session logs out / crash-loops / is offline >8m
+  5b. self-update       — git pull scripts/ + whatsapp-bridge/ from
+                          origin/main (ff-only) and restart what changed (10m)
   6. daily brief        — 09:00 & 19:00: fetch /api/companion/digest, send it
   7. sheets watchdog    — check Google-Sheet sync health, alert; optional  (20m)
                           auto-pull with --sheets-autopull
@@ -656,11 +658,81 @@ def job_bridge_health(cfg: dict) -> None:
             pass
 
 
+# ── job: self-update ─────────────────────────────────────────────────────
+#
+# The dev machine pushes to GitHub `main`. Railway auto-deploys the backend;
+# this pulls the parts that run HERE (scripts/, whatsapp-bridge/) and
+# restarts what changed. Fast-forward only — never touches local state.
+_SELF: dict = {"fails": 0}
+
+
+def _git(repo: Path, *args, timeout: int = 120):
+    return subprocess.run(["git", *args], cwd=str(repo), capture_output=True,
+                          text=True, timeout=timeout)
+
+
+def job_selfupdate(cfg: dict) -> None:
+    if not cfg.get("self_update"):
+        return
+    repo = cfg["repo_dir"]
+    branch = cfg.get("self_update_branch", "main")
+    if not (repo / ".git").exists() or not shutil.which("git"):
+        return
+    try:
+        before = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _git(repo, "fetch", "--quiet", "origin", branch)
+        ff = _git(repo, "merge", "--ff-only", f"origin/{branch}")
+        after = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    except Exception as e:
+        _log(f"self-update error: {e}")
+        return
+
+    if not after or after == before:
+        if ff.returncode != 0 and "not possible to fast-forward" in (ff.stderr or ""):
+            _SELF["fails"] += 1
+            if _SELF["fails"] in (1, 10):
+                _loud_alert(cfg, "self-update-diverged",
+                            "self-update can't fast-forward (local repo has "
+                            "diverged from origin/main). Fix the repo on the "
+                            "always-on laptop by hand.")
+        return
+    _SELF["fails"] = 0
+
+    changed = _git(repo, "diff", "--name-only", before, after).stdout.splitlines()
+    _log(f"self-update: {before[:7]} -> {after[:7]} ({len(changed)} file(s) changed)")
+
+    bridge_changed = any(c.startswith("whatsapp-bridge/") for c in changed)
+    pkg_changed = any(c.startswith("whatsapp-bridge/package") for c in changed)
+    agent_changed = any(c.startswith("scripts/") and c.endswith(".py") for c in changed)
+
+    if pkg_changed and cfg["node"]:
+        try:
+            _log("self-update: bridge deps changed -> npm install")
+            subprocess.run("npm install --no-audit --no-fund", cwd=str(cfg["bridge_dir"]),
+                           capture_output=True, timeout=600, shell=True)
+        except Exception as e:
+            _log(f"self-update: npm install failed: {e}")
+
+    if agent_changed:
+        _log("self-update: companion code changed -> restarting self")
+        _stop_bridge()
+        try:
+            os.execv(sys.executable,
+                     [sys.executable, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
+        except Exception as e:
+            _log(f"self-update: re-exec failed ({e}); exiting for Task Scheduler restart")
+            os._exit(3)
+    elif bridge_changed:
+        _log("self-update: bridge code changed -> restarting bridge child")
+        _stop_bridge()          # job_bridge respawns it next tick with the new code
+
+
 INTERVAL_JOBS = [
     ("sync", job_sync, "sync_every"),
     ("research", job_research, "research_every"),
     ("backup", job_backup, "backup_every"),
     ("health", job_health, "health_every"),
+    ("self-update", job_selfupdate, "self_update_every"),
     ("bridge", job_bridge, "bridge_every"),
     ("bridge-health", job_bridge_health, "bridge_health_every"),
     ("sheets", job_sheets_watchdog, "sheets_every"),
@@ -953,6 +1025,10 @@ def main() -> None:
     ap.add_argument("--bridge-dir", default="",
                     help="path to whatsapp-bridge/ (default: sibling of this repo's scripts/)")
     ap.add_argument("--no-bridge", action="store_true", help="don't supervise the WhatsApp bridge")
+    ap.add_argument("--no-self-update", action="store_true",
+                    help="don't auto git-pull scripts/ + whatsapp-bridge/ from origin/main")
+    ap.add_argument("--self-update-every", type=int, default=600)
+    ap.add_argument("--self-update-branch", default="main")
     args = ap.parse_args()
 
     root = Path(args.dir).expanduser().resolve()
@@ -999,6 +1075,10 @@ def main() -> None:
         "outbox_every": args.outbox_every,
         "bridge_every": 15,
         "bridge_health_every": 180,
+        "repo_dir": Path(__file__).resolve().parent.parent,
+        "self_update": not args.no_self_update,
+        "self_update_every": args.self_update_every,
+        "self_update_branch": args.self_update_branch,
         "bridge_http_port": int(os.getenv("BRIDGE_HTTP_PORT", "8787")),
         "rollcall_group": (lambda d: f"{d}@g.us" if d else "")(
             re.sub(r"\D", "", args.rollcall_group or "")),
@@ -1059,6 +1139,10 @@ def main() -> None:
     _log("  bridge-health {}".format(
         f"every {cfg['bridge_health_every']}s (alerts on logout / crashloop / >8m offline)"
         if cfg["bridge_ok"] else "OFF (needs bridge)"))
+    _log("  self-update {}".format(
+        f"every {cfg['self_update_every']}s from origin/{cfg['self_update_branch']} (ff-only)"
+        if (cfg["self_update"] and (cfg["repo_dir"] / ".git").exists() and shutil.which("git"))
+        else "OFF (--no-self-update)" if not cfg["self_update"] else "OFF (not a git checkout)"))
     _log("  lunch nudge {}".format(
         args.lunch_time if (cfg["rollcall_group"] and not args.no_lunch)
         else "OFF (--no-lunch)" if args.no_lunch else "OFF (no group)"))
