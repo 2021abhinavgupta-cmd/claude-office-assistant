@@ -44,8 +44,11 @@ _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 # Rolling per-sender context. Older than this and we start a fresh thread.
 _CONTEXT_TTL_HOURS = 6
-_CONTEXT_MAX_TURNS = 6          # user/assistant pairs kept between messages
-_MAX_TOOL_ROUNDS = 10          # hard cap on the tool-use loop (pause_turn can eat rounds)
+_CONTEXT_MAX_TURNS = 4          # user/assistant pairs kept between messages -- was 6,
+                                 # trimmed for cost: fewer pairs = fewer input tokens resent every call
+_MAX_TOOL_ROUNDS = 6           # hard cap on the tool-use loop (pause_turn can eat rounds) --
+                                # was 10; each round is a full separate API call, so this is
+                                # the biggest real cost lever on a multi-tool query
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -1068,7 +1071,9 @@ _EMPLOYEE_TOOLS = [
     },
     # Anthropic-hosted web search — Claude runs the query server-side and
     # gets cited results. Same tool spec the chat stream endpoint uses.
-    {"type": "web_search_20250305", "name": "web_search", "max_uses": 4},
+    # max_uses capped at 2 (was 4) -- each search is billed separately from
+    # tokens, and a WhatsApp question rarely needs more than one lookup.
+    {"type": "web_search_20250305", "name": "web_search", "max_uses": 2},
 ]
 
 _CLIENT_TOOLS = [
@@ -1942,12 +1947,19 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
                 "dates, numbers) is always exact, never exaggerated or "
                 "invented to land a joke.\n"
             )
+        length_cap = (
+            "Keep it short: 1-3 sentences for a normal reply. Only go longer "
+            "when the actual answer is a list of several real items (tasks, "
+            "clients, dates) -- then list exactly those, still no filler "
+            "around them.\n"
+        )
         if in_group:
             style = (
                 "Write like a person, short and plain. No em dashes. When you "
                 "list tasks or several items, format them as a bullet list: "
                 "each item on its own line starting with \"- \". For a single "
                 "fact just say it in a sentence. No headings or tables.\n"
+                + length_cap
             )
         else:
             style = (
@@ -1957,6 +1969,7 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
                 "you list things, put each on its own line with no bullet "
                 "character, or just say them in a sentence. No markdown, no "
                 "headings, no tables.\n"
+                + length_cap
             )
         return (
             "You are Lumina, the in-house assistant for MMGA, a creative agency. "
@@ -2125,7 +2138,8 @@ def handle_message(sender: str, text: str, *,
         for _ in range(_MAX_TOOL_ROUNDS):
             resp = _client.messages.create(
                 model=model["name"],
-                max_tokens=1200,
+                max_tokens=600,   # was 1200 -- WhatsApp replies are short, this just
+                                  # caps the worst-case cost per call lower
                 system=_system_prompt(identity, in_group=in_group,
                                       group_name=group_name or ""),
                 tools=tools,
