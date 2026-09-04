@@ -464,12 +464,18 @@ def _resolve_employee(name: str) -> dict | None:
 def _format_standup(tasks: list, who: str) -> str:
     """Shared renderer for a person's daily standup (used by get_my_tasks and
     get_teammate_tasks). `who` is 'Your' or a name like 'Nupur's'. Kept
-    dash-free so the model doesn't echo bullet punctuation."""
+    dash-free so the model doesn't echo bullet punctuation.
+
+    Numbered 1-based, in the same order _match_standup_task() resolves a
+    bare number against (both order by `id`) -- without this, "mark 4 as
+    done" had nothing to resolve against: the list had no numbers and
+    _match_standup_task only ever did text matching, so a bare digit query
+    just failed to match anything."""
     if not tasks:
         return f"{who} standup for today is empty."
     done_words = ("done", "completed", "complete")
     lines = []
-    for t in tasks:
+    for i, t in enumerate(tasks, 1):
         is_done = str(t["status"]).lower() in done_words
         prefix = "done: " if is_done else ""
         tail = ""
@@ -477,8 +483,7 @@ def _format_standup(tasks: list, who: str) -> str:
             tail += f" (carried over from {t['carried_from']})"
         if t.get("blocker"):
             tail += f" (blocked by {t['blocker']})"
-        # leading "- " is kept in group chats, stripped in DMs by _humanize
-        lines.append(f"- {prefix}{t['title']}{tail}")
+        lines.append(f"{i}. {prefix}{t['title']}{tail}")
     done = sum(1 for t in tasks if str(t["status"]).lower() in done_words)
     head = f"{who} standup today, {done} done and {len(tasks) - done} to go:"
     return head + "\n" + "\n".join(lines)
@@ -507,6 +512,14 @@ def _match_standup_task(user_id: str, query: str) -> dict | None:
         return None
     cand = [{"id": r[0], "title": r[1] or "", "status": (r[2] or "pending"),
              "notion_id": r[3], "blocker": (r[4] or "")} for r in rows]
+    # Bare/near-bare number ("4", "#4", "task 4") -> 1-based position in
+    # this same `cand` order, which is exactly the order _format_standup()
+    # numbers the list in (both order by `id`). Checked before any text
+    # matching since a pure digit query can't meaningfully match a title.
+    num_m = re.fullmatch(r"#?\s*(?:task\s*)?(\d+)", q)
+    if num_m:
+        idx = int(num_m.group(1)) - 1
+        return cand[idx] if 0 <= idx < len(cand) else None
     for c in cand:
         if c["title"].strip().lower() == q:
             return c
@@ -609,11 +622,16 @@ def _humanize(reply: str, *, bullets: bool = False) -> str:
     commas (so it doesn't read like a press release). When `bullets` is
     False it also strips line-leading bullet characters and spaced-hyphen
     punctuation; when True (group chats) it leaves '- ' list markers alone.
-    Hyphens inside words (reverse-engg) are never touched."""
+    Hyphens inside words (reverse-engg) are never touched.
+
+    Deliberately does NOT strip a leading number ("1. ", "2) ") the way it
+    used to -- _format_standup() now numbers each task 1-based specifically
+    so 'mark 4 as done' has something real to refer back to, and this used
+    to silently strip that numbering back out again in every DM."""
     lines = []
     for ln in (reply or "").split("\n"):
         if not bullets:
-            ln = re.sub(r"^(\s*)(?:[-*•‣▪]|\d+[.)])\s+", r"\1", ln)
+            ln = re.sub(r"^(\s*)[-*•‣▪]\s+", r"\1", ln)
         lines.append(ln)
     out = "\n".join(lines)
     out = re.sub(r"(?<=\S) *[—–] *(?=\S)", ", ", out)      # word — word -> word, word
@@ -711,13 +729,17 @@ _EMPLOYEE_TOOLS = [
         "name": "update_standup_task",
         "description": "Mark one of the person's standup tasks for today as "
                        "done, or reopen it. Use for 'mark X as done', 'X is "
-                       "complete', 'finished X', 'reopen X'. Match the task by "
-                       "a few words from what they call it.",
+                       "complete', 'finished X', 'reopen X', or 'mark 4 as "
+                       "done'/'mark #4 as done' referring to its number from "
+                       "get_my_tasks' list. Match the task by a few words "
+                       "from what they call it, OR by that list number.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "task": {"type": "string",
-                         "description": "A few words identifying the task."},
+                         "description": "A few words identifying the task, "
+                                        "or its bare number from the list "
+                                        "(e.g. '4')."},
                 "status": {"type": "string", "enum": ["done", "pending"],
                            "description": "done (default) or pending to reopen."},
             },
@@ -1990,6 +2012,7 @@ def handle_message(sender: str, text: str, *,
 
     total_in = total_out = 0
     reply = ""
+    last_tool_text = ""
     turn = {"sticker": None}
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
@@ -2021,6 +2044,7 @@ def handle_message(sender: str, text: str, *,
                             "tool_use_id": block.id,
                             "content": out[:6000],
                         })
+                        last_tool_text = out
                 if not results:
                     break  # nothing we can execute — fall through to text
                 messages.append({"role": "user", "content": results})
@@ -2042,7 +2066,14 @@ def handle_message(sender: str, text: str, *,
         return "Sorry, I hit an error looking that up. Try again in a moment."
 
     if not reply:
-        reply = "Sorry, I couldn't put together an answer for that one."
+        # The model finished a tool call (e.g. update_standup_task actually
+        # succeeded) but never produced a final text turn -- ran out of
+        # _MAX_TOOL_ROUNDS, or a round's response was tool-use-only with no
+        # accompanying text. Relaying the last tool's own result (which is
+        # always a real, informative string -- "Marked done: X", "Couldn't
+        # find a task matching 'Y'", etc.) is far better than a generic
+        # non-answer that hides whether the action actually happened.
+        reply = last_tool_text or "Sorry, I couldn't put together an answer for that one."
 
     reply = _humanize(reply, bullets=in_group)
 
