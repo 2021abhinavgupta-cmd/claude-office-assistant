@@ -16,6 +16,10 @@ Jobs it runs (each skips itself automatically if not configured):
                           session logs out / crash-loops / is offline >8m
   5b. self-update       — git pull scripts/ + whatsapp-bridge/ from
                           origin/main (ff-only) and restart what changed (10m)
+                          -- a scripts-only change restarts this process but
+                          deliberately leaves the bridge child running; the
+                          new process adopts it via /health instead of
+                          spawning a duplicate, so WhatsApp stays connected
   6. daily brief        — 09:00 & 19:00: fetch /api/companion/digest, send it
   7. sheets watchdog    — check Google-Sheet sync health, alert; optional  (20m)
                           auto-pull with --sheets-autopull
@@ -316,7 +320,7 @@ def job_health(cfg: dict) -> None:
 
 # ── job 5: keep the Baileys WhatsApp bridge alive ─────────────────────────
 _BRIDGE: dict = {"proc": None, "started": 0.0, "dead_at": 0.0, "backoff": 0.0,
-                 "fails": 0, "logf": None}
+                 "fails": 0, "logf": None, "adopted": False}
 
 
 def _logged_out_flag(cfg: dict) -> bool:
@@ -326,12 +330,35 @@ def _logged_out_flag(cfg: dict) -> bool:
         return False
 
 
+def _bridge_alive(cfg: dict) -> bool:
+    """Is a bridge already answering on the local health port -- ours or an
+    orphan left running by a prior self-update restart (see job_selfupdate:
+    a scripts/*.py-only change deliberately does NOT kill the bridge child
+    before this process exits, so the WhatsApp session survives the
+    restart). `connected` may briefly be false while it reconnects on its
+    own -- only `loggedOut` (unrecoverable without a human) counts as dead."""
+    port = cfg.get("bridge_http_port", 8787)
+    try:
+        r = requests.get(f"http://127.0.0.1:{port}/health", timeout=5)
+        if not r.ok:
+            return False
+        return not (r.json() or {}).get("loggedOut")
+    except Exception:
+        return False
+
+
 def job_bridge(cfg: dict) -> None:
     """(Re)spawn `node index.js` in whatsapp-bridge/ and keep it running.
     A run that lasts < 120s is treated as a failed start and backed off
     (5s per consecutive fail, capped 60s). If WhatsApp logged the device
     out, restarting can't help — back off hard (5 min) and alert loudly,
-    since that needs a human to re-scan the QR."""
+    since that needs a human to re-scan the QR.
+
+    Before spawning, checks whether a bridge is already alive on the local
+    health port (an orphan surviving a self-update restart, see above) and
+    adopts it instead of starting a duplicate that would fight it for the
+    same WhatsApp session — that fight is exactly what job_bridge used to
+    force by always killing+respawning on every restart."""
     if not cfg["bridge_ok"]:
         return
     now = time.monotonic()
@@ -368,6 +395,17 @@ def job_bridge(cfg: dict) -> None:
             _loud_alert(cfg, "bridge-crashloop",
                         f"WhatsApp bridge keeps crashing ({_BRIDGE['fails']} fast "
                         "restarts). Check whatsapp-bridge/../lumina-logs/bridge.log.")
+        return
+
+    if _BRIDGE.get("adopted"):
+        if _bridge_alive(cfg):
+            return  # still there -- nothing to do
+        _log("bridge: adopted orphan is gone -- spawning our own")
+        _BRIDGE["adopted"] = False
+    elif _bridge_alive(cfg):
+        _log("bridge: found an already-running, healthy bridge (survived a "
+             "companion restart) -- adopting it instead of spawning a duplicate")
+        _BRIDGE["adopted"] = True
         return
 
     if now < _BRIDGE["dead_at"] + _BRIDGE["backoff"]:
@@ -732,7 +770,20 @@ def job_selfupdate(cfg: dict) -> None:
 
     if agent_changed:
         _log("self-update: companion code changed -> restarting")
-        _stop_bridge()
+        if bridge_changed:
+            _log("self-update: bridge code also changed -> stopping it before restart")
+            _stop_bridge()
+        else:
+            # Only scripts/*.py changed -- this process has to restart to
+            # load it, but the bridge child doesn't need to and deliberately
+            # isn't touched: os._exit()/os.execv() below never runs Python's
+            # normal exit machinery, so an untouched child simply survives as
+            # an orphan, still connected to WhatsApp. The next process adopts
+            # it via _bridge_alive() in job_bridge() instead of spawning a
+            # second one. This is what keeps the WhatsApp session up across
+            # a companion-code restart instead of dropping and reconnecting.
+            _log("self-update: bridge code unchanged -> leaving the WhatsApp "
+                 "bridge running through the restart")
         if sys.platform == "win32":
             # os.execv on Windows detaches from Task Scheduler's job and the
             # new process gets orphaned/killed (learned the hard way — a
