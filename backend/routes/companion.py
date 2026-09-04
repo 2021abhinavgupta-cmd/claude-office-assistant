@@ -37,6 +37,15 @@ _UPLOADS = Path(__file__).parent.parent.parent / "logs" / "uploads"
 # task statuses that count as "no longer needs attention"
 _CLOSED = {"done", "approved", "posted", "final", "complete", "completed",
            "closed", "published", "live"}
+# Additionally excluded from the OVERDUE nag specifically (not from
+# DUE TODAY/TOMORROW, which are plain deadline-awareness, not a neglect
+# signal) -- someone actively working a task, or a task sitting with
+# someone else awaiting their review, isn't "overdue and forgotten" the
+# way a stale not_started task is. Root-caused live 2026-09-04: 590 of
+# 650 "overdue" tasks in this workspace were in_progress -- counting them
+# made the nag number meaningless (excluding just in_progress drops it to
+# 69, which is the real actionable figure).
+_OVERDUE_EXEMPT = {"in_progress", "need_for_approval", "pending_review", "submitted"}
 
 
 def _auth_ok() -> bool:
@@ -92,6 +101,12 @@ def _build_digest(window: str) -> dict:
                 who = t.get("assigned_to") or ""
                 row = f"{label}" + (f" -> {who}" if who else "") + f" (due {due})"
                 if due < today:
+                    # in_progress/awaiting-review aren't "neglected" the way
+                    # not_started/blank is -- see _OVERDUE_EXEMPT above.
+                    # Still surfaced under DUE TODAY/TOMORROW if relevant,
+                    # just not counted as an overdue nag.
+                    if st in _OVERDUE_EXEMPT:
+                        continue
                     overdue_total += 1
                     overdue_by_person[who or "Unassigned"] = overdue_by_person.get(who or "Unassigned", 0) + 1
                     if due >= overdue_floor:
