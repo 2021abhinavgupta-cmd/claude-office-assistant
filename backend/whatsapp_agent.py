@@ -820,9 +820,17 @@ _EMPLOYEE_TOOLS = [
     {
         "name": "get_teammate_tasks",
         "description": "Another team member's live daily-standup task list for "
-                       "today — use this for 'what is Nupur working on', 'what "
-                       "are Kshitij's tasks', 'is Happy doing anything today'. "
-                       "Everyone on the team can see everyone else's standup.",
+                       "today, WITH each item's real status -- shows 'done: ' "
+                       "on anything they've actually marked finished. Use this "
+                       "for 'what is Nupur working on', 'what are Kshitij's "
+                       "tasks', 'is Happy doing anything today', 'has Happy "
+                       "done his tasks', 'what has X finished today' -- ANY "
+                       "'X's tasks' question where completion status matters. "
+                       "This is the right tool for that, not "
+                       "get_task_schedule (that one is deadline-only and "
+                       "silently drops completed items instead of marking "
+                       "them done). Everyone on the team can see everyone "
+                       "else's standup.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -898,7 +906,12 @@ _EMPLOYEE_TOOLS = [
         "description": "Board tasks by deadline: what's overdue, due today, or "
                        "due this week. Use for 'what's overdue for Omotec', "
                        "'what's due this week', 'what is Happy behind on'. "
-                       "Optionally narrow by client or by person.",
+                       "Optionally narrow by client or by person. Does NOT "
+                       "tell you what someone has finished today -- it's "
+                       "deadline filtering only, and completed/closed items "
+                       "are left out entirely rather than marked done. For "
+                       "'has Happy done his tasks', 'what has X finished "
+                       "today', use get_teammate_tasks instead.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -1947,7 +1960,13 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             + "Look up real client, task, deadline and document data with the "
             "tools before you answer. Never guess a task's status or date.\n"
             "The team is open: anyone can ask what a teammate is doing. Use "
-            "get_teammate_tasks for one person, get_team_standup for everyone.\n"
+            "get_teammate_tasks for one person, get_team_standup for everyone "
+            "-- both show real done/pending status per task. For 'X's "
+            "tasks' or 'has X finished today', prefer get_teammate_tasks "
+            "over get_task_schedule: the schedule tool only filters by "
+            "deadline and just omits anything already done instead of "
+            "marking it, which reads as 'not shown as done' even when it "
+            "really is.\n"
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
