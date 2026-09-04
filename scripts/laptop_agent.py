@@ -728,13 +728,32 @@ def job_selfupdate(cfg: dict) -> None:
             _log(f"self-update: npm install failed: {e}")
 
     if agent_changed:
-        _log("self-update: companion code changed -> restarting self")
+        _log("self-update: companion code changed -> restarting")
         _stop_bridge()
+        if sys.platform == "win32":
+            # os.execv on Windows detaches from Task Scheduler's job and the
+            # new process gets orphaned/killed (learned the hard way — a
+            # scripts/*.py push left the box dark for 23 min). Instead: exit
+            # non-zero so the task's own RestartCount fires, AND drop a
+            # detached helper that re-runs the task in case it doesn't.
+            try:
+                task = os.getenv("LUMINA_TASK_NAME", "Lumina companion")
+                subprocess.Popen(
+                    ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                     f"Start-Sleep -Seconds 10; schtasks /run /tn \"{task}\""],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=(getattr(subprocess, "DETACHED_PROCESS", 0)
+                                   | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)),
+                )
+            except Exception as e:
+                _log(f"self-update: restart helper failed to spawn: {e}")
+            _log("self-update: exiting (code 3) for Task Scheduler to restart")
+            os._exit(3)
         try:
             os.execv(sys.executable,
                      [sys.executable, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
         except Exception as e:
-            _log(f"self-update: re-exec failed ({e}); exiting for Task Scheduler restart")
+            _log(f"self-update: re-exec failed ({e}); exiting for restart")
             os._exit(3)
     elif bridge_changed:
         _log("self-update: bridge code changed -> restarting bridge child")
