@@ -135,10 +135,19 @@ def _notify(cfg: dict, msg: str) -> None:
 
 
 def _digest_notify(cfg: dict, title: str, body: str) -> None:
-    """A routine report (the daily brief). Prefers DIGEST_TARGETS."""
+    """A routine report (the daily brief). Prefers DIGEST_TARGETS / an apprise
+    channel; otherwise delivers over WhatsApp — to the team group if
+    --digest-group is set, else a DM to the alert recipients."""
     targets = cfg["digest_targets"] or cfg["alert_targets"]
-    if not _send(targets, cfg["alert_webhook"], title, body):
-        _log(f"{title} (no channel):\n{body}")
+    if _send(targets, cfg["alert_webhook"], title, body):
+        return
+    msg = f"{title}\n\n{body}"
+    if cfg.get("digest_group") and cfg.get("rollcall_group"):
+        if _bridge_send(cfg, cfg["rollcall_group"], msg):
+            return
+    if cfg.get("digest_dm", True) and _alert_dm(cfg, msg) > 0:
+        return
+    _log(f"{title} (no channel):\n{body}")
 
 
 # ── job 1: knowledge sync ──────────────────────────────────────────────────
@@ -754,6 +763,11 @@ def main() -> None:
     ap.add_argument("--digest-morning", default="09:00")
     ap.add_argument("--digest-evening", default="19:00")
     ap.add_argument("--no-digest", action="store_true")
+    ap.add_argument("--digest-group", action="store_true",
+                    help="post the daily brief to the team WhatsApp group "
+                         "(default: DM it to the alert recipients)")
+    ap.add_argument("--no-digest-dm", action="store_true",
+                    help="don't fall back to a WhatsApp DM for the daily brief")
     ap.add_argument("--rollcall-time", default="12:00",
                     help="daily time to post the attendance roll-call to the group")
     ap.add_argument("--rollcall-group", default=os.getenv("ROLLCALL_GROUP_ID", ""),
@@ -811,6 +825,8 @@ def main() -> None:
         "alert_webhook": os.getenv("ALERT_WEBHOOK", ""),
         "alert_targets": [t.strip() for t in os.getenv("ALERT_TARGETS", "").split(",") if t.strip()],
         "digest_targets": [t.strip() for t in os.getenv("DIGEST_TARGETS", "").split(",") if t.strip()],
+        "digest_group": args.digest_group,
+        "digest_dm": not args.no_digest_dm,
         "bridge_dir": bridge_dir,
         "bridge_ok": bridge_ok,
         "node": node,
@@ -894,6 +910,13 @@ def main() -> None:
     ch = (f"apprise x{len(cfg['alert_targets'])}" if cfg["alert_targets"] and apprise
           else "webhook" if cfg["alert_webhook"] else "console-only")
     _log(f"  alert channel: {ch}")
+    dch = (f"apprise x{len(cfg['digest_targets'] or cfg['alert_targets'])}"
+           if (cfg["digest_targets"] or cfg["alert_targets"]) and apprise
+           else "webhook" if cfg["alert_webhook"]
+           else "WhatsApp group" if (cfg["digest_group"] and cfg["rollcall_group"])
+           else "WhatsApp DM to alert recipients" if cfg["digest_dm"] and cfg["bridge_ok"]
+           else "console-only")
+    _log(f"  digest channel: {dch}")
 
     next_run = {name: 0.0 for name, _, _ in INTERVAL_JOBS}
     try:
