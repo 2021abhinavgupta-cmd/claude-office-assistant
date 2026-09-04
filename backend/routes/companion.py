@@ -641,18 +641,39 @@ def companion_weekly_summary():
         return jsonify({"error": "bad date"}), 500
     monday = (d0 - timedelta(days=d0.weekday())).strftime("%Y-%m-%d")
 
+    # A still-pending task gets a brand-new standup_tasks row every day it
+    # carries over (same title, same carried_from = the ORIGIN day it first
+    # went unfinished -- gotcha #7/#8) -- a plain COUNT(*) across a multi-day
+    # range double(triple, ...)-counts that one task once per day it was
+    # outstanding, inflating the denominator (and, for a task never
+    # finished, contributing 0 done but N total, dragging the ratio down
+    # for no real reason). Count distinct task LINEAGES for the total
+    # instead, same idea as get_velocity_summary()'s dedup (gotcha #77) --
+    # but that one's key is title+carried_from ALONE, which only works
+    # because it deliberately excludes origin rows (carried_from IS NOT
+    # NULL, "has this been carried at least once"). Here every row counts,
+    # including a lineage's very first day, whose OWN row always has
+    # carried_from=NULL (it hasn't been carried FROM anywhere yet) -- so the
+    # dedup key has to fall back to that row's own `date` for the origin
+    # day, or day 1 and days 2+ of the same lineage split into two "tasks".
+    # `done` doesn't need any of this -- a task is only ever marked done on
+    # the one row/day that happened, carry-over never re-inserts a done row.
     agg: dict = {}
     try:
         conn = get_connection()
-        for uid, st, ct in conn.execute(
-            "SELECT user_id, status, COUNT(*) FROM standup_tasks "
-            "WHERE date >= ? AND date <= ? AND status NOT IN ('deleted','delegated') "
-            "GROUP BY user_id, status", (monday, today)
+        for uid, ct in conn.execute(
+            "SELECT user_id, COUNT(DISTINCT title || '|' || COALESCE(carried_from, date)) "
+            "FROM standup_tasks WHERE date >= ? AND date <= ? "
+            "AND status NOT IN ('deleted','delegated') GROUP BY user_id",
+            (monday, today)
         ).fetchall():
-            a = agg.setdefault(uid, [0, 0])
-            a[1] += ct
-            if str(st or "").strip().lower() in _DONE_WORDS:
-                a[0] += ct
+            agg.setdefault(uid, [0, 0])[1] = ct
+        for uid, ct in conn.execute(
+            "SELECT user_id, COUNT(*) FROM standup_tasks "
+            "WHERE date >= ? AND date <= ? AND status IN ('done','completed','complete') "
+            "GROUP BY user_id", (monday, today)
+        ).fetchall():
+            agg.setdefault(uid, [0, 0])[0] = ct
         conn.close()
     except Exception:
         logger.exception("weekly-summary: query failed")
