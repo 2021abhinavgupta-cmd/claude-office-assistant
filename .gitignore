@@ -42,6 +42,7 @@ build/
 whatsapp-bridge/node_modules/
 whatsapp-bridge/auth/
 whatsapp-bridge/stickers/
+whatsapp-bridge/.logged_out
 # knowledge-sync local state
 lumina-backups/
 knowledge/

@@ -63,6 +63,21 @@ const log = (...a) => console.log(`[${new Date().toTimeString().slice(0, 8)}]`, 
 
 let currentSock = null;   // set on every (re)connect, used by the send endpoint
 
+// ── health state (read by the laptop companion's bridge watchdog) ──────────
+let connState = "starting";       // starting | connecting | open | close
+let connectedSince = 0;           // epoch ms of the last successful "open"
+let loggedOut = false;            // true once WhatsApp says this device was unlinked
+const LOGGED_OUT_FLAG = path.join(AUTH_DIR, "..", ".logged_out");
+
+function setLoggedOutFlag(on) {
+  try {
+    if (on) fs.writeFileSync(LOGGED_OUT_FLAG, new Date().toISOString());
+    else if (fs.existsSync(LOGGED_OUT_FLAG)) fs.unlinkSync(LOGGED_OUT_FLAG);
+  } catch {
+    /* best effort */
+  }
+}
+
 // ── stickers ────────────────────────────────────────────────────────────────
 // A local pool the bot can send at random or by mood. You teach it stickers
 // by DMing "!stickers" and then sending it the stickers you want (from your
@@ -182,6 +197,20 @@ loadStickerTags();
 
 function startSendServer() {
   const srv = http.createServer((req, res) => {
+    // unauthenticated health probe (loopback-only server) for the watchdog
+    if (req.method === "GET" && (req.url === "/health" || req.url === "/")) {
+      const connected = connState === "open" && !!currentSock;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        ok: true,
+        connected,
+        state: connState,
+        loggedOut,
+        connectedSince: connectedSince || null,
+        uptimeSec: connectedSince ? Math.round((Date.now() - connectedSince) / 1000) : 0,
+      }));
+      return;
+    }
     if (req.method !== "POST" || req.url !== "/send") {
       res.writeHead(404);
       res.end("not found");
@@ -327,12 +356,21 @@ async function start() {
       console.log("\nScan this QR with the DEDICATED WhatsApp number (Linked devices > Link a device):\n");
       qrcode.generate(qr, { small: true });
     }
+    if (connection === "connecting") connState = "connecting";
     if (connection === "open") {
+      connState = "open";
+      connectedSince = Date.now();
+      loggedOut = false;
+      setLoggedOutFlag(false);
       log(`connected. Bridging  ${LUMINA_URL}  (reply-only).`);
     }
     if (connection === "close") {
+      connState = "close";
+      connectedSince = 0;
       const code = lastDisconnect?.error?.output?.statusCode;
       if (code === DisconnectReason.loggedOut) {
+        loggedOut = true;
+        setLoggedOutFlag(true);
         log("logged out on the phone. Delete ./auth and re-pair. Exiting.");
         process.exit(1);
       }

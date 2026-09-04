@@ -11,7 +11,9 @@ Jobs it runs (each skips itself automatically if not configured):
                           + copy it offsite (mirror dir and/or rclone)
                           + weekly: pull the uploads/ archive too
   4. health check       — ping Lumina, time it, log it; alert on down/slow (5m)
-  5. WhatsApp bridge    — keep whatsapp-bridge/index.js (Baileys) alive
+  5. WhatsApp bridge    — keep whatsapp-bridge/index.js (Baileys) alive,
+                          + a health watchdog (3m) that alerts loudly if the
+                          session logs out / crash-loops / is offline >8m
   6. daily brief        — 09:00 & 19:00: fetch /api/companion/digest, send it
   7. sheets watchdog    — check Google-Sheet sync health, alert; optional  (20m)
                           auto-pull with --sheets-autopull
@@ -298,9 +300,19 @@ _BRIDGE: dict = {"proc": None, "started": 0.0, "dead_at": 0.0, "backoff": 0.0,
                  "fails": 0, "logf": None}
 
 
+def _logged_out_flag(cfg: dict) -> bool:
+    try:
+        return (cfg["bridge_dir"] / ".logged_out").exists()
+    except Exception:
+        return False
+
+
 def job_bridge(cfg: dict) -> None:
     """(Re)spawn `node index.js` in whatsapp-bridge/ and keep it running.
-    Backs off 5s per consecutive fast (<15s) fail, capped 60s."""
+    A run that lasts < 120s is treated as a failed start and backed off
+    (5s per consecutive fail, capped 60s). If WhatsApp logged the device
+    out, restarting can't help — back off hard (5 min) and alert loudly,
+    since that needs a human to re-scan the QR."""
     if not cfg["bridge_ok"]:
         return
     now = time.monotonic()
@@ -310,8 +322,13 @@ def job_bridge(cfg: dict) -> None:
         if proc.poll() is None:
             return
         up = now - _BRIDGE["started"]
-        _BRIDGE["fails"] = _BRIDGE["fails"] + 1 if up < 15 else 0
-        _BRIDGE["backoff"] = min(60.0, 5.0 * _BRIDGE["fails"])
+        logged_out = _logged_out_flag(cfg)
+        if logged_out:
+            _BRIDGE["fails"] += 1
+            _BRIDGE["backoff"] = 300.0        # 5 min — don't spin on a dead session
+        else:
+            _BRIDGE["fails"] = _BRIDGE["fails"] + 1 if up < 120 else 0
+            _BRIDGE["backoff"] = min(60.0, 5.0 * _BRIDGE["fails"])
         _BRIDGE["dead_at"] = now
         _BRIDGE["proc"] = None
         try:
@@ -320,8 +337,18 @@ def job_bridge(cfg: dict) -> None:
                 _BRIDGE["logf"] = None
         except Exception:
             pass
-        _log(f"bridge exited (code {proc.returncode}, up {up:.0f}s); "
+        _log(f"bridge exited (code {proc.returncode}, up {up:.0f}s"
+             f"{', LOGGED OUT' if logged_out else ''}); "
              f"restart in {_BRIDGE['backoff']:.0f}s")
+        if logged_out:
+            _loud_alert(cfg, "bridge-logged-out",
+                        "WhatsApp bridge was LOGGED OUT (device unlinked on the "
+                        "phone). Delete whatsapp-bridge/auth and re-pair by "
+                        "scanning the QR — it can't recover on its own.")
+        elif _BRIDGE["fails"] >= 5:
+            _loud_alert(cfg, "bridge-crashloop",
+                        f"WhatsApp bridge keeps crashing ({_BRIDGE['fails']} fast "
+                        "restarts). Check whatsapp-bridge/../lumina-logs/bridge.log.")
         return
 
     if now < _BRIDGE["dead_at"] + _BRIDGE["backoff"]:
@@ -498,12 +525,144 @@ def _alert_dm(cfg: dict, text: str) -> int:
     return n
 
 
+# ── loud, out-of-band alert (the bridge itself may be the thing that's down,
+#    so this must not rely on WhatsApp) ─────────────────────────────────────
+_LOUD: dict = {}          # key -> last-sent monotonic time
+
+
+def _loud_alert(cfg: dict, key: str, text: str, repeat_after: float = 1800.0) -> None:
+    """Fire an alert through every channel that doesn't need the bridge:
+    apprise/webhook if configured, a desktop file always, and a best-effort
+    Windows balloon. Rate-limited per `key`."""
+    now = time.monotonic()
+    if now - _LOUD.get(key, 0.0) < repeat_after:
+        return
+    _LOUD[key] = now
+    _log(f"LOUD ALERT [{key}]: {text}")
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    full = f"[{stamp}] {text}"
+
+    # 1. apprise / webhook (only if the user set them up)
+    try:
+        _send(cfg["alert_targets"], cfg["alert_webhook"], "Lumina bridge", full)
+    except Exception:
+        pass
+
+    # 2. a file on the Desktop + in the log dir — always works, hard to miss
+    for d in (Path.home() / "Desktop", cfg["log_dir"]):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "LUMINA-BRIDGE-ALERT.txt").write_text(
+                full + "\n\nRe-pair steps if it says 'logged out':\n"
+                "  1. stop laptop_agent.py + node index.js\n"
+                "  2. delete whatsapp-bridge\\auth\\\n"
+                "  3. cd whatsapp-bridge && node index.js  (scan the QR)\n"
+                "  4. restart laptop_agent.py\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+    # 3. best-effort Windows toast/balloon (no extra deps; fine on Home)
+    if sys.platform == "win32":
+        ps = (
+            "[void][reflection.assembly]::LoadWithPartialName('System.Windows.Forms');"
+            "[void][reflection.assembly]::LoadWithPartialName('System.Drawing');"
+            "$n=New-Object System.Windows.Forms.NotifyIcon;"
+            "$n.Icon=[System.Drawing.SystemIcons]::Warning;$n.Visible=$true;"
+            "$n.ShowBalloonTip(20000,'Lumina WhatsApp bridge',"
+            + json.dumps(text)
+            + ",'Warning');Start-Sleep -Seconds 20;$n.Dispose()"
+        )
+        try:
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
+
+def _clear_bridge_alert(cfg: dict) -> None:
+    for d in (Path.home() / "Desktop", cfg["log_dir"]):
+        try:
+            f = d / "LUMINA-BRIDGE-ALERT.txt"
+            if f.exists():
+                f.unlink()
+        except Exception:
+            pass
+
+
+# ── job: bridge health watchdog ──────────────────────────────────────────
+#
+# job_bridge keeps the *process* alive; this checks the process is actually
+# CONNECTED to WhatsApp. The 2 AM failure mode was a logged-out session that
+# the supervisor kept restarting forever, silently.
+_BRIDGE_H: dict = {"unreach": 0, "down_since": 0.0, "alerting": False}
+
+
+def job_bridge_health(cfg: dict) -> None:
+    if not cfg["bridge_ok"]:
+        return
+    port = cfg.get("bridge_http_port", 8787)
+    now = time.monotonic()
+    state = None
+    try:
+        r = requests.get(f"http://127.0.0.1:{port}/health", timeout=8)
+        if r.ok:
+            state = r.json() or {}
+    except Exception:
+        state = None
+
+    if state is None:
+        _BRIDGE_H["unreach"] += 1
+        # the supervisor may just be between restarts; only worry after a while
+        if _BRIDGE_H["unreach"] >= 4:                       # ~4 checks in a row
+            _BRIDGE_H["alerting"] = True
+            _loud_alert(cfg, "bridge-unreachable",
+                        "WhatsApp bridge is not responding on "
+                        f"127.0.0.1:{port}. The bot is offline.")
+        return
+    _BRIDGE_H["unreach"] = 0
+
+    if state.get("loggedOut"):
+        _BRIDGE_H["alerting"] = True
+        _loud_alert(cfg, "bridge-logged-out",
+                    "WhatsApp bridge got LOGGED OUT (device unlinked on the "
+                    "phone). It cannot recover on its own — delete "
+                    "whatsapp-bridge/auth and re-pair by scanning the QR.")
+        return
+
+    if not state.get("connected"):
+        if not _BRIDGE_H["down_since"]:
+            _BRIDGE_H["down_since"] = now
+        elif now - _BRIDGE_H["down_since"] > 480:           # not connected >8 min
+            _BRIDGE_H["alerting"] = True
+            _loud_alert(cfg, "bridge-disconnected",
+                        "WhatsApp bridge has been disconnected for over 8 "
+                        f"minutes (state: {state.get('state')}). Bot is offline.")
+        return
+
+    # connected & healthy
+    _BRIDGE_H["down_since"] = 0.0
+    if _BRIDGE_H["alerting"]:
+        _BRIDGE_H["alerting"] = False
+        _LOUD.clear()                                       # let the next issue alert immediately
+        _clear_bridge_alert(cfg)
+        _log("bridge health: recovered, connected")
+        try:
+            _alert_dm(cfg, "WhatsApp bridge is back online.")
+        except Exception:
+            pass
+
+
 INTERVAL_JOBS = [
     ("sync", job_sync, "sync_every"),
     ("research", job_research, "research_every"),
     ("backup", job_backup, "backup_every"),
     ("health", job_health, "health_every"),
     ("bridge", job_bridge, "bridge_every"),
+    ("bridge-health", job_bridge_health, "bridge_health_every"),
     ("sheets", job_sheets_watchdog, "sheets_every"),
     ("wa-outbox", job_wa_outbox, "outbox_every"),
 ]
@@ -839,6 +998,7 @@ def main() -> None:
         "sheets_every": args.sheets_every,
         "outbox_every": args.outbox_every,
         "bridge_every": 15,
+        "bridge_health_every": 180,
         "bridge_http_port": int(os.getenv("BRIDGE_HTTP_PORT", "8787")),
         "rollcall_group": (lambda d: f"{d}@g.us" if d else "")(
             re.sub(r"\D", "", args.rollcall_group or "")),
@@ -896,6 +1056,9 @@ def main() -> None:
     _log("  wa-outbox {}".format(
         f"every {args.outbox_every}s" if (cfg["bridge_ok"] and tok)
         else "OFF (needs bridge + token)"))
+    _log("  bridge-health {}".format(
+        f"every {cfg['bridge_health_every']}s (alerts on logout / crashloop / >8m offline)"
+        if cfg["bridge_ok"] else "OFF (needs bridge)"))
     _log("  lunch nudge {}".format(
         args.lunch_time if (cfg["rollcall_group"] and not args.no_lunch)
         else "OFF (--no-lunch)" if args.no_lunch else "OFF (no group)"))
