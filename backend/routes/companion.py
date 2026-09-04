@@ -76,6 +76,8 @@ def _build_digest(window: str) -> dict:
     # ── tasks (Notion is the source of truth when configured) ──
     overdue, due_today, due_tomorrow = [], [], []
     overdue_total = 0
+    overdue_by_person: dict = {}   # name -> count, for a scannable tally
+                                    # instead of a raw N-item list dump
     try:
         import notion_store
         if notion_store.is_configured():
@@ -91,6 +93,7 @@ def _build_digest(window: str) -> dict:
                 row = f"{label}" + (f" -> {who}" if who else "") + f" (due {due})"
                 if due < today:
                     overdue_total += 1
+                    overdue_by_person[who or "Unassigned"] = overdue_by_person.get(who or "Unassigned", 0) + 1
                     if due >= overdue_floor:
                         overdue.append(row)
                 elif due == today:
@@ -102,6 +105,7 @@ def _build_digest(window: str) -> dict:
 
     data["overdue"] = overdue
     data["overdue_total"] = overdue_total
+    data["overdue_by_person"] = overdue_by_person
     data["due_today"] = due_today
     data["due_tomorrow"] = due_tomorrow
 
@@ -160,11 +164,19 @@ def _build_digest(window: str) -> dict:
     lines.append(f"{head} -- {today}")
     lines.append("")
     if overdue:
-        extra = f", {overdue_total} total incl. old" if overdue_total > len(overdue) else ""
-        lines.append(f"OVERDUE (last 30d: {len(overdue)}{extra}):")
-        lines += [f"  - {r}" for r in overdue[:15]]
-        if len(overdue) > 15:
-            lines.append(f"  ...and {len(overdue) - 15} more")
+        older = overdue_total - len(overdue)
+        lines.append(
+            f"OVERDUE: {overdue_total} total"
+            + (f" ({len(overdue)} from the last 30 days, {older} older)" if older > 0 else "")
+            + ":"
+        )
+        # a per-person tally is far more scannable on a phone than a raw
+        # list of hundreds of task titles -- this is what was actually
+        # unreadable before, not the counts themselves
+        tally = sorted(overdue_by_person.items(), key=lambda kv: -kv[1])[:10]
+        lines += [f"  {name}: {ct}" for name, ct in tally]
+        if len(overdue_by_person) > 10:
+            lines.append(f"  ...and {len(overdue_by_person) - 10} more people")
         lines.append("")
     if window == "morning":
         lines.append(f"DUE TODAY ({len(due_today)}):")
