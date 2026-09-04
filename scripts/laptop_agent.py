@@ -959,7 +959,45 @@ def job_rollcall(cfg: dict) -> None:
 
 
 # ── wall-clock daily jobs ────────────────────────────────────────────────
+# _daily_fired is what stops a daily job (standup-nudge, digest, eod, ...)
+# firing more than once per day within its _daily_due() window. It used to
+# be in-memory only -- fine as long as the process stays up, but
+# job_selfupdate() re-execs the whole process (os.execv, see above) whenever
+# a scripts/*.py file changes on origin, and a fresh process starts with an
+# empty dict. If that restart happens while a job is still inside its
+# window (e.g. a scripts/ change lands on origin at 11:40, ten minutes
+# after the 11:30 standup nudge already fired), the reset dict makes it
+# look like the job never fired today, so it fires again -- once per
+# restart. Confirmed live: the same "your standup is still blank" DM went
+# out 3 times in one morning to the same person, each ~6-10 min apart,
+# matching self-update's poll interval during a stretch of active
+# scripts/ development. Fixed by persisting this to a small JSON file next
+# to the knowledge folder (survives the re-exec, since it's the one thing
+# on disk rather than in the replaced process's memory) instead of trying
+# to preserve state across execv another way.
 _daily_fired: dict = {}
+
+
+def _daily_state_path(cfg: dict) -> Path:
+    return cfg["dir"] / "daily_jobs_state.json"
+
+
+def _load_daily_fired(cfg: dict) -> None:
+    global _daily_fired
+    try:
+        p = _daily_state_path(cfg)
+        if p.exists():
+            _daily_fired = json.loads(p.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        _log(f"daily-state load failed (starting empty): {e}")
+        _daily_fired = {}
+
+
+def _save_daily_fired(cfg: dict) -> None:
+    try:
+        _daily_state_path(cfg).write_text(json.dumps(_daily_fired), encoding="utf-8")
+    except Exception as e:
+        _log(f"daily-state save failed: {e}")
 
 
 def _daily_due(target_hhmm: str, now: datetime, window_min: int = 40) -> bool:
@@ -980,6 +1018,7 @@ def _run_daily(daily_jobs: list, cfg: dict) -> None:
             continue
         if _daily_due(hhmm, now):
             _daily_fired[name] = today
+            _save_daily_fired(cfg)
             try:
                 fn(cfg)
             except Exception as e:
@@ -1109,6 +1148,8 @@ def main() -> None:
         "rollcall_group": (lambda d: f"{d}@g.us" if d else "")(
             re.sub(r"\D", "", args.rollcall_group or "")),
     }
+
+    _load_daily_fired(cfg)
 
     daily_jobs = []
     if not args.no_digest:
