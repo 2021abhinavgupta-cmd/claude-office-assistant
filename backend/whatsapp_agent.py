@@ -961,6 +961,28 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "get_post_content",
+        "description": "Pull the actual Sheets content for ONE task by name -- "
+                       "the Idea, Script/Copy, Caption, and Drive link that were "
+                       "typed into that task's row in Lumina Sheets. Use when "
+                       "someone points at a specific task and asks for its "
+                       "script, idea, caption, brief, or link, e.g. Happy "
+                       "asking 'what's the script for my reel today'. Not for "
+                       "browsing what's scheduled -- use get_content_calendar "
+                       "for that.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "Task title or a fragment "
+                          "of it, e.g. 'the reel today', 'Post 12'."},
+                "person": {"type": "string", "description": "Whose task, if the "
+                            "sender is asking about someone else's. Omit for "
+                            "'my task'."},
+            },
+            "required": ["task"],
+        },
+    },
+    {
         "name": "get_client_status",
         "description": "A full snapshot for one client in a single reply: open "
                        "task count, overdue items, what's due in the next 7 "
@@ -1737,6 +1759,51 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 )
             return f"Posting in the next {days} days ({len(rows)}):" + "\n".join(out)
 
+        if name == "get_post_content" and kind == "employee":
+            q = (tool_input or {}).get("task", "").strip()
+            person = (tool_input or {}).get("person", "").strip()
+            if not q:
+                return "Which task? Give me the title or part of it."
+            try:
+                tasks = notion_store.list_tasks() if notion_store.is_configured() else []
+            except Exception:
+                tasks = []
+            if not tasks:
+                return "Can't reach Notion right now to look that up."
+
+            if person:
+                emp = _resolve_employee(person)
+                who = (emp["name"] if emp else person).lower()
+            else:
+                who = identity["name"].lower()
+            pool = [t for t in tasks if who in (t.get("assigned_to") or "").lower()]
+            match = _find_notion_task(q, pool) or _find_notion_task(q, tasks)
+            if not match:
+                return (f"Can't find a task matching '{q}'"
+                        + (f" assigned to {who}" if pool else "") + ".")
+
+            lines = [
+                f"{match.get('title')} -- {match.get('client_name') or 'no client'}",
+                f"{match.get('assigned_to') or 'unassigned'} | "
+                f"{(match.get('status') or 'planned')} | due {match.get('due_date') or '?'}",
+            ]
+            fields = [
+                ("Idea", match.get("idea")),
+                ("Script/Copy", match.get("scripts_copy")),
+                ("Caption", match.get("caption")),
+                ("Content", match.get("content")),
+                ("Link", match.get("link")),
+            ]
+            had_any = False
+            for label, val in fields:
+                v = (val or "").strip()
+                if v:
+                    had_any = True
+                    lines.append(f"\n{label}:\n{v[:1200]}")
+            if not had_any:
+                lines.append("\n(Nothing's been filled in on this row yet -- Idea/Script/Caption are all empty.)")
+            return "\n".join(lines)
+
         if name == "get_client_status" and kind == "employee":
             cli = (tool_input or {}).get("client", "").strip()
             c = _find_client(cli)
@@ -1913,7 +1980,13 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "next', 'what's going live', 'what's posting soon' -- anything "
             "about the upcoming content schedule -- use get_content_calendar, "
             "not get_task_schedule; it's sorted soonest-date-first and works "
-            "the same in a DM or the group. get_client_status gives a "
+            "the same in a DM or the group. When someone points at a "
+            "specific task and wants its actual script, idea, caption, or "
+            "link -- 'what's the script for my reel today', 'send me the "
+            "idea for Post 12' -- use get_post_content, not "
+            "get_content_calendar (that one only shows whether a caption "
+            "exists, not the content itself); defaults to the sender's own "
+            "tasks unless they name someone else. get_client_status gives a "
             "one-shot snapshot for one client. "
             "list_capabilities explains what you do; get_recent_actions is the "
             "log of writes you've made. Confirm every write in one short line.\n"
