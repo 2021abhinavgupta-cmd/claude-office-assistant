@@ -85,8 +85,22 @@ BACKUP_KEEP = 14
 UPLOADS_EVERY_DAYS = 7
 
 
+_LOG_FH = None   # set by main() so the log survives when launched with pythonw
+                 # (Task Scheduler) where there's no console to print to
+
+
 def _log(msg: str) -> None:
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
+    if _LOG_FH is not None:
+        try:
+            _LOG_FH.write(line + "\n")
+            _LOG_FH.flush()
+        except Exception:
+            pass
 
 
 def _api_token(cfg: dict) -> str:
@@ -1033,6 +1047,18 @@ def main() -> None:
 
     root = Path(args.dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
+
+    # persistent log file — matters when launched with pythonw (no console)
+    global _LOG_FH
+    try:
+        _ld = root.parent / "lumina-logs"
+        _ld.mkdir(parents=True, exist_ok=True)
+        _lp = _ld / "agent.log"
+        if _lp.exists() and _lp.stat().st_size > 3_000_000:
+            _lp.replace(_ld / "agent.log.1")
+        _LOG_FH = open(_lp, "a", buffering=1, encoding="utf-8", errors="replace")
+    except Exception:
+        _LOG_FH = None
 
     bridge_dir = (Path(args.bridge_dir).expanduser().resolve() if args.bridge_dir
                   else Path(__file__).resolve().parent.parent / "whatsapp-bridge")
