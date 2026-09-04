@@ -32,6 +32,9 @@ Jobs it runs (each skips itself automatically if not configured):
                           "still open" DMs + leads report (needs bridge)
  13. weekly wrap         — Friday 18:00: per-person completed count for the
                           week, to the group (needs --rollcall-group + bridge)
+ 14. tomorrow-live       — 18:30: DM the content-calendar lead (default Vidit)
+                          everything due to go live tomorrow, read straight
+                          from Lumina Sheets/Notion (needs bridge)
 
 Setup:
     pip install -r scripts/requirements.txt
