@@ -162,6 +162,16 @@ def init_db():
         except Exception:
             pass  # Column already exists
 
+        try:
+            # Bumped on every PATCH to a row (status/blocker/title/subtasks) --
+            # lets a carried-over row (carried_from set) still count as "worked
+            # on today" for the 11:30 WhatsApp standup nudge, e.g. someone who
+            # only ticks subtasks under a persisting main task instead of
+            # adding a fresh row each day.
+            conn.execute("ALTER TABLE standup_tasks ADD COLUMN updated_at TEXT DEFAULT NULL")
+        except Exception:
+            pass  # Column already exists
+
         # Task risk escalation log (tracks alert level per task)
         conn.execute("""CREATE TABLE IF NOT EXISTS task_risk (
             task_id     TEXT PRIMARY KEY,

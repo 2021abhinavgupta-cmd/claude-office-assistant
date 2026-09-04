@@ -1115,7 +1115,9 @@ def update_my_task(task_id: int):
 
     if not updates:
         return jsonify({"error": "no updates provided"}), 400
-        
+
+    updates.append("updated_at=?")
+    params.append(now_ist())
     params.append(task_id)
 
     conn = _su_conn()

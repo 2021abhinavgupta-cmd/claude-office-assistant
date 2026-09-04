@@ -206,6 +206,10 @@ _ROLLCALL_LINES = [
     "{names}: the check-in button misses you. It's a two-second job, promise. 🙂",
 ]
 _ROLLCALL_ALL_IN = "Noon roll-call: everyone's actually logged in. Someone mark the calendar. ✅"
+_ROLLCALL_WA_HINT = (
+    "Can't get to Lumina right now? Reply \"lumina in\" here in the group "
+    "(or just DM me \"in\") and I'll check you in from WhatsApp."
+)
 
 
 @companion_bp.route("/api/companion/attendance-missing", methods=["GET"])
@@ -268,7 +272,7 @@ def companion_attendance_missing():
         names = ", ".join(missing)
         # rotate the wording by date so it's not a copy-paste every day
         line = _ROLLCALL_LINES[sum(ord(c) for c in today) % len(_ROLLCALL_LINES)]
-        text = line.format(names=names)
+        text = line.format(names=names) + "\n\n" + _ROLLCALL_WA_HINT
 
     return jsonify({
         "date": today,
@@ -348,9 +352,17 @@ def companion_standup_missing():
     have = set()
     try:
         conn = get_connection()
+        # A fresh (non-carried) row counts as "added a task today". So does a
+        # carried-over row (main task persisting day to day, e.g. Noorish's
+        # setup) that's been PATCHed today -- status/blocker/subtasks all
+        # bump updated_at (update_my_task, ops.py) -- since ticking subtasks
+        # under a standing task IS today's work, even with no new row.
         for row in conn.execute(
             "SELECT DISTINCT user_id FROM standup_tasks "
-            "WHERE date=? AND (carried_from IS NULL OR carried_from='')",
+            "WHERE date=? AND ("
+            "  (carried_from IS NULL OR carried_from='')"
+            "  OR updated_at IS NOT NULL"
+            ")",
             (today,),
         ).fetchall():
             have.add(row[0])
