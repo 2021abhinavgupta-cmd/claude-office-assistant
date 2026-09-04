@@ -1179,7 +1179,17 @@ def update_my_task(task_id: int):
 def delete_my_task(task_id: int):
     """Delete a task from the personal list. If this row was pushed to the
     Notion board (has a notion_id), archive that Notion page too -- removing
-    a task here previously left its Notion counterpart behind untouched."""
+    a task here previously left its Notion counterpart behind untouched.
+
+    If that task's client has a linked Google Sheet, also remove the row
+    from the Sheet -- otherwise it's left dangling, and worse: since Notion
+    can't see archived pages at all (CLAUDE.md gotcha #93), the next
+    reconcile pass wouldn't recognize that task_id as "current" anymore and
+    would silently RECREATE it from the still-present stale Sheet row. This
+    mirrors the exact fix already applied to the Sheets tab's own row-delete
+    (routes/sheets_sync.py::delete_sheet_task, gotcha #87 2026-08-14) -- that
+    one never covered a standup-screen delete, which is a separate entry
+    point into the same underlying Notion task."""
     conn = _su_conn()
     row = conn.execute("SELECT notion_id FROM standup_tasks WHERE id=?", (task_id,)).fetchone()
     notion_id = row[0] if row else None
@@ -1187,10 +1197,27 @@ def delete_my_task(task_id: int):
         conn.execute("UPDATE standup_tasks SET status='deleted' WHERE id=?", (task_id,))
     conn.close()
     if notion_id:
+        # Client id has to be read BEFORE archiving -- an archived page is
+        # invisible to the Notion API afterward, so this is a one-shot window.
+        client_notion_id = ""
+        try:
+            client_notion_id = (notion_store.get_task_summary(notion_id) or {}).get("client_notion_id", "")
+        except Exception:
+            logger.exception(f"Failed to look up client for Notion task {notion_id} before deleting standup row {task_id}")
         try:
             notion_store.archive_notion_page(notion_id)
         except Exception:
             logger.exception(f"Failed to archive Notion task {notion_id} after deleting standup row {task_id}")
+        if client_notion_id:
+            try:
+                from routes.sheets_sync import get_link_for_client
+                import google_sheets_store as gs
+                link = get_link_for_client(client_notion_id)
+                if link:
+                    delete_fn = gs.delete_task_from_sheet_multi_tab if link.get("multi_tab") else gs.delete_task_from_sheet
+                    delete_fn(link, notion_id)
+            except Exception:
+                logger.exception(f"Failed to remove Sheet row for deleted standup task {notion_id}")
     return jsonify({"success": True})
 
 

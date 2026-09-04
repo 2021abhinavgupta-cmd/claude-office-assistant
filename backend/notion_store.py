@@ -815,6 +815,7 @@ def get_task_summary(notion_id: str) -> dict:
         return {
             "title": _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})) or _get_text(props.get("Post", {})),
             "client_name": client_name_val,
+            "client_notion_id": _get_text(props.get("Client ID", {})),
             "content": content or desc,
             "description": desc,
             "creation_date": _get_date(props.get("Creation Date", {})),
