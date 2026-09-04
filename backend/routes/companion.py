@@ -10,6 +10,8 @@ Routes:
   GET  /api/companion/uploads-archive                  -- zip of logs/uploads/
   GET  /api/companion/sheets-health                    -- per-client sync health
   POST /api/companion/sheets-pull-all                  -- reconcile every linked sheet
+  GET  /api/companion/tomorrow-live                     -- social posts due live tomorrow
+  GET  /api/companion/content-calendar-recipients        -- who to DM it to (default Vidit)
 """
 from __future__ import annotations
 
@@ -780,3 +782,103 @@ def companion_sheets_pull_all():
             logger.warning("companion pull-all: %s failed: %s", r[4] or r[0], e)
             results.append({"client": r[4] or r[0], "ok": False, "error": str(e)[:200]})
     return jsonify({"pulled": len(results), "results": results})
+
+
+@companion_bp.route("/api/companion/content-calendar-recipients", methods=["GET"])
+def companion_content_calendar_recipients():
+    """Employee ids in app_settings 'content_calendar_recipient_ids' (default
+    emp001 -- Vidit), resolved to name + whatsapp. Who gets DM'd the
+    tomorrow-live reminder."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    ids = ["emp001"]
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='content_calendar_recipient_ids'"
+        ).fetchone()
+        conn.close()
+        if row and row[0]:
+            ids = [x.strip() for x in str(row[0]).replace(",", " ").split() if x.strip()]
+    except Exception:
+        pass
+    by_id = {}
+    try:
+        for e in utils._load_employees().get("employees", []):
+            by_id[e.get("id", "")] = e
+    except Exception:
+        pass
+    out = []
+    for i in ids:
+        e = by_id.get(i)
+        if e and re.sub(r"\D", "", e.get("whatsapp", "") or ""):
+            out.append({"id": i, "name": e.get("name") or i,
+                        "whatsapp": re.sub(r"\D", "", e.get("whatsapp", ""))})
+    return jsonify({"recipients": out})
+
+
+def _social_task(t: dict) -> bool:
+    """Same social-media detection used everywhere else (gotcha #87 fifth
+    audit round -- unanchored, matches a bracket type anywhere in the title,
+    not just at position 0)."""
+    ty = (t.get("type") or t.get("service") or "").lower()
+    return ("social" in ty) or bool(re.search(
+        r"\[(story|reel|static|carousel|post|video)\]",
+        t.get("title") or "", re.I))
+
+
+@companion_bp.route("/api/companion/tomorrow-live", methods=["GET"])
+def companion_tomorrow_live():
+    """Every social-media task (Sheets row) due to go live tomorrow, pulled
+    straight from Notion -- powers the evening reminder to Vidit so nothing
+    scheduled for the next day gets missed. Flags anything not yet approved
+    or missing a caption so it reads as an actionable heads-up, not just a
+    list."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    tomorrow = (datetime.strptime(utils.today_ist(), "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    tasks = []
+    try:
+        import notion_store
+        if notion_store.is_configured():
+            tasks = notion_store.list_tasks()
+    except Exception:
+        logger.exception("companion tomorrow-live: notion read failed")
+
+    rows = [t for t in tasks
+            if str(t.get("due_date") or "")[:10] == tomorrow
+            and _social_task(t)
+            and (t.get("status") or "").strip().lower() not in ("cancelled", "canceled")]
+    rows.sort(key=lambda t: (t.get("client_name") or "", t.get("title") or ""))
+
+    items = []
+    for t in rows:
+        status = (t.get("status") or "").strip().lower()
+        ready = status in ("approved", "final", "scheduled") and bool((t.get("caption") or "").strip())
+        items.append({
+            "client": t.get("client_name") or "?",
+            "type": t.get("type") or "post",
+            "title": t.get("title") or "",
+            "assigned_to": t.get("assigned_to") or "unassigned",
+            "status": status or "planned",
+            "has_caption": bool((t.get("caption") or "").strip()),
+            "ready": ready,
+        })
+
+    if not items:
+        text = f"Nothing scheduled to go live tomorrow ({tomorrow})."
+    else:
+        not_ready = [i for i in items if not i["ready"]]
+        lines = [f"Going live tomorrow ({tomorrow}) -- {len(items)} post(s):"]
+        for i in items:
+            flag = "" if i["ready"] else "  <- NOT READY"
+            lines.append(
+                f"  {i['client']} | {i['type']} | {i['title']} | "
+                f"{i['assigned_to']} | {i['status']}"
+                f"{'' if i['has_caption'] else ' | no caption'}{flag}"
+            )
+        if not_ready:
+            lines.append(f"\n{len(not_ready)} of {len(items)} not yet approved/captioned.")
+        text = "\n".join(lines)
+
+    return jsonify({"date": tomorrow, "count": len(items), "items": items, "text": text})

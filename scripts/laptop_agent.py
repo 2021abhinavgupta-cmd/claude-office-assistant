@@ -948,6 +948,31 @@ def job_attendance_nag(cfg: dict) -> None:
     _log(f"attendance-nag: {sent} DM(s)")
 
 
+def job_tomorrow_live(cfg: dict) -> None:
+    """Evening -- DM Vidit (or whoever's configured) everything due to go
+    live tomorrow, read straight from the Lumina Sheets/Notion data, so
+    nothing scheduled for the next day gets missed."""
+    if not cfg["bridge_ok"]:
+        return
+    j = _companion_get(cfg, "/api/companion/tomorrow-live")
+    if not j:
+        return
+    text = j.get("text")
+    if not text:
+        return
+    r = _companion_get(cfg, "/api/companion/content-calendar-recipients")
+    recipients = (r or {}).get("recipients") or []
+    if not recipients:
+        _log("tomorrow-live: no recipient configured (content_calendar_recipient_ids)")
+        return
+    sent = 0
+    for p in recipients:
+        wa = re.sub(r"\D", "", p.get("whatsapp", ""))
+        if wa and _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
+            sent += 1
+    _log(f"tomorrow-live: {sent} DM(s), {j.get('count', 0)} post(s) due tomorrow")
+
+
 def job_rollcall(cfg: dict) -> None:
     grp = cfg["rollcall_group"]
     if not grp:
@@ -1094,6 +1119,10 @@ def main() -> None:
     ap.add_argument("--attendance-nag-time", default="10:30",
                     help="daily time to DM people who haven't checked in yet")
     ap.add_argument("--no-attendance-nag", action="store_true")
+    ap.add_argument("--tomorrow-live-time", default="18:30",
+                    help="daily time to DM the content-calendar lead (default Vidit) "
+                         "everything due to go live tomorrow")
+    ap.add_argument("--no-tomorrow-live", action="store_true")
     ap.add_argument("--bridge-dir", default="",
                     help="path to whatsapp-bridge/ (default: sibling of this repo's scripts/)")
     ap.add_argument("--no-bridge", action="store_true", help="don't supervise the WhatsApp bridge")
@@ -1190,6 +1219,8 @@ def main() -> None:
         daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
     if not args.no_attendance_nag:
         daily_jobs.append(("attendance-nag", job_attendance_nag, args.attendance_nag_time))
+    if not args.no_tomorrow_live:
+        daily_jobs.append(("tomorrow-live", job_tomorrow_live, args.tomorrow_live_time))
 
     if not bridge_ok and not args.no_bridge:
         reason = ("node not on PATH" if not node
@@ -1219,6 +1250,9 @@ def main() -> None:
     _log("  attendance-nag {}".format(
         args.attendance_nag_time if (not args.no_attendance_nag and cfg["bridge_ok"] and tok)
         else "OFF (--no-attendance-nag)" if args.no_attendance_nag else "OFF (needs bridge + token)"))
+    _log("  tomorrow-live {}".format(
+        args.tomorrow_live_time if (not args.no_tomorrow_live and cfg["bridge_ok"] and tok)
+        else "OFF (--no-tomorrow-live)" if args.no_tomorrow_live else "OFF (needs bridge + token)"))
     _log("  wa-outbox {}".format(
         f"every {args.outbox_every}s" if (cfg["bridge_ok"] and tok)
         else "OFF (needs bridge + token)"))
