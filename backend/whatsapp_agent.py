@@ -945,10 +945,14 @@ _EMPLOYEE_TOOLS = [
     {
         "name": "get_content_calendar",
         "description": "What's scheduled to be posted across ALL social-media "
-                       "clients in the next few days. Use for 'what are we "
-                       "posting this week', 'what's going out tomorrow'. Groups "
-                       "by day and shows client, post type, assignee and "
-                       "whether the caption is written.",
+                       "clients in the next few days, soonest date first. Use "
+                       "for 'what are we posting this week', 'what's going "
+                       "out tomorrow', 'what's coming next', 'what's going "
+                       "live', 'what's posting soon' -- any question about "
+                       "the upcoming content schedule, in a DM or a group. "
+                       "Groups by day (nearest day first) and shows client, "
+                       "post type, assignee and whether the caption is "
+                       "written.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -1905,9 +1909,12 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "get_attendance / set_attendance for who's in and checking in or "
             "out. get_daily_brief for a full status rundown. "
             "get_pending_approvals lists what's awaiting sign-off and "
-            "review_task approves or sends one back. get_content_calendar shows "
-            "what's being posted across all social clients this week; "
-            "get_client_status gives a one-shot snapshot for one client. "
+            "review_task approves or sends one back. For 'what's coming "
+            "next', 'what's going live', 'what's posting soon' -- anything "
+            "about the upcoming content schedule -- use get_content_calendar, "
+            "not get_task_schedule; it's sorted soonest-date-first and works "
+            "the same in a DM or the group. get_client_status gives a "
+            "one-shot snapshot for one client. "
             "list_capabilities explains what you do; get_recent_actions is the "
             "log of writes you've made. Confirm every write in one short line.\n"
             "send_group_message does NOT post immediately — it asks the person "
