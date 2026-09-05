@@ -1008,6 +1008,9 @@ def job_tomorrow_live(cfg: dict) -> None:
     so nothing scheduled for the next day gets missed."""
     if not cfg["bridge_ok"]:
         return
+    if datetime.now().weekday() >= 5:      # Sat/Sun -- match every other nudge job
+        _log("tomorrow-live: weekend — skipping")
+        return
     j = _companion_get(cfg, "/api/companion/tomorrow-live")
     if not j:
         return
