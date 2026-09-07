@@ -1470,6 +1470,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 except Exception:
                     logger.exception("whatsapp_agent: create_task notion failed")
             su_uid = emp["id"] if emp else identity["id"]
+            standup_ok = False
             try:
                 conn = get_connection()
                 with conn:
@@ -1480,8 +1481,19 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                          (identity["name"] if emp and emp["id"] != identity["id"] else None)),
                     )
                 conn.close()
+                standup_ok = True
             except Exception:
                 logger.exception("whatsapp_agent: create_task standup insert failed")
+            if not standup_ok:
+                # Don't claim success -- this is the ONLY place the task
+                # actually lands for "what are my tasks" / the Standup
+                # screen. A Notion page may still have been created above
+                # (nid set); tell them that honestly instead of pretending
+                # the whole thing worked.
+                if nid:
+                    return (f"Created '{title[:120]}' on the board, but couldn't add it "
+                            "to the standup list -- try again or add it there directly.")
+                return f"Couldn't create '{title[:120]}' -- something went wrong, try again."
             if emp and emp["id"] != identity["id"]:
                 jid = _wa_jid(emp.get("whatsapp"))
                 if jid:
@@ -1979,7 +1991,11 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             + persona
             + grp
             + "Look up real client, task, deadline and document data with the "
-            "tools before you answer. Never guess a task's status or date.\n"
+            "tools before you answer. Never guess a task's status or date. "
+            "When you list someone's tasks, list ONLY what the tool call just "
+            "returned this turn -- never add something from earlier in this "
+            "chat (something you said you created, something they mentioned) "
+            "that the fresh tool result doesn't actually contain.\n"
             "The team is open: anyone can ask what a teammate is doing. Use "
             "get_teammate_tasks for one person, get_team_standup for everyone "
             "-- both show real done/pending status per task. For 'X's "
