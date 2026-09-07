@@ -1177,19 +1177,25 @@ def update_my_task(task_id: int):
 
 @ops_bp.route("/api/standup/my-tasks/<int:task_id>", methods=["DELETE"])
 def delete_my_task(task_id: int):
-    """Delete a task from the personal list. If this row was pushed to the
-    Notion board (has a notion_id), archive that Notion page too -- removing
-    a task here previously left its Notion counterpart behind untouched.
+    """Delete a task from the personal list.
 
-    If that task's client has a linked Google Sheet, also remove the row
-    from the Sheet -- otherwise it's left dangling, and worse: since Notion
-    can't see archived pages at all (CLAUDE.md gotcha #93), the next
-    reconcile pass wouldn't recognize that task_id as "current" anymore and
-    would silently RECREATE it from the still-present stale Sheet row. This
-    mirrors the exact fix already applied to the Sheets tab's own row-delete
-    (routes/sheets_sync.py::delete_sheet_task, gotcha #87 2026-08-14) -- that
-    one never covered a standup-screen delete, which is a separate entry
-    point into the same underlying Notion task."""
+    Social-media (Lumina Sheets) tasks are cross-off-only: crossing one off
+    your own daily standup must NOT touch the underlying task at all -- it
+    stays exactly as-is in Notion / the Sheets tab / any linked Google
+    Sheet for everyone else. Only the local standup_tasks row is removed.
+    (User request, 2026-09-07: standup is a personal daily view, not a
+    delete button for the shared Sheets board.)
+
+    For a non-social Notion task (branding/website/etc, pushed to the board
+    via standup smart-add or the '-> push to board' button), the old
+    archive-on-delete behavior is kept: archive that Notion page too, and if
+    its client has a linked Google Sheet, remove the row there as well --
+    otherwise it's left dangling, and since Notion can't see archived pages
+    at all (CLAUDE.md gotcha #93), the next reconcile pass wouldn't
+    recognize that task_id as "current" anymore and would silently RECREATE
+    it from the still-present stale Sheet row. Mirrors the fix already
+    applied to the Sheets tab's own row-delete (routes/sheets_sync.py::
+    delete_sheet_task, gotcha #87 2026-08-14)."""
     conn = _su_conn()
     row = conn.execute("SELECT notion_id FROM standup_tasks WHERE id=?", (task_id,)).fetchone()
     notion_id = row[0] if row else None
@@ -1197,6 +1203,15 @@ def delete_my_task(task_id: int):
         conn.execute("UPDATE standup_tasks SET status='deleted' WHERE id=?", (task_id,))
     conn.close()
     if notion_id:
+        try:
+            task_type = notion_store.get_task_type(notion_id)
+        except Exception:
+            logger.exception(f"get_task_type failed for {notion_id} while deleting standup row {task_id}")
+            task_type = ""
+        if task_type and task_type.lower() == "social media":
+            # Cross-off-only: leave the Notion page and any Sheet row alone.
+            return jsonify({"success": True})
+
         # Client id has to be read BEFORE archiving -- an archived page is
         # invisible to the Notion API afterward, so this is a one-shot window.
         client_notion_id = ""
@@ -1489,8 +1504,23 @@ def notion_update_task(notion_id: str):
         editor_name = EMP_NAMES.get(body.get("user_id", ""), body.get("user_id", "")) or "Someone"
         last_edited = f"{today_ist()} {now_ist()}|{editor_name}|{edit_summary}"
 
+    # Marking a social-media row "Posted"/"Final" straight from the Lumina
+    # Sheets tab used to skip approval entirely -- only the standup-tick
+    # path (update_my_task) routed through "Need for approval" first. Same
+    # gate here now: ticking a social task complete, from either place,
+    # always lands in review first. (User request, 2026-09-07.)
+    effective_status = body.get("status")
+    if effective_status and str(effective_status).strip().lower() in ("posted", "final"):
+        try:
+            task_type = notion_store.get_task_type(notion_id)
+        except Exception:
+            logger.exception(f"get_task_type failed while gating Sheets status for {notion_id}")
+            task_type = ""
+        if task_type and task_type.lower() == "social media":
+            effective_status = "need_for_approval"
+
     result = notion_store.update_task(
-        notion_id=notion_id, status=body.get("status"),
+        notion_id=notion_id, status=effective_status,
         progress=body.get("progress"), submission_note=body.get("submission_note"),
         assigned_to=mapped_assigned, new_title=body.get("new_title"),
         due_date=body.get("due_date"), creation_date=body.get("creation_date"),
