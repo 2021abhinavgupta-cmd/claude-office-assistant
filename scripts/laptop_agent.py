@@ -922,6 +922,17 @@ def job_lunch(cfg: dict) -> None:
         _log("lunch: sent")
 
 
+def job_team_meeting(cfg: dict) -> None:
+    """Mon/Wed/Fri 15:00 -- remind the team WhatsApp group of the 4-5pm meeting."""
+    grp = cfg["rollcall_group"]
+    if not grp:
+        return
+    if datetime.now().weekday() not in (0, 2, 4):   # Mon/Wed/Fri only
+        return
+    if _bridge_send(cfg, grp, "Reminder: team meeting today from 4 to 5 PM."):
+        _log("team-meeting: sent")
+
+
 def job_weekly_wrap(cfg: dict) -> None:
     """Friday 18:00 — per-person completed count for the week, to the group."""
     grp = cfg["rollcall_group"]
@@ -1162,6 +1173,9 @@ def main() -> None:
     ap.add_argument("--lunch-time", default="14:00",
                     help="daily time to post the 'go for lunch' nudge to the group")
     ap.add_argument("--no-lunch", action="store_true")
+    ap.add_argument("--meeting-time", default="15:00",
+                    help="Mon/Wed/Fri time to post the 4-5pm team meeting reminder to the group")
+    ap.add_argument("--no-meeting", action="store_true")
     ap.add_argument("--eod-group-time", default="17:00",
                     help="daily time to post the 'tasks done today' summary to the group")
     ap.add_argument("--eod-personal-time", default="19:30",
@@ -1268,6 +1282,8 @@ def main() -> None:
         daily_jobs.append(("rollcall", job_rollcall, args.rollcall_time))
     if not args.no_lunch and cfg["rollcall_group"]:
         daily_jobs.append(("lunch", job_lunch, args.lunch_time))
+    if not args.no_meeting and cfg["rollcall_group"]:
+        daily_jobs.append(("team-meeting", job_team_meeting, args.meeting_time))
     if not args.no_eod:
         if cfg["rollcall_group"]:
             daily_jobs.append(("eod-group", job_eod_group, args.eod_group_time))
@@ -1327,6 +1343,9 @@ def main() -> None:
     _log("  lunch nudge {}".format(
         args.lunch_time if (cfg["rollcall_group"] and not args.no_lunch)
         else "OFF (--no-lunch)" if args.no_lunch else "OFF (no group)"))
+    _log("  team-meeting {}".format(
+        f"Mon/Wed/Fri {args.meeting_time}" if (cfg["rollcall_group"] and not args.no_meeting)
+        else "OFF (--no-meeting)" if args.no_meeting else "OFF (no group)"))
     _log("  eod {}".format(
         "OFF (--no-eod)" if args.no_eod else
         f"group {args.eod_group_time} / personal {args.eod_personal_time}" if tok
