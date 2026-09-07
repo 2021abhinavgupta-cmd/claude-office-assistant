@@ -2744,7 +2744,7 @@ def post_bet():
         data = request.json
         user_id = data.get("user_id")
         vote = data.get("vote")
-        if user_id not in ["emp002", "emp003", "emp007", "emp008"]:
+        if user_id not in ["emp002", "emp003", "emp006", "emp007", "emp008"]:
             return jsonify({"success": False, "error": "Not allowed"}), 403
         
         from db import get_connection
@@ -2763,7 +2763,7 @@ def post_bet_question():
         data = request.json
         user_id = data.get("user_id")
         question = data.get("question")
-        if user_id not in ["emp002", "emp003", "emp007", "emp008"]:
+        if user_id not in ["emp002", "emp003", "emp006", "emp007", "emp008"]:
             return jsonify({"success": False, "error": "Not allowed"}), 403
         
         from db import get_connection
