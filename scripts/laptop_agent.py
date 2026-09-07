@@ -41,6 +41,12 @@ Jobs it runs (each skips itself automatically if not configured):
                           straight from Lumina Sheets/Notion (needs bridge)
 
 Setup:
+    Full first-time setup for a new always-on laptop: see
+    ../ALWAYS_ON_LAPTOP.md at the repo root -- that's the one doc to hand
+    someone (or a Claude session on that machine) for onboarding. This
+    docstring stays the up-to-date reference for the job list/flags/env
+    vars once it's already running.
+
     pip install -r scripts/requirements.txt
     set LUMINA_URL=https://lumina.mmga.agency
     set STORAGE_SYNC_TOKEN=<token you set on Railway>       (jobs 1, 6, 7, 8)
