@@ -30,16 +30,21 @@ def wa_jid(raw: str) -> str:
     return f"{d}@s.whatsapp.net" if d else ""
 
 
-def enqueue(to_jid: str, text: str) -> bool:
-    """Queue one proactive message (DM JID or '<id>@g.us' group JID)."""
+def enqueue(to_jid: str, text: str, send_after: str | None = None) -> bool:
+    """Queue one proactive message (DM JID or '<id>@g.us' group JID).
+
+    send_after: optional IST "YYYY-MM-DD HH:MM[:SS]" -- the message sits in
+    the queue and companion_whatsapp_outbox() won't hand it to the laptop
+    poller until that time has passed. None (the default) means deliver on
+    the very next poll, same as before this parameter existed."""
     if not to_jid or not text:
         return False
     try:
         conn = get_connection()
         with conn:
             conn.execute(
-                "INSERT INTO whatsapp_outbox (to_number, body, created_at) VALUES (?, ?, ?)",
-                (to_jid, str(text)[:1500], datetime.now(timezone.utc).isoformat()),
+                "INSERT INTO whatsapp_outbox (to_number, body, created_at, send_after) VALUES (?, ?, ?, ?)",
+                (to_jid, str(text)[:1500], datetime.now(timezone.utc).isoformat(), send_after or None),
             )
         conn.close()
         return True

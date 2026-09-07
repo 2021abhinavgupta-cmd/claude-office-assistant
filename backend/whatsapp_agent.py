@@ -367,8 +367,14 @@ def _norm(s: str) -> str:
 _PENDING_TTL_MIN = 10
 
 
-def _set_pending_broadcast(emp_id: str, message: str) -> None:
+def _set_pending_broadcast(emp_id: str, message: str, send_after: str | None = None) -> None:
+    """send_after: optional IST 'YYYY-MM-DD HH:MM[:SS]' -- present for a
+    schedule_group_message request, absent for an immediate send_group_message
+    one. Stored as a small JSON payload so both share one pending-action slot
+    per employee (a person can only have one broadcast awaiting yes/no at a
+    time, immediate or scheduled)."""
     try:
+        payload = json.dumps({"message": message, "send_after": send_after})
         conn = get_connection()
         with conn:
             conn.execute(
@@ -376,16 +382,17 @@ def _set_pending_broadcast(emp_id: str, message: str) -> None:
                 "VALUES (?, 'broadcast', ?, ?) "
                 "ON CONFLICT(sender) DO UPDATE SET kind=excluded.kind, "
                 "payload=excluded.payload, created_at=excluded.created_at",
-                (emp_id, message, datetime.now(timezone.utc).isoformat()),
+                (emp_id, payload, datetime.now(timezone.utc).isoformat()),
             )
         conn.close()
     except Exception:
         logger.exception("whatsapp_agent: set pending broadcast failed")
 
 
-def _pop_pending_broadcast(emp_id: str) -> str | None:
-    """Return the pending broadcast text for this employee (and delete it).
-    None if there isn't one or it's older than _PENDING_TTL_MIN."""
+def _pop_pending_broadcast(emp_id: str) -> dict | None:
+    """Return {"message": str, "send_after": str|None} for this employee's
+    pending broadcast (and delete it). None if there isn't one or it's older
+    than _PENDING_TTL_MIN."""
     try:
         conn = get_connection()
         cur = conn.cursor()
@@ -406,7 +413,13 @@ def _pop_pending_broadcast(emp_id: str) -> str | None:
                 return None
         except ValueError:
             pass
-        return row[0]
+        try:
+            data = json.loads(row[0])
+            if isinstance(data, dict) and "message" in data:
+                return data
+        except (ValueError, TypeError):
+            pass
+        return {"message": row[0], "send_after": None}  # legacy plain-string row
     except Exception:
         logger.exception("whatsapp_agent: pop pending broadcast failed")
         return None
@@ -416,8 +429,8 @@ def _pop_pending_broadcast(emp_id: str) -> str | None:
 
 _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "send_group_message",
-    "add_standup_task", "update_standup_task", "create_task", "set_task_meta",
-    "set_attendance", "review_task",
+    "schedule_group_message", "add_standup_task", "update_standup_task",
+    "create_task", "set_task_meta", "set_attendance", "review_task",
 }
 _SUCCESS_PREFIXES = (
     "added", "created", "handed", "updated", "marked", "reopened",
@@ -801,6 +814,27 @@ _EMPLOYEE_TOOLS = [
                             "description": "The exact message to post in the group."}
             },
             "required": ["message"],
+        },
+    },
+    {
+        "name": "schedule_group_message",
+        "description": "Schedule a message to post into the team's WhatsApp "
+                       "group later, instead of right now. Use for 'schedule a "
+                       "message for the group at 5pm', 'post this to the group "
+                       "tomorrow morning', 'send this at 9am on Friday'. Work out "
+                       "the exact real date and time they mean yourself (today "
+                       "is known) and pass it as YYYY-MM-DD HH:MM in IST. Only "
+                       "works from a private chat, not from inside the group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string",
+                            "description": "The exact message to post in the group."},
+                "when": {"type": "string",
+                         "description": "The exact IST date+time to send it, as "
+                                        "YYYY-MM-DD HH:MM."},
+            },
+            "required": ["message", "when"],
         },
     },
     {
@@ -1389,6 +1423,26 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             return (f"Ready to post this to the team group:\n\n\"{msg[:400]}\"\n\n"
                     "Reply 'yes' to send it, or 'no' to cancel.")
 
+        if name == "schedule_group_message" and kind == "employee":
+            if in_group:
+                return "We're already in the group, so just say it here."
+            msg = (tool_input or {}).get("message", "").strip()
+            when = (tool_input or {}).get("when", "").strip()
+            if not msg:
+                return "(no message text — ask what to post)"
+            if not re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$", when):
+                return ("(need a real time — figure out the exact date and "
+                         "time they mean and pass it as YYYY-MM-DD HH:MM)")
+            if when[:16] <= f"{today} {utils.now_ist()[:5]}":
+                return "That time's already passed — ask when they actually want it sent."
+            if not _team_group_jid():
+                return ("No team group is set up for me to post to. Add one "
+                        "with the whatsapp_team_group setting or the group "
+                        "allow-list.")
+            _set_pending_broadcast(identity["id"], msg[:1500], send_after=when)
+            return (f"Ready to schedule this for {when} (IST) in the team group:\n\n"
+                    f"\"{msg[:400]}\"\n\nReply 'yes' to confirm, or 'no' to cancel.")
+
         if name == "remind_teammate" and kind == "employee":
             if in_group:
                 return ("Reminders only work from our private chat, not the "
@@ -1712,8 +1766,9 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                         "script, caption). Just ask.")
             extra = "" if in_group else (
                 " In a private chat I can also send a reminder to a teammate, "
-                "post an announcement to the group (with a confirm step), check "
-                "you in or out, and give you the full daily brief.")
+                "post an announcement to the group now or schedule one for "
+                "later (both with a confirm step), check you in or out, and "
+                "give you the full daily brief.")
             return (
                 "Ask me about: your standup tasks, a teammate's tasks, the whole "
                 "team's standup, any client's tasks and content calendar, what's "
@@ -2047,7 +2102,9 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "list_capabilities explains what you do; get_recent_actions is the "
             "log of writes you've made. Confirm every write in one short line.\n"
             "send_group_message does NOT post immediately — it asks the person "
-            "to reply 'yes' first; just relay that.\n"
+            "to reply 'yes' first; just relay that. schedule_group_message is "
+            "the same but for a future time — figure out the real date/time "
+            "yourself, it also needs a 'yes' to confirm before it's queued.\n"
             "send_sticker adds a sticker to your reply. Use it when the "
             "person's message really lands — a genuine win, a good burn, "
             "something absurd, a facepalm moment — in a DM or the group. Not on "
@@ -2117,16 +2174,27 @@ def handle_message(sender: str, text: str, *,
             "look anything up for you. Please contact the team to get set up."
         )
 
-    # Confirm-before-broadcast: a pending send_group_message waiting on a yes/no.
+    # Confirm-before-broadcast: a pending send_group_message /
+    # schedule_group_message waiting on a yes/no.
     if identity["kind"] == "employee" and not in_group:
         pending = _pop_pending_broadcast(identity["id"])
         if pending is not None:
             low = _norm(text).rstrip("!. ")
             if low in ("yes", "y", "yeah", "yep", "send", "send it", "confirm",
                        "do it", "go", "ok", "okay", "post it"):
+                msg = pending["message"]
+                send_after = pending.get("send_after")
                 gjid = _team_group_jid()
-                if gjid and _enqueue_outbound(gjid, pending):
-                    _audit("dm", identity, "send_group_message", pending[:200])
+                if not gjid:
+                    return "(couldn't send that to the group just now)"
+                if send_after:
+                    if wa_outbox.enqueue(gjid, msg, send_after=send_after):
+                        _audit("dm", identity, "schedule_group_message",
+                               f"{send_after}: {msg[:200]}")
+                        return f"Scheduled for {send_after} (IST)."
+                    return "(couldn't schedule that just now)"
+                if _enqueue_outbound(gjid, msg):
+                    _audit("dm", identity, "send_group_message", msg[:200])
                     return "Posted to the group."
                 return "(couldn't send that to the group just now)"
             if low in ("no", "n", "nope", "cancel", "stop", "nvm", "nevermind",

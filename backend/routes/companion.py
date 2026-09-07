@@ -412,22 +412,39 @@ def companion_standup_missing():
 @companion_bp.route("/api/companion/whatsapp-outbox", methods=["GET"])
 def companion_whatsapp_outbox():
     """Pending proactive WhatsApp messages for the laptop companion to deliver
-    via the local Baileys bridge. Messages older than 24h are expired first
-    (a stale 'remind X' nudge delivered a day late is worse than not at all)."""
+    via the local Baileys bridge. Two kinds of rows:
+      - immediate (send_after IS NULL): expired if older than 24h since
+        creation -- a stale 'remind X' nudge delivered a day late is worse
+        than not at all.
+      - scheduled (send_after set, IST "YYYY-MM-DD HH:MM[:SS]" -- see
+        schedule_group_message in whatsapp_agent.py): not returned at all
+        until that time has passed, and expired only if more than 24h
+        *past its own scheduled time* -- comparing against created_at here
+        would wrongly expire anything scheduled more than a day out before
+        it ever got a chance to send."""
     if not _auth_ok():
         return jsonify({"error": "unauthorized"}), 401
-    cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    utc_cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    now_ist_str = f"{utils.today_ist()} {utils.now_ist()}"
+    ist_cutoff = (datetime.now(utils.IST) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         conn = get_connection()
         with conn:
             conn.execute(
                 "UPDATE whatsapp_outbox SET status='expired' "
-                "WHERE status='pending' AND created_at < ?",
-                (cutoff,),
+                "WHERE status='pending' AND send_after IS NULL AND created_at < ?",
+                (utc_cutoff,),
+            )
+            conn.execute(
+                "UPDATE whatsapp_outbox SET status='expired' "
+                "WHERE status='pending' AND send_after IS NOT NULL AND send_after < ?",
+                (ist_cutoff,),
             )
         rows = conn.execute(
             "SELECT id, to_number, body FROM whatsapp_outbox "
-            "WHERE status='pending' ORDER BY id LIMIT 50"
+            "WHERE status='pending' AND (send_after IS NULL OR send_after <= ?) "
+            "ORDER BY id LIMIT 50",
+            (now_ist_str,),
         ).fetchall()
         conn.close()
     except Exception:

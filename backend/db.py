@@ -431,7 +431,8 @@ def init_db():
             sent_at    TEXT
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_outbox_status ON whatsapp_outbox (status, id)")
-        for _col in ("attempts INTEGER DEFAULT 0", "wa_message_id TEXT"):
+        for _col in ("attempts INTEGER DEFAULT 0", "wa_message_id TEXT",
+                     "send_after TEXT"):  # NULL = deliver on next poll; else an IST "YYYY-MM-DD HH:MM[:SS]" not-before time
             try:
                 conn.execute(f"ALTER TABLE whatsapp_outbox ADD COLUMN {_col}")
             except Exception:
