@@ -2214,6 +2214,18 @@ def handle_message(sender: str, text: str, *,
     history = _load_context(ctx_key)
     messages = history + [{"role": "user", "content": text}]
 
+    # Built once and reused for every round of this loop (and, within the
+    # ~5min ephemeral TTL, across a person's next message too) so the cache
+    # actually hits -- Anthropic caching needs a byte-identical prefix, and
+    # this string is already identical per (identity, in_group, group_name,
+    # today) regardless of how many tool rounds this turn takes.
+    sys_prompt = [{
+        "type": "text",
+        "text": _system_prompt(identity, in_group=in_group,
+                               group_name=group_name or ""),
+        "cache_control": {"type": "ephemeral"},
+    }]
+
     total_in = total_out = 0
     reply = ""
     last_tool_text = ""
@@ -2224,8 +2236,7 @@ def handle_message(sender: str, text: str, *,
                 model=model["name"],
                 max_tokens=600,   # was 1200 -- WhatsApp replies are short, this just
                                   # caps the worst-case cost per call lower
-                system=_system_prompt(identity, in_group=in_group,
-                                      group_name=group_name or ""),
+                system=sys_prompt,
                 tools=tools,
                 messages=messages,
             )
