@@ -10,11 +10,13 @@
  *       -> Lumina runs the agent (identity, tools, web search, context)
  *       -> bridge sends the returned reply back
  *
- * It NEVER initiates a conversation. It only ever replies to an inbound
- * message. Status, channels and its own messages are ignored. Group
- * messages are answered only when the bot is addressed ("lumina ...",
- * an @-mention, or a reply to it) AND Lumina's group allow-list permits
- * that group AND the asker is a known employee — see whatsapp_agent.py.
+ * It never starts a conversation from nothing. Group messages are answered
+ * only when the bot is addressed ("lumina ...", an @-mention, or a reply
+ * to it) AND Lumina's group allow-list permits that group AND the asker is
+ * a known employee — see whatsapp_agent.py. The one deliberate exception:
+ * in a group the bot is already active in, a new member joining gets an
+ * automatic @-mention greeting + a happy sticker (greetNewMember below) —
+ * still triggered by a real WhatsApp event (a join), never spontaneous.
  *
  * Setup:
  *   cd whatsapp-bridge && npm install
@@ -101,6 +103,50 @@ const BURST_COOLDOWN_MS = parseInt(process.env.BURST_COOLDOWN_MS || "1800000", 1
 const groupBuf = new Map();       // jid -> [{ name, text, ts }]
 const lastBurst = new Map();      // jid -> ms of last burst check
 const activeGroups = new Set();   // groups Lumina has replied in at least once
+
+// ── new-member greetings ────────────────────────────────────────────────────
+// Only fires in a group already in activeGroups (i.e. allow-listed and the
+// bot has spoken there at least once) -- same conservative gate the burst
+// reactions use, so the bridge doesn't start proactively messaging some
+// random group it happens to sit in but was never meant to be active in.
+// Debounced per (group, person) for a short window in case Baileys ever
+// re-emits the same participant-update on a reconnect.
+const GREETINGS = [
+  "Welcome to the group, @{n}! Good to have you here.",
+  "Hey @{n}, welcome aboard!",
+  "@{n} just joined — welcome!",
+  "Everyone say hi to @{n}, glad you're here.",
+];
+const recentGreets = new Map(); // "groupJid|participantJid" -> ms
+const GREET_DEBOUNCE_MS = 5 * 60 * 1000;
+
+async function greetNewMember(sock, groupJid, participantJid) {
+  const key = `${groupJid}|${participantJid}`;
+  const now = Date.now();
+  if (now - (recentGreets.get(key) || 0) < GREET_DEBOUNCE_MS) return;
+  recentGreets.set(key, now);
+  // The mentions[] entry must be the real jid WhatsApp gave us (lid or pn),
+  // but the visible "@digits" text needs the actual phone number to render
+  // correctly for a lid-addressed participant -- same lid->pn resolution
+  // used for inbound messages above.
+  let num = bareJid(participantJid);
+  if (participantJid.endsWith("@lid")) {
+    try {
+      const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(participantJid);
+      if (pn) num = bareJid(pn);
+    } catch { /* not available on this Baileys build */ }
+  }
+  const template = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+  const text = template.replace("{n}", num);
+  try {
+    await sock.sendMessage(groupJid, { text, mentions: [participantJid] });
+    log(`greeted new member ${num} in ${bareJid(groupJid)}`);
+  } catch (e) {
+    log(`greeting send failed: ${e.message}`);
+  }
+  const sp = pickSticker("happy");
+  if (sp) await sendSticker(sock, groupJid, sp);
+}
 
 function pushGroupMsg(jid, name, text) {
   let buf = groupBuf.get(jid);
@@ -382,6 +428,21 @@ async function start() {
       }
       log(`connection closed (${code}); reconnecting in 3s…`);
       setTimeout(start, 3000);
+    }
+  });
+
+  sock.ev.on("group-participants.update", async (update) => {
+    try {
+      if (update.action !== "add") return;
+      const groupJid = update.id;
+      if (!activeGroups.has(groupJid)) return;   // not an active/allow-listed group
+      const selfNum = bareJid(sock.user?.id || "");
+      for (const p of update.participants || []) {
+        if (bareJid(p) === selfNum) continue;    // the bridge itself was added — not a greeting
+        await greetNewMember(sock, groupJid, p);
+      }
+    } catch (e) {
+      log(`group-participants.update error: ${e.message}`);
     }
   });
 
