@@ -192,6 +192,17 @@ def init_db():
             expires_at  TEXT NOT NULL
         )""")
 
+        # Per-employee PIN-login lockout (security warning #8: PIN login had
+        # no rate limit/lockout at all -- 10,000 4-digit combos, brute-
+        # forceable). fail_count resets to 0 on a correct login; locked_until
+        # is set once fail_count crosses the threshold and cleared on the
+        # next successful login.
+        conn.execute("""CREATE TABLE IF NOT EXISTS login_lockout (
+            user_id      TEXT PRIMARY KEY,
+            fail_count   INTEGER DEFAULT 0,
+            locked_until TEXT DEFAULT NULL
+        )""")
+
         # Client portal users (separate from employees)
         conn.execute("""CREATE TABLE IF NOT EXISTS client_users (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,

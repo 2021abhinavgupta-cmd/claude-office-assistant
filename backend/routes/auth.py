@@ -9,9 +9,63 @@ import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from utils import _load_employees, _save_employees, _is_admin, now_ist, today_ist, IST
+from extensions import limiter
 
 logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
+
+# ── PIN-login lockout (security warning #8) ─────────────────────────────────
+_LOCKOUT_THRESHOLD = 5           # wrong PINs before locking
+_LOCKOUT_MINUTES = 15
+
+
+def _lockout_status(user_id: str):
+    """Returns (locked: bool, retry_after_seconds: int) for this user_id."""
+    conn = _sessions_conn()
+    row = conn.execute(
+        "SELECT locked_until FROM login_lockout WHERE user_id=?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return False, 0
+    try:
+        until = datetime.fromisoformat(row[0])
+    except ValueError:
+        return False, 0
+    now = datetime.utcnow()
+    if now >= until:
+        return False, 0
+    return True, int((until - now).total_seconds())
+
+
+def _record_login_failure(user_id: str):
+    conn = _sessions_conn()
+    with conn:
+        row = conn.execute(
+            "SELECT fail_count FROM login_lockout WHERE user_id=?", (user_id,)
+        ).fetchone()
+        fail_count = (row[0] if row else 0) + 1
+        locked_until = None
+        if fail_count >= _LOCKOUT_THRESHOLD:
+            locked_until = (datetime.utcnow() + timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
+        conn.execute(
+            "INSERT INTO login_lockout (user_id, fail_count, locked_until) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET fail_count=excluded.fail_count, "
+            "locked_until=excluded.locked_until",
+            (user_id, fail_count, locked_until),
+        )
+    conn.close()
+
+
+def _clear_login_failures(user_id: str):
+    conn = _sessions_conn()
+    with conn:
+        conn.execute(
+            "INSERT INTO login_lockout (user_id, fail_count, locked_until) VALUES (?, 0, NULL) "
+            "ON CONFLICT(user_id) DO UPDATE SET fail_count=0, locked_until=NULL",
+            (user_id,),
+        )
+    conn.close()
 
 def _sessions_conn():
     from db import get_connection
@@ -73,6 +127,7 @@ def _verify_session(token: str) -> Optional[str]:
     return user_id
 
 @auth_bp.route("/api/auth/login", methods=["POST"])
+@limiter.limit("20 per minute")
 def auth_login():
     """PIN login — returns a server-side session token."""
     body = request.get_json(silent=True) or {}
@@ -82,14 +137,21 @@ def auth_login():
     if not user_id or not pin:
         return jsonify({"error": "user_id and pin required"}), 400
 
+    locked, retry_after = _lockout_status(user_id)
+    if locked:
+        minutes = max(1, retry_after // 60)
+        return jsonify({"error": f"Too many incorrect attempts. Try again in {minutes} min."}), 429
+
     data = _load_employees()
     emp = next((e for e in data.get("employees", []) if e["id"] == user_id), None)
     if not emp:
         return jsonify({"error": "Employee not found"}), 404
 
     if emp.get("pin", "0000") != pin:
+        _record_login_failure(user_id)
         return jsonify({"error": "Incorrect PIN"}), 401
 
+    _clear_login_failures(user_id)
     token = _create_session(user_id)
     resp = jsonify({
         "success": True,
@@ -157,12 +219,26 @@ def auth_logout():
     return resp
 
 @auth_bp.route("/api/auth/change_pin", methods=["POST"])
+@limiter.limit("10 per minute")
 def auth_change_pin():
     body = request.get_json(silent=True) or {}
     user_id = body.get("user_id")
     old_pin = body.get("old_pin")
     new_pin = body.get("new_pin")
-    
+
+    # Security warning #8: this used to trust a body-supplied user_id with
+    # no session check at all -- knowing someone else's old PIN (even
+    # correctly) while logged in as yourself was enough to change theirs.
+    # Now the caller's own session must belong to the exact user_id they're
+    # changing the PIN for.
+    token = request.cookies.get("session_token", "")
+    session_user = _verify_session(token)
+    if not session_user or session_user != user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    if not new_pin or not str(new_pin).strip():
+        return jsonify({"error": "new_pin required"}), 400
+
     data = _load_employees()
     found = False
     for emp in data.get("employees", []):

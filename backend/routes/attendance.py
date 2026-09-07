@@ -17,6 +17,19 @@ from utils import (IST, _is_admin, _load_employees, _save_employees,
 logger = logging.getLogger(__name__)
 attendance_bp = Blueprint("attendance", __name__)
 
+
+def _verified_admin() -> bool:
+    """Real session check for the two routes below (security warning #6's
+    caveat): _is_admin(user_id) is bool(user_id) everywhere else in this app
+    by design (gotcha #60, every logged-in employee is admin) -- but reading
+    that user_id from an unauthenticated query string here meant ANY
+    non-empty string passed, not just a real logged-in employee. This ties
+    it to an actual valid session_token cookie instead."""
+    from routes.auth import _verify_session
+    token = request.cookies.get("session_token", "")
+    user_id = _verify_session(token)
+    return bool(user_id) and _is_admin(user_id)
+
 # Work-day window for the daily_attendance summary (checkin_time/checkout_time
 # -- what the Live Attendance dashboard cards and "Total" hours are computed
 # from). A login/logout outside this window (e.g. checking Lumina at
@@ -279,8 +292,7 @@ def attendance_today():
 
 @attendance_bp.route("/api/attendance/logs", methods=["GET"])
 def attendance_logs():
-    admin_id = request.args.get("user_id")
-    if not _is_admin(admin_id):
+    if not _verified_admin():
         return jsonify({"error": "Unauthorized"}), 403
     from db import get_connection
     conn = get_connection()
@@ -293,8 +305,7 @@ def attendance_logs():
 
 @attendance_bp.route("/api/attendance/export", methods=["GET"])
 def attendance_export():
-    admin_id = request.args.get("user_id")
-    if not _is_admin(admin_id):
+    if not _verified_admin():
         return "Unauthorized", 403
 
     # daily_attendance (not the raw attendance event log) is already one row
