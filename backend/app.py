@@ -685,7 +685,11 @@ Valid USER_IDs you can assign memories to:
             "Do not present uncertain information as fact."
         )
 
-    mem_ctx = memory_store.format_for_prompt(user_id)
+    try:
+        import smart_memory
+        mem_ctx = smart_memory.format_for_prompt(user_id, query=message)
+    except Exception:
+        mem_ctx = memory_store.format_for_prompt(user_id)
     team_mem_ctx = memory_store.format_team_memories()
 
     sections = [base_prompt]
@@ -2248,7 +2252,13 @@ Please act as an AI Standup Coach.
         for match in memory_matches:
             target_user = match.group(1)
             mem_content = match.group(2).strip()
-            memory_store.update_profile(target_user, mem_content)
+            new_entries = memory_store.update_profile(target_user, mem_content)
+            if new_entries:
+                try:
+                    import smart_memory
+                    smart_memory.index_memories(target_user, new_entries)
+                except Exception:
+                    pass
             logger.info(f"Auto-saved memory profile for {target_user}")
 
         # Strip the memory tags from the final saved message so they don't pollute the chat history
@@ -2471,7 +2481,11 @@ def add_memory(user_id):
     source  = data.get("source", "manual")
     if not content:
         return jsonify({"error": "content is required"}), 400
-    mem = memory_store.add_memory(user_id, content, source)
+    try:
+        import smart_memory
+        mem = smart_memory.dedupe_or_save(user_id, content, source)
+    except Exception:
+        mem = memory_store.add_memory(user_id, content, source)
     return jsonify({"success": True, "memory": mem}), 201
 
 
@@ -2481,6 +2495,11 @@ def delete_memory(user_id, memory_id):
     deleted = memory_store.delete_memory(user_id, memory_id)
     if not deleted:
         return jsonify({"error": "Memory not found"}), 404
+    try:
+        import smart_memory
+        smart_memory.remove_memory(user_id, memory_id)
+    except Exception:
+        pass
     return jsonify({"success": True})
 
 

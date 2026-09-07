@@ -232,6 +232,49 @@ def kb_semantic_backfill():
     return jsonify(semantic_kb.start_backfill())
 
 
+@system_bp.route("/api/memory/smart", methods=["GET", "POST"])
+def memory_smart():
+    """Status + on/off switch for the optional semantic memory layer
+    (backend/smart_memory.py) -- same contract as GET/POST /api/kb/semantic
+    above, deliberately: recall/dedup ranking on top of memory_store.py's
+    existing per-user memories, off until an admin flips it, harmless when
+    the shared embedder (semantic_kb's) isn't installed.
+
+    GET  -> {available, enabled, active, dup_threshold, vectors, backfill}
+    POST {"enabled": bool, "user_id": "<emp>"} -> toggles the stored flag;
+         turning it on also kicks a background backfill of existing memories.
+    """
+    try:
+        import smart_memory
+    except Exception as e:
+        return jsonify({"available": False, "enabled": False, "error": str(e)}), 200
+
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        if not (body.get("user_id") or request.args.get("user_id")):
+            return jsonify({"error": "user_id required"}), 403
+        enabled = bool(body.get("enabled"))
+        smart_memory.set_enabled(enabled)
+        if enabled:
+            smart_memory.start_backfill()
+        return jsonify(smart_memory.stats())
+
+    return jsonify(smart_memory.stats())
+
+
+@system_bp.route("/api/memory/smart/backfill", methods=["POST"])
+def memory_smart_backfill():
+    """Force a (re)embed of every memory not yet vectorized. Runs in the
+    background; poll GET /api/memory/smart for progress."""
+    if not (request.args.get("user_id") or (request.get_json(silent=True) or {}).get("user_id")):
+        return jsonify({"error": "user_id required"}), 403
+    try:
+        import smart_memory
+    except Exception as e:
+        return jsonify({"error": str(e)}), 200
+    return jsonify(smart_memory.start_backfill())
+
+
 @system_bp.route("/api/usage", methods=["GET"])
 def usage_dashboard():
     """Full usageDashboard data — powers the cost monitoringDashboard."""

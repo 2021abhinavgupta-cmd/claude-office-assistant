@@ -74,6 +74,16 @@ def available() -> bool:
     return _load_model() is not None
 
 
+def embed_texts(texts: list) -> "list | None":
+    """Public entry point for other modules (smart_memory.py) that want the
+    same embedder without loading a second copy of the model. Same contract
+    as the internal _embed(): batch in, unit-norm float32 rows out, or None
+    on any failure. Deliberately does NOT check is_enabled()/_active() --
+    callers own their own enable flag; this only gates on the model being
+    importable at all."""
+    return _embed(texts)
+
+
 def is_enabled() -> bool:
     """Env var wins if set; otherwise the stored app_settings flag (default off)."""
     env = (os.getenv("KB_SEMANTIC_ENABLED") or "").strip().lower()

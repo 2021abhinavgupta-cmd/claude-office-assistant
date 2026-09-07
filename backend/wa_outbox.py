@@ -53,6 +53,31 @@ def enqueue(to_jid: str, text: str, send_after: str | None = None) -> bool:
         return False
 
 
+def enqueue_call(to_jid_or_number: str, message: str) -> bool:
+    """Queue one one-way WhatsApp announcement call (see voice-call gotcha
+    in CLAUDE.md). Separate table/queue from enqueue() above -- a call needs
+    the laptop's bridge to run TTS + baileys-caller, not a plain /send POST,
+    so it can't share whatsapp_outbox's delivery path. `to_jid_or_number`
+    can be a full JID or a bare/loosely-formatted number; only the digits
+    matter to the bridge, so store just those."""
+    digits = re.sub(r"\D", "", to_jid_or_number or "")
+    message = (message or "").strip()
+    if not digits or not message:
+        return False
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO wa_call_outbox (to_number, message, created_at) VALUES (?, ?, ?)",
+                (digits, message[:800], datetime.now(timezone.utc).isoformat()),
+            )
+        conn.close()
+        return True
+    except Exception:
+        logger.exception("wa_outbox: enqueue_call failed")
+        return False
+
+
 def _employees() -> list:
     try:
         import utils

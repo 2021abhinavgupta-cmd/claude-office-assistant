@@ -12,6 +12,8 @@ Routes:
   POST /api/companion/sheets-pull-all                  -- reconcile every linked sheet
   GET  /api/companion/tomorrow-live                     -- social posts due live tomorrow
   GET  /api/companion/content-calendar-recipients        -- who to DM it to (default Vidit)
+  GET  /api/companion/wa-call-outbox                     -- pending announcement calls to place
+  POST /api/companion/wa-call-outbox/ack                 -- report calls placed/failed
 """
 from __future__ import annotations
 
@@ -502,6 +504,81 @@ def companion_whatsapp_outbox_ack():
         conn.close()
     except Exception:
         logger.exception("companion whatsapp-outbox ack failed")
+        return jsonify({"error": "failed"}), 500
+    return jsonify({"ok": True, "sent": len(sent), "retrying": len(failed) - gave_up,
+                    "failed": gave_up})
+
+
+@companion_bp.route("/api/companion/wa-call-outbox", methods=["GET"])
+def companion_wa_call_outbox():
+    """Pending one-way WhatsApp announcement calls (wa_outbox.enqueue_call)
+    for the laptop companion to place via the local bridge's /call
+    endpoint (whatsapp-bridge/voice.js -- Piper TTS + baileys-caller). Same
+    24h-stale-expiry shape as /whatsapp-outbox above; no send_after here,
+    every call is "place it now"."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    utc_cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "UPDATE wa_call_outbox SET status='expired' "
+                "WHERE status='pending' AND created_at < ?",
+                (utc_cutoff,),
+            )
+        rows = conn.execute(
+            "SELECT id, to_number, message FROM wa_call_outbox "
+            "WHERE status='pending' ORDER BY id LIMIT 20",
+        ).fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("companion wa-call-outbox failed")
+        return jsonify({"error": "failed"}), 500
+    return jsonify({"calls": [{"id": r[0], "to": r[1], "message": r[2]} for r in rows]})
+
+
+_CALL_OUTBOX_MAX_ATTEMPTS = 2   # a failed *call* (not message) is expensive to retry blindly
+
+
+@companion_bp.route("/api/companion/wa-call-outbox/ack", methods=["POST"])
+def companion_wa_call_outbox_ack():
+    """Laptop reports which queued calls it placed (or failed to). Same
+    retry-then-give-up shape as /whatsapp-outbox/ack, lower attempt cap --
+    see _CALL_OUTBOX_MAX_ATTEMPTS."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sent = [int(i) for i in (body.get("sent") or []) if str(i).isdigit()]
+    failed = [int(i) for i in (body.get("failed") or []) if str(i).isdigit()]
+    now = datetime.utcnow().isoformat()
+    gave_up = 0
+    try:
+        conn = get_connection()
+        with conn:
+            for i in sent:
+                conn.execute(
+                    "UPDATE wa_call_outbox SET status='sent', sent_at=? WHERE id=?",
+                    (now, i),
+                )
+            for i in failed:
+                row = conn.execute(
+                    "SELECT COALESCE(attempts,0) FROM wa_call_outbox WHERE id=?", (i,)
+                ).fetchone()
+                att = (row[0] if row else 0) + 1
+                if att >= _CALL_OUTBOX_MAX_ATTEMPTS:
+                    conn.execute(
+                        "UPDATE wa_call_outbox SET status='failed', attempts=?, sent_at=? WHERE id=?",
+                        (att, now, i),
+                    )
+                    gave_up += 1
+                else:
+                    conn.execute(
+                        "UPDATE wa_call_outbox SET attempts=? WHERE id=?", (att, i)
+                    )
+        conn.close()
+    except Exception:
+        logger.exception("companion wa-call-outbox ack failed")
         return jsonify({"error": "failed"}), 500
     return jsonify({"ok": True, "sent": len(sent), "retrying": len(failed) - gave_up,
                     "failed": gave_up})

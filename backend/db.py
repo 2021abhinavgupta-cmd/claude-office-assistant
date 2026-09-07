@@ -449,6 +449,24 @@ def init_db():
             except Exception:
                 pass
 
+        # One-way WhatsApp announcement calls (wa_outbox.py::enqueue_call,
+        # scripts/laptop_agent.py::job_voice_calls, whatsapp-bridge/voice.js).
+        # Same queue/poll/ack shape as whatsapp_outbox above -- the laptop
+        # companion polls this, places the call via the bridge's /call
+        # endpoint, and reports back. No send_after here (unlike the message
+        # outbox) -- announcement calls are always "place it now", there's no
+        # scheduled-call feature yet.
+        conn.execute("""CREATE TABLE IF NOT EXISTS wa_call_outbox (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            to_number  TEXT NOT NULL,
+            message    TEXT NOT NULL,
+            status     TEXT DEFAULT 'pending',
+            attempts   INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            sent_at    TEXT
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_call_outbox_status ON wa_call_outbox (status, id)")
+
         # One pending "reply yes to confirm" broadcast per employee (send_group_message).
         conn.execute("""CREATE TABLE IF NOT EXISTS wa_pending_action (
             sender     TEXT PRIMARY KEY,
@@ -492,6 +510,20 @@ def init_db():
             fts_rowid INTEGER PRIMARY KEY,
             dim       INTEGER NOT NULL,
             vec       BLOB NOT NULL
+        )""")
+
+        # Optional semantic layer over per-user memory (backend/smart_memory.py).
+        # One row per memory item (memory.data's JSON list is one blob per user,
+        # so items need their own rows here to each get a vector). Same
+        # off-by-default / guarded-import pattern as kb_chunk_vectors above --
+        # reuses semantic_kb's embedder, no second model load. Orphans (a memory
+        # deleted via /api/memory/<user>/<id>) are swept by smart_memory.prune().
+        conn.execute("""CREATE TABLE IF NOT EXISTS memory_vectors (
+            user_id   TEXT NOT NULL,
+            memory_id TEXT NOT NULL,
+            dim       INTEGER NOT NULL,
+            vec       BLOB NOT NULL,
+            PRIMARY KEY (user_id, memory_id)
         )""")
 
         # Add task_type column to tasks if not already present

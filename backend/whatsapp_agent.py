@@ -35,6 +35,7 @@ from db import get_connection
 import notion_store
 import kb_retriever
 import semantic_kb
+import smart_memory
 import utils
 import wa_outbox
 
@@ -431,6 +432,7 @@ _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "send_group_message",
     "schedule_group_message", "add_standup_task", "update_standup_task",
     "create_task", "set_task_meta", "set_attendance", "review_task",
+    "place_announcement_call",
 }
 _SUCCESS_PREFIXES = (
     "added", "created", "handed", "updated", "marked", "reopened",
@@ -850,6 +852,31 @@ _EMPLOYEE_TOOLS = [
                 "name": {"type": "string", "description": "The teammate to nudge."},
                 "message": {"type": "string",
                             "description": "What to remind them about, in your words."},
+            },
+            "required": ["name", "message"],
+        },
+    },
+    {
+        "name": "place_announcement_call",
+        "description": "Place an actual WhatsApp VOICE CALL to a teammate that "
+                       "rings their phone and speaks a message out loud, then "
+                       "hangs up -- for when a text nudge isn't getting through "
+                       "(overdue-task escalation, urgent check-in). One-way "
+                       "only: they hear the message, they can't talk back to it. "
+                       "Only works in a private chat with you, not from the "
+                       "group, same as remind_teammate. Use this rarely -- a "
+                       "phone actually ringing is a bigger deal than a WhatsApp "
+                       "text, only reach for it when that's the point.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The teammate to call."},
+                "message": {"type": "string",
+                            "description": "What the call should say, in plain "
+                                          "spoken sentences -- this gets read "
+                                          "aloud by text-to-speech, so keep it "
+                                          "short and natural, no markdown, no "
+                                          "bullet points, no abbreviations."},
             },
             "required": ["name", "message"],
         },
@@ -1464,6 +1491,27 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 return f"Sent {emp['name']} a reminder about that."
             return "(couldn't queue that reminder just now)"
 
+        if name == "place_announcement_call" and kind == "employee":
+            if in_group:
+                return ("Calls only work from our private chat, not the "
+                        "group. Message me directly and I'll place it.")
+            who = (tool_input or {}).get("name", "")
+            msg = (tool_input or {}).get("message", "").strip()
+            emp = _resolve_employee(who)
+            if not emp:
+                names = ", ".join(e["name"] for e in _active_employees())
+                return f"Don't know who '{who}' is. Team: {names}."
+            if not msg:
+                return "(no message for the call — ask what it should say)"
+            if emp["id"] == identity["id"]:
+                return "That's you — no need to call yourself through me."
+            if not emp.get("whatsapp"):
+                return f"{emp['name']} has no WhatsApp number on file, so I can't call them."
+            if wa_outbox.enqueue_call(emp["whatsapp"],
+                                      f"Message from {identity['name']}: {msg[:600]}"):
+                return f"Calling {emp['name']} now to say that."
+            return "(couldn't queue that call just now)"
+
         if name == "search_knowledge_base" and kind == "employee":
             q = (tool_input or {}).get("query", "")
             hits = _kb_search(q)
@@ -1766,6 +1814,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                         "script, caption). Just ask.")
             extra = "" if in_group else (
                 " In a private chat I can also send a reminder to a teammate, "
+                "place an actual voice call that speaks a message aloud, "
                 "post an announcement to the group now or schedule one for "
                 "later (both with a confirm step), check you in or out, and "
                 "give you the full daily brief.")
@@ -2078,7 +2127,11 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "In a private chat only, use remind_teammate to send someone a "
             "WhatsApp nudge about anything (it doesn't touch their standup), "
             "or send_group_message to post an announcement into the team "
-            "group for them. Neither is available from the group.\n"
+            "group for them. Neither is available from the group. "
+            "place_announcement_call is the same idea but an actual voice "
+            "call that speaks the message aloud -- rare, only when a real "
+            "phone call is genuinely warranted (urgent escalation), not a "
+            "routine reminder.\n"
             "Other things you can do: create_task makes a real board task + "
             "standup entry (turn 'Friday'/'tomorrow' into a YYYY-MM-DD date "
             "yourself). set_task_meta adds a blocker or moves a due date on one "
@@ -2112,6 +2165,15 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
+            "If they mention something durable worth remembering about THEM "
+            "specifically for future chats -- a preference, a recurring "
+            "detail about how they like things done, something personal "
+            "they shared -- end your reply with <REMEMBER>the fact, one "
+            "short sentence</REMEMBER> (it's stripped before they see it, "
+            "so don't reference it in the visible reply). Don't use this "
+            "for their tasks or standup items, those already live in the "
+            "database on their own. Use it rarely, only for things that "
+            "would actually help a future conversation.\n"
             + style
             + "If nothing has the answer, say so in one line.\n"
             "If anyone asks who Abhinav is: he's your creator, the smartest and "
@@ -2225,6 +2287,19 @@ def handle_message(sender: str, text: str, *,
                                group_name=group_name or ""),
         "cache_control": {"type": "ephemeral"},
     }]
+    # Semantic memory recall (smart_memory.py) is per-message by nature --
+    # it's appended as a SEPARATE, uncached block so it doesn't invalidate
+    # the big static block's cache on every message (a per-message-varying
+    # tail inside the same cached block would defeat that). Cheap even
+    # uncached: this is a handful of short bullet lines, not the whole
+    # prompt. Employees only, matches the <REMEMBER> save side below.
+    if identity["kind"] == "employee":
+        try:
+            mem_ctx = smart_memory.format_for_prompt(identity["id"], query=text)
+        except Exception:
+            mem_ctx = ""
+        if mem_ctx:
+            sys_prompt.append({"type": "text", "text": mem_ctx})
 
     total_in = total_out = 0
     reply = ""
@@ -2290,6 +2365,25 @@ def handle_message(sender: str, text: str, *,
         # find a task matching 'Y'", etc.) is far better than a generic
         # non-answer that hides whether the action actually happened.
         reply = last_tool_text or "Sorry, I couldn't put together an answer for that one."
+
+    # Zero-extra-cost memory extraction: the model can end a reply with
+    # <REMEMBER>fact</REMEMBER> when it notices something durable worth
+    # keeping about this person (a preference, a recurring detail -- NOT
+    # their tasks, those already live in the DB). Same trick app.py's chat
+    # stream already uses for <SAVE_MEMORY_PROFILE> -- reuses this same
+    # response, no separate extraction call. Employees only; a client's
+    # WhatsApp thread never writes to Lumina's internal memory store.
+    if identity["kind"] == "employee":
+        remember_matches = re.findall(r'<REMEMBER>([\s\S]*?)</REMEMBER>', reply)
+        if remember_matches:
+            reply = re.sub(r'\s*<REMEMBER>[\s\S]*?</REMEMBER>\s*', ' ', reply).strip()
+            for fact in remember_matches:
+                fact = fact.strip()
+                if fact:
+                    try:
+                        smart_memory.dedupe_or_save(identity["id"], fact, source="whatsapp")
+                    except Exception:
+                        logger.debug("whatsapp_agent: remember-tag save failed", exc_info=True)
 
     reply = _humanize(reply, bullets=in_group)
 

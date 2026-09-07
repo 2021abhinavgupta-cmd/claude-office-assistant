@@ -166,10 +166,13 @@ def delete_memory(user_id: str, memory_id: str) -> bool:
     return True
 
 
-def update_profile(user_id: str, profile_json: str):
+def update_profile(user_id: str, profile_json: str) -> list:
     """
     Updates the user's structured JSON profile by merging new data.
     New profile keys are converted to individual memory items.
+    Returns the list of newly-added profile memory dicts (empty on failure)
+    -- callers that want to index them for smart recall (smart_memory.py)
+    don't have to re-diff the full memory list afterward.
     """
     try:
         new_data = json.loads(profile_json)
@@ -178,10 +181,12 @@ def update_profile(user_id: str, profile_json: str):
         # Remove old profile entries so we don't duplicate
         mems = [m for m in mems if m.get("source") != "profile"]
 
+        new_entries = []
+
         # Add new profile entries
         for key, value in new_data.items():
             if isinstance(value, (str, int, float, bool)):
-                mems.append({
+                new_entries.append({
                     "id": uuid.uuid4().hex[:10],
                     "content": f"{key}: {value}",
                     "source": "profile",
@@ -189,24 +194,27 @@ def update_profile(user_id: str, profile_json: str):
                 })
             elif isinstance(value, list):
                 for v in value:
-                    mems.append({
+                    new_entries.append({
                         "id": uuid.uuid4().hex[:10],
                         "content": f"{key}: {v}",
                         "source": "profile",
                         "created_at": _now()
                     })
             elif isinstance(value, dict):
-                mems.append({
+                new_entries.append({
                     "id": uuid.uuid4().hex[:10],
                     "content": f"{key}: {json.dumps(value)}",
                     "source": "profile",
                     "created_at": _now()
                 })
 
+        mems.extend(new_entries)
         _save(conn, user_id, mems)
         conn.close()
+        return new_entries
     except Exception as e:
         logger.error(f"Failed to update profile for {user_id}: {e}")
+        return []
 
 
 def format_for_prompt(user_id: str) -> str:

@@ -29,6 +29,12 @@
  *
  * Keep alive across reboots: Task Scheduler "At log on" ->
  *   node.exe <path>\whatsapp-bridge\index.js
+ *
+ * Voice calling (place_announcement_call, see whatsapp_agent.py) is a
+ * separate, optional layer on top — see voice.js's own header for its
+ * one-time setup. Nothing about it is required for the text bridge above
+ * to work; a POST to /call just fails cleanly with a clear reason if voice
+ * was never set up.
  */
 
 import http from "http";
@@ -257,45 +263,84 @@ function startSendServer() {
       }));
       return;
     }
-    if (req.method !== "POST" || req.url !== "/send") {
-      res.writeHead(404);
-      res.end("not found");
-      return;
-    }
     if ((req.headers["authorization"] || "") !== `Bearer ${TOKEN}`) {
-      res.writeHead(401);
-      res.end("unauthorized");
+      if (req.method === "POST" && (req.url === "/send" || req.url === "/call")) {
+        res.writeHead(401);
+        res.end("unauthorized");
+        return;
+      }
+    }
+
+    if (req.method === "POST" && req.url === "/send") {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 65536) req.destroy();
+      });
+      req.on("end", async () => {
+        try {
+          const { to, text } = JSON.parse(body || "{}");
+          if (!to || !text) {
+            res.writeHead(400);
+            res.end('{"error":"to and text required"}');
+            return;
+          }
+          if (!currentSock) {
+            res.writeHead(503);
+            res.end('{"error":"not connected"}');
+            return;
+          }
+          const sent = await currentSock.sendMessage(String(to), { text: String(text) });
+          const waId = sent?.key?.id || null;
+          log(`push -> ${to}: ${String(text).slice(0, 80)}`);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, id: waId }));
+        } catch (e) {
+          log(`push error: ${e.message}`);
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
       return;
     }
-    let body = "";
-    req.on("data", (c) => {
-      body += c;
-      if (body.length > 65536) req.destroy();
-    });
-    req.on("end", async () => {
-      try {
-        const { to, text } = JSON.parse(body || "{}");
-        if (!to || !text) {
-          res.writeHead(400);
-          res.end('{"error":"to and text required"}');
-          return;
+
+    // One-way WhatsApp announcement call — see voice.js. Loopback-only,
+    // same TOKEN auth as /send, polled by scripts/laptop_agent.py's
+    // job_voice_calls. Lazy-loads voice.js so a bridge with no voice setup
+    // at all (the common case, at least until voice is set up) still
+    // starts and runs the text bridge completely normally.
+    if (req.method === "POST" && req.url === "/call") {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 65536) req.destroy();
+      });
+      req.on("end", async () => {
+        try {
+          const { to, message } = JSON.parse(body || "{}");
+          if (!to || !message) {
+            res.writeHead(400);
+            res.end('{"error":"to and message required"}');
+            return;
+          }
+          const { placeAnnouncementCall } = await import("./voice.js");
+          const result = await placeAnnouncementCall(String(to), String(message));
+          log(result.ok
+            ? `call -> ${to}: placed`
+            : `call -> ${to}: failed (${result.error})`);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (e) {
+          log(`call route error: ${e.message}`);
+          res.writeHead(500);
+          res.end(JSON.stringify({ ok: false, error: e.message }));
         }
-        if (!currentSock) {
-          res.writeHead(503);
-          res.end('{"error":"not connected"}');
-          return;
-        }
-        const sent = await currentSock.sendMessage(String(to), { text: String(text) });
-        const waId = sent?.key?.id || null;
-        log(`push -> ${to}: ${String(text).slice(0, 80)}`);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true, id: waId }));
-      } catch (e) {
-        log(`push error: ${e.message}`);
-        res.writeHead(500);
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
+      });
+      return;
+    }
+
+    res.writeHead(404);
+    res.end("not found");
   });
   srv.on("error", (e) => {
     if (e.code === "EADDRINUSE") {

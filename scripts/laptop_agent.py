@@ -567,6 +567,62 @@ def job_wa_outbox(cfg: dict) -> None:
     _log(f"wa-outbox: {len(sent)} sent, {len(failed)} failed/retry")
 
 
+# ── job 11: place queued one-way WhatsApp announcement calls ─────────────
+#
+# Same shape as job_wa_outbox above, but hits the bridge's /call endpoint
+# (voice.js: Piper TTS + baileys-caller) instead of /send. A call can take
+# a while (TTS + ringing + playback), so this uses a longer timeout and a
+# lower default poll frequency than the text outbox -- see --voice-calls-every.
+
+def job_voice_calls(cfg: dict) -> None:
+    if not cfg["bridge_ok"]:
+        return
+    tok = _api_token(cfg)
+    if not tok:
+        return
+    try:
+        r = requests.get(f"{cfg['url']}/api/companion/wa-call-outbox",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=30)
+        if not r.ok:
+            return
+        calls = (r.json() or {}).get("calls") or []
+    except Exception as e:
+        _log(f"voice-calls error: {e}")
+        return
+    if not calls:
+        return
+    sent, failed = [], []
+    bridge_tok = (os.getenv("WHATSAPP_BRIDGE_TOKEN") or cfg["storage_token"]
+                  or cfg["db_secret"])
+    for c in calls:
+        to, message, cid = c.get("to"), c.get("message"), c.get("id")
+        if not (to and message and cid):
+            continue
+        ok = False
+        try:
+            resp = requests.post(
+                f"http://127.0.0.1:{cfg['bridge_http_port']}/call",
+                json={"to": to, "message": message},
+                headers={"Authorization": f"Bearer {bridge_tok}"}, timeout=90,
+            )
+            body = resp.json() if resp.ok else {}
+            ok = bool(body.get("ok"))
+            if ok:
+                _log(f"voice call -> {to}: placed")
+            else:
+                _log(f"voice call -> {to}: failed ({body.get('error', resp.status_code)})")
+        except Exception as e:
+            _log(f"voice call -> {to}: error ({e})")
+        (sent if ok else failed).append(cid)
+    try:
+        requests.post(f"{cfg['url']}/api/companion/wa-call-outbox/ack",
+                      json={"sent": sent, "failed": failed},
+                      headers={"Authorization": f"Bearer {tok}"}, timeout=30)
+    except Exception as e:
+        _log(f"voice-calls ack error: {e}")
+    _log(f"voice-calls: {len(sent)} placed, {len(failed)} failed/retry")
+
+
 def _alert_dm(cfg: dict, text: str) -> int:
     """DM an ops alert to every configured alert recipient via the bridge."""
     if not cfg["bridge_ok"]:
@@ -824,6 +880,7 @@ INTERVAL_JOBS = [
     ("bridge-health", job_bridge_health, "bridge_health_every"),
     ("sheets", job_sheets_watchdog, "sheets_every"),
     ("wa-outbox", job_wa_outbox, "outbox_every"),
+    ("voice-calls", job_voice_calls, "voice_calls_every"),
 ]
 
 
@@ -1153,6 +1210,8 @@ def main() -> None:
     ap.add_argument("--sheets-every", type=int, default=1200)
     ap.add_argument("--outbox-every", type=int, default=20,
                     help="how often to check for queued proactive WhatsApp messages")
+    ap.add_argument("--voice-calls-every", type=int, default=30,
+                    help="how often to check for queued announcement calls")
     ap.add_argument("--sheets-autopull", action="store_true",
                     help="also force a reconcile when a sheet looks out of sync")
     ap.add_argument("--slow-ms", type=int, default=8000, help="alert if /api/health is slower than this")
@@ -1259,6 +1318,7 @@ def main() -> None:
         "health_every": args.health_every,
         "sheets_every": args.sheets_every,
         "outbox_every": args.outbox_every,
+        "voice_calls_every": args.voice_calls_every,
         "bridge_every": 15,
         "bridge_health_every": 180,
         "repo_dir": Path(__file__).resolve().parent.parent,
@@ -1332,6 +1392,10 @@ def main() -> None:
         else "OFF (--no-tomorrow-live)" if args.no_tomorrow_live else "OFF (needs bridge + token)"))
     _log("  wa-outbox {}".format(
         f"every {args.outbox_every}s" if (cfg["bridge_ok"] and tok)
+        else "OFF (needs bridge + token)"))
+    _log("  voice-calls {}".format(
+        f"every {args.voice_calls_every}s (needs voice.js set up on the bridge -- see CLAUDE.md)"
+        if (cfg["bridge_ok"] and tok)
         else "OFF (needs bridge + token)"))
     _log("  bridge-health {}".format(
         f"every {cfg['bridge_health_every']}s (alerts on logout / crashloop / >8m offline)"
