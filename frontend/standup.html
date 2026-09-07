@@ -186,7 +186,8 @@
            </div>
         </div>
         <p class="card-sub">See what everyone is working on</p>
-        
+        <p id="lock-summary" style="display:none;color:var(--acc);font-size:.78rem;margin:-6px 0 10px"></p>
+
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:14px">
            <input type="date" lang="en-GB" id="history-date" style="background:var(--s2);border:1px solid var(--bdr);border-radius:var(--rs);color:var(--txt);padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:0.8rem;outline:none;cursor:pointer;" onchange="loadTeamStandups(this.value)" />
         </div>
@@ -710,6 +711,28 @@ async function loadTeamStandups(dateStr){
       return parseD(a.due_date||"").localeCompare(parseD(b.due_date||""));
     });
   });
+  // Standup-lock visibility (CLAUDE.md gotcha #108/#109): only meaningful
+  // when looking at today's own date on a weekday -- a historical date or
+  // a weekend view isn't "locked" for anyone, so don't show the count then.
+  const lockEl = document.getElementById("lock-summary");
+  const isViewingToday = !dateStr || dateStr === today;
+  const isWeekday = ![0, 6].includes(new Date().getDay());
+  if (lockEl) {
+    if (isViewingToday && isWeekday) {
+      const lockedNames = window.EMPLOYEES
+        .filter(e => (tasksByUser[e.id] || []).length === 0)
+        .map(e => window.EMP_DICT[e.id] || e.id);
+      if (lockedNames.length) {
+        lockEl.style.display = "block";
+        lockEl.textContent = `Locked out until standup: ${lockedNames.join(", ")}`;
+      } else {
+        lockEl.style.display = "none";
+      }
+    } else {
+      lockEl.style.display = "none";
+    }
+  }
+
   const wrap=document.getElementById("team-standups");
   const t=iso=>iso?new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"";
   
