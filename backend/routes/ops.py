@@ -424,6 +424,36 @@ def execute_standup_actions():
 
 
 
+@ops_bp.route("/api/standup/lock-status", methods=["GET"])
+def standup_lock_status():
+    """Powers auth.js's daily-standup lock (CLAUDE.md gotcha #108): every
+    employee page except standup.html itself redirects there until today's
+    list has at least one task. Frontend-only nudge, not an API-level
+    block -- every other endpoint keeps working regardless of this value.
+    Skipped on weekends (matches the standup velocity chart, gotcha #77).
+    Deliberately does NOT trigger the auto-carry-over insert that
+    get_my_tasks does -- that only needs to happen once someone is
+    actually on the Standup screen; this route just reads what's there."""
+    user_id = request.args.get("user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+
+    weekend = datetime.now(IST).weekday() >= 5  # 5=Sat, 6=Sun
+    if weekend:
+        return jsonify({"locked": False, "weekend": True})
+
+    date_str = today_ist()
+    conn = _su_conn()
+    row = conn.execute(
+        "SELECT COUNT(*) FROM standup_tasks WHERE user_id=? AND date=? "
+        "AND status NOT IN ('deleted','delegated')",
+        (user_id, date_str),
+    ).fetchone()
+    conn.close()
+    has_tasks = bool(row and row[0])
+    return jsonify({"locked": not has_tasks, "weekend": False})
+
+
 @ops_bp.route("/api/standup/my-tasks", methods=["GET"])
 def get_my_tasks():
     """

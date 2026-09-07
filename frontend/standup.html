@@ -113,6 +113,9 @@
 <body>
 <div id="toast"></div>
 <div class="wrap">
+  <div id="lock-banner" style="display:none;background:rgba(245,166,35,.1);border:1px solid var(--acc);border-radius:var(--rs);padding:10px 16px;margin-bottom:14px;color:var(--acc);font-size:.85rem">
+    Add at least one task below to unlock the rest of Lumina for today.
+  </div>
   <div class="hdr">
     <div>
       <h1>☀ Daily <span>Standup</span></h1>
@@ -237,6 +240,9 @@ function toast(m,t="ok"){
 }
 
 (async()=>{
+  if (new URLSearchParams(location.search).get("locked") === "1") {
+    document.getElementById("lock-banner").style.display = "block";
+  }
   await loadEmployees();
   populateVelocityEmployeeOptions();
   const hour = new Date().getHours();

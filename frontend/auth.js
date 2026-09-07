@@ -36,6 +36,30 @@ document.documentElement.style.visibility = 'hidden';
     };
     localStorage.setItem("agency_portal_user", JSON.stringify(user));
     window.__currentUser = user;
+
+    // Daily-standup lock: on a weekday, every employee page except the
+    // Standup screen itself redirects there until today's list has at
+    // least one task (see /api/standup/lock-status, CLAUDE.md gotcha
+    // #108). Frontend-only nudge, not a security boundary -- every API
+    // still works regardless. If the check itself fails (network hiccup),
+    // fail open rather than trap someone out of the whole app.
+    const __page = location.pathname.split("/").pop() || "index.html";
+    if (__page !== "standup.html") {
+      try {
+        const lr = await fetch(
+          `${authApi}/api/standup/lock-status?user_id=${encodeURIComponent(user.user_id)}`,
+          { credentials: "include" }
+        );
+        const ld = await lr.json();
+        if (ld && ld.locked) {
+          window.location.href = "standup.html?locked=1";
+          return;
+        }
+      } catch (e) {
+        console.warn("[auth.js] lock-status check failed, not blocking:", e.message);
+      }
+    }
+
     // Auth passed — reveal the page
     document.documentElement.style.visibility = 'visible';
 
