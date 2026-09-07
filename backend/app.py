@@ -65,6 +65,14 @@ from routes.companion import companion_bp
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 
+# Optional Sentry/GlitchTip error monitoring -- no-op until SENTRY_DSN is
+# set AND sentry-sdk is actually installed (see error_monitoring.py's own
+# header for the two-step "turning it on" process). Called before the
+# Flask app is created so Sentry's Flask integration can hook every
+# request from the very first one.
+import error_monitoring
+error_monitoring.init_error_monitoring()
+
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

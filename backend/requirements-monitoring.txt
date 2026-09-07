@@ -1,0 +1,6 @@
+# Optional error-monitoring dependency for backend/error_monitoring.py.
+# Add this line to the root requirements.txt and redeploy to activate --
+# see error_monitoring.py's own header for the full "turning it on" steps.
+# Until then, SENTRY_DSN being set does nothing (guarded import, logs a
+# warning, the app keeps running normally).
+sentry-sdk[flask]>=2.0.0

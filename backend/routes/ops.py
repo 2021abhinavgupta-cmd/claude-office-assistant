@@ -2336,6 +2336,118 @@ def ai_coach():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Meeting notes -> real tasks ───────────────────────────────────────────────
+# Rebuild of the meeting-notes-to-tasks feature removed in gotcha #46 (the old
+# version was underbuilt and got ripped out). This one takes whatever raw
+# markdown/plain-text a local transcription tool (meeting-scribe, TalkTrack --
+# see CLAUDE.md's gotcha for scripts/meeting_sync.py, which is what actually
+# calls this) already produced, and extracts real action items via one Haiku
+# call rather than guessing at that tool's exact JSON export schema -- a
+# summary's prose is far more reliably parseable by an LLM than hand-matching
+# field names from a third-party tool's README, and this codebase has been
+# burned by exactly that kind of guess before (see the "guessed a schema,
+# it was wrong" family of gotchas).
+@ops_bp.route("/api/ai/meeting-to-tasks", methods=["POST"])
+def meeting_to_tasks():
+    """
+    Body: { notes: str (required -- markdown/plain text meeting summary or
+            transcript), meeting_title: str, client: str, user_id: str }
+    Extracts action items via Haiku, resolves each owner/client against the
+    live roster/Notion clients (never a hardcoded name map -- see gotcha
+    #63), creates a real board task + a standup_tasks row per item. Reports
+    per-item success/failure honestly (see gotcha #93 -- a bulk-create loop
+    must never claim blanket success over a batch that partially failed).
+    """
+    if not _is_admin(request.args.get("user_id") or
+                     (request.get_json(silent=True) or {}).get("user_id")):
+        return jsonify({"error": "unauthorized"}), 403
+
+    body = request.get_json(silent=True) or {}
+    notes = (body.get("notes") or "").strip()
+    meeting_title = (body.get("meeting_title") or "").strip()
+    default_client = (body.get("client") or "").strip()
+    uploader_uid = (body.get("user_id") or "").strip()
+    if not notes:
+        return jsonify({"error": "notes is required"}), 400
+
+    today = today_ist()
+    system = (
+        "You extract action items from a meeting transcript or summary for "
+        "a creative agency. Return ONLY a JSON array (no prose, no markdown "
+        "fences), each item exactly: "
+        '{"title": "short imperative task title", '
+        '"owner": "a person\'s name mentioned as responsible, or null", '
+        '"due_date": "YYYY-MM-DD if a real date/deadline was mentioned, else null"}. '
+        f"Today is {today}. Only include real, concrete action items -- "
+        "skip general discussion. If nothing actionable was said, return []. "
+        "Max 15 items."
+    )
+    try:
+        raw = _claude_call(system, notes[:12000], max_tokens=1200)
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+        items = json.loads(raw)
+        if not isinstance(items, list):
+            items = []
+    except Exception:
+        logger.exception("meeting_to_tasks: extraction failed")
+        return jsonify({"error": "couldn't extract action items from those notes"}), 500
+
+    if not items:
+        return jsonify({"success": True, "tasks_created": 0, "tasks_failed": 0,
+                        "items": [], "message": "No action items found in those notes."})
+
+    from whatsapp_agent import _find_client, _resolve_employee
+
+    default_c = _find_client(default_client) if default_client else None
+    created, failed = [], []
+    for it in items[:15]:
+        title = str(it.get("title") or "").strip()
+        if not title:
+            continue
+        if meeting_title:
+            title = f"{title} ({meeting_title})"[:500]
+        owner_name = str(it.get("owner") or "").strip()
+        due = str(it.get("due_date") or "").strip()
+        if due and not re.match(r"^\d{4}-\d{2}-\d{2}$", due):
+            due = ""
+        emp = _resolve_employee(owner_name) if owner_name else None
+        cname = (default_c or {}).get("name", "") or default_client
+        cnid = (default_c or {}).get("notion_id", "")
+        try:
+            nid = ""
+            if notion_store.is_configured():
+                res = notion_store.create_task(
+                    title=title, client_name=cname, client_notion_id=cnid,
+                    assigned_to=(emp["name"] if emp else ""),
+                    due_date=due, creation_date=today,
+                )
+                nid = (res or {}).get("notion_id", "")
+            su_uid = emp["id"] if emp else (uploader_uid or "")
+            if su_uid:
+                conn = _su_conn()
+                with conn:
+                    conn.execute(
+                        "INSERT INTO standup_tasks (user_id, date, title, status, notion_id, due_date, delegated_from) "
+                        "VALUES (?, ?, ?, 'pending', ?, ?, ?)",
+                        (su_uid, today, title[:500], (nid or None), (due or None),
+                         "Meeting notes" if not emp else None),
+                    )
+                conn.close()
+            created.append({"title": title, "owner": (emp or {}).get("name") or owner_name or None,
+                            "due_date": due or None, "notion_id": nid or None})
+        except Exception:
+            logger.exception("meeting_to_tasks: item creation failed (%r)", title)
+            failed.append(title)
+
+    return jsonify({
+        "success": True,
+        "tasks_created": len(created),
+        "tasks_failed": len(failed),
+        "items": created,
+        "failed_items": failed,
+    })
+
+
 # ── Feature 3: Manager's End-of-Day Summary ───────────────────────────────────
 @ops_bp.route("/api/ai/daily-summary", methods=["POST"])
 def daily_summary():

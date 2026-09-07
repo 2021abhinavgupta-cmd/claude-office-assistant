@@ -1,0 +1,85 @@
+# Self-hosted GlitchTip (Sentry-protocol-compatible error tracking) for Lumina.
+# See ./README.md for setup steps and what this actually does.
+#
+# Uses GlitchTip's official published image (glitchtip/glitchtip) -- no
+# build step, no Dockerfile needed, just `docker compose up -d`.
+#
+# Where to run this: either the always-on laptop (already running the
+# WhatsApp bridge -- needs Docker Desktop installed once) or as its own
+# service on any small VPS/host you already have. It does NOT need to run
+# on the same machine as the Lumina Flask app itself -- Lumina just needs
+# outbound HTTPS access to whichever address this ends up on, to send its
+# SENTRY_DSN error reports there.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: "${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in .env, see .env.example}"
+    volumes:
+      - glitchtip-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Valkey (Redis-compatible) -- GlitchTip's own docs list this as
+  # "optional but recommended" for low-RAM setups; included here because
+  # it's the documented-supported path, not because it's strictly required
+  # for every GlitchTip version. Remove this service + its two references
+  # below only if you've confirmed your GlitchTip version runs without a
+  # broker -- don't guess at an unsupported no-broker config.
+  valkey:
+    image: valkey/valkey:7-alpine
+    restart: unless-stopped
+
+  web:
+    image: glitchtip/glitchtip:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${GLITCHTIP_PORT:-8000}:8080"
+    environment: &glitchtip-env
+      DATABASE_URL: "postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in .env}@postgres:5432/glitchtip"
+      REDIS_URL: "redis://valkey:6379/0"
+      # See .env.example's comment for how to generate a real value.
+      SECRET_KEY: "${GLITCHTIP_SECRET_KEY:?set GLITCHTIP_SECRET_KEY in .env, see .env.example}"
+      # Include the scheme (http:// or https://) -- this is what gets
+      # embedded in the DSNs GlitchTip hands out for your projects. See
+      # README.md before assuming a bare LAN address works here.
+      GLITCHTIP_DOMAIN: "${GLITCHTIP_DOMAIN:?set GLITCHTIP_DOMAIN in .env, see .env.example}"
+      DEFAULT_FROM_EMAIL: "${GLITCHTIP_FROM_EMAIL:-glitchtip@localhost}"
+      # No SMTP configured by default -- account invites/password-reset
+      # emails won't send until you set EMAIL_URL. Fine for a single-admin
+      # instance you access directly; add EMAIL_URL later if you invite
+      # other team members to the GlitchTip UI itself (separate from
+      # Lumina's own employee logins -- this is just the error dashboard).
+      ENABLE_ORGANIZATION_CREATION: "true"
+    # Runs pending DB migrations then starts the web server. Script name
+    # taken from GlitchTip's own Dockerfile convention (confirmed via a
+    # community fork's compose file, not hands-on run -- if this exact
+    # script name is wrong for the image version you pull, `docker compose
+    # logs web` will show a clear "no such file" and you can check
+    # `docker run --rm glitchtip/glitchtip:latest ls bin/` to see what's
+    # actually there).
+    command: ["./bin/run-migrate-and-runserver.sh"]
+
+  worker:
+    image: glitchtip/glitchtip:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_started
+    environment: *glitchtip-env
+    command: ["./bin/run-celery-with-beat.sh"]
+
+volumes:
+  glitchtip-pg-data:
