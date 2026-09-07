@@ -1608,6 +1608,12 @@ def notion_delete_client(notion_id: str):
     delete. Still archives any straggler tasks and unlinks any Sheet found
     under this id either way, so re-running delete on an already-gone
     client remains useful cleanup, not just a no-op."""
+    from utils import _is_admin
+    token = request.cookies.get("session_token", "")
+    user_id = _verify_session(token)
+    if not user_id or not _is_admin(user_id):
+        return jsonify({"error": "Unauthorized: Admin access required"}), 403
+
     if not notion_store.is_client_active(notion_id):
         all_client_tasks = notion_store.list_tasks(client_notion_id=notion_id)
         for t in all_client_tasks:

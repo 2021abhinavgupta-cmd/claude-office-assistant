@@ -786,7 +786,7 @@ def get_task_type(notion_id: str) -> str:
         if ptype:
             return ptype
         title = _get_text(props.get("Task", {})) or _get_text(props.get("Post Title", {})) or _get_text(props.get("Post", {}))
-        if title and re.match(r'^\[(Story|Static|Reel|Carousel|Post|Video)\]', title, re.IGNORECASE):
+        if title and re.search(r'\[(Story|Static|Reel|Carousel|Post|Video)\]', title, re.IGNORECASE):
             return "Social Media"
         return ""
     except Exception:

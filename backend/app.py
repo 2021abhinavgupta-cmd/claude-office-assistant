@@ -3466,10 +3466,12 @@ def backup_db():
 def restore_db():
     from pathlib import Path
     from db import DB_PATH as _db_path
-    secret = request.args.get('secret')
-    if secret != 'restore123':
-        return 'Unauthorized', 401
-    
+    from routes.auth import _verify_session
+    token = request.cookies.get("session_token", "")
+    user_id = _verify_session(token)
+    if not user_id or not _is_admin(user_id):
+        return jsonify({"error": "Unauthorized"}), 403
+
     file = request.files.get('db')
     if not file:
         return 'No file', 400

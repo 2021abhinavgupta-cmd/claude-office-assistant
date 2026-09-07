@@ -319,6 +319,9 @@ def client_logout():
 @auth_bp.route("/api/auth/clients", methods=["GET"])
 def list_client_users():
     """List all client portal accounts. Admin use."""
+    token = request.cookies.get("client_admin_token", "")
+    if not _verify_admin_session(token):
+        return jsonify({"error": "Unauthorized"}), 401
     conn = _sessions_conn()
     cur = conn.cursor()
     cur.execute("SELECT id, username, client_name, client_notion_id, created_at, "
@@ -336,6 +339,9 @@ def list_client_users():
 @auth_bp.route("/api/auth/clients", methods=["POST"])
 def create_client_user():
     """Create a new client portal account. Admin only."""
+    token = request.cookies.get("client_admin_token", "")
+    if not _verify_admin_session(token):
+        return jsonify({"error": "Unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     username = body.get("username", "").strip()
     password = body.get("password", "").strip()
@@ -369,6 +375,9 @@ def create_client_user():
 @auth_bp.route("/api/auth/clients/<int:client_id>", methods=["DELETE"])
 def delete_client_user(client_id):
     """Delete a client portal account."""
+    token = request.cookies.get("client_admin_token", "")
+    if not _verify_admin_session(token):
+        return jsonify({"error": "Unauthorized"}), 401
     conn = _sessions_conn()
     with conn:
         conn.execute("DELETE FROM client_sessions WHERE client_id=?", (client_id,))
