@@ -46,12 +46,12 @@
     },
     {
       "id": "emp006",
-      "name": "Mohit",
-      "role": "Media",
-      "whatsapp": "+918485805119",
-      "department": "General",
-      "status": "inactive",
-      "pin": "7861",
+      "name": "Lakshmi",
+      "role": "Designer",
+      "whatsapp": "+917649088707",
+      "department": "Design",
+      "status": "active",
+      "pin": "8989",
       "tone_profile": "Persuasive, brief, and action-oriented.",
       "checkins": []
     },
