@@ -75,6 +75,19 @@ let currentSock = null;   // set on every (re)connect, used by the send endpoint
 let connState = "starting";       // starting | connecting | open | close
 let connectedSince = 0;           // epoch ms of the last successful "open"
 let loggedOut = false;            // true once WhatsApp says this device was unlinked
+
+// Baileys/WhatsApp needs a few seconds after "open" to finish syncing the
+// encryption session -- a proactive send (job_wa_outbox, the morning digest,
+// roll-call, etc.) that lands in that window gets accepted here but never
+// decrypts on the recipient's side: shows as "Waiting for this message. This
+// may take a while." forever. The bridge restarts often (self-update every
+// ~10min, health-watchdog restarts), so this window gets hit for real. Gate
+// /send on it; callers (the companion outbox, ack-retry up to 3x) already
+// handle a 503 by retrying on the next poll -- no in-bridge wait needed.
+const SEND_SETTLE_MS = 5000;
+function socketReady() {
+  return connState === "open" && connectedSince > 0 && (Date.now() - connectedSince) >= SEND_SETTLE_MS;
+}
 const LOGGED_OUT_FLAG = path.join(AUTH_DIR, "..", ".logged_out");
 
 function setLoggedOutFlag(on) {
@@ -288,6 +301,11 @@ function startSendServer() {
           if (!currentSock) {
             res.writeHead(503);
             res.end('{"error":"not connected"}');
+            return;
+          }
+          if (!socketReady()) {
+            res.writeHead(503);
+            res.end('{"error":"bridge just (re)connected, still settling -- retry shortly"}');
             return;
           }
           const sent = await currentSock.sendMessage(String(to), { text: String(text) });
