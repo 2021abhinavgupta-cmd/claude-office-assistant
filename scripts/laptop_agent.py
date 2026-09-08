@@ -39,6 +39,8 @@ Jobs it runs (each skips itself automatically if not configured):
  14. tomorrow-live       — 09:30 & 18:30: DM the content-calendar lead (default
                           Vidit) everything due to go live tomorrow, read
                           straight from Lumina Sheets/Notion (needs bridge)
+ 15. class-meeting        — Tue/Thu 10:28: post the Meet link to the group,
+                          @-tagging everyone in it (needs --rollcall-group + bridge)
 
 Setup:
     Full first-time setup for a new always-on laptop: see
@@ -892,8 +894,10 @@ INTERVAL_JOBS = [
 
 # ── job 8: noon attendance roll-call to the team WhatsApp group ───────────
 
-def _bridge_send_msg(cfg: dict, to: str, text: str):
-    """POST to the local Baileys bridge /send. Returns (ok, wa_message_id|None)."""
+def _bridge_send_msg(cfg: dict, to: str, text: str, mention_all: bool = False):
+    """POST to the local Baileys bridge /send. Returns (ok, wa_message_id|None).
+    mention_all: bridge tags every member of `to` (must be a group jid) with a
+    leading line of @-mentions before the message text."""
     tok = (os.getenv("WHATSAPP_BRIDGE_TOKEN") or cfg["storage_token"]
            or cfg["db_secret"])
     if not tok:
@@ -902,7 +906,7 @@ def _bridge_send_msg(cfg: dict, to: str, text: str):
     try:
         r = requests.post(
             f"http://127.0.0.1:{cfg['bridge_http_port']}/send",
-            json={"to": to, "text": text},
+            json={"to": to, "text": text, "mentionAll": mention_all},
             headers={"Authorization": f"Bearer {tok}"}, timeout=30,
         )
         if r.ok:
@@ -919,8 +923,8 @@ def _bridge_send_msg(cfg: dict, to: str, text: str):
     return False, None
 
 
-def _bridge_send(cfg: dict, to: str, text: str) -> bool:
-    return _bridge_send_msg(cfg, to, text)[0]
+def _bridge_send(cfg: dict, to: str, text: str, mention_all: bool = False) -> bool:
+    return _bridge_send_msg(cfg, to, text, mention_all=mention_all)[0]
 
 
 def job_standup_nudge(cfg: dict) -> None:
@@ -994,6 +998,22 @@ def job_team_meeting(cfg: dict) -> None:
         return
     if _bridge_send(cfg, grp, "Reminder: team meeting today from 4 to 5 PM."):
         _log("team-meeting: sent")
+
+
+_CLASS_MEETING_LINK = "https://meet.google.com/rek-jyvv-jmm"
+
+
+def job_class_meeting(cfg: dict) -> None:
+    """Tue/Thu 10:28 -- tag everyone in the team WhatsApp group with the
+    meeting link."""
+    grp = cfg["rollcall_group"]
+    if not grp:
+        return
+    if datetime.now().weekday() not in (1, 3):   # Tue/Thu only
+        return
+    text = f"Meeting time -- join here: {_CLASS_MEETING_LINK}"
+    if _bridge_send(cfg, grp, text, mention_all=True):
+        _log("class-meeting: sent (tagged all)")
 
 
 def job_weekly_wrap(cfg: dict) -> None:
@@ -1241,6 +1261,9 @@ def main() -> None:
     ap.add_argument("--meeting-time", default="15:00",
                     help="Mon/Wed/Fri time to post the 4-5pm team meeting reminder to the group")
     ap.add_argument("--no-meeting", action="store_true")
+    ap.add_argument("--class-meeting-time", default="10:28",
+                    help="Tue/Thu time to tag everyone in the group with the class meeting link")
+    ap.add_argument("--no-class-meeting", action="store_true")
     ap.add_argument("--eod-group-time", default="17:00",
                     help="daily time to post the 'tasks done today' summary to the group")
     ap.add_argument("--eod-personal-time", default="19:30",
@@ -1350,6 +1373,8 @@ def main() -> None:
         daily_jobs.append(("lunch", job_lunch, args.lunch_time))
     if not args.no_meeting and cfg["rollcall_group"]:
         daily_jobs.append(("team-meeting", job_team_meeting, args.meeting_time))
+    if not args.no_class_meeting and cfg["rollcall_group"]:
+        daily_jobs.append(("class-meeting", job_class_meeting, args.class_meeting_time))
     if not args.no_eod:
         if cfg["rollcall_group"]:
             daily_jobs.append(("eod-group", job_eod_group, args.eod_group_time))
@@ -1416,6 +1441,10 @@ def main() -> None:
     _log("  team-meeting {}".format(
         f"Mon/Wed/Fri {args.meeting_time}" if (cfg["rollcall_group"] and not args.no_meeting)
         else "OFF (--no-meeting)" if args.no_meeting else "OFF (no group)"))
+    _log("  class-meeting {}".format(
+        f"Tue/Thu {args.class_meeting_time} (tags all, {_CLASS_MEETING_LINK})"
+        if (cfg["rollcall_group"] and not args.no_class_meeting)
+        else "OFF (--no-class-meeting)" if args.no_class_meeting else "OFF (no group)"))
     _log("  eod {}".format(
         "OFF (--no-eod)" if args.no_eod else
         f"group {args.eod_group_time} / personal {args.eod_personal_time}" if tok

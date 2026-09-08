@@ -292,7 +292,7 @@ function startSendServer() {
       });
       req.on("end", async () => {
         try {
-          const { to, text } = JSON.parse(body || "{}");
+          const { to, text, mentionAll } = JSON.parse(body || "{}");
           if (!to || !text) {
             res.writeHead(400);
             res.end('{"error":"to and text required"}');
@@ -308,7 +308,40 @@ function startSendServer() {
             res.end('{"error":"bridge just (re)connected, still settling -- retry shortly"}');
             return;
           }
-          const sent = await currentSock.sendMessage(String(to), { text: String(text) });
+          let outText = String(text);
+          let mentions;
+          // Tag every group member (e.g. the Tue/Thu meeting-link post). Only
+          // meaningful for a group jid -- ignored otherwise. WhatsApp only
+          // renders a highlighted tag where the literal "@<number>" text
+          // appears, so the mentions[] jid array alone isn't enough -- we
+          // build a leading line of @tags the same way greetNewMember does
+          // for one person, just for everyone in the group at once.
+          if (mentionAll && String(to).endsWith("@g.us")) {
+            try {
+              const meta = await currentSock.groupMetadata(String(to));
+              const selfNum = bareJid(currentSock.user?.id || "");
+              const parts = (meta.participants || []).filter((p) => bareJid(p.id) !== selfNum);
+              mentions = parts.map((p) => p.id);
+              const tags = [];
+              for (const p of parts) {
+                let num = bareJid(p.id);
+                if (p.id.endsWith("@lid")) {
+                  try {
+                    const pn = await currentSock.signalRepository?.lidMapping?.getPNForLID?.(p.id);
+                    if (pn) num = bareJid(pn);
+                  } catch { /* not available on this Baileys build */ }
+                }
+                tags.push(`@${num}`);
+              }
+              if (tags.length) outText = `${tags.join(" ")}\n\n${outText}`;
+            } catch (e) {
+              log(`mentionAll: couldn't resolve group members (${e.message}) -- sending untagged`);
+            }
+          }
+          const sent = await currentSock.sendMessage(
+            String(to),
+            mentions ? { text: outText, mentions } : { text: outText }
+          );
           const waId = sent?.key?.id || null;
           log(`push -> ${to}: ${String(text).slice(0, 80)}`);
           res.writeHead(200, { "Content-Type": "application/json" });
