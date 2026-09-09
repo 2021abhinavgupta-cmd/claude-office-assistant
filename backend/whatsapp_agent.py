@@ -78,11 +78,15 @@ def identify_sender(sender: str) -> dict:
     if not norm:
         return {"kind": "unknown"}
 
-    # Employees
+    # Employees (skip anyone who's left — a former employee's number
+    # should get the same "not linked" bounce as a stranger, no bot access)
+    _GONE = {"inactive", "disabled", "left", "removed", "archived", "former"}
     try:
         for emp in utils._load_employees().get("employees", []):
             wa = emp.get("whatsapp", "")
             if wa and _normalize_phone(wa) == norm:
+                if str(emp.get("status", "active")).strip().lower() in _GONE:
+                    return {"kind": "unknown"}
                 return {
                     "kind": "employee",
                     "id": emp.get("id", ""),
