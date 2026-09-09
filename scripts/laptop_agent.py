@@ -1362,21 +1362,23 @@ def main() -> None:
     ap.add_argument("--attendance-nag-time", default="10:30",
                     help="daily time to DM people who haven't checked in yet")
     ap.add_argument("--no-attendance-nag", action="store_true")
-    # unified login nudge (gotcha #119): every few minutes, DM whoever
-    # hasn't both checked in AND put a task on today's standup; plus a
-    # group list mid-morning + one follow-up. Supersedes the three jobs
-    # above + the noon roll-call -- pass --legacy-nudges to keep those too.
+    # unified login nudge (gotcha #119): the group gets the not-logged-in
+    # list first at 10:35, then personal DMs every few minutes for whoever
+    # still hasn't both checked in AND put a task on today's standup.
+    # Supersedes the old 10:30 attendance-nag / 11:30 standup-nudge / noon
+    # roll-call -- pass --legacy-nudges to keep those too.
     ap.add_argument("--no-login-nudge", action="store_true",
                     help="turn off the recurring 'you haven't logged in' nudge")
     ap.add_argument("--login-nudge-every", type=int, default=300,
                     help="seconds between personal login-nudge DMs (default 300 = 5 min)")
-    ap.add_argument("--login-nudge-start", default="09:30",
-                    help="HH:MM -- don't send login-nudge DMs before this")
+    ap.add_argument("--login-nudge-start", default="10:40",
+                    help="HH:MM -- don't send personal login-nudge DMs before this "
+                         "(after the first group ping, so the group heads-up lands first)")
     ap.add_argument("--login-nudge-end", default="19:00",
                     help="HH:MM -- don't send login-nudge DMs after this")
-    ap.add_argument("--login-group-times", default="10:00,11:30",
+    ap.add_argument("--login-group-times", default="10:35,11:30",
                     help="comma-separated HH:MM times to post the not-logged-in "
-                         "list to the team group")
+                         "list to the team group (first one leads the sequence)")
     ap.add_argument("--legacy-nudges", action="store_true",
                     help="also run the old separate 10:30 attendance-nag, 11:30 "
                          "standup-nudge and noon roll-call (all superseded by "
