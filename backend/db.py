@@ -203,6 +203,22 @@ def init_db():
             locked_until TEXT DEFAULT NULL
         )""")
 
+        # Employee leave / holiday — inclusive [start_date, end_date] windows.
+        # A row here exempts the person from the daily-standup lock and from
+        # every "you haven't logged in" nudge for the days it covers
+        # (CLAUDE.md gotcha #119). Set/cleared via the WhatsApp bot.
+        conn.execute("""CREATE TABLE IF NOT EXISTS employee_leave (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date   TEXT NOT NULL,
+            reason     TEXT DEFAULT '',
+            created_by TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_employee_leave_user "
+                     "ON employee_leave(user_id, start_date, end_date)")
+
         # Client portal users (separate from employees)
         conn.execute("""CREATE TABLE IF NOT EXISTS client_users (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,

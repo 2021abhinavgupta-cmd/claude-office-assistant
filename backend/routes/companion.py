@@ -12,6 +12,7 @@ Routes:
   POST /api/companion/sheets-pull-all                  -- reconcile every linked sheet
   GET  /api/companion/tomorrow-live                     -- social posts due live tomorrow
   GET  /api/companion/content-calendar-recipients        -- who to DM it to (default Vidit)
+  GET  /api/companion/not-logged-in                      -- who's missing check-in / standup (nudge target)
   GET  /api/companion/wa-call-outbox                     -- pending announcement calls to place
   POST /api/companion/wa-call-outbox/ack                 -- report calls placed/failed
 """
@@ -407,6 +408,87 @@ def companion_standup_missing():
         "date": today,
         "weekend": weekend,
         "checked": len(emps),
+        "missing": missing,
+    })
+
+
+@companion_bp.route("/api/companion/not-logged-in", methods=["GET"])
+def companion_not_logged_in():
+    """Active employees (with a WhatsApp number) who, on a weekday and while
+    NOT on recorded leave, have not fully "logged in" for today -- meaning
+    they are missing their attendance check-in, or their standup has no
+    task, or both. Powers the recurring login nudge: the every-5-min
+    personal DM (job_login_nudge) and the mid-morning + follow-up group
+    ping (job_login_group_ping). CLAUDE.md gotcha #119."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+
+    today = utils.today_ist()
+    try:
+        weekend = datetime.strptime(today, "%Y-%m-%d").weekday() >= 5
+    except Exception:
+        weekend = False
+    if weekend:
+        return jsonify({"date": today, "weekend": True, "missing": []})
+
+    try:
+        import leave_store
+        on_leave = leave_store.on_leave_ids(today)
+    except Exception:
+        logger.exception("not-logged-in: leave lookup failed")
+        on_leave = set()
+
+    emps = []
+    try:
+        for e in utils._load_employees().get("employees", []):
+            if str(e.get("status", "active")).strip().lower() in _INACTIVE:
+                continue
+            if e.get("id", "") in on_leave:
+                continue
+            wa = re.sub(r"\D", "", e.get("whatsapp", "") or "")
+            if not wa:
+                continue
+            emps.append({"id": e.get("id", ""),
+                         "name": e.get("name") or e.get("id", ""),
+                         "whatsapp": wa})
+    except Exception:
+        logger.exception("not-logged-in: roster load failed")
+        return jsonify({"error": "roster load failed"}), 500
+
+    checked_in, did_standup = set(), set()
+    try:
+        conn = get_connection()
+        for row in conn.execute(
+            "SELECT user_id FROM daily_attendance "
+            "WHERE date=? AND checkin_time IS NOT NULL AND checkin_time<>''",
+            (today,),
+        ).fetchall():
+            checked_in.add(row[0])
+        # same "did something on today's standup" rule as standup-missing:
+        # a fresh row, or a carried row PATCHed today (updated_at set)
+        for row in conn.execute(
+            "SELECT DISTINCT user_id FROM standup_tasks WHERE date=? AND ("
+            "  (carried_from IS NULL OR carried_from='') OR updated_at IS NOT NULL)",
+            (today,),
+        ).fetchall():
+            did_standup.add(row[0])
+        conn.close()
+    except Exception:
+        logger.exception("not-logged-in: query failed")
+        return jsonify({"error": "query failed"}), 500
+
+    missing = []
+    for e in emps:
+        nc = e["id"] not in checked_in
+        ns = e["id"] not in did_standup
+        if nc or ns:
+            missing.append({**e, "needs_checkin": nc, "needs_standup": ns})
+
+    return jsonify({
+        "date": today,
+        "weekend": False,
+        "checked": len(emps),
+        "on_leave": sorted(on_leave),
         "missing": missing,
     })
 

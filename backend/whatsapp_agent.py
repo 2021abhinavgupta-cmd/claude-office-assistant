@@ -432,11 +432,11 @@ _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "send_group_message",
     "schedule_group_message", "add_standup_task", "update_standup_task",
     "create_task", "set_task_meta", "set_attendance", "review_task",
-    "place_announcement_call",
+    "place_announcement_call", "set_leave", "clear_leave",
 }
 _SUCCESS_PREFIXES = (
     "added", "created", "handed", "updated", "marked", "reopened",
-    "approved", "sent", "posted", "checked",
+    "approved", "sent", "posted", "checked", "cleared",
 )
 
 
@@ -1130,6 +1130,45 @@ _EMPLOYEE_TOOLS = [
             "required": ["task", "decision"],
         },
     },
+    {
+        "name": "set_leave",
+        "description": "Mark someone as on leave / holiday for a day or a "
+                       "date range. While on leave they're exempt from the "
+                       "daily standup lock and get NO 'you haven't logged in' "
+                       "nudges. Use for 'I'm on leave today', 'on holiday "
+                       "tomorrow', 'off Thursday and Friday', 'mark Nupur on "
+                       "leave next week'. Work out the real calendar dates "
+                       "yourself (today is known) and pass them as YYYY-MM-DD. "
+                       "For a single day, pass the same date as start and end.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string",
+                               "description": "First day of leave, YYYY-MM-DD (IST)."},
+                "end_date": {"type": "string",
+                             "description": "Last day of leave, YYYY-MM-DD (IST). "
+                                            "Same as start_date for one day."},
+                "person": {"type": "string",
+                           "description": "Whose leave, if not your own — a teammate's name."},
+                "reason": {"type": "string",
+                           "description": "Optional short note, e.g. 'sick', 'vacation'."},
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
+    {
+        "name": "clear_leave",
+        "description": "Cancel a leave / holiday marking. Use for 'I'm back', "
+                       "'cancel my leave', 'Nupur isn't on leave anymore'. "
+                       "Removes all recorded leave for that person.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "person": {"type": "string",
+                           "description": "Whose leave to clear, if not your own."},
+            },
+        },
+    },
     # Anthropic-hosted web search — Claude runs the query server-side and
     # gets cited results. Same tool spec the chat stream endpoint uses.
     # max_uses capped at 2 (was 4) -- each search is billed separately from
@@ -1435,6 +1474,59 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             _enqueue_outbound(jid, note) if jid else None
             return (f"Handed '{m['title']}' to {emp['name']}. Off your list, "
                     "on theirs for today.")
+
+        if name == "set_leave" and kind == "employee":
+            ti = tool_input or {}
+            who = str(ti.get("person") or "").strip()
+            if who:
+                emp = _resolve_employee(who)
+                if not emp:
+                    names = ", ".join(e["name"] for e in _active_employees())
+                    return f"Don't know who '{who}' is. Team: {names}."
+                tid, tname = emp["id"], emp["name"]
+            else:
+                tid, tname = identity["id"], identity["name"]
+            sd = str(ti.get("start_date", "")).strip()[:10]
+            ed = str(ti.get("end_date", "") or sd).strip()[:10]
+            if not (re.match(r"^\d{4}-\d{2}-\d{2}$", sd)
+                    and re.match(r"^\d{4}-\d{2}-\d{2}$", ed)):
+                return ("(tell me the leave dates — e.g. 'today', 'tomorrow', "
+                        "'Thu and Fri', or a range)")
+            if max(sd, ed) < today:
+                return "That leave window is entirely in the past — nothing to record."
+            try:
+                import leave_store
+                row = leave_store.set_leave(
+                    tid, sd, ed, reason=str(ti.get("reason", ""))[:200],
+                    created_by=identity["name"])
+            except Exception:
+                logger.exception("whatsapp_agent: set_leave failed")
+                return "(couldn't save that leave just now)"
+            span = (row["start_date"] if row["start_date"] == row["end_date"]
+                    else f"{row['start_date']} to {row['end_date']}")
+            whose = "you" if tid == identity["id"] else tname
+            return (f"Marked {whose} on leave {span}. No standup lock and no "
+                    f"login nudges for {whose} on those days.")
+
+        if name == "clear_leave" and kind == "employee":
+            who = str((tool_input or {}).get("person") or "").strip()
+            if who:
+                emp = _resolve_employee(who)
+                if not emp:
+                    return f"Don't know who '{who}' is."
+                tid, tname = emp["id"], emp["name"]
+            else:
+                tid, tname = identity["id"], identity["name"]
+            try:
+                import leave_store
+                n = leave_store.clear_leave(tid)
+            except Exception:
+                logger.exception("whatsapp_agent: clear_leave failed")
+                return "(couldn't clear that just now)"
+            whose = "your" if tid == identity["id"] else f"{tname}'s"
+            if not n:
+                return f"No leave was on record for {'you' if tid == identity['id'] else tname}."
+            return f"Cleared {whose} leave — {n} entr{'y' if n == 1 else 'ies'} removed."
 
         if name == "send_group_message" and kind == "employee":
             if in_group:
@@ -1825,8 +1917,9 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 "knowledge base, and general web search.\n"
                 "I can also: add a task to your or a teammate's standup, create "
                 "a real board task, mark tasks done, add a blocker or move a due "
-                "date, delegate a task, approve or send back a task, and show "
-                "who's checked in." + extra
+                "date, delegate a task, approve or send back a task, mark you or "
+                "a teammate on leave (no standup lock or nudges on those days), "
+                "and show who's checked in." + extra
             )
 
         if name == "get_recent_actions" and kind == "employee":
@@ -2138,7 +2231,11 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "of their tasks. get_task_schedule answers what's overdue / due "
             "today / due this week (optionally per client or per person). "
             "get_attendance / set_attendance for who's in and checking in or "
-            "out. get_daily_brief for a full status rundown. "
+            "out. If someone says they're on leave or on holiday (today, "
+            "tomorrow, a range, or for a named teammate), use set_leave with "
+            "real YYYY-MM-DD dates -- it exempts them from the standup lock "
+            "and the login nudges for those days; clear_leave cancels it. "
+            "get_daily_brief for a full status rundown. "
             "get_pending_approvals lists what's awaiting sign-off and "
             "review_task approves or sends one back. For 'what's coming "
             "next', 'what's going live', 'what's posting soon' -- anything "

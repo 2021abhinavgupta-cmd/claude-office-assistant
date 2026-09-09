@@ -967,6 +967,90 @@ def job_standup_nudge(cfg: dict) -> None:
     _log(f"standup nudge: {sent}/{len(missing)} DMs sent")
 
 
+def _in_window(start_hhmm: str, end_hhmm: str) -> bool:
+    now = datetime.now().strftime("%H:%M")
+    return start_hhmm <= now <= end_hhmm
+
+
+def job_login_nudge(cfg: dict) -> None:
+    """Every few minutes during work hours -- DM anyone who still hasn't
+    fully "logged in" for the day: no attendance check-in, an empty
+    standup, or both. Weekends and anyone on recorded leave are filtered
+    out server-side (/api/companion/not-logged-in). Stops for a person the
+    moment they've done both. CLAUDE.md gotcha #119."""
+    if not cfg["bridge_ok"] or not cfg.get("login_nudge"):
+        return
+    if datetime.now().weekday() >= 5:
+        return
+    if not _in_window(cfg["login_nudge_start"], cfg["login_nudge_end"]):
+        return
+    j = _companion_get(cfg, "/api/companion/not-logged-in")
+    if not j or j.get("weekend"):
+        return
+    missing = j.get("missing") or []
+    if not missing:
+        _log("login-nudge: everyone's logged in")
+        return
+    sent = 0
+    for p in missing:
+        wa = re.sub(r"\D", "", p.get("whatsapp", ""))
+        if not wa:
+            continue
+        name = p.get("name") or "there"
+        nc, ns = p.get("needs_checkin"), p.get("needs_standup")
+        if nc and ns:
+            what = ("you're not checked in on Lumina yet and your standup for "
+                    "today is still empty")
+            fix = ("Reply here with 'checking in' and what you're working on — "
+                   "I'll do both.")
+        elif nc:
+            what = "you're not checked in on Lumina yet"
+            fix = "Reply 'checking in' here and I'll do it for you."
+        else:
+            what = "your standup for today is still empty"
+            fix = ("Reply here with what you're working on and I'll drop it "
+                   "into your standup.")
+        text = (f"{name}, {what}. I'll keep pinging every few minutes until "
+                f"it's sorted.\n\n{fix}\n\n"
+                "On leave today? Reply 'on leave' and I'll stop.")
+        if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
+            sent += 1
+    _log(f"login-nudge: {sent}/{len(missing)} DM(s)")
+
+
+def job_login_group_ping(cfg: dict) -> None:
+    """Mid-morning + one follow-up -- post the list of who still hasn't
+    logged in (check-in + a standup task) to the team WhatsApp group.
+    Weekend / on-leave already filtered server-side."""
+    grp = cfg["rollcall_group"]
+    if not grp:
+        return
+    if datetime.now().weekday() >= 5:
+        return
+    j = _companion_get(cfg, "/api/companion/not-logged-in")
+    if not j or j.get("weekend"):
+        return
+    missing = j.get("missing") or []
+    if not missing:
+        _log("login-group-ping: everyone's logged in — nothing to post")
+        return
+    lines = []
+    for p in missing:
+        nc, ns = p.get("needs_checkin"), p.get("needs_standup")
+        tag = ("no check-in + no standup" if nc and ns
+               else "no check-in" if nc else "no standup")
+        lines.append(f"- {p.get('name') or p.get('id')}: {tag}")
+    body = ("Still not logged in for today:\n" + "\n".join(lines)
+            + "\n\nCheck in on Lumina and put at least one task on your "
+              "standup — you can reply to me here to do both.")
+    if _bridge_send(cfg, grp, body):
+        _log(f"login-group-ping: posted ({len(missing)} pending)")
+
+
+# runs on the 5-min interval loop (defined here, after the fn exists)
+INTERVAL_JOBS.append(("login-nudge", job_login_nudge, "login_nudge_every"))
+
+
 _LUNCH_LINES = [
     "It's 2 o'clock. Lunch. Step away from the screen, go eat something. 🍽",
     "2pm — lunch break, everyone. Food first, deadlines after.",
@@ -1278,6 +1362,25 @@ def main() -> None:
     ap.add_argument("--attendance-nag-time", default="10:30",
                     help="daily time to DM people who haven't checked in yet")
     ap.add_argument("--no-attendance-nag", action="store_true")
+    # unified login nudge (gotcha #119): every few minutes, DM whoever
+    # hasn't both checked in AND put a task on today's standup; plus a
+    # group list mid-morning + one follow-up. Supersedes the three jobs
+    # above + the noon roll-call -- pass --legacy-nudges to keep those too.
+    ap.add_argument("--no-login-nudge", action="store_true",
+                    help="turn off the recurring 'you haven't logged in' nudge")
+    ap.add_argument("--login-nudge-every", type=int, default=300,
+                    help="seconds between personal login-nudge DMs (default 300 = 5 min)")
+    ap.add_argument("--login-nudge-start", default="09:30",
+                    help="HH:MM -- don't send login-nudge DMs before this")
+    ap.add_argument("--login-nudge-end", default="19:00",
+                    help="HH:MM -- don't send login-nudge DMs after this")
+    ap.add_argument("--login-group-times", default="10:00,11:30",
+                    help="comma-separated HH:MM times to post the not-logged-in "
+                         "list to the team group")
+    ap.add_argument("--legacy-nudges", action="store_true",
+                    help="also run the old separate 10:30 attendance-nag, 11:30 "
+                         "standup-nudge and noon roll-call (all superseded by "
+                         "the unified login nudge)")
     ap.add_argument("--tomorrow-live-morning", default="09:30",
                     help="daily morning time to DM the content-calendar lead (default "
                          "Vidit) everything due to go live tomorrow")
@@ -1348,6 +1451,10 @@ def main() -> None:
         "sheets_every": args.sheets_every,
         "outbox_every": args.outbox_every,
         "voice_calls_every": args.voice_calls_every,
+        "login_nudge": not args.no_login_nudge,
+        "login_nudge_every": max(60, args.login_nudge_every),
+        "login_nudge_start": args.login_nudge_start,
+        "login_nudge_end": args.login_nudge_end,
         "bridge_every": 15,
         "bridge_health_every": 180,
         "repo_dir": Path(__file__).resolve().parent.parent,
@@ -1367,8 +1474,12 @@ def main() -> None:
             ("digest-morning", job_digest_morning, args.digest_morning),
             ("digest-evening", job_digest_evening, args.digest_evening),
         ]
-    if not args.no_rollcall and cfg["rollcall_group"]:
+    if args.legacy_nudges and not args.no_rollcall and cfg["rollcall_group"]:
         daily_jobs.append(("rollcall", job_rollcall, args.rollcall_time))
+    if not args.no_login_nudge and cfg["rollcall_group"]:
+        _gt = [x.strip() for x in (args.login_group_times or "").split(",") if x.strip()]
+        for _i, _t in enumerate(_gt):
+            daily_jobs.append((f"login-group-{_i}", job_login_group_ping, _t))
     if not args.no_lunch and cfg["rollcall_group"]:
         daily_jobs.append(("lunch", job_lunch, args.lunch_time))
     if not args.no_meeting and cfg["rollcall_group"]:
@@ -1381,9 +1492,9 @@ def main() -> None:
         daily_jobs.append(("eod-personal", job_eod_personal, args.eod_personal_time))
     if not args.no_weekly and cfg["rollcall_group"]:
         daily_jobs.append(("weekly-wrap", job_weekly_wrap, args.weekly_wrap_time))
-    if not args.no_standup_nudge:
+    if args.legacy_nudges and not args.no_standup_nudge:
         daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
-    if not args.no_attendance_nag:
+    if args.legacy_nudges and not args.no_attendance_nag:
         daily_jobs.append(("attendance-nag", job_attendance_nag, args.attendance_nag_time))
     if not args.no_tomorrow_live:
         daily_jobs.append(("tomorrow-live-am", job_tomorrow_live, args.tomorrow_live_morning))
@@ -1407,16 +1518,19 @@ def main() -> None:
         "on" if tok else "OFF (no token)",
         "OFF (--no-digest)" if args.no_digest else (
             f"{args.digest_morning}/{args.digest_evening}" if tok else "OFF (no token)"),
-        f"{args.rollcall_time}" if (cfg["rollcall_group"] and not args.no_rollcall and tok)
-        else "OFF (no group)" if not cfg["rollcall_group"] else "OFF",
+        f"{args.rollcall_time}" if (cfg["rollcall_group"] and args.legacy_nudges
+                                    and not args.no_rollcall and tok)
+        else "OFF (no group)" if not cfg["rollcall_group"] else "OFF (legacy; use --legacy-nudges)",
         bridge_note,
     ))
-    _log("  standup-nudge {}".format(
-        args.standup_nudge_time if (not args.no_standup_nudge and tok)
-        else "OFF (--no-standup-nudge)" if args.no_standup_nudge else "OFF (no token)"))
-    _log("  attendance-nag {}".format(
-        args.attendance_nag_time if (not args.no_attendance_nag and cfg["bridge_ok"] and tok)
-        else "OFF (--no-attendance-nag)" if args.no_attendance_nag else "OFF (needs bridge + token)"))
+    _log("  login-nudge {}".format(
+        f"every {cfg['login_nudge_every']}s {cfg['login_nudge_start']}-{cfg['login_nudge_end']}, "
+        f"group ping {args.login_group_times}"
+        if (cfg["login_nudge"] and cfg["bridge_ok"] and tok)
+        else "OFF (--no-login-nudge)" if not cfg["login_nudge"] else "OFF (needs bridge + token)"))
+    _log("  legacy-nudges {}".format(
+        "on (standup-nudge + attendance-nag + noon roll-call)" if args.legacy_nudges
+        else "off (unified login-nudge replaces them)"))
     _log("  tomorrow-live {}".format(
         f"{args.tomorrow_live_morning}/{args.tomorrow_live_evening}"
         if (not args.no_tomorrow_live and cfg["bridge_ok"] and tok)

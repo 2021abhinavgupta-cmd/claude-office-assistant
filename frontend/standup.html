@@ -114,7 +114,7 @@
 <div id="toast"></div>
 <div class="wrap">
   <div id="lock-banner" style="display:none;background:rgba(245,166,35,.1);border:1px solid var(--acc);border-radius:var(--rs);padding:10px 16px;margin-bottom:14px;color:var(--acc);font-size:.85rem">
-    Add at least one task below to unlock the rest of Lumina for today.
+    Check in and add at least one task below to unlock the rest of Lumina for today.
   </div>
   <div class="hdr">
     <div>
@@ -242,7 +242,14 @@ function toast(m,t="ok"){
 
 (async()=>{
   if (new URLSearchParams(location.search).get("locked") === "1") {
-    document.getElementById("lock-banner").style.display = "block";
+    const need = (new URLSearchParams(location.search).get("need") || "")
+      .split(",").filter(Boolean);
+    const b = document.getElementById("lock-banner");
+    if (need.length === 1 && need[0] === "standup")
+      b.textContent = "Add at least one task below to unlock the rest of Lumina for today.";
+    else if (need.length === 1 && need[0] === "checkin")
+      b.textContent = "Check in for today (Check In button) to unlock the rest of Lumina.";
+    b.style.display = "block";
   }
   await loadEmployees();
   populateVelocityEmployeeOptions();

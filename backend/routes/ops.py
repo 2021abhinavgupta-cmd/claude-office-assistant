@@ -426,14 +426,16 @@ def execute_standup_actions():
 
 @ops_bp.route("/api/standup/lock-status", methods=["GET"])
 def standup_lock_status():
-    """Powers auth.js's daily-standup lock (CLAUDE.md gotcha #108): every
-    employee page except standup.html itself redirects there until today's
-    list has at least one task. Frontend-only nudge, not an API-level
+    """Powers auth.js's daily-standup lock (CLAUDE.md gotchas #108/#119):
+    every employee page except standup.html itself redirects there until,
+    for today, the person has BOTH checked in (attendance PIN) AND put at
+    least one task on their standup. Frontend-only nudge, not an API-level
     block -- every other endpoint keeps working regardless of this value.
-    Skipped on weekends (matches the standup velocity chart, gotcha #77).
-    Deliberately does NOT trigger the auto-carry-over insert that
-    get_my_tasks does -- that only needs to happen once someone is
-    actually on the Standup screen; this route just reads what's there."""
+    Skipped on weekends (matches the standup velocity chart, gotcha #77)
+    and for anyone on recorded leave (leave_store). Deliberately does NOT
+    trigger the auto-carry-over insert that get_my_tasks does -- that only
+    needs to happen once someone is actually on the Standup screen; this
+    route just reads what's there."""
     user_id = request.args.get("user_id", "").strip()
     if not user_id:
         return jsonify({"error": "user_id required"}), 400
@@ -443,15 +445,34 @@ def standup_lock_status():
         return jsonify({"locked": False, "weekend": True})
 
     date_str = today_ist()
+
+    try:
+        import leave_store
+        if leave_store.is_on_leave(user_id, date_str):
+            return jsonify({"locked": False, "weekend": False, "on_leave": True})
+    except Exception:
+        logging.getLogger(__name__).exception("lock-status: leave check failed")
+
     conn = _su_conn()
-    row = conn.execute(
-        "SELECT COUNT(*) FROM standup_tasks WHERE user_id=? AND date=? "
-        "AND status NOT IN ('deleted','delegated')",
+    has_tasks = bool(conn.execute(
+        "SELECT 1 FROM standup_tasks WHERE user_id=? AND date=? "
+        "AND status NOT IN ('deleted','delegated') LIMIT 1",
         (user_id, date_str),
-    ).fetchone()
+    ).fetchone())
+    has_checkin = bool(conn.execute(
+        "SELECT 1 FROM daily_attendance WHERE user_id=? AND date=? "
+        "AND checkin_time IS NOT NULL AND checkin_time<>'' LIMIT 1",
+        (user_id, date_str),
+    ).fetchone())
     conn.close()
-    has_tasks = bool(row and row[0])
-    return jsonify({"locked": not has_tasks, "weekend": False})
+
+    return jsonify({
+        "locked": not (has_tasks and has_checkin),
+        "weekend": False,
+        "on_leave": False,
+        "needs_checkin": not has_checkin,
+        "needs_standup": not has_tasks,
+    })
 
 
 @ops_bp.route("/api/standup/my-tasks", methods=["GET"])

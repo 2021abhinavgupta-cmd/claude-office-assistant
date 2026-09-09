@@ -37,12 +37,14 @@ document.documentElement.style.visibility = 'hidden';
     localStorage.setItem("agency_portal_user", JSON.stringify(user));
     window.__currentUser = user;
 
-    // Daily-standup lock: on a weekday, every employee page except the
-    // Standup screen itself redirects there until today's list has at
-    // least one task (see /api/standup/lock-status, CLAUDE.md gotcha
-    // #108). Frontend-only nudge, not a security boundary -- every API
-    // still works regardless. If the check itself fails (network hiccup),
-    // fail open rather than trap someone out of the whole app.
+    // Daily-standup lock: on a weekday (and unless the person is on
+    // recorded leave), every employee page except the Standup screen
+    // itself redirects there until today's attendance check-in is done
+    // AND today's standup has at least one task (see
+    // /api/standup/lock-status, CLAUDE.md gotchas #108/#119). Frontend-only
+    // nudge, not a security boundary -- every API still works regardless.
+    // If the check itself fails (network hiccup), fail open rather than
+    // trap someone out of the whole app.
     const __page = location.pathname.split("/").pop() || "index.html";
     if (__page !== "standup.html") {
       try {
@@ -52,7 +54,11 @@ document.documentElement.style.visibility = 'hidden';
         );
         const ld = await lr.json();
         if (ld && ld.locked) {
-          window.location.href = "standup.html?locked=1";
+          const need = [];
+          if (ld.needs_checkin) need.push("checkin");
+          if (ld.needs_standup) need.push("standup");
+          window.location.href =
+            "standup.html?locked=1" + (need.length ? "&need=" + need.join(",") : "");
           return;
         }
       } catch (e) {
