@@ -972,12 +972,21 @@ def _in_window(start_hhmm: str, end_hhmm: str) -> bool:
     return start_hhmm <= now <= end_hhmm
 
 
+# Employee ids that opted out of the every-5-min personal attendance DM.
+# They still show up in the group ping (job_login_group_ping) -- this only
+# silences the private nag. Founders, by request.
+_LOGIN_NUDGE_DM_SKIP = {"emp001", "emp004"}  # Vidit, Kshitij
+
+
 def job_login_nudge(cfg: dict) -> None:
     """Every few minutes during work hours -- DM anyone who still hasn't
     fully "logged in" for the day: no attendance check-in, an empty
     standup, or both. Weekends and anyone on recorded leave are filtered
     out server-side (/api/companion/not-logged-in). Stops for a person the
-    moment they've done both. CLAUDE.md gotcha #119."""
+    moment they've done both. CLAUDE.md gotcha #119.
+
+    Anyone in _LOGIN_NUDGE_DM_SKIP is left out of the personal DM (they
+    still appear in the group ping)."""
     if not cfg["bridge_ok"] or not cfg.get("login_nudge"):
         return
     if datetime.now().weekday() >= 5:
@@ -987,7 +996,8 @@ def job_login_nudge(cfg: dict) -> None:
     j = _companion_get(cfg, "/api/companion/not-logged-in")
     if not j or j.get("weekend"):
         return
-    missing = j.get("missing") or []
+    missing = [p for p in (j.get("missing") or [])
+               if p.get("id") not in _LOGIN_NUDGE_DM_SKIP]
     if not missing:
         _log("login-nudge: everyone's logged in")
         return
