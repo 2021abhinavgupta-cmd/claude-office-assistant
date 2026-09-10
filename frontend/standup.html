@@ -114,7 +114,8 @@
 <div id="toast"></div>
 <div class="wrap">
   <div id="lock-banner" style="display:none;background:rgba(245,166,35,.1);border:1px solid var(--acc);border-radius:var(--rs);padding:10px 16px;margin-bottom:14px;color:var(--acc);font-size:.85rem">
-    Check in and add at least one task below to unlock the rest of Lumina for today.
+    <span id="lock-banner-text">Check in and add at least one task below to unlock the rest of Lumina for today.</span>
+    <button id="lock-checkin-btn" style="display:none;margin-left:12px;background:var(--acc);color:#1a1a1a;border:0;border-radius:100px;padding:5px 16px;font-size:.8rem;font-weight:600;cursor:pointer">Check In</button>
   </div>
   <div class="hdr">
     <div>
@@ -245,10 +246,36 @@ function toast(m,t="ok"){
     const need = (new URLSearchParams(location.search).get("need") || "")
       .split(",").filter(Boolean);
     const b = document.getElementById("lock-banner");
-    if (need.length === 1 && need[0] === "standup")
-      b.textContent = "Add at least one task below to unlock the rest of Lumina for today.";
-    else if (need.length === 1 && need[0] === "checkin")
-      b.textContent = "Check in for today (Check In button) to unlock the rest of Lumina.";
+    const t = document.getElementById("lock-banner-text");
+    const needCheckin = need.includes("checkin");
+    const needStandup = need.includes("standup");
+    if (needCheckin && needStandup)
+      t.textContent = "Check in (button on the right) and add at least one task below to unlock the rest of Lumina for today.";
+    else if (needStandup)
+      t.textContent = "Add at least one task below to unlock the rest of Lumina for today.";
+    else if (needCheckin)
+      t.textContent = "Check in for today to unlock the rest of Lumina.";
+    if (needCheckin) {
+      const btn = document.getElementById("lock-checkin-btn");
+      btn.style.display = "inline-block";
+      btn.onclick = async () => {
+        btn.disabled = true;
+        btn.textContent = "Checking in…";
+        try {
+          const r = await fetch(`${API}/api/attendance/checkin`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: UID }),
+          });
+          if (!r.ok) throw new Error("checkin " + r.status);
+          location.reload();
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = "Check In";
+          toast("Check-in failed — try again", "err");
+        }
+      };
+    }
     b.style.display = "block";
   }
   await loadEmployees();
