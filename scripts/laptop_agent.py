@@ -1020,8 +1020,9 @@ def job_login_nudge(cfg: dict) -> None:
             what = "your standup for today is still empty"
             fix = ("Reply here with what you're working on and I'll drop it "
                    "into your standup.")
-        text = (f"{name}, {what}. I'll keep pinging every few minutes until "
-                f"it's sorted.\n\n{fix}\n\n"
+        every_min = max(1, cfg["login_nudge_every"] // 60)
+        text = (f"{name}, {what}. I'll keep pinging every {every_min} min "
+                f"until it's sorted.\n\n{fix}\n\n"
                 "On leave today? Reply 'on leave' and I'll stop.")
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
@@ -1379,8 +1380,8 @@ def main() -> None:
     # roll-call -- pass --legacy-nudges to keep those too.
     ap.add_argument("--no-login-nudge", action="store_true",
                     help="turn off the recurring 'you haven't logged in' nudge")
-    ap.add_argument("--login-nudge-every", type=int, default=300,
-                    help="seconds between personal login-nudge DMs (default 300 = 5 min)")
+    ap.add_argument("--login-nudge-every", type=int, default=1200,
+                    help="seconds between personal login-nudge DMs (default 1200 = 20 min)")
     ap.add_argument("--login-nudge-start", default="10:40",
                     help="HH:MM -- don't send personal login-nudge DMs before this "
                          "(after the first group ping, so the group heads-up lands first)")
