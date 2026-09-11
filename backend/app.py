@@ -3128,6 +3128,37 @@ def auto_fill_social_media():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+_EMP_ID_RE = re.compile(r"^emp\d+$", re.I)
+
+
+def _resolve_assignee_names(raw: str) -> str:
+    """An 'Assigned To' value handed to auto_generate_tasks() can be a raw
+    employee id instead of a display name -- confirmed live in production:
+    23 real tasks (Omotec/Mellow/1 FOUNDER) had assigned_to values like
+    "emp008"/"emp012"/"emp002" sitting straight in Notion, because
+    importClientSocialCSV()'s Excel/CSV import (frontend/projects.html) just
+    passes through whatever text is in the sheet's Assigned To column --
+    unlike the manual Add Tasks calendar UI, which always sends the
+    checkbox's displayed name text (add-tasks.html ~line 1452), a CSV built
+    from an old export or typed by hand can easily contain the id instead.
+    This normalizes any comma-separated token that looks like an employee id
+    into its current real name (live-loaded from employees.json, same
+    convention as ops.py::_load_emp_names() -- CLAUDE.md gotcha #63 -- never
+    a hardcoded id->name map); anything else (an already-real name, a
+    freelancer name not in employees.json) passes through unchanged."""
+    if not raw:
+        return raw
+    try:
+        emp_by_id = {e.get("id", ""): e.get("name") or e.get("id", "")
+                     for e in _load_employees().get("employees", [])}
+    except Exception:
+        return raw
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    resolved = [emp_by_id.get(p.lower(), p) if _EMP_ID_RE.match(p) else p
+                for p in parts]
+    return ", ".join(resolved)
+
+
 def _push_new_social_task_to_sheet(client_id, task_id, *, creation_date, due_date, title,
                                     post_type, content, idea, scripts, caption, link_url, assignee):
     """Best-effort push of a freshly-created social task into its client's
@@ -3230,7 +3261,7 @@ def auto_generate_tasks(client_id):
             scripts = post.get("scripts", "")
             caption = post.get("caption", "")
             link = post.get("link", "")
-            assignee = post.get("assignee", "")
+            assignee = _resolve_assignee_names(post.get("assignee", ""))
             # Build a rich title: "[Type] Title" -- normalized through the
             # same _normalize_type() google_sheets_store.py's own
             # _create_task/_update_task use, since post_type here is raw,
@@ -3308,7 +3339,7 @@ def auto_generate_tasks(client_id):
                 title=tmpl["title"],
                 client_name=client_name,
                 client_notion_id=client_id,
-                assigned_to=tmpl.get("assigned_to", ""),
+                assigned_to=_resolve_assignee_names(tmpl.get("assigned_to", "") or ""),
                 due_date=tmpl.get("due_date") or due_date,
                 status="not_started",
                 progress=0
@@ -3334,7 +3365,7 @@ def auto_generate_tasks(client_id):
             scripts = post.get("scripts", "")
             caption = post.get("caption", "")
             link = post.get("link", "")
-            assignee = post.get("assignee", "")
+            assignee = _resolve_assignee_names(post.get("assignee", ""))
             # Same normalization as the Notion-mode branch above, and for
             # the same reason: post_type is raw, unvalidated text from an
             # imported Excel/CSV cell. See the comment on that branch.
@@ -3366,7 +3397,8 @@ def auto_generate_tasks(client_id):
             cur = conn.execute(
                 """INSERT INTO tasks (client_id,title,assigned_to,due_date,status,progress)
                    VALUES (?,?,?,?,'not_started',0)""",
-                (client_id, tmpl["title"], tmpl.get("assigned_to", ""), tmpl.get("due_date") or due_date)
+                (client_id, tmpl["title"], _resolve_assignee_names(tmpl.get("assigned_to", "") or ""),
+                 tmpl.get("due_date") or due_date)
             )
             created_ids.append(cur.lastrowid)
 

@@ -1453,7 +1453,10 @@ def notion_create_client():
     EMP_NAMES = _load_emp_names()
     SVC_TASKS = {
         "content":  [("Content Brief & Research", "emp006"), ("Write Copy / Content Draft", "emp006"), ("Content Review & Approval", "emp004")],
-        "video":    [("Video Script Writing", "emp006"), ("Video Shoot / Production", "emp005"), ("Video Editing & Post", "emp005"), ("AI Video Enhancements", "emp008")],
+        # emp005 doesn't exist in employees.json (confirmed live) -- was silently
+        # showing the raw id "emp005" instead of a name via EMP_NAMES.get(e, e)'s
+        # fallback below. emp012 (Saurav Gupta, Video Editor) is the closest real match.
+        "video":    [("Video Script Writing", "emp006"), ("Video Shoot / Production", "emp012"), ("Video Editing & Post", "emp012"), ("AI Video Enhancements", "emp008")],
         "design":   [("Design Brief & Moodboard", "emp002"), ("UI/UX Design — Wireframes", "emp002"), ("Final Design Handoff", "emp002")],
         "website":  [("Website Architecture Plan", "emp001"), ("Frontend Development", "emp003"), ("Backend / Integrations", "emp001"), ("QA & Launch", "emp003")],
         "accounts": [("Invoice & Payment Setup", "emp007"), ("Monthly Reporting", "emp007")],
@@ -1471,7 +1474,7 @@ def notion_create_client():
             emp_ids   = [e.strip() for e in t.get("who", "emp001").split(",")]
             emp_names = ", ".join(EMP_NAMES.get(e, e) for e in emp_ids)
             svc_map   = {"emp001":"website","emp002":"design","emp003":"website",
-                         "emp004":"accounts","emp005":"video","emp006":"content",
+                         "emp004":"accounts","emp012":"video","emp006":"content",
                          "emp007":"accounts","emp008":"video"}
             first_emp = emp_ids[0] if emp_ids else "emp001"
             result = notion_store.create_task(
