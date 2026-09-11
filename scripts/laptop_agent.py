@@ -338,6 +338,11 @@ def _logged_out_flag(cfg: dict) -> bool:
         return False
 
 
+def _bridge_token(cfg: dict) -> str:
+    return (os.getenv("WHATSAPP_BRIDGE_TOKEN") or cfg.get("storage_token")
+            or cfg.get("db_secret") or "")
+
+
 def _bridge_alive(cfg: dict) -> bool:
     """Is a bridge already answering on the local health port -- ours or an
     orphan left running by a prior self-update restart (see job_selfupdate:
@@ -443,39 +448,88 @@ def job_bridge(cfg: dict) -> None:
         _log(f"bridge failed to start: {e}")
 
 
-def _stop_bridge() -> None:
-    """Blocks until the bridge child is confirmed gone (or a hard timeout is
-    hit) before returning. job_bridge()'s respawn/adopt logic only runs on
-    the *next* tick, so as long as this actually waits, there's no window
-    where two node processes hold the same WhatsApp session at once --
-    that overlap is what forks the Signal session and leaves messages stuck
-    on "Waiting for this message" for whoever gets sent one during it (see
-    CLAUDE.md gotcha #118 -- fixed live via a manual session-file wipe that
-    time; this wait is the actual prevention for it happening again)."""
+def _stop_bridge(cfg: dict, force_orphan: bool = False) -> None:
+    """Blocks until the bridge is confirmed gone (or a hard timeout is hit)
+    before returning. Covers a process we spawned ourselves (tracked in
+    _BRIDGE["proc"], killable directly) unconditionally.
+
+    An *adopted* orphan (proc is None -- we've only ever confirmed it via
+    /health, never held a process handle for it; the normal state right
+    after a scripts-only self-update restart, see job_bridge()'s adoption
+    logic above) is only stopped when `force_orphan=True` -- pass that ONLY
+    when the caller actually needs the bridge to restart (a real
+    whatsapp-bridge/ code change). The default (False) leaves an adopted
+    orphan running untouched, which matters for the plain process-exit
+    cleanup call in main()'s `finally:` -- a companion crash/restart or a
+    scripts-only self-update must NOT drop a perfectly live WhatsApp
+    session just because this function got called; only a genuine
+    bridge-code change should ever force that.
+
+    job_bridge()'s respawn/adopt logic only runs on the *next* tick, so as
+    long as a force_orphan=True call actually waits for the old bridge to
+    be gone -- by whichever means applies -- there's no window where two
+    node processes hold the same WhatsApp session at once. That overlap is
+    what forks the Signal session and leaves messages stuck on "Waiting
+    for this message" for whoever gets sent one during it (see CLAUDE.md
+    gotcha #118, fixed live that time via a manual session-file wipe).
+
+    Before the bridge's own POST /shutdown endpoint existed, this function
+    could only ever kill a process it spawned itself -- against an adopted
+    orphan it silently did nothing at all, so any bridge-code push made
+    after a scripts-only restart never actually took effect: the stale
+    process just kept running on old code indefinitely, undetected."""
     proc = _BRIDGE.get("proc")
-    if proc is None or proc.poll() is not None:
-        _BRIDGE["proc"] = None
-        return
-    try:
-        proc.terminate()
-        proc.wait(timeout=8)
-    except Exception:
+    if proc is not None and proc.poll() is None:
         try:
-            proc.kill()
-            proc.wait(timeout=5)
+            proc.terminate()
+            proc.wait(timeout=8)
+        except Exception:
+            try:
+                proc.kill()
+                proc.wait(timeout=5)
+            except Exception:
+                pass
+        if proc.poll() is None:
+            _log("bridge: could not confirm the spawned process exited "
+                 "within the timeout -- a respawn may briefly overlap it")
+        else:
+            _BRIDGE["proc"] = None
+        try:
+            if _BRIDGE.get("logf"):
+                _BRIDGE["logf"].close()
+                _BRIDGE["logf"] = None
         except Exception:
             pass
-    if proc.poll() is None:
-        _log("bridge: could not confirm the old process exited within the "
-             "timeout -- a respawn may briefly overlap it")
-    else:
-        _BRIDGE["proc"] = None
+        return
+
+    _BRIDGE["proc"] = None
+    if not force_orphan:
+        return
+    if not _BRIDGE.get("adopted") or not _bridge_alive(cfg):
+        return  # nothing running (or already confirmed gone) -- no-op
+
+    tok = _bridge_token(cfg)
+    if not tok:
+        _log("bridge: an adopted orphan is running but no bridge token is "
+             "set -- can't call /shutdown, it'll keep running on old code "
+             "until something else stops it")
+        return
     try:
-        if _BRIDGE.get("logf"):
-            _BRIDGE["logf"].close()
-            _BRIDGE["logf"] = None
-    except Exception:
-        pass
+        requests.post(
+            f"http://127.0.0.1:{cfg.get('bridge_http_port', 8787)}/shutdown",
+            headers={"Authorization": f"Bearer {tok}"}, timeout=5)
+    except Exception as e:
+        _log(f"bridge: /shutdown request failed ({e}) -- polling anyway "
+             "in case it exited before the response came back")
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not _bridge_alive(cfg):
+            _BRIDGE["adopted"] = False
+            return
+        time.sleep(0.5)
+    _log("bridge: adopted orphan did not exit within 10s of /shutdown -- "
+         "it may still be running old code; a respawn could briefly "
+         "overlap it")
 
 
 # ── job 6: daily brief ────────────────────────────────────────────────────
@@ -615,8 +669,7 @@ def job_voice_calls(cfg: dict) -> None:
     if not calls:
         return
     sent, failed = [], []
-    bridge_tok = (os.getenv("WHATSAPP_BRIDGE_TOKEN") or cfg["storage_token"]
-                  or cfg["db_secret"])
+    bridge_tok = _bridge_token(cfg)
     for c in calls:
         to, message, cid = c.get("to"), c.get("message"), c.get("id")
         if not (to and message and cid):
@@ -851,7 +904,7 @@ def job_selfupdate(cfg: dict) -> None:
         _log("self-update: companion code changed -> restarting")
         if bridge_changed:
             _log("self-update: bridge code also changed -> stopping it before restart")
-            _stop_bridge()
+            _stop_bridge(cfg, force_orphan=True)
         else:
             # Only scripts/*.py changed -- this process has to restart to
             # load it, but the bridge child doesn't need to and deliberately
@@ -890,7 +943,7 @@ def job_selfupdate(cfg: dict) -> None:
             os._exit(3)
     elif bridge_changed:
         _log("self-update: bridge code changed -> restarting bridge child")
-        _stop_bridge()          # job_bridge respawns it next tick with the new code
+        _stop_bridge(cfg, force_orphan=True)   # job_bridge respawns it next tick with the new code
 
 
 INTERVAL_JOBS = [
@@ -913,8 +966,7 @@ def _bridge_send_msg(cfg: dict, to: str, text: str, mention_all: bool = False):
     """POST to the local Baileys bridge /send. Returns (ok, wa_message_id|None).
     mention_all: bridge tags every member of `to` (must be a group jid) with a
     leading line of @-mentions before the message text."""
-    tok = (os.getenv("WHATSAPP_BRIDGE_TOKEN") or cfg["storage_token"]
-           or cfg["db_secret"])
+    tok = _bridge_token(cfg)
     if not tok:
         _log("bridge send: no token")
         return False, None
@@ -1623,7 +1675,7 @@ def main() -> None:
     except KeyboardInterrupt:
         _log("stopped.")
     finally:
-        _stop_bridge()
+        _stop_bridge(cfg)
 
 
 if __name__ == "__main__":

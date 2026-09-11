@@ -277,7 +277,7 @@ function startSendServer() {
       return;
     }
     if ((req.headers["authorization"] || "") !== `Bearer ${TOKEN}`) {
-      if (req.method === "POST" && (req.url === "/send" || req.url === "/call")) {
+      if (req.method === "POST" && (req.url === "/send" || req.url === "/call" || req.url === "/shutdown")) {
         res.writeHead(401);
         res.end("unauthorized");
         return;
@@ -387,6 +387,27 @@ function startSendServer() {
           res.end(JSON.stringify({ ok: false, error: e.message }));
         }
       });
+      return;
+    }
+
+    // Graceful remote shutdown. Needed because the Python companion
+    // (scripts/laptop_agent.py) can only hold a killable process handle for
+    // a bridge IT spawned -- after a scripts-only companion restart the
+    // bridge survives as a deliberate orphan (so the WhatsApp session isn't
+    // dropped, see index.js's own docs in laptop_agent.py) and the new
+    // companion process only "adopts" it via this health port, never gets
+    // its PID. Without this endpoint, a later bridge-code push had no way
+    // to actually stop that adopted orphan -- _stop_bridge() silently did
+    // nothing, so the OLD code just kept running forever, or worse, some
+    // future change could spawn a second live instance alongside it and
+    // fork the WhatsApp session (see CLAUDE.md gotcha #118 -- "Waiting for
+    // this message" on recipients' phones). Same Bearer-token auth as
+    // /send and /call.
+    if (req.method === "POST" && req.url === "/shutdown") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end('{"ok":true,"exiting":true}');
+      log("shutdown requested via /shutdown -- exiting");
+      setTimeout(() => process.exit(0), 150);
       return;
     }
 
