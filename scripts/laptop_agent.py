@@ -444,8 +444,17 @@ def job_bridge(cfg: dict) -> None:
 
 
 def _stop_bridge() -> None:
+    """Blocks until the bridge child is confirmed gone (or a hard timeout is
+    hit) before returning. job_bridge()'s respawn/adopt logic only runs on
+    the *next* tick, so as long as this actually waits, there's no window
+    where two node processes hold the same WhatsApp session at once --
+    that overlap is what forks the Signal session and leaves messages stuck
+    on "Waiting for this message" for whoever gets sent one during it (see
+    CLAUDE.md gotcha #118 -- fixed live via a manual session-file wipe that
+    time; this wait is the actual prevention for it happening again)."""
     proc = _BRIDGE.get("proc")
     if proc is None or proc.poll() is not None:
+        _BRIDGE["proc"] = None
         return
     try:
         proc.terminate()
@@ -453,8 +462,14 @@ def _stop_bridge() -> None:
     except Exception:
         try:
             proc.kill()
+            proc.wait(timeout=5)
         except Exception:
             pass
+    if proc.poll() is None:
+        _log("bridge: could not confirm the old process exited within the "
+             "timeout -- a respawn may briefly overlap it")
+    else:
+        _BRIDGE["proc"] = None
     try:
         if _BRIDGE.get("logf"):
             _BRIDGE["logf"].close()
@@ -1374,14 +1389,14 @@ def main() -> None:
                     help="daily time to DM people who haven't checked in yet")
     ap.add_argument("--no-attendance-nag", action="store_true")
     # unified login nudge (gotcha #119): the group gets the not-logged-in
-    # list first at 10:35, then personal DMs every few minutes for whoever
-    # still hasn't both checked in AND put a task on today's standup.
+    # list first at 10:35, then personal DMs hourly for whoever still
+    # hasn't both checked in AND put a task on today's standup.
     # Supersedes the old 10:30 attendance-nag / 11:30 standup-nudge / noon
     # roll-call -- pass --legacy-nudges to keep those too.
     ap.add_argument("--no-login-nudge", action="store_true",
                     help="turn off the recurring 'you haven't logged in' nudge")
-    ap.add_argument("--login-nudge-every", type=int, default=1200,
-                    help="seconds between personal login-nudge DMs (default 1200 = 20 min)")
+    ap.add_argument("--login-nudge-every", type=int, default=3600,
+                    help="seconds between personal login-nudge DMs (default 3600 = hourly)")
     ap.add_argument("--login-nudge-start", default="10:40",
                     help="HH:MM -- don't send personal login-nudge DMs before this "
                          "(after the first group ping, so the group heads-up lands first)")
