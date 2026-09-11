@@ -1177,7 +1177,11 @@ _EMPLOYEE_TOOLS = [
     # gets cited results. Same tool spec the chat stream endpoint uses.
     # max_uses capped at 2 (was 4) -- each search is billed separately from
     # tokens, and a WhatsApp question rarely needs more than one lookup.
-    {"type": "web_search_20250305", "name": "web_search", "max_uses": 2},
+    # cache_control on this LAST entry caches the whole ~20-tool array (it's
+    # sent unchanged every round of the loop, same as the system prompt --
+    # see the sys_prompt cache_control note in handle_message).
+    {"type": "web_search_20250305", "name": "web_search", "max_uses": 2,
+     "cache_control": {"type": "ephemeral"}},
 ]
 
 _CLIENT_TOOLS = [
@@ -1187,66 +1191,57 @@ _CLIENT_TOOLS = [
                        "content) the post type, brief, content, idea, script/copy, "
                        "caption and file link.",
         "input_schema": {"type": "object", "properties": {}},
+        "cache_control": {"type": "ephemeral"},
     },
 ]
 
 
+# Keyword/emoji cues mapped to the fixed vibe vocabulary. Checked before ever
+# spending an API call -- this used to be a whole Haiku call per burst, and
+# the model's own instructions told it to reply "none" most of the time
+# anyway (nothing unambiguous in the transcript), so most of those calls were
+# pure waste. Replaced 2026-09-11 with a pure heuristic: zero API cost, catches
+# the loud/obvious cases (someone typed "lol"/"🔥"/etc.), silently skips
+# anything subtler instead of spending a call on a coin-flip "none".
+_VIBE_PATTERNS = [
+    (re.compile(r"lo+l+\b|lmf?ao+\b|ha(ha)+\b|rofl\b|\U0001F602|\U0001F923", re.I), "lol"),
+    (re.compile(r"\bbruh+\b", re.I), "bruh"),
+    (re.compile(r"\bwow\b|\bomg+\b|\bwhat\?!|\U0001F62E|\U0001F631", re.I), "shock"),
+    (re.compile(r"\bnice\b|\bawesome\b|\bwell done\b|\bgreat job\b|\U0001F44F", re.I), "nice"),
+    (re.compile(r"\bcongrat\w*\b|\bcelebrat\w*\b|\U0001F389|\U0001F973", re.I), "celebrate"),
+    (re.compile(r"\bfacepalm\b|\bsmh\b|\U0001F926", re.I), "facepalm"),
+    (re.compile(r"\bcry(ing)?\b|\U0001F62D|\U0001F622", re.I), "cry"),
+    (re.compile(r"\bfire\b|\U0001F525", re.I), "fire"),
+    (re.compile(r"\bagree(d)?\b|\btrue\b|\bfacts\b|\bexactly\b", re.I), "agree"),
+    (re.compile(r"\bsmug\b", re.I), "smug"),
+    (re.compile(r"\boof+\b", re.I), "oof"),
+]
+
+
 def group_vibe_sticker(group_id: str, messages: list, tags: list | None = None) -> str | None:
-    """The bridge saw a burst of activity in an allow-listed group. Read the
-    recent messages and return a one-word mood for a reaction sticker, or None
-    to stay quiet (which is the usual answer). `tags` is the bridge's actual
-    sticker-tag vocabulary — the model picks from that. One cheap Haiku call."""
+    """The bridge saw a burst of activity in an allow-listed group. Scan the
+    recent messages for an unambiguous keyword/emoji cue and return a one-word
+    mood for a reaction sticker, or None to stay quiet (the usual answer).
+    `tags` is the bridge's actual taught sticker-tag vocabulary — a literal
+    match there is honoured too. Pure heuristic, no API call."""
     if not group_id or not _group_allowed(group_id) or not messages:
         return None
-    try:
-        if not check_budget_available().get("allowed"):
-            return None
-    except Exception:
-        return None
-    transcript = "\n".join(
-        f"{(m.get('name') or 'someone')}: {str(m.get('text') or '')[:200]}"
+    transcript = " ".join(
+        str(m.get("text") or "")[:200]
         for m in messages[-15:] if str(m.get("text") or "").strip()
     )
     if not transcript.strip():
         return None
-    allowed = set(_VIBE_WORDS)
+    for pattern, word in _VIBE_PATTERNS:
+        if pattern.search(transcript):
+            return word
     if tags:
-        allowed |= {re.sub(r"[^a-z]", "", str(t).lower()) for t in tags if str(t).strip()}
-        allowed.discard("")
-    vocab = ", ".join(sorted(allowed))
-    model = get_model_for_task("whatsapp")
-    try:
-        resp = _client.messages.create(
-            model=model["name"],
-            max_tokens=12,
-            system=(
-                "You lurk silently in a team's WhatsApp group. Below is the last "
-                "minute or two of chat during a busy moment. If it CLEARLY calls "
-                "for a single reaction sticker, reply with ONE word from this "
-                f"list: {vocab}. If it doesn't clearly call for one — which is "
-                "most of the time — reply exactly: none. One word, nothing else."
-            ),
-            messages=[{"role": "user", "content": transcript}],
-        )
-        try:
-            record_usage("whatsapp", model["tier"], model["name"],
-                         resp.usage.input_tokens, resp.usage.output_tokens,
-                         calculate_cost(model["tier"], resp.usage.input_tokens,
-                                        resp.usage.output_tokens),
-                         user_id=f"wa_vibe_{_norm_group(group_id)}")
-        except Exception:
-            pass
-        raw = "".join(getattr(b, "text", "") for b in resp.content
-                      if getattr(b, "type", "") == "text").strip().lower()
-        word = re.sub(r"[^a-z]", "", raw.split()[0]) if raw.split() else ""
-        return word if word in allowed else None
-    except Exception:
-        logger.exception("whatsapp_agent: group vibe check failed")
-        return None
-
-
-_VIBE_WORDS = {"lol", "smug", "bruh", "oof", "nice", "celebrate", "facepalm",
-               "shock", "agree", "cry", "fire"}
+        low = transcript.lower()
+        for t in tags:
+            tag = re.sub(r"[^a-z]", "", str(t).lower())
+            if tag and len(tag) > 2 and re.search(rf"\b{re.escape(tag)}\b", low):
+                return tag
+    return None
 
 
 _STICKER_CMD_RE = re.compile(r"^\s*!sticke?rs?\b\s*([a-z]+)?", re.I)
