@@ -495,7 +495,7 @@ def _format_standup(tasks: list, who: str) -> str:
     just failed to match anything."""
     if not tasks:
         return f"{who} standup for today is empty."
-    done_words = ("done", "completed", "complete")
+    done_words = ("done", "completed", "complete", "need_for_approval")
     lines = []
     for i, t in enumerate(tasks, 1):
         is_done = str(t["status"]).lower() in done_words
@@ -1351,7 +1351,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 if not tasks:
                     out.append(f"{e['name']}: nothing on standup")
                     continue
-                done_words = ("done", "completed", "complete")
+                done_words = ("done", "completed", "complete", "need_for_approval")
                 bits = []
                 for t in tasks[:6]:
                     d = " (done)" if str(t["status"]).lower() in done_words else ""
