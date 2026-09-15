@@ -40,6 +40,8 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
+import { execFile } from "child_process";
+import { fileURLToPath } from "url";
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -61,6 +63,12 @@ const AUTH_DIR = process.env.AUTH_DIR || "./auth";
 // get a reply — nothing on WhatsApp can trigger an outbound, only something
 // on this machine holding TOKEN.
 const SEND_PORT = parseInt(process.env.BRIDGE_HTTP_PORT || "8787", 10);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// generous outer timeout for the isolated voice-call child process -- must
+// exceed voice.js's own internal CALL_MAX_MS + Piper's synth timeout so a
+// slow-but-legitimate call never gets killed as if it hung.
+const VOICE_RUNNER_TIMEOUT_MS =
+  Math.max(10000, parseInt(process.env.VOICE_CALL_MAX_MS || "45000", 10)) + 30000;
 
 if (!TOKEN) {
   console.error("bridge: set WHATSAPP_BRIDGE_TOKEN (or STORAGE_SYNC_TOKEN / FLASK_SECRET_KEY).");
@@ -68,6 +76,23 @@ if (!TOKEN) {
 }
 
 const log = (...a) => console.log(`[${new Date().toTimeString().slice(0, 8)}]`, ...a);
+
+// Log with a full stack trace and exit promptly and predictably, instead
+// of whatever the OS does with an otherwise-uncaught fault (confirmed
+// live 2026-09-15: the bridge died with an unusual native-looking exit
+// code and ZERO logged reason, which made root-causing that incident far
+// harder than it should have been -- see CLAUDE.md). job_bridge's own
+// supervisor handles the restart/backoff either way; this only makes sure
+// there's something to actually diagnose next time, and that a broken
+// process doesn't linger half-alive instead of exiting cleanly.
+process.on("uncaughtException", (e) => {
+  log(`FATAL uncaughtException: ${e && e.stack ? e.stack : e}`);
+  process.exit(1);
+});
+process.on("unhandledRejection", (e) => {
+  log(`FATAL unhandledRejection: ${e && e.stack ? e.stack : e}`);
+  process.exit(1);
+});
 
 let currentSock = null;   // set on every (re)connect, used by the send endpoint
 
@@ -87,6 +112,49 @@ let loggedOut = false;            // true once WhatsApp says this device was unl
 const SEND_SETTLE_MS = 5000;
 function socketReady() {
   return connState === "open" && connectedSince > 0 && (Date.now() - connectedSince) >= SEND_SETTLE_MS;
+}
+
+/** Places one announcement call in a completely separate OS process (see
+ * voice-runner.js's header for why). Any crash, hang, or malformed output
+ * from that child comes back as a clean {ok:false, error} here -- it can
+ * never throw, hang this handler forever, or touch this process's own
+ * WhatsApp connection. */
+function runVoiceCallIsolated(to, message) {
+  return new Promise((resolve) => {
+    const child = execFile(
+      process.execPath,
+      [path.join(__dirname, "voice-runner.js")],
+      { cwd: __dirname, timeout: VOICE_RUNNER_TIMEOUT_MS, windowsHide: true },
+      (err, stdout) => {
+        if (err && err.killed) {
+          resolve({ ok: false, error: "voice call process timed out" });
+          return;
+        }
+        const line = (stdout || "").trim().split("\n").pop() || "";
+        try {
+          const parsed = JSON.parse(line);
+          if (typeof parsed.ok === "boolean") {
+            resolve(parsed);
+            return;
+          }
+        } catch { /* fall through */ }
+        // the child died/crashed before printing valid JSON -- still a
+        // clean, ordinary failure from this process's point of view
+        resolve({
+          ok: false,
+          error: err
+            ? `voice call process exited abnormally (${err.code ?? err.message})`
+            : "voice call process produced no result",
+        });
+      }
+    );
+    try {
+      child.stdin.write(JSON.stringify({ to, message }));
+      child.stdin.end();
+    } catch (e) {
+      resolve({ ok: false, error: `couldn't start voice call process: ${e.message}` });
+    }
+  });
 }
 const LOGGED_OUT_FLAG = path.join(AUTH_DIR, "..", ".logged_out");
 
@@ -374,8 +442,11 @@ function startSendServer() {
             res.end('{"error":"to and message required"}');
             return;
           }
-          const { placeAnnouncementCall } = await import("./voice.js");
-          const result = await placeAnnouncementCall(String(to), String(message));
+          // Isolated in a separate OS process on purpose -- see
+          // voice-runner.js's header. A crash in the WASM VoIP library
+          // (confirmed to happen, 2026-09-15 -- see CLAUDE.md) must NEVER
+          // take the text bridge's live WhatsApp session down with it.
+          const result = await runVoiceCallIsolated(String(to), String(message));
           log(result.ok
             ? `call -> ${to}: placed`
             : `call -> ${to}: failed (${result.error})`);

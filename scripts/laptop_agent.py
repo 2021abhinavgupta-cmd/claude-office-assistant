@@ -493,7 +493,18 @@ def job_bridge(cfg: dict) -> None:
             _BRIDGE["backoff"] = 300.0        # 5 min — don't spin on a dead session
         else:
             _BRIDGE["fails"] = _BRIDGE["fails"] + 1 if up < 120 else 0
-            _BRIDGE["backoff"] = min(60.0, 5.0 * _BRIDGE["fails"])
+            # A crash is, by definition, an UNGRACEFUL disconnect -- unlike
+            # a deliberate _stop_bridge() (which waits for a confirmed
+            # clean exit before this function ever spawns a replacement),
+            # nothing here confirms WhatsApp's own server has finished
+            # noticing the old connection is gone. Confirmed live
+            # 2026-09-15: a crash after 975s uptime reset `fails` to 0,
+            # giving a 0s backoff -- the replacement respawned 17s later,
+            # right into the window where several contacts' sessions then
+            # forked. A crash after a long healthy run always gets at
+            # least this floor now, on top of whatever the normal
+            # fail-count backoff already computes for a fast-crash-loop.
+            _BRIDGE["backoff"] = max(15.0, min(60.0, 5.0 * _BRIDGE["fails"]))
         _BRIDGE["dead_at"] = now
         _BRIDGE["proc"] = None
         try:
