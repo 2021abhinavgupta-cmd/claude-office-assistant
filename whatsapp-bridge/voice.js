@@ -120,6 +120,10 @@ async function ensureVoipClient() {
   return voipClient;
 }
 
+/** Serializes calls within this process -- see the comment on
+ * placeAnnouncementCall for why this exists. */
+let callChain = Promise.resolve();
+
 /**
  * Place a one-way announcement call: ring `toDigits`, speak `text`, hang
  * up. Returns { ok: true } or { ok: false, error }. Never throws — every
@@ -127,8 +131,34 @@ async function ensureVoipClient() {
  * missing/failed, the call itself failing) is caught and reported so the
  * caller (index.js's /call route) can relay a real reason back to Lumina,
  * which relays it back to whoever asked over WhatsApp text.
+ *
+ * Confirmed live 2026-09-15: baileys-caller's VoipClient sets its internal
+ * #activeCall the moment a call is placed but NEVER clears it back to null
+ * when the call ends -- only VoipClient.disconnect() does. Since
+ * ensureVoipClient() reuses one lazy singleton, the very first call ever
+ * placed permanently poisoned every call after it with "A call is already
+ * active." (confirmed in whatsapp-bridge/../lumina-logs/bridge.log -- one
+ * real successful call, then every subsequent attempt failing with that
+ * exact error). Worked around from our side, since this is a real bug in
+ * baileys-caller itself, not something we can fix upstream: fully
+ * disconnect() and null out the singleton after every call (success or
+ * failure) so the next one always gets a fresh client. This costs a
+ * re-connect (a couple seconds, reusing the already-paired voice-auth
+ * creds, no QR needed) per call -- acceptable since this feature is meant
+ * to be used rarely, not for back-to-back calling.
  */
 export async function placeAnnouncementCall(toDigits, text) {
+  // Chain onto the previous call's promise so two calls can never overlap
+  // in this process, even if something upstream ever fires /call
+  // concurrently -- two VoipClient.connect()s racing on the same
+  // voice-auth session would risk the exact multi-device session-fork
+  // problem already fixed for the text bridge (CLAUDE.md gotcha #118).
+  const result = callChain.then(() => placeAnnouncementCallLocked(toDigits, text));
+  callChain = result.catch(() => {});   // never let a failure break the chain for the next call
+  return result;
+}
+
+async function placeAnnouncementCallLocked(toDigits, text) {
   let wavPath = null;
   try {
     const client = await ensureVoipClient();
@@ -148,5 +178,13 @@ export async function placeAnnouncementCall(toDigits, text) {
     if (wavPath) {
       try { fs.unlinkSync(wavPath); } catch { /* ignore */ }
     }
+    // Always tear down and force a fresh client next call -- see the
+    // #activeCall bug explained above. Best-effort: a disconnect() failure
+    // here must not surface as this call's own result.
+    try {
+      voipClient?.disconnect();
+    } catch { /* ignore */ }
+    voipClient = null;
+    voipReady = false;
   }
 }
