@@ -297,6 +297,23 @@ def _tasks_for_client(client_name: str, client_notion_id: str = "") -> list:
     return _sqlite_tasks_for_client(client_name)
 
 
+def _auto_checkin(user_id: str) -> None:
+    """Putting a real task on someone's OWN standup is at least as strong a
+    signal of "I'm here and working today" as clicking Check In -- so it
+    also satisfies the attendance side of the daily-standup lock (gotcha
+    #108/#119), without needing a separate Check In click. Idempotent
+    (_attendance_checkin only ever fills a NULL checkin_time) and
+    best-effort -- never called for a task landing on someone ELSE's list
+    (assign_task, or create_task with an explicit assignee), since being
+    assigned work by a teammate says nothing about whether the assignee is
+    actually present today."""
+    try:
+        from routes.attendance import _attendance_checkin
+        _attendance_checkin(user_id)
+    except Exception:
+        logger.exception("whatsapp_agent: auto-checkin failed")
+
+
 def _standup_tasks_today(user_id: str) -> list:
     """The rows on this person's daily standup for today — the live task
     list they see in Lumina's Standup screen (NOT the whole Notion board)."""
@@ -1398,6 +1415,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                         (identity["id"], today, task[:500]),
                     )
                 conn.close()
+                _auto_checkin(identity["id"])
                 return f"Added to today's standup: {task[:120]}"
             except Exception:
                 logger.exception("whatsapp_agent: add_standup_task failed")
@@ -1675,6 +1693,8 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                     )
                 conn.close()
                 standup_ok = True
+                if su_uid == identity["id"]:
+                    _auto_checkin(su_uid)
             except Exception:
                 logger.exception("whatsapp_agent: create_task standup insert failed")
             if not standup_ok:

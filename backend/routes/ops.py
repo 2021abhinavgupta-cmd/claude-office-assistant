@@ -638,6 +638,18 @@ def add_my_task():
         )
         task_id = cur.lastrowid
     conn.close()
+    # Putting a real task on today's standup is at least as strong a signal
+    # of "I'm here and working today" as clicking Check In -- so it also
+    # satisfies the attendance side of the daily-standup lock (gotcha
+    # #108/#119), without needing a separate Check In click. Idempotent
+    # (_attendance_checkin only ever fills a NULL checkin_time), so this is
+    # safe to call unconditionally and best-effort -- a failure here must
+    # never block the task that was already saved above.
+    try:
+        from routes.attendance import _attendance_checkin
+        _attendance_checkin(user_id)
+    except Exception:
+        logger.exception("add_my_task: auto-checkin failed")
     return jsonify({"success": True, "task_id": task_id, "date": date_str}), 201
 
 
@@ -1078,11 +1090,17 @@ Respond ONLY in valid JSON format:
             (user_id, title, notion_id, due_date)
         )
         task_id = cur.lastrowid
-        
+
+    try:
+        from routes.attendance import _attendance_checkin
+        _attendance_checkin(user_id)
+    except Exception:
+        logger.exception("standup_smart_add: auto-checkin failed")
+
     return jsonify({
-        "success": True, 
-        "task_id": task_id, 
-        "title": title, 
+        "success": True,
+        "task_id": task_id,
+        "title": title,
         "notion_id": notion_id,
         "is_project": is_project
     })

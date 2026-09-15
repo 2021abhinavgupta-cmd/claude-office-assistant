@@ -250,7 +250,7 @@ function toast(m,t="ok"){
     const needCheckin = need.includes("checkin");
     const needStandup = need.includes("standup");
     if (needCheckin && needStandup)
-      t.textContent = "Check in (button on the right) and add at least one task below to unlock the rest of Lumina for today.";
+      t.textContent = "Add at least one task below to unlock the rest of Lumina for today (that also checks you in) — or check in now with the button on the right.";
     else if (needStandup)
       t.textContent = "Add at least one task below to unlock the rest of Lumina for today.";
     else if (needCheckin)
@@ -522,6 +522,13 @@ async function addTask(btnEl){
     if(d.success){
       allTasks.push({id:d.task_id, title:d.title, status:"pending", carried_from:null, notion_id:d.notion_id});
       renderTasks();
+      // Adding a task also auto-checks-in server-side (backend/routes/ops.py
+      // standup_smart_add) -- so this alone now fully satisfies the daily
+      // lock (CLAUDE.md gotcha #108/#119), no separate Check In click
+      // needed. Hide the banner immediately instead of leaving it stale
+      // until the next full page load.
+      const lockBanner = document.getElementById("lock-banner");
+      if (lockBanner) lockBanner.style.display = "none";
       if(d.is_project) {
           // Toast or subtle indicator could go here. 
           console.log("AI Auto-Router created this as a project task in Notion.");
