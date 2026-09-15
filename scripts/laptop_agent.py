@@ -118,6 +118,112 @@ def _log(msg: str) -> None:
             pass
 
 
+def _pid_alive(pid: int) -> bool:
+    """Is this PID still a running process? os.kill(pid, 0) -- the normal
+    POSIX existence probe -- has no equivalent signal-0 meaning on Windows,
+    so shell out to tasklist there instead."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                capture_output=True, text=True, timeout=10,
+            )
+            return str(pid) in (out.stdout or "")
+        except Exception:
+            return True  # can't tell -- assume alive; safer to refuse a
+                         # start than to risk two instances fighting over
+                         # the same WhatsApp session
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+    except Exception:
+        return True
+
+
+_LOCK_PATH = None  # set by _acquire_singleton_lock(), released in main()'s finally:
+
+
+def _acquire_singleton_lock(cfg: dict) -> None:
+    """Refuse to start a second laptop_agent.py against this same knowledge
+    dir. The in-process race that could overlap two bridge instances
+    during a self-update-triggered restart was already closed (see
+    _stop_bridge's force_orphan handling) -- but that only protects a
+    single running process against itself. Nothing stopped a genuinely
+    SECOND whole instance (an overlapping Task Scheduler Boot + LogOn
+    trigger, a manual run left going alongside the scheduled one, a
+    crash-restart racing a fresh trigger) from independently spawning or
+    adopting its own bridge with zero knowledge of the other's. Two
+    processes each holding a live bridge, even briefly, is exactly the
+    condition that forks the WhatsApp Signal session and produces
+    "Waiting for this message" -- and unlike the single-process case,
+    that fork can recur every time the overlap happens again, and (per
+    Baileys' own retry-receipt recovery) can appear to self-heal after a
+    while, only to break again on the next overlap. Exits immediately
+    (loudly, on every channel that doesn't need the bridge) if another
+    live instance already holds the lock."""
+    global _LOCK_PATH
+    lock_path = cfg["log_dir"] / "companion.lock"
+    try:
+        cfg["log_dir"].mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    for _attempt in range(2):
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w") as f:
+                f.write(str(os.getpid()))
+            _LOCK_PATH = lock_path
+            return
+        except FileExistsError:
+            try:
+                existing = int((lock_path.read_text().strip() or "0"))
+            except Exception:
+                existing = 0
+            if existing and existing != os.getpid() and _pid_alive(existing):
+                _log(f"another companion instance is already running "
+                     f"(pid {existing}) -- refusing to start a second one; "
+                     "this exact overlap is what forks the WhatsApp session")
+                _loud_alert(
+                    cfg, "companion-duplicate-instance",
+                    f"A second Lumina companion tried to start while pid "
+                    f"{existing} was already running -- refused, to avoid "
+                    "corrupting the WhatsApp session. Check Task Scheduler "
+                    "for an overlapping trigger (e.g. Boot + LogOn firing "
+                    "close together) or a manually-started copy left running.",
+                    repeat_after=300.0,
+                )
+                sys.exit(1)
+            # stale lock left by a PID that's no longer running -- safe to
+            # reclaim it and retry the atomic create once
+            try:
+                lock_path.unlink()
+            except Exception:
+                pass
+            continue
+    # Couldn't cleanly acquire after one retry (a filesystem hiccup, not a
+    # live conflict already ruled out above) -- proceed rather than
+    # permanently wedge the companion over a transient issue.
+    try:
+        lock_path.write_text(str(os.getpid()))
+        _LOCK_PATH = lock_path
+    except Exception:
+        pass
+
+
+def _release_singleton_lock() -> None:
+    if _LOCK_PATH is None:
+        return
+    try:
+        if (_LOCK_PATH.read_text().strip() or "") == str(os.getpid()):
+            _LOCK_PATH.unlink()
+    except Exception:
+        pass
+
+
 def _api_token(cfg: dict) -> str:
     """Token for the /api/companion/* + /api/storage/* endpoints."""
     return cfg["storage_token"] or cfg["db_secret"]
@@ -1546,6 +1652,8 @@ def main() -> None:
             re.sub(r"\D", "", args.rollcall_group or "")),
     }
 
+    _acquire_singleton_lock(cfg)   # exits immediately if another instance is already up
+
     _load_daily_fired(cfg)
 
     daily_jobs = []
@@ -1676,6 +1784,7 @@ def main() -> None:
         _log("stopped.")
     finally:
         _stop_bridge(cfg)
+        _release_singleton_lock()
 
 
 if __name__ == "__main__":
