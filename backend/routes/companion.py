@@ -177,48 +177,48 @@ def _build_digest(window: str) -> dict:
     except Exception:
         data["budget_percent"] = None
 
-    # ── render plain text ──
-    head = "Good morning" if window == "morning" else "End of day"
-    lines.append(f"{head} -- {today}")
+    # ── render plain text -- WhatsApp markdown (*bold* headers, • bullets,
+    # blank-line section breaks) so this reads cleanly on a phone screen ──
+    head = "*Good morning*" if window == "morning" else "*End of day*"
+    lines.append(f"{head} — {today}")
     lines.append("")
     if overdue:
         older = overdue_total - len(overdue)
         lines.append(
-            f"OVERDUE: {overdue_total} total"
+            f"*Overdue: {overdue_total}*"
             + (f" ({len(overdue)} from the last 30 days, {older} older)" if older > 0 else "")
-            + ":"
         )
         # a per-person tally is far more scannable on a phone than a raw
         # list of hundreds of task titles -- this is what was actually
         # unreadable before, not the counts themselves
         tally = sorted(overdue_by_person.items(), key=lambda kv: -kv[1])[:10]
-        lines += [f"  {name}: {ct}" for name, ct in tally]
+        lines += [f"  • {name}: {ct}" for name, ct in tally]
         if len(overdue_by_person) > 10:
             lines.append(f"  ...and {len(overdue_by_person) - 10} more people")
         lines.append("")
     if window == "morning":
-        lines.append(f"DUE TODAY ({len(due_today)}):")
-        lines += [f"  - {r}" for r in due_today[:20]] or ["  (nothing)"]
+        lines.append(f"*Due today* ({len(due_today)})")
+        lines += [f"  • {r}" for r in due_today[:20]] or ["  (nothing)"]
         lines.append("")
-        lines.append(f"DUE TOMORROW ({len(due_tomorrow)}):")
-        lines += [f"  - {r}" for r in due_tomorrow[:15]] or ["  (nothing)"]
+        lines.append(f"*Due tomorrow* ({len(due_tomorrow)})")
+        lines += [f"  • {r}" for r in due_tomorrow[:15]] or ["  (nothing)"]
         lines.append("")
     else:
-        lines.append(f"WAS DUE TODAY ({len(due_today)}):")
-        lines += [f"  - {r}" for r in due_today[:20]] or ["  (nothing)"]
+        lines.append(f"*Was due today* ({len(due_today)})")
+        lines += [f"  • {r}" for r in due_today[:20]] or ["  (nothing)"]
         lines.append("")
     if submitted:
         lines.append(f"Standups in: {', '.join(submitted)}")
     else:
         lines.append("Standups in: none yet")
-    lines.append(f"Standup tasks: {done_ct} done / {pending_ct} pending")
+    lines.append(f"Standup tasks: *{done_ct} done* / {pending_ct} pending")
     if sync_bad:
         lines.append("")
-        lines.append("SHEET SYNC:")
-        lines += [f"  - {r}" for r in sync_bad]
+        lines.append("*Sheet sync issues*")
+        lines += [f"  • {r}" for r in sync_bad]
     if data.get("budget_percent") is not None:
         lines.append("")
-        lines.append(f"API budget used: {data['budget_percent']}%")
+        lines.append(f"API budget used: *{data['budget_percent']}%*")
 
     data["text"] = "\n".join(lines)
     return data
@@ -230,14 +230,14 @@ _INACTIVE = {"inactive", "disabled", "left", "removed", "archived", "former"}
 
 # a few lines so the noon roll-call isn't word-for-word identical every day
 _ROLLCALL_LINES = [
-    "Noon roll-call. Still missing in action: {names}. The login button doesn't bite. ⏰",
-    "It's 12 o'clock and {names} still haven't graced the attendance sheet with their presence. 👀",
-    "Half the day's gone and {names} are yet to clock in. Bold strategy.",
-    "Roll-call: {names} officially 'not logged in yet'. We'll wait. ⏰",
-    "12 o'clock headcount — {names} unaccounted for. Send a search party?",
-    "{names}: the check-in button misses you. It's a two-second job, promise. 🙂",
+    "*Noon roll-call.* Still missing in action: *{names}*. The login button doesn't bite. ⏰",
+    "It's 12 o'clock and *{names}* still haven't graced the attendance sheet with their presence. 👀",
+    "Half the day's gone and *{names}* are yet to clock in. Bold strategy.",
+    "*Roll-call:* *{names}* officially 'not logged in yet'. We'll wait. ⏰",
+    "12 o'clock headcount — *{names}* unaccounted for. Send a search party?",
+    "*{names}*: the check-in button misses you. It's a two-second job, promise. 🙂",
 ]
-_ROLLCALL_ALL_IN = "Noon roll-call: everyone's actually logged in. Someone mark the calendar. ✅"
+_ROLLCALL_ALL_IN = "*Noon roll-call:* everyone's actually logged in. Someone mark the calendar. ✅"
 _ROLLCALL_WA_HINT = (
     "Can't get to Lumina right now? Reply \"lumina in\" here in the group "
     "(or just DM me \"in\") and I'll check you in from WhatsApp."
@@ -722,11 +722,11 @@ def _eod_rows(today: str) -> dict:
 
 # sarcasm for a big day — >5 done. rotated by name+date so it's not identical.
 _RAISE_LINES = [
-    "  {n} tasks done in one day — get this one a raise.",
-    "  {n} done today. An early mark tomorrow seems fair.",
-    "  {n} tasks cleared in a day — someone approve a holiday.",
-    "  {n} done. At this rate they're owed a raise AND an early leave.",
-    "  {n} in one day. Give them the afternoon off, they've earned it.",
+    "  *{n}* tasks done in one day — get this one a raise.",
+    "  *{n}* done today. An early mark tomorrow seems fair.",
+    "  *{n}* tasks cleared in a day — someone approve a holiday.",
+    "  *{n}* done. At this rate they're owed a raise AND an early leave.",
+    "  *{n}* in one day. Give them the afternoon off, they've earned it.",
 ]
 
 
@@ -791,9 +791,10 @@ def companion_eod_summary():
         })
 
     if with_tasks:
-        gl = [f"Tasks done today: {done_total}/{task_total} across the team."]
-        gl += [f"{r['name']} {s['done']}/{s['total']}" for r, s in with_tasks]
+        gl = [f"*Tasks done today: {done_total}/{task_total}* across the team."]
+        gl += [f"  • {r['name']}: {s['done']}/{s['total']}" for r, s in with_tasks]
         if no_standup:
+            gl.append("")
             gl.append("No standup yet: " + ", ".join(no_standup))
         group_text = "\n".join(gl)
     else:
@@ -803,9 +804,13 @@ def companion_eod_summary():
     # done / not done, plus a raise-or-holiday jab for a 5+ day.
     lead_blocks = []
     for r, s in with_tasks:
-        blk = [f"{r['name']} — {s['done']}/{s['total']} done"]
-        blk += [f"  done: {t}" for t in s["done_titles"][:15]]
-        blk += [f"  not done: {t}" for t in s["pending"][:15]]
+        blk = [f"*{r['name']}* — {s['done']}/{s['total']} done"]
+        if s["done_titles"]:
+            blk.append("  Done:")
+            blk += [f"    • {t}" for t in s["done_titles"][:15]]
+        if s["pending"]:
+            blk.append("  Not done:")
+            blk += [f"    • {t}" for t in s["pending"][:15]]
         if s["done"] > 5:
             line = _RAISE_LINES[(sum(ord(c) for c in r["name"] + today))
                                 % len(_RAISE_LINES)]
@@ -814,7 +819,7 @@ def companion_eod_summary():
     if no_standup:
         lead_blocks.append("No standup submitted: " + ", ".join(no_standup))
     if lead_blocks:
-        leads_text = "EOD check — everyone's tasks for today:\n\n" + "\n\n".join(lead_blocks)
+        leads_text = "*EOD check* — everyone's tasks for today:\n\n" + "\n\n".join(lead_blocks)
     else:
         leads_text = "EOD check: no standup tasks logged today."
 
@@ -898,8 +903,8 @@ def companion_weekly_summary():
     td = sum(p[1] for p in people)
     tt = sum(p[2] for p in people)
     if people:
-        lines = [f"Week wrap ({monday} to {today}): {td}/{tt} tasks done."]
-        lines += [f"{n} {d}/{t}" for n, d, t in people]
+        lines = [f"*Week wrap* ({monday} to {today}): *{td}/{tt}* tasks done."]
+        lines += [f"  • {n}: {d}/{t}" for n, d, t in people]
         text = "\n".join(lines)
     else:
         text = ""
@@ -1093,16 +1098,18 @@ def companion_tomorrow_live():
         text = f"Nothing scheduled to go live tomorrow ({tomorrow})."
     else:
         not_ready = [i for i in items if not i["ready"]]
-        lines = [f"Going live tomorrow ({tomorrow}) -- {len(items)} post(s):"]
+        lines = [f"*Going live tomorrow* ({tomorrow}) — {len(items)} post(s):", ""]
         for i in items:
-            flag = "" if i["ready"] else "  <- NOT READY"
-            lines.append(
-                f"  {i['client']} | {i['type']} | {i['title']} | "
-                f"{i['assigned_to']} | {i['status']}"
-                f"{'' if i['has_caption'] else ' | no caption'}{flag}"
-            )
+            lines.append(f"• *{i['client']}* — {i['type']}: \"{i['title']}\"")
+            detail = f"  Assigned: {i['assigned_to']} · Status: {i['status']}"
+            if not i["has_caption"]:
+                detail += " · no caption"
+            if not i["ready"]:
+                detail += " — *NOT READY*"
+            lines.append(detail)
         if not_ready:
-            lines.append(f"\n{len(not_ready)} of {len(items)} not yet approved/captioned.")
+            lines.append("")
+            lines.append(f"*{len(not_ready)} of {len(items)}* not yet approved/captioned.")
         text = "\n".join(lines)
 
     return jsonify({"date": tomorrow, "count": len(items), "items": items, "text": text})

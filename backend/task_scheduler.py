@@ -186,15 +186,15 @@ def _whatsapp_escalation(alerts: list) -> None:
             title = a.get("task", "a task")
             client = a.get("client", "")
             days = a.get("days", 0)
-            line = (f"Heads up: '{title}'"
+            line = (f"Heads up: *{title}*"
                     + (f" for {client}" if client and client != "Unknown" else "")
-                    + f" is {days} day(s) overdue. Can you close it out or move the date?")
+                    + f" is *{days} day(s)* overdue. Can you close it out or move the date?")
             jid = wa_outbox.jid_for_name(who)
             if jid:
                 wa_outbox.enqueue(jid, line)
             if a.get("level") in ("WARNING", "AT_RISK", "CRITICAL"):
                 wa_outbox.notify_alert(
-                    f"[{a.get('level')}] {who}'s '{title}'"
+                    f"*[{a.get('level')}]* {who}'s *{title}*"
                     + (f" ({client})" if client and client != "Unknown" else "")
                     + f" is {days} day(s) overdue."
                 )
@@ -228,7 +228,7 @@ def _check_budget_alert() -> None:
             )
         conn.close()
         wa_outbox.notify_alert(
-            f"API budget alert: {pct}% of this month's ${s.get('budget_limit', '?')} "
+            f"*API budget alert:* {pct}% of this month's ${s.get('budget_limit', '?')} "
             f"limit used (${s.get('monthly_spend', '?')} spent)."
         )
     except Exception:

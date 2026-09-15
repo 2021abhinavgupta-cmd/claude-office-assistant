@@ -141,9 +141,9 @@ def notify_client_activity(client_name: str, client_notion_id: str,
     Ping the people assigned to that client's tasks + the alert recipients.
     Safe to call fire-and-forget from a request handler (swallows everything)."""
     try:
-        msg = f"{client_name or 'A client'} {kind}"
+        msg = f"*{client_name or 'A client'}* {kind}"
         if detail:
-            msg += f": {str(detail)[:300]}"
+            msg += f":\n{str(detail)[:300]}"
         jids: set = set()
         try:
             import notion_store

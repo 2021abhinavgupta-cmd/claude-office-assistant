@@ -1130,7 +1130,7 @@ def job_standup_nudge(cfg: dict) -> None:
             continue
         name = p.get("name") or "there"
         text = (
-            f"Morning {name} — it's gone 11:30 and your standup for today is "
+            f"Morning *{name}* — it's gone 11:30 and your standup for today is "
             "still a blank canvas. Add a task or two when you get a moment.\n\n"
             "Shortcut: just reply here with what you're working on and I'll drop "
             "it straight into your standup for you."
@@ -1194,9 +1194,9 @@ def job_login_nudge(cfg: dict) -> None:
             fix = ("Reply here with what you're working on and I'll drop it "
                    "into your standup.")
         every_min = max(1, cfg["login_nudge_every"] // 60)
-        text = (f"{name}, {what}. I'll keep pinging every {every_min} min "
+        text = (f"*{name}* — {what}. I'll keep pinging every {every_min} min "
                 f"until it's sorted.\n\n{fix}\n\n"
-                "On leave today? Reply 'on leave' and I'll stop.")
+                "On leave today? Reply \"on leave\" and I'll stop.")
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
     _log(f"login-nudge: {sent}/{len(missing)} DM(s)")
@@ -1223,8 +1223,8 @@ def job_login_group_ping(cfg: dict) -> None:
         nc, ns = p.get("needs_checkin"), p.get("needs_standup")
         tag = ("no check-in + no standup" if nc and ns
                else "no check-in" if nc else "no standup")
-        lines.append(f"- {p.get('name') or p.get('id')}: {tag}")
-    body = ("Still not logged in for today:\n" + "\n".join(lines)
+        lines.append(f"• *{p.get('name') or p.get('id')}* — {tag}")
+    body = ("*Still not logged in for today:*\n" + "\n".join(lines)
             + "\n\nCheck in on Lumina and put at least one task on your "
               "standup — you can reply to me here to do both.")
     if _bridge_send(cfg, grp, body):
@@ -1264,7 +1264,7 @@ def job_team_meeting(cfg: dict) -> None:
         return
     if datetime.now().weekday() not in (0, 2, 4):   # Mon/Wed/Fri only
         return
-    if _bridge_send(cfg, grp, "Reminder: team meeting today from 4 to 5 PM."):
+    if _bridge_send(cfg, grp, "Reminder: team meeting today, *4 to 5 PM*."):
         _log("team-meeting: sent")
 
 
@@ -1279,7 +1279,7 @@ def job_class_meeting(cfg: dict) -> None:
         return
     if datetime.now().weekday() not in (1, 3):   # Tue/Thu only
         return
-    text = f"Meeting time -- join here: {_CLASS_MEETING_LINK}"
+    text = f"*Meeting time* -- join here: {_CLASS_MEETING_LINK}"
     if _bridge_send(cfg, grp, text, mention_all=True):
         _log("class-meeting: sent (tagged all)")
 
@@ -1326,9 +1326,9 @@ def job_eod_personal(cfg: dict) -> None:
         wa = re.sub(r"\D", "", p.get("whatsapp", ""))
         if not pend or not wa:
             continue
-        body = "\n".join(f"- {t}" for t in pend)
+        body = "\n".join(f"• {t}" for t in pend)
         text = (
-            f"Wrapping up for the day, {p.get('name', 'there')}. Still open on "
+            f"Wrapping up for the day, *{p.get('name', 'there')}*. Still open on "
             f"your standup for today:\n{body}\n\n"
             "Mark them done here if they're finished, otherwise they carry to tomorrow."
         )
@@ -1356,8 +1356,8 @@ def job_attendance_nag(cfg: dict) -> None:
         if not wa:
             continue
         name = p.get("name") or "there"
-        text = (f"Morning {name}, it's 10:30 and you're not checked in on Lumina "
-                "yet. Tap check-in when you get a sec, or reply 'checking in' here "
+        text = (f"Morning *{name}*, it's 10:30 and you're not checked in on Lumina "
+                "yet. Tap check-in when you get a sec, or reply \"checking in\" here "
                 "and I'll do it for you.")
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
