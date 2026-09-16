@@ -1571,7 +1571,7 @@ def main() -> None:
                          "(after the first group ping, so the group heads-up lands first)")
     ap.add_argument("--login-nudge-end", default="19:00",
                     help="HH:MM -- don't send login-nudge DMs after this")
-    ap.add_argument("--login-group-times", default="11:15,11:30",
+    ap.add_argument("--login-group-times", default="11:15,11:45",
                     help="comma-separated HH:MM times to post the not-logged-in "
                          "list to the team group (first one leads the sequence)")
     ap.add_argument("--legacy-nudges", action="store_true",
