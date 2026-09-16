@@ -447,11 +447,72 @@ def _pop_pending_broadcast(emp_id: str) -> dict | None:
         return None
 
 
+# ── confirm-before-send (message_multiple) ──────────────────────────────────
+# Shares the wa_pending_action table (one pending action per sender, any
+# kind) but a distinct kind='multi' so it can't be picked up by
+# _pop_pending_broadcast (kind='broadcast') or vice versa.
+
+def _set_pending_multi(emp_id: str, message: str, recipients: list) -> None:
+    """recipients: [{"id", "name", "whatsapp"}] -- already resolved, so the
+    confirm step doesn't need to re-resolve names (and can't drift if the
+    roster changes between asking and confirming)."""
+    try:
+        payload = json.dumps({"message": message, "recipients": recipients})
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO wa_pending_action (sender, kind, payload, created_at) "
+                "VALUES (?, 'multi', ?, ?) "
+                "ON CONFLICT(sender) DO UPDATE SET kind=excluded.kind, "
+                "payload=excluded.payload, created_at=excluded.created_at",
+                (emp_id, payload, datetime.now(timezone.utc).isoformat()),
+            )
+        conn.close()
+    except Exception:
+        logger.exception("whatsapp_agent: set pending multi-message failed")
+
+
+def _pop_pending_multi(emp_id: str) -> dict | None:
+    """Return {"message": str, "recipients": [...]} for this employee's
+    pending multi-send (and delete it). None if there isn't one or it's
+    older than _PENDING_TTL_MIN."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT payload, created_at FROM wa_pending_action "
+                    "WHERE sender=? AND kind='multi'", (emp_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return None
+        with conn:
+            conn.execute("DELETE FROM wa_pending_action WHERE sender=?", (emp_id,))
+        conn.close()
+        try:
+            ts = datetime.fromisoformat(str(row[1]).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - ts > timedelta(minutes=_PENDING_TTL_MIN):
+                return None
+        except ValueError:
+            pass
+        try:
+            data = json.loads(row[0])
+            if isinstance(data, dict) and "message" in data and "recipients" in data:
+                return data
+        except (ValueError, TypeError):
+            pass
+        return None
+    except Exception:
+        logger.exception("whatsapp_agent: pop pending multi-message failed")
+        return None
+
+
 # ── audit log ──────────────────────────────────────────────────────────────
 
 _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "send_group_message",
-    "schedule_group_message", "add_standup_task", "update_standup_task",
+    "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
     "create_task", "set_task_meta", "set_attendance", "review_task",
     "place_announcement_call", "set_leave", "clear_leave",
 }
@@ -875,6 +936,27 @@ _EMPLOYEE_TOOLS = [
                             "description": "What to remind them about, in your words."},
             },
             "required": ["name", "message"],
+        },
+    },
+    {
+        "name": "message_multiple",
+        "description": "Send the SAME WhatsApp message to several teammates at "
+                       "once, as individual DMs (not a group post) -- 'tell "
+                       "Nupur, Palak, and Happy the client call moved to 5pm', "
+                       "'message the design team that the brief is ready'. "
+                       "Confirms with you first (like send_group_message), then "
+                       "DMs each person separately and reports who it reached. "
+                       "Only works in a private chat with you, not from the "
+                       "group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "names": {"type": "array", "items": {"type": "string"},
+                          "description": "The teammates to message."},
+                "message": {"type": "string",
+                            "description": "The exact message to send each of them."},
+            },
+            "required": ["names", "message"],
         },
     },
     {
@@ -1600,6 +1682,55 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 return f"Sent {emp['name']} a reminder about that."
             return "(couldn't queue that reminder just now)"
 
+        if name == "message_multiple" and kind == "employee":
+            if in_group:
+                return ("This only works from our private chat, not the "
+                        "group. Message me directly and I'll send it to each of them.")
+            raw_names = (tool_input or {}).get("names") or []
+            if isinstance(raw_names, str):
+                raw_names = [n.strip() for n in re.split(r",| and ", raw_names) if n.strip()]
+            msg = (tool_input or {}).get("message", "").strip()
+            if not msg:
+                return "(no message text — ask what to send them)"
+            if not raw_names:
+                return "(no names given — ask who this should go to)"
+            resolved, unknown, no_number, seen_ids = [], [], [], set()
+            for who in raw_names:
+                emp = _resolve_employee(who)
+                if not emp:
+                    unknown.append(who)
+                    continue
+                if emp["id"] == identity["id"]:
+                    continue  # skip the sender themself, silently
+                if emp["id"] in seen_ids:
+                    continue
+                seen_ids.add(emp["id"])
+                if not emp.get("whatsapp"):
+                    no_number.append(emp["name"])
+                    continue
+                resolved.append(emp)
+            if not resolved:
+                bits = []
+                if unknown:
+                    bits.append(f"didn't recognize: {', '.join(unknown)}")
+                if no_number:
+                    bits.append(f"no WhatsApp number on file for: {', '.join(no_number)}")
+                extra = f" ({'; '.join(bits)})" if bits else ""
+                names = ", ".join(e["name"] for e in _active_employees())
+                return f"Couldn't find anyone to send this to{extra}. Team: {names}."
+            _set_pending_multi(identity["id"], msg[:1500], resolved)
+            who_txt = ", ".join(e["name"] for e in resolved)
+            note = ""
+            if unknown or no_number:
+                bits = []
+                if unknown:
+                    bits.append(f"skipping unrecognized: {', '.join(unknown)}")
+                if no_number:
+                    bits.append(f"skipping (no number): {', '.join(no_number)}")
+                note = f"\n({'; '.join(bits)})"
+            return (f"Ready to send this to {who_txt}:\n\n\"{msg[:400]}\"{note}\n\n"
+                    "Reply 'yes' to send it, or 'no' to cancel.")
+
         if name == "place_announcement_call" and kind == "employee":
             if in_group:
                 return ("Calls only work from our private chat, not the "
@@ -1925,6 +2056,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                         "script, caption). Just ask.")
             extra = "" if in_group else (
                 " In a private chat I can also send a reminder to a teammate, "
+                "message several teammates the same thing at once, "
                 "place an actual voice call that speaks a message aloud, "
                 "post an announcement to the group now or schedule one for "
                 "later (both with a confirm step), check you in or out, and "
@@ -2238,8 +2370,11 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "person. Confirm in one line and say whose list it landed on.\n"
             "In a private chat only, use remind_teammate to send someone a "
             "WhatsApp nudge about anything (it doesn't touch their standup), "
-            "or send_group_message to post an announcement into the team "
-            "group for them. Neither is available from the group. "
+            "message_multiple to send the SAME message to several named "
+            "teammates at once as individual DMs (not a group post -- for "
+            "'tell X, Y, and Z ...'), or send_group_message to post an "
+            "announcement into the team group for them. None of these are "
+            "available from the group. "
             "place_announcement_call is the same idea but an actual voice "
             "call that speaks the message aloud -- rare, only when a real "
             "phone call is genuinely warranted (urgent escalation), not a "
@@ -2273,7 +2408,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "send_group_message does NOT post immediately — it asks the person "
             "to reply 'yes' first; just relay that. schedule_group_message is "
             "the same but for a future time — figure out the real date/time "
-            "yourself, it also needs a 'yes' to confirm before it's queued.\n"
+            "yourself, it also needs a 'yes' to confirm before it's queued. "
+            "message_multiple also needs a 'yes' before it sends — relay that too.\n"
             "send_sticker adds a sticker to your reply. Use it when the "
             "person's message really lands — a genuine win, a good burn, "
             "something absurd, a facepalm moment — in a DM or the group. Not on "
@@ -2375,6 +2511,37 @@ def handle_message(sender: str, text: str, *,
                     _audit("dm", identity, "send_group_message", msg[:200])
                     return "Posted to the group."
                 return "(couldn't send that to the group just now)"
+            if low in ("no", "n", "nope", "cancel", "stop", "nvm", "nevermind",
+                       "never mind", "don't", "dont"):
+                return "Cancelled, nothing was sent."
+            # anything else -> treat as a fresh message (pending already cleared)
+
+    # Confirm-before-send: a pending message_multiple waiting on a yes/no.
+    if identity["kind"] == "employee" and not in_group:
+        pending_multi = _pop_pending_multi(identity["id"])
+        if pending_multi is not None:
+            low = _norm(text).rstrip("!. ")
+            if low in ("yes", "y", "yeah", "yep", "send", "send it", "confirm",
+                       "do it", "go", "ok", "okay"):
+                msg = pending_multi["message"]
+                recipients = pending_multi.get("recipients") or []
+                sent, failed = [], []
+                for r in recipients:
+                    jid = _wa_jid(r.get("whatsapp"))
+                    if jid and _enqueue_outbound(
+                        jid, f"From {identity['name']} (via Lumina): {msg[:600]}"
+                    ):
+                        sent.append(r.get("name", "?"))
+                    else:
+                        failed.append(r.get("name", "?"))
+                if not sent:
+                    return "(couldn't send that to any of them just now)"
+                _audit("dm", identity, "message_multiple",
+                       f"to {', '.join(sent)}: {msg[:200]}")
+                out = f"Sent to {', '.join(sent)}."
+                if failed:
+                    out += f" Couldn't reach: {', '.join(failed)}."
+                return out
             if low in ("no", "n", "nope", "cancel", "stop", "nvm", "nevermind",
                        "never mind", "don't", "dont"):
                 return "Cancelled, nothing was sent."
