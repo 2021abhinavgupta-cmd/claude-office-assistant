@@ -1558,7 +1558,7 @@ def main() -> None:
                     help="daily time to DM people who haven't checked in yet")
     ap.add_argument("--no-attendance-nag", action="store_true")
     # unified login nudge (gotcha #119): the group gets the not-logged-in
-    # list first at 10:35, then personal DMs hourly for whoever still
+    # list first at 11:15, then personal DMs hourly for whoever still
     # hasn't both checked in AND put a task on today's standup.
     # Supersedes the old 10:30 attendance-nag / 11:30 standup-nudge / noon
     # roll-call -- pass --legacy-nudges to keep those too.
@@ -1566,12 +1566,12 @@ def main() -> None:
                     help="turn off the recurring 'you haven't logged in' nudge")
     ap.add_argument("--login-nudge-every", type=int, default=3600,
                     help="seconds between personal login-nudge DMs (default 3600 = hourly)")
-    ap.add_argument("--login-nudge-start", default="10:40",
+    ap.add_argument("--login-nudge-start", default="11:20",
                     help="HH:MM -- don't send personal login-nudge DMs before this "
                          "(after the first group ping, so the group heads-up lands first)")
     ap.add_argument("--login-nudge-end", default="19:00",
                     help="HH:MM -- don't send login-nudge DMs after this")
-    ap.add_argument("--login-group-times", default="10:35,11:30",
+    ap.add_argument("--login-group-times", default="11:15,11:30",
                     help="comma-separated HH:MM times to post the not-logged-in "
                          "list to the team group (first one leads the sequence)")
     ap.add_argument("--legacy-nudges", action="store_true",
