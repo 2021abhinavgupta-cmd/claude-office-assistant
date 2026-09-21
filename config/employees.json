@@ -53,6 +53,7 @@
       "status": "active",
       "pin": "8989",
       "tone_profile": "Persuasive, brief, and action-oriented.",
+      "joined_date": "2026-09-07",
       "checkins": []
     },
     {
@@ -64,6 +65,7 @@
       "status": "active",
       "pin": "2009",
       "tone_profile": "Professional, precise, and eager to learn.",
+      "joined_date": "2026-09-07",
       "checkins": []
     },
     {
@@ -86,6 +88,7 @@
       "status": "active",
       "pin": "0000",
       "tone_profile": "Professional, clear, and people-focused.",
+      "joined_date": "2026-07-20",
       "checkins": []
     },
     {

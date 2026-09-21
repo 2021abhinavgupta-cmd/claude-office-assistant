@@ -519,13 +519,16 @@ def attendance_export_sheets():
         "Leave": PatternFill("solid", fgColor="FEE2E2"),
     }
 
-    def style_header(ws, headers, row=1):
+    def style_header_cells(ws, headers, row):
         for col_idx, h in enumerate(headers, start=1):
             c = ws.cell(row=row, column=col_idx, value=h)
             c.font = HEADER_FONT
             c.fill = HEADER_FILL
             c.alignment = Alignment(horizontal="center")
             c.border = THIN_BORDER
+
+    def style_header(ws, headers, row=1):
+        style_header_cells(ws, headers, row)
         # A plain coordinate STRING, not ws.cell(...).coordinate -- calling
         # .cell() to merely read a coordinate still reserves that cell in
         # openpyxl's internal sheet dimensions, which silently bumps
@@ -612,6 +615,10 @@ def attendance_export_sheets():
         counts = {"Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0, "In Progress": 0}
         total_hours = 0.0
         credit_total = 0.0
+        # Per-calendar-month breakdown, in the order months are first seen
+        # (chronological, since d walks forward) -- a plain dict already
+        # preserves insertion order in this Python version.
+        months = {}
         d = start
         while d <= end:
             if d.weekday() < 5:  # Mon-Fri only -- weekends aren't a "Leave"
@@ -638,6 +645,15 @@ def attendance_export_sheets():
                 credit_total += _attendance_credit(day_type)
                 if hrs is not None:
                     total_hours += hrs
+                mkey = (d.year, d.month)
+                mrow = months.setdefault(mkey, {
+                    "Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0,
+                    "In Progress": 0, "hours": 0.0, "credit": 0.0,
+                })
+                mrow[day_type] = mrow.get(day_type, 0) + 1
+                mrow["credit"] += _attendance_credit(day_type)
+                if hrs is not None:
+                    mrow["hours"] += hrs
             d += _timedelta(days=1)
         data_end_row = ws.max_row
         if data_end_row >= 5:
@@ -647,24 +663,46 @@ def attendance_export_sheets():
         considered = counts["Full Day"] + counts["Half Day"] + counts["Leave"] + counts["Incomplete"]
         pct = (credit_total / considered) if considered else None
 
+        # ── Monthly Summary table -- one row per calendar month in range,
+        # same metrics as the old single flat Summary block, broken out by
+        # month (payroll/HR review is almost always done month by month).
         summary_row = data_end_row + 2
-        ws.cell(row=summary_row, column=1, value="Summary").font = SUMMARY_LABEL_FONT
-        summary_lines = [
-            ("Full Days", counts["Full Day"]),
-            ("Half Days", counts["Half Day"]),
-            ("Leaves", counts["Leave"]),
-            ("Incomplete (no checkout logged)", counts["Incomplete"]),
-            ("Total Working Days Considered", considered),
-            ("Total Hours Worked", round(total_hours, 1)),
-            ("Attendance %", pct if pct is not None else "N/A"),
+        ws.cell(row=summary_row, column=1, value="Monthly Summary").font = TITLE_FONT
+        month_header_row = summary_row + 1
+        style_header_cells(ws, ["Month", "Full Days", "Half Days", "Leaves", "Incomplete",
+                                "Working Days", "Total Hours", "Attendance %"], month_header_row)
+        mrow_idx = month_header_row
+        for (yr, mo), m in months.items():
+            m_considered = m["Full Day"] + m["Half Day"] + m["Leave"] + m["Incomplete"]
+            m_pct = (m["credit"] / m_considered) if m_considered else None
+            mrow_idx += 1
+            ws.cell(row=mrow_idx, column=1, value=_date(yr, mo, 1).strftime("%B %Y"))
+            ws.cell(row=mrow_idx, column=2, value=m["Full Day"])
+            ws.cell(row=mrow_idx, column=3, value=m["Half Day"])
+            ws.cell(row=mrow_idx, column=4, value=m["Leave"])
+            ws.cell(row=mrow_idx, column=5, value=m["Incomplete"])
+            ws.cell(row=mrow_idx, column=6, value=m_considered)
+            hrs_cell = ws.cell(row=mrow_idx, column=7, value=round(m["hours"], 1))
+            hrs_cell.number_format = "0.0"
+            pct_cell = ws.cell(row=mrow_idx, column=8, value=m_pct if m_pct is not None else "N/A")
+            if m_pct is not None:
+                pct_cell.number_format = "0.0%"
+            border_row(ws, mrow_idx, 8)
+        # A bold "Total (All Time)" row underneath every month, using the
+        # same aggregate counts the old single Summary block reported.
+        total_row = mrow_idx + 1
+        total_cells = [
+            "Total (All Time)", counts["Full Day"], counts["Half Day"], counts["Leave"],
+            counts["Incomplete"], considered, round(total_hours, 1),
+            pct if pct is not None else "N/A",
         ]
-        for i, (label, val) in enumerate(summary_lines, start=1):
-            ws.cell(row=summary_row + i, column=1, value=label).font = SUMMARY_LABEL_FONT
-            val_cell = ws.cell(row=summary_row + i, column=2, value=val)
-            if label == "Total Hours Worked":
-                val_cell.number_format = "0.0"
-            elif label == "Attendance %" and val != "N/A":
-                val_cell.number_format = "0.0%"
+        for col, val in enumerate(total_cells, start=1):
+            c = ws.cell(row=total_row, column=col, value=val)
+            c.font = SUMMARY_LABEL_FONT
+        ws.cell(row=total_row, column=7).number_format = "0.0"
+        if pct is not None:
+            ws.cell(row=total_row, column=8).number_format = "0.0%"
+        border_row(ws, total_row, 8)
 
         emp_summaries.append({
             "name": name, "start": start, "full": counts["Full Day"],
