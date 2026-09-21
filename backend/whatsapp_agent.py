@@ -923,11 +923,19 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "remind_teammate",
-        "description": "Send another team member a WhatsApp nudge about something "
-                       "— 'remind Nupur to finish the deck', 'ping Happy about the "
-                       "edit', 'tell Kshitij to reply to the client'. They get a "
-                       "direct message from Lumina saying it came from you. Only "
-                       "works in a private chat with you, not from the group.",
+        "description": "Send ONE specific team member a WhatsApp nudge about "
+                       "something and it goes out RIGHT AWAY, no confirmation "
+                       "needed — 'remind Nupur to finish the deck', 'ping Happy "
+                       "about the edit', 'tell Kshitij to reply to the client', "
+                       "'text Abhinav that...', 'message Noorish about...'. Use "
+                       "this whenever exactly ONE person is named, even if the "
+                       "phrasing is just 'text'/'message' rather than "
+                       "'remind'/'ping'. They get a direct message from Lumina "
+                       "saying it came from you. Only works in a private chat "
+                       "with you, not from the group. For TWO OR MORE named "
+                       "people, use message_multiple instead — don't use that "
+                       "one for a single person, it needs an extra 'yes' step "
+                       "this doesn't.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -940,14 +948,18 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "message_multiple",
-        "description": "Send the SAME WhatsApp message to several teammates at "
-                       "once, as individual DMs (not a group post) -- 'tell "
-                       "Nupur, Palak, and Happy the client call moved to 5pm', "
-                       "'message the design team that the brief is ready'. "
-                       "Confirms with you first (like send_group_message), then "
-                       "DMs each person separately and reports who it reached. "
-                       "Only works in a private chat with you, not from the "
-                       "group.",
+        "description": "Send the SAME WhatsApp message to TWO OR MORE named "
+                       "teammates at once, as individual DMs (not a group post) "
+                       "-- 'tell Nupur, Palak, and Happy the client call moved "
+                       "to 5pm', 'message the design team that the brief is "
+                       "ready'. Confirms with you first (like send_group_"
+                       "message) and does NOT send until you reply 'yes' -- "
+                       "always tell the person that a confirmation is needed, "
+                       "don't let them think it's already sent. Do NOT use "
+                       "this for a single named person -- use remind_teammate "
+                       "for that instead, it sends immediately with no "
+                       "confirmation step. Only works in a private chat with "
+                       "you, not from the group.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -2368,13 +2380,18 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "their own tasks onto a teammate's list. This works here and in the "
             "group. The teammate gets a WhatsApp nudge that it came from this "
             "person. Confirm in one line and say whose list it landed on.\n"
-            "In a private chat only, use remind_teammate to send someone a "
-            "WhatsApp nudge about anything (it doesn't touch their standup), "
-            "message_multiple to send the SAME message to several named "
-            "teammates at once as individual DMs (not a group post -- for "
-            "'tell X, Y, and Z ...'), or send_group_message to post an "
-            "announcement into the team group for them. None of these are "
-            "available from the group. "
+            "In a private chat only, use remind_teammate to send ONE named "
+            "person a WhatsApp nudge about anything (it doesn't touch their "
+            "standup, sends immediately, no confirmation) -- this covers "
+            "'text/message/tell/ping/remind <one name> ...' every time, "
+            "regardless of which of those verbs they use. Use message_multiple "
+            "ONLY when TWO OR MORE named people should get the same message as "
+            "individual DMs (not a group post) -- and since that one needs a "
+            "'yes' before it actually sends, always say so out loud so they "
+            "know to confirm, never imply it's already gone. Use "
+            "send_group_message to post an announcement into the team group "
+            "for them instead. None of these three are available from the "
+            "group.\n"
             "place_announcement_call is the same idea but an actual voice "
             "call that speaks the message aloud -- rare, only when a real "
             "phone call is genuinely warranted (urgent escalation), not a "
