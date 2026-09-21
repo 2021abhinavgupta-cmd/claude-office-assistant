@@ -394,14 +394,37 @@ def _hours_and_day_type(checkin, checkout, is_today):
     return round(hrs, 2), ("Full Day" if hrs >= _FULL_DAY_HOURS else "Half Day")
 
 
+def _attendance_credit(day_type):
+    """Half Day leave best practice (ExcelDemy/Indzara/Clockify-style HR
+    templates researched for this feature): a Half Day contributes 0.5 to
+    an attendance-percentage numerator, a Full Day contributes 1.0, and
+    Leave/Incomplete contribute 0. "In Progress" (today, still ongoing) is
+    excluded from both the numerator and the denominator entirely --
+    there's no final answer for it yet."""
+    if day_type == "Full Day":
+        return 1.0
+    if day_type == "Half Day":
+        return 0.5
+    return 0.0
+
+
 @attendance_bp.route("/api/attendance/export-sheets", methods=["GET"])
 def attendance_export_sheets():
     """An .xlsx workbook (not a flat CSV, so it can hold multiple sheets):
-    one "All" sheet with the same combined view the plain CSV export has
-    (plus a Day Type column), and one additional sheet per active employee
-    with every WEEKDAY from the earliest attendance record through today
-    filled in as its own row -- a day with no checkin at all shows as
-    Leave rather than just being absent from the list."""
+    an "All" sheet (same combined view the plain CSV export has, plus Day
+    Type), a "Summary" sheet with one row per employee (Full/Half/Leave
+    counts, attendance %, total hours), and one additional sheet per
+    active employee with every WEEKDAY from their own start date through
+    today filled in as its own row -- a day with no checkin at all shows
+    as Leave rather than just being absent from the list.
+
+    Each employee's sheet starts from config/employees.json's optional
+    "joined_date" (YYYY-MM-DD) if set; otherwise from THAT employee's own
+    earliest daily_attendance record (not a company-wide date), so a
+    recently-onboarded employee doesn't get backfilled with Leave for
+    months before they ever used the app. Set "joined_date" by hand in
+    employees.json for anyone whose real hire date predates their first
+    login, to backfill Leave correctly from the actual join date instead."""
     if not _verified_admin():
         return "Unauthorized", 403
 
@@ -409,7 +432,7 @@ def attendance_export_sheets():
     import re as _re
     from datetime import date as _date, timedelta as _timedelta
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
     from db import get_connection
@@ -451,30 +474,41 @@ def attendance_export_sheets():
         return uid
 
     by_user_date = {}
-    all_dates = set()
+    earliest_by_user = {}
     for d, uid, cin, cout in rows:
         by_user_date[(uid, d)] = (cin, cout)
-        all_dates.add(d)
+        if uid not in earliest_by_user or d < earliest_by_user[uid]:
+            earliest_by_user[uid] = d
 
     today = today_ist()
+    today_d = _date.fromisoformat(today)
 
     wb = Workbook()
     HEADER_FILL = PatternFill("solid", fgColor="1F2937")
     HEADER_FONT = Font(color="FFFFFF", bold=True)
+    TITLE_FONT = Font(bold=True, size=13)
+    META_FONT = Font(italic=True, color="4B5563")
+    SUMMARY_LABEL_FONT = Font(bold=True)
+    THIN = Side(style="thin", color="D1D5DB")
+    HEADER_BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
     DAY_TYPE_FILLS = {
         "Full Day": PatternFill("solid", fgColor="D1FAE5"),
         "Half Day": PatternFill("solid", fgColor="FEF3C7"),
         "Leave": PatternFill("solid", fgColor="FEE2E2"),
     }
 
-    def style_header(ws, headers):
-        ws.append(headers)
-        for col_idx in range(1, len(headers) + 1):
-            c = ws.cell(row=1, column=col_idx)
+    def style_header(ws, headers, row=1):
+        for col_idx, h in enumerate(headers, start=1):
+            c = ws.cell(row=row, column=col_idx, value=h)
             c.font = HEADER_FONT
             c.fill = HEADER_FILL
             c.alignment = Alignment(horizontal="center")
-        ws.freeze_panes = "A2"
+            c.border = HEADER_BORDER
+        # A plain coordinate STRING, not ws.cell(...).coordinate -- calling
+        # .cell() to merely read a coordinate still reserves that cell in
+        # openpyxl's internal sheet dimensions, which silently bumps
+        # max_row and shifts every later ws.append() down by one row.
+        ws.freeze_panes = f"A{row + 1}"
 
     def set_widths(ws, widths):
         for i, w in enumerate(widths, start=1):
@@ -497,19 +531,29 @@ def attendance_export_sheets():
             ws_all.cell(row=ws_all.max_row, column=7).fill = fill
     set_widths(ws_all, [12, 10, 10, 18, 14, 18, 12])
 
-    # ── One sheet per active employee, every weekday from the earliest
-    # attendance record through today filled in (no gaps).
-    min_date = min(all_dates) if all_dates else today
-    try:
-        start = _date.fromisoformat(min_date)
-        end = _date.fromisoformat(today)
-    except Exception:
-        start = end = _date.fromisoformat(today)
-
+    # ── Per-employee sheets: each starts from its own real start date
+    # (joined_date override, else that employee's own earliest
+    # daily_attendance record, else today for a brand-new nobody's-logged-
+    # in-yet employee) through today, every WEEKDAY filled in as a row.
     used_titles = set()
+    emp_summaries = []  # collected for the "Summary" overview sheet below
     for emp in active_employees:
         uid = emp["id"]
         name = emp.get("name") or uid
+        joined = str(emp.get("joined_date") or "").strip()
+        start = None
+        if joined:
+            try:
+                start = _date.fromisoformat(joined)
+            except ValueError:
+                logger.warning("attendance_export_sheets: bad joined_date %r for %s", joined, uid)
+        if start is None:
+            own_earliest = earliest_by_user.get(uid)
+            start = _date.fromisoformat(own_earliest) if own_earliest else today_d
+        if start > today_d:
+            start = today_d
+        end = today_d
+
         title = _re.sub(r'[\[\]:\*\?/\\]', "", name)[:31] or uid
         base_title, n = title, 2
         while title in used_titles:
@@ -518,8 +562,16 @@ def attendance_export_sheets():
         used_titles.add(title)
 
         ws = wb.create_sheet(title=title)
+        ws.cell(row=1, column=1, value=f"Attendance -- {name}").font = TITLE_FONT
+        meta_bits = [b for b in [emp.get("role"), emp.get("department")] if b]
+        meta = " | ".join(meta_bits + [f"Period: {start.isoformat()} to {end.isoformat()}"])
+        ws.cell(row=2, column=1, value=meta).font = META_FONT
         style_header(ws, ["Date", "Day", "In", "Out", "Hours Worked", "Day Type",
-                          "Tasks Completed", "Tasks Carried Forward"])
+                          "Tasks Completed", "Tasks Carried Forward"], row=4)
+
+        counts = {"Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0, "In Progress": 0}
+        total_hours = 0.0
+        credit_total = 0.0
         d = start
         while d <= end:
             if d.weekday() < 5:  # Mon-Fri only -- weekends aren't a "Leave"
@@ -532,8 +584,53 @@ def attendance_export_sheets():
                 fill = DAY_TYPE_FILLS.get(day_type)
                 if fill:
                     ws.cell(row=ws.max_row, column=6).fill = fill
+                counts[day_type] = counts.get(day_type, 0) + 1
+                credit_total += _attendance_credit(day_type)
+                if hrs is not None:
+                    total_hours += hrs
             d += _timedelta(days=1)
         set_widths(ws, [12, 12, 10, 10, 14, 12, 14, 18])
+
+        considered = counts["Full Day"] + counts["Half Day"] + counts["Leave"] + counts["Incomplete"]
+        pct = (credit_total / considered * 100) if considered else None
+
+        summary_row = ws.max_row + 2
+        ws.cell(row=summary_row, column=1, value="Summary").font = SUMMARY_LABEL_FONT
+        summary_lines = [
+            ("Full Days", counts["Full Day"]),
+            ("Half Days", counts["Half Day"]),
+            ("Leaves", counts["Leave"]),
+            ("Incomplete (no checkout logged)", counts["Incomplete"]),
+            ("Total Hours Worked", round(total_hours, 1)),
+            ("Attendance %", f"{pct:.1f}%" if pct is not None else "N/A"),
+        ]
+        for i, (label, val) in enumerate(summary_lines, start=1):
+            ws.cell(row=summary_row + i, column=1, value=label).font = SUMMARY_LABEL_FONT
+            ws.cell(row=summary_row + i, column=2, value=val)
+
+        emp_summaries.append({
+            "name": name, "start": start.isoformat(), "full": counts["Full Day"],
+            "half": counts["Half Day"], "leave": counts["Leave"],
+            "incomplete": counts["Incomplete"], "hours": round(total_hours, 1), "pct": pct,
+        })
+
+    # ── "Summary" overview sheet: one row per employee, placed right after
+    # "All" so it's the second tab (before diving into individual sheets).
+    ws_sum = wb.create_sheet(title="Summary", index=1)
+    ws_sum.cell(row=1, column=1, value="Attendance Summary").font = TITLE_FONT
+    ws_sum.cell(row=2, column=1, value=f"As of {today}").font = META_FONT
+    ws_sum.cell(row=3, column=1, value="Legend:").font = META_FONT
+    for j, (label, fill) in enumerate(DAY_TYPE_FILLS.items(), start=2):
+        c = ws_sum.cell(row=3, column=j, value=label)
+        c.fill = fill
+        c.alignment = Alignment(horizontal="center")
+    style_header(ws_sum, ["Employee", "Period Start", "Full Days", "Half Days",
+                          "Leaves", "Incomplete", "Attendance %", "Total Hours Worked"], row=5)
+    for s in emp_summaries:
+        ws_sum.append([s["name"], s["start"], s["full"], s["half"], s["leave"],
+                      s["incomplete"], f"{s['pct']:.1f}%" if s["pct"] is not None else "N/A",
+                      s["hours"]])
+    set_widths(ws_sum, [18, 14, 10, 10, 10, 10, 14, 16])
 
     buf = io.BytesIO()
     wb.save(buf)
