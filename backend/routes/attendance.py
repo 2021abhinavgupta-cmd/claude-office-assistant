@@ -367,6 +367,184 @@ def attendance_export():
     )
 
 
+# Weekday-only Full Day / Half Day / Leave threshold. Matches the >=8h
+# wording the user asked for; anything shorter but with a real checkin is
+# a Half Day, and a weekday with no checkin at all is a Leave.
+_FULL_DAY_HOURS = 8.0
+_INACTIVE_STATUSES = {"inactive", "disabled", "left", "removed", "archived", "former"}
+
+
+def _hours_and_day_type(checkin, checkout, is_today):
+    """(hours:float|None, label:str) for one (checkin_time, checkout_time)
+    pair, both plain 'HH:MM:SS' IST or falsy. No midnight-rollover handling
+    needed -- both are already clamped inside the same work-day window by
+    _clamp_work_time() before they're ever stored."""
+    if not checkin:
+        return None, "Leave"
+    if not checkout:
+        return None, ("In Progress" if is_today else "Incomplete")
+    try:
+        h1, m1, s1 = (int(p) for p in checkin.split(":"))
+        h2, m2, s2 = (int(p) for p in checkout.split(":"))
+        hrs = ((h2 * 3600 + m2 * 60 + s2) - (h1 * 3600 + m1 * 60 + s1)) / 3600.0
+    except Exception:
+        return None, "Incomplete"
+    if hrs < 0:
+        return None, "Incomplete"
+    return round(hrs, 2), ("Full Day" if hrs >= _FULL_DAY_HOURS else "Half Day")
+
+
+@attendance_bp.route("/api/attendance/export-sheets", methods=["GET"])
+def attendance_export_sheets():
+    """An .xlsx workbook (not a flat CSV, so it can hold multiple sheets):
+    one "All" sheet with the same combined view the plain CSV export has
+    (plus a Day Type column), and one additional sheet per active employee
+    with every WEEKDAY from the earliest attendance record through today
+    filled in as its own row -- a day with no checkin at all shows as
+    Leave rather than just being absent from the list."""
+    if not _verified_admin():
+        return "Unauthorized", 403
+
+    import io
+    import re as _re
+    from datetime import date as _date, timedelta as _timedelta
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    from db import get_connection
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT date, user_id, checkin_time, checkout_time FROM daily_attendance ORDER BY date DESC, user_id"
+    )
+    rows = cursor.fetchall()
+    cursor.execute(
+        """SELECT user_id, date,
+                  SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS completed,
+                  SUM(CASE WHEN carried_from IS NOT NULL AND status='pending' THEN 1 ELSE 0 END) AS carried
+           FROM standup_tasks
+           WHERE status != 'deleted'
+           GROUP BY user_id, date"""
+    )
+    task_counts = {(r[0], r[1]): (r[2] or 0, r[3] or 0) for r in cursor.fetchall()}
+    conn.close()
+
+    emp_map = {}
+    active_employees = []
+    try:
+        for e in _load_employees().get("employees", []):
+            emp_map[e["id"]] = e["name"]
+            if e.get("whatsapp"):
+                emp_map[e["whatsapp"]] = e["name"]
+                emp_map[e["whatsapp"].replace("+", "")] = e["name"]
+            if str(e.get("status", "active")).strip().lower() not in _INACTIVE_STATUSES:
+                active_employees.append(e)
+    except Exception:
+        logger.exception("attendance_export_sheets: employee load failed")
+
+    def format_user(uid):
+        if uid in emp_map:
+            return emp_map[uid]
+        if re.match(r"^\+?\d{10,15}$", uid):
+            return f"WhatsApp ({uid[-4:]})"
+        return uid
+
+    by_user_date = {}
+    all_dates = set()
+    for d, uid, cin, cout in rows:
+        by_user_date[(uid, d)] = (cin, cout)
+        all_dates.add(d)
+
+    today = today_ist()
+
+    wb = Workbook()
+    HEADER_FILL = PatternFill("solid", fgColor="1F2937")
+    HEADER_FONT = Font(color="FFFFFF", bold=True)
+    DAY_TYPE_FILLS = {
+        "Full Day": PatternFill("solid", fgColor="D1FAE5"),
+        "Half Day": PatternFill("solid", fgColor="FEF3C7"),
+        "Leave": PatternFill("solid", fgColor="FEE2E2"),
+    }
+
+    def style_header(ws, headers):
+        ws.append(headers)
+        for col_idx in range(1, len(headers) + 1):
+            c = ws.cell(row=1, column=col_idx)
+            c.font = HEADER_FONT
+            c.fill = HEADER_FILL
+            c.alignment = Alignment(horizontal="center")
+        ws.freeze_panes = "A2"
+
+    def set_widths(ws, widths):
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Sheet 1: "All" -- same combined view as the plain CSV export,
+    # plus a Day Type column. Unlike the per-employee sheets below, this
+    # one is NOT filled in with missing-day rows -- it's one row per real
+    # daily_attendance record, same as before.
+    ws_all = wb.active
+    ws_all.title = "All"
+    style_header(ws_all, ["Date", "In", "Out", "Employee", "Tasks Completed",
+                          "Tasks Carried Forward", "Day Type"])
+    for d, uid, cin, cout in rows:
+        completed, carried = task_counts.get((uid, d), (0, 0))
+        _, day_type = _hours_and_day_type(cin, cout, d == today)
+        ws_all.append([d, cin or "", cout or "", format_user(uid), completed, carried, day_type])
+        fill = DAY_TYPE_FILLS.get(day_type)
+        if fill:
+            ws_all.cell(row=ws_all.max_row, column=7).fill = fill
+    set_widths(ws_all, [12, 10, 10, 18, 14, 18, 12])
+
+    # ── One sheet per active employee, every weekday from the earliest
+    # attendance record through today filled in (no gaps).
+    min_date = min(all_dates) if all_dates else today
+    try:
+        start = _date.fromisoformat(min_date)
+        end = _date.fromisoformat(today)
+    except Exception:
+        start = end = _date.fromisoformat(today)
+
+    used_titles = set()
+    for emp in active_employees:
+        uid = emp["id"]
+        name = emp.get("name") or uid
+        title = _re.sub(r'[\[\]:\*\?/\\]', "", name)[:31] or uid
+        base_title, n = title, 2
+        while title in used_titles:
+            title = f"{base_title[:28]}~{n}"
+            n += 1
+        used_titles.add(title)
+
+        ws = wb.create_sheet(title=title)
+        style_header(ws, ["Date", "Day", "In", "Out", "Hours Worked", "Day Type",
+                          "Tasks Completed", "Tasks Carried Forward"])
+        d = start
+        while d <= end:
+            if d.weekday() < 5:  # Mon-Fri only -- weekends aren't a "Leave"
+                dstr = d.isoformat()
+                cin, cout = by_user_date.get((uid, dstr), (None, None))
+                hrs, day_type = _hours_and_day_type(cin, cout, dstr == today)
+                completed, carried = task_counts.get((uid, dstr), (0, 0))
+                ws.append([dstr, d.strftime("%A"), cin or "", cout or "",
+                          hrs if hrs is not None else "", day_type, completed, carried])
+                fill = DAY_TYPE_FILLS.get(day_type)
+                if fill:
+                    ws.cell(row=ws.max_row, column=6).fill = fill
+            d += _timedelta(days=1)
+        set_widths(ws, [12, 12, 10, 10, 14, 12, 14, 18])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return Response(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment;filename=lumina_attendance.xlsx"},
+    )
+
+
 # ── Employee routes ───────────────────────────────────────────────────────────
 
 @attendance_bp.route("/api/employees", methods=["GET"])
