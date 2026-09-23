@@ -15,6 +15,13 @@ Routes:
   GET  /api/companion/not-logged-in                      -- who's missing check-in / standup (nudge target)
   GET  /api/companion/wa-call-outbox                     -- pending announcement calls to place
   POST /api/companion/wa-call-outbox/ack                 -- report calls placed/failed
+  GET  /api/companion/followups                          -- dry run: what the initiative engine sees
+  POST /api/companion/followups/run                      -- force a real follow-up sweep now
+
+Note: the follow-up sweep itself runs on the Railway scheduler
+(task_scheduler._run_followup_sweep), NOT from the laptop -- delivery goes
+through wa_outbox either way, so it needs nothing companion-side. The two
+routes above exist to inspect and hand-trigger it.
 """
 from __future__ import annotations
 
@@ -924,6 +931,42 @@ def companion_digest():
     except Exception:
         logger.exception("companion digest failed")
         return jsonify({"error": "digest failed"}), 500
+
+
+# ── proactive follow-ups (backend/followups.py) ────────────────────────────
+
+@companion_bp.route("/api/companion/followups", methods=["GET"])
+def companion_followups():
+    """What the initiative engine currently sees, WITHOUT sending anything.
+
+    Sends nothing and records nothing -- this is the inspection window into a
+    feature that otherwise only shows itself by messaging people. The sweep
+    itself runs on the Railway scheduler (task_scheduler._run_followup_sweep),
+    not from the laptop, since delivery goes through wa_outbox either way.
+    """
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import followups
+        return jsonify(followups.sweep(dry_run=True))
+    except Exception:
+        logger.exception("companion followups (dry run) failed")
+        return jsonify({"error": "followups failed"}), 500
+
+
+@companion_bp.route("/api/companion/followups/run", methods=["POST"])
+def companion_followups_run():
+    """Force a real sweep now. Still obeys every rail inside sweep() --
+    working-hours window, leave, per-item cooldown, per-person daily cap --
+    so calling this repeatedly can't be used to spam anyone."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import followups
+        return jsonify(followups.sweep())
+    except Exception:
+        logger.exception("companion followups run failed")
+        return jsonify({"error": "followups failed"}), 500
 
 
 # ── uploads archive ────────────────────────────────────────────────────────

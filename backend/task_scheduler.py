@@ -326,6 +326,25 @@ def _run_attendance_sweep():
         logger.warning(f"Attendance sweep failed (non-fatal): {e}")
 
 
+def _run_followup_sweep():
+    """Wraps followups.sweep() for the interval job below.
+
+    Deliberately an INTERVAL job rather than a cron one: followups.sweep()
+    checks the IST weekday + working-hours window itself, so it doesn't
+    matter what timezone this container's clock is in (the 08:00 cron above
+    is whatever the host says 08:00 is). It also means the bot notices a
+    loose end within the hour instead of at two fixed moments, which is the
+    point of the feature.
+    """
+    try:
+        import followups
+        result = followups.sweep()
+        if result.get("sent"):
+            logger.info("Follow-up sweep: messaged %s person(s).", result["sent"])
+    except Exception as e:
+        logger.warning(f"Follow-up sweep failed (non-fatal): {e}")
+
+
 def init_scheduler(app):
     """Call this once from app.py to register the background job."""
     try:
@@ -340,6 +359,12 @@ def init_scheduler(app):
         # unload-event approach was tried once and reverted.
         scheduler.add_job(_run_attendance_sweep, "interval", minutes=3,
                           id="attendance_presence_sweep", replace_existing=True)
+        # Proactive follow-up sweep -- the bot reaching out first about things
+        # that have quietly stalled (backend/followups.py). Its own
+        # working-hours/leave/cooldown/per-person-cap rails keep it quiet;
+        # this interval only decides how soon it can notice.
+        scheduler.add_job(_run_followup_sweep, "interval", minutes=90,
+                          id="followup_sweep", replace_existing=True)
         scheduler.start()
         logger.info(" Task delay scheduler started (runs daily at 08:00).")
 

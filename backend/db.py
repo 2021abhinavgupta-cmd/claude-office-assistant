@@ -219,6 +219,32 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_employee_leave_user "
                      "ON employee_leave(user_id, start_date, end_date)")
 
+        # Standing instructions -- "from now on always..." rules the WhatsApp
+        # agent honours indefinitely (backend/standing_rules.py).
+        conn.execute("""CREATE TABLE IF NOT EXISTS standing_rules (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT NOT NULL,
+            rule        TEXT NOT NULL,
+            remind_day  TEXT DEFAULT '',
+            remind_time TEXT DEFAULT '',
+            active      INTEGER DEFAULT 1,
+            created_at  TEXT DEFAULT (datetime('now'))
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_standing_rules_user "
+                     "ON standing_rules(user_id, active)")
+
+        # Dedup log for the proactive follow-up sweep (backend/followups.py) --
+        # stops one stalled task being mentioned on every sweep.
+        conn.execute("""CREATE TABLE IF NOT EXISTS followup_log (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id   TEXT NOT NULL,
+            kind      TEXT NOT NULL,
+            ref       TEXT NOT NULL,
+            sent_at   TEXT DEFAULT (datetime('now'))
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_followup_log_lookup "
+                     "ON followup_log(user_id, kind, ref, sent_at)")
+
         # Client portal users (separate from employees)
         conn.execute("""CREATE TABLE IF NOT EXISTS client_users (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,

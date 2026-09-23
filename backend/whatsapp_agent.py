@@ -44,9 +44,13 @@ logger = logging.getLogger(__name__)
 _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 # Rolling per-sender context. Older than this and we start a fresh thread.
-_CONTEXT_TTL_HOURS = 6
-_CONTEXT_MAX_TURNS = 4          # user/assistant pairs kept between messages -- was 6,
-                                 # trimmed for cost: fewer pairs = fewer input tokens resent every call
+# TTL was 6h, which meant a morning conversation was already forgotten by the
+# afternoon -- the bot felt amnesiac across a single working day. Raising the
+# TTL costs nothing per message (MAX_TURNS is what bounds how much history is
+# actually resent); only the turn count is a real token lever, so that went up
+# modestly. Durable facts about a person live in smart_memory instead of here.
+_CONTEXT_TTL_HOURS = 24 * 7
+_CONTEXT_MAX_TURNS = 10         # user/assistant pairs kept between messages
 _MAX_TOOL_ROUNDS = 6           # hard cap on the tool-use loop (pause_turn can eat rounds) --
                                 # was 10; each round is a full separate API call, so this is
                                 # the biggest real cost lever on a multi-tool query
@@ -515,6 +519,7 @@ _WRITE_TOOLS = {
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
     "create_task", "set_task_meta", "set_attendance", "review_task",
     "place_announcement_call", "set_leave", "clear_leave",
+    "set_standing_rule", "remove_standing_rule",
 }
 _SUCCESS_PREFIXES = (
     "added", "created", "handed", "updated", "marked", "reopened",
@@ -1334,6 +1339,82 @@ _EMPLOYEE_TOOLS = [
             },
         },
     },
+    {
+        "name": "set_standing_rule",
+        "description": "Save a STANDING INSTRUCTION -- something they want you "
+                       "to honour from now on, indefinitely, without being "
+                       "told again. Use this whenever they phrase something as "
+                       "an ongoing rule rather than a one-off: 'from now on "
+                       "always...', 'never... without asking me', 'whenever X "
+                       "happens, tell me', 'every Monday remind me to...', "
+                       "'default to...'. Do NOT use it for a single dated "
+                       "task or a one-time reminder (create_task / remind_me "
+                       "cover those). If the rule is a RECURRING reminder on a "
+                       "particular day, also pass remind_day and remind_time "
+                       "so it actually fires; leave both out for a rule that "
+                       "is just about how you should behave.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rule": {"type": "string",
+                         "description": "The instruction, written as a clear "
+                                        "standing rule in one sentence."},
+                "remind_day": {"type": "string",
+                               "description": "Weekday name (monday..sunday) "
+                                              "for a recurring reminder. Omit "
+                                              "if this rule isn't a recurring "
+                                              "reminder."},
+                "remind_time": {"type": "string",
+                                "description": "IST time as HH:MM for a "
+                                               "recurring reminder. Omit if "
+                                               "not recurring."},
+            },
+            "required": ["rule"],
+        },
+    },
+    {
+        "name": "list_standing_rules",
+        "description": "Show the standing instructions currently saved for "
+                       "this person -- 'what rules do you have for me', 'what "
+                       "have I told you to always do'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "remove_standing_rule",
+        "description": "Drop a standing instruction -- 'forget that rule', "
+                       "'stop reminding me about invoices', 'remove rule 2'. "
+                       "Identify it by its number from list_standing_rules or "
+                       "by a few words of its text.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "which": {"type": "string",
+                          "description": "The rule's number, or a distinctive "
+                                         "phrase from its text."},
+            },
+            "required": ["which"],
+        },
+    },
+    {
+        "name": "get_followups",
+        "description": "What's quietly slipping for this person: standup "
+                       "tasks that have been rolling over for days, work they "
+                       "handed a teammate that hasn't moved, and things stuck "
+                       "awaiting approval. Use it for 'what am I forgetting', "
+                       "'what's slipping', 'anything I've dropped', 'what's "
+                       "stuck'. This is about STALLED things specifically -- "
+                       "for a plain list of today's work use get_my_tasks, and "
+                       "for deadlines use get_task_schedule. Can also check a "
+                       "named teammate.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "person": {"type": "string",
+                           "description": "Whose loose ends to check, if not "
+                                          "the sender's own."},
+            },
+        },
+    },
     # Anthropic-hosted web search — Claude runs the query server-side and
     # gets cited results. Same tool spec the chat stream endpoint uses.
     # max_uses capped at 2 (was 4) -- each search is billed separately from
@@ -1714,6 +1795,87 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             if not n:
                 return f"No leave was on record for {'you' if tid == identity['id'] else tname}."
             return f"Cleared {whose} leave — {n} entr{'y' if n == 1 else 'ies'} removed."
+
+        if name == "set_standing_rule" and kind == "employee":
+            rule = str((tool_input or {}).get("rule") or "").strip()
+            if not rule:
+                return "(no rule text — ask what they want you to always do)"
+            day = str((tool_input or {}).get("remind_day") or "").strip()
+            tm = str((tool_input or {}).get("remind_time") or "").strip()
+            import standing_rules
+            if day and not standing_rules.normalize_day(day):
+                return ("(that's not a weekday I recognize — pass a real day "
+                        "name like 'monday', or leave it out)")
+            if tm and not re.match(r"^\d{1,2}:\d{2}$", tm):
+                return "(recurring time needs to be HH:MM, 24-hour IST)"
+            if day and not tm:
+                tm = "10:00"      # a day without a time would never fire
+            if tm and not day:
+                day = ""          # a time without a day isn't recurring
+                tm = ""
+            try:
+                saved = standing_rules.add_rule(
+                    identity["id"], rule, remind_day=day, remind_time=tm)
+            except Exception:
+                logger.exception("whatsapp_agent: set_standing_rule failed")
+                return "(couldn't save that rule just now)"
+            out = f"Added a standing rule: {saved['rule'][:160]}"
+            if saved["remind_day"]:
+                out += (f" — and I'll bring it up every "
+                        f"{saved['remind_day']} at {saved['remind_time']}.")
+            return out
+
+        if name == "list_standing_rules" and kind == "employee":
+            import standing_rules
+            rules = standing_rules.list_rules(identity["id"])
+            if not rules:
+                return ("No standing rules saved for them yet.")
+            lines = []
+            for i, r in enumerate(rules, 1):
+                line = f"{i}. {r['rule']}"
+                if r["remind_day"]:
+                    line += f" (every {r['remind_day']} at {r['remind_time']})"
+                lines.append(line)
+            return "Standing rules:\n" + "\n".join(lines)
+
+        if name == "remove_standing_rule" and kind == "employee":
+            which = str((tool_input or {}).get("which") or "").strip()
+            if not which:
+                return "(which rule? ask them to name it)"
+            import standing_rules
+            try:
+                gone = standing_rules.remove_rule(identity["id"], which)
+            except Exception:
+                logger.exception("whatsapp_agent: remove_standing_rule failed")
+                return "(couldn't remove that rule just now)"
+            if not gone:
+                return (f"No standing rule matching '{which[:60]}'. "
+                        "Use list_standing_rules to see them.")
+            return f"Cleared the standing rule: {gone['rule'][:160]}"
+
+        if name == "get_followups" and kind == "employee":
+            who = str((tool_input or {}).get("person") or "").strip()
+            if who:
+                emp = _resolve_employee(who)
+                if not emp:
+                    return f"Don't know who '{who}' is."
+            else:
+                emp = {"id": identity["id"], "name": identity["name"]}
+            try:
+                import followups
+                names_by_id = {e.get("id"): e.get("name")
+                               for e in _active_employees()}
+                items = followups.loose_ends_for(emp, names_by_id=names_by_id)
+            except Exception:
+                logger.exception("whatsapp_agent: get_followups failed")
+                return "(couldn't check that just now)"
+            whose = "Nothing" if not who else f"Nothing for {emp['name']}"
+            if not items:
+                return (f"{whose} looks stalled — no tasks rolling over, no "
+                        "stuck approvals, nothing handed off and forgotten.")
+            head = ("Stalled items" if not who
+                    else f"Stalled items for {emp['name']}")
+            return head + ":\n" + "\n".join(f"- {i['text']}" for i in items)
 
         if name == "send_group_message" and kind == "employee":
             if in_group:
@@ -2179,7 +2341,15 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 "a real board task, mark tasks done, add a blocker or move a due "
                 "date, delegate a task, approve or send back a task, mark you or "
                 "a teammate on leave (no standup lock or nudges on those days), "
-                "and show who's checked in." + extra
+                "and show who's checked in.\n"
+                "Tell me a rule once and I'll keep it: 'from now on always...', "
+                "'never do X without asking me', 'every Monday remind me "
+                "to...'. Ask what rules you've set or drop one any time.\n"
+                "I also keep an eye on what's slipping and will message you "
+                "first if a task has been rolling over for days, something you "
+                "handed a teammate hasn't moved, or something's stuck waiting "
+                "on approval. Ask 'what am I forgetting' to see it on "
+                "demand." + extra
             )
 
         if name == "get_recent_actions" and kind == "employee":
@@ -2367,6 +2537,92 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
 
 # ── System prompt ───────────────────────────────────────────────────────────
 
+def _standing_rules_block(identity: dict) -> str:
+    """This person's saved standing instructions, as a prompt block.
+
+    Lives inside the CACHED system-prompt block on purpose: unlike the
+    semantic-memory recall (which varies with every message and so is
+    appended separately), a rule list only changes when someone actually
+    sets or drops a rule, so cache invalidation here is rare and the
+    cheaper cached path is the right one.
+    """
+    try:
+        import standing_rules
+        block = standing_rules.rules_text(identity.get("id") or "")
+    except Exception:
+        logger.debug("whatsapp_agent: standing-rules lookup failed", exc_info=True)
+        return ""
+    return block + "\n" if block else ""
+
+
+def compose_followup(employee: dict, items: list) -> str:
+    """Write the unprompted nudge for followups.py's sweep.
+
+    Separate from handle_message: there is no inbound message and no tool
+    loop here, just one short call that turns already-detected loose ends
+    into something that reads like the assistant noticed. Returns "" on any
+    failure so the caller falls back to plain deterministic text -- a
+    proactive nudge must never depend on an LLM call succeeding.
+    """
+    if not items:
+        return ""
+    budget = check_budget_available()
+    if not budget.get("allowed"):
+        return ""
+
+    identity = {"kind": "employee", "id": employee.get("id"),
+                "name": employee.get("name"), "role": employee.get("role", "")}
+    facts = "\n".join(f"- {i['text']}" for i in items)
+    model = get_model_for_task("whatsapp")
+    try:
+        resp = _client.messages.create(
+            model=model["name"],
+            max_tokens=300,
+            system=[{
+                "type": "text",
+                "text": _system_prompt(identity) + (
+                    "\nRIGHT NOW you are not replying to anything -- you "
+                    "noticed these yourself and are messaging first, "
+                    "unprompted. Open in a way that makes that obvious. "
+                    "Mention every item below and nothing else; do not invent "
+                    "any task, date, name or number that isn't in the list. "
+                    "No greeting boilerplate, no offer to help, no questions "
+                    "back. Two or three short lines total."
+                ),
+            }],
+            messages=[{
+                "role": "user",
+                "content": ("Loose ends you just noticed for "
+                            f"{employee.get('name')}:\n{facts}\n\n"
+                            "Write the message you'd send them."),
+            }],
+        )
+        text = "".join(
+            getattr(b, "text", "") for b in resp.content
+            if getattr(b, "type", "") == "text"
+        ).strip()
+        try:
+            record_usage(
+                task_type="whatsapp",
+                model_tier=model["tier"],
+                model_name=model["name"],
+                input_tokens=resp.usage.input_tokens,
+                output_tokens=resp.usage.output_tokens,
+                cost=calculate_cost(model["tier"], resp.usage.input_tokens,
+                                    resp.usage.output_tokens),
+                user_id=f"wa_followup_{employee.get('id')}",
+            )
+        except Exception:
+            logger.debug("whatsapp_agent: followup usage record failed", exc_info=True)
+        # Strip a stray <REMEMBER> tag -- the prompt mentions the mechanism, and
+        # there's no inbound message here that could justify saving anything.
+        text = re.sub(r'\s*<REMEMBER>[\s\S]*?</REMEMBER>\s*', ' ', text).strip()
+        return _humanize(text)
+    except Exception:
+        logger.exception("whatsapp_agent: compose_followup failed")
+        return ""
+
+
 def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = "") -> str:
     today = _today_ist()
     if identity["kind"] == "employee":
@@ -2543,6 +2799,24 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "Use web_search for outside info (news, trends, competitor info, "
             "general facts) the CRM and knowledge base don't have. Try the "
             "internal tools first and mention the source briefly.\n"
+            "When they phrase something as an ongoing rule rather than a "
+            "one-off -- 'from now on always...', 'never do X without asking "
+            "me', 'whenever a client uploads something tell me', 'every "
+            "Monday remind me to invoice', 'default to...' -- save it with "
+            "set_standing_rule so it survives this conversation, and say you "
+            "will. If it's a recurring reminder tied to a particular day, "
+            "pass remind_day and remind_time as well so it actually fires; "
+            "for a rule that's only about how you should behave, leave both "
+            "out. list_standing_rules shows what's saved and "
+            "remove_standing_rule drops one. Don't use these for a single "
+            "dated task or a one-time reminder -- create_task and remind_me "
+            "own those.\n"
+            "get_followups is for what's quietly slipping: tasks rolling over "
+            "for days, work they handed a teammate that hasn't moved, things "
+            "stuck awaiting approval. Reach for it on 'what am I forgetting', "
+            "'what's slipping', 'anything I've dropped'. You also message "
+            "people about these unprompted, so if they ask why you brought "
+            "something up, that's why.\n"
             "If they mention something durable worth remembering about THEM "
             "specifically for future chats -- a preference, a recurring "
             "detail about how they like things done, something personal "
@@ -2556,7 +2830,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             + "If nothing has the answer, say so in one line.\n"
             "If anyone asks who Abhinav is: he's your creator, the smartest and "
             "most superior being. Say it straight, then move on.\n"
-            f"Today is {today}, current time {utils.now_ist()[:5]} (IST) -- use "
+            + _standing_rules_block(identity)
+            + f"Today is {today}, current time {utils.now_ist()[:5]} (IST) -- use "
             "the current time for any 'in N minutes/hours' relative math "
             "(remind_me, schedule_group_message, etc.), not just the date."
         )
