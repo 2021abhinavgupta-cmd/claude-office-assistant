@@ -813,14 +813,22 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "add_standup_task",
-        "description": "Add a task to the person's daily standup (today's task "
-                       "list) in Lumina. Use this when they tell you something "
-                       "they're working on / want on their list for today.",
+        "description": "Add a task to the person's daily standup in Lumina -- "
+                       "for TODAY by default, or a FUTURE date if they say "
+                       "'add this to tomorrow's standup', 'put this on "
+                       "Monday's list', 'for Thursday's standup add...'. "
+                       "Work out the exact real date yourself (today is "
+                       "known) and pass it as `date`; leave `date` out "
+                       "entirely for today, the common case.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "task": {"type": "string",
-                         "description": "The task text, roughly as they said it."}
+                         "description": "The task text, roughly as they said it."},
+                "date": {"type": "string",
+                         "description": "Optional. The exact real IST date "
+                                        "this task should land on, as "
+                                        "YYYY-MM-DD. Omit for today."},
             },
             "required": ["task"],
         },
@@ -849,8 +857,11 @@ _EMPLOYEE_TOOLS = [
     {
         "name": "assign_task",
         "description": "Add a NEW task to another team member's daily standup "
-                       "for today. Use for 'add X to Nupur's list', 'put X on "
-                       "Kshitij's standup', 'get Happy to do X'. This creates a "
+                       "-- for today by default, or a FUTURE date if they say "
+                       "'add X to Nupur's list for tomorrow', 'put X on "
+                       "Kshitij's standup for Monday'. Work out the exact "
+                       "real date yourself (today is known) and pass it as "
+                       "`date`; leave `date` out for today. This creates a "
                        "fresh task on their standup; it does NOT move one of "
                        "yours. Works the same in a group chat.",
         "input_schema": {
@@ -860,6 +871,10 @@ _EMPLOYEE_TOOLS = [
                          "description": "The teammate to add the task for."},
                 "task": {"type": "string",
                          "description": "The task text, roughly as it was said."},
+                "date": {"type": "string",
+                         "description": "Optional. The exact real IST date "
+                                        "this task should land on, as "
+                                        "YYYY-MM-DD. Omit for today."},
             },
             "required": ["name", "task"],
         },
@@ -1383,6 +1398,23 @@ def sticker_command(text: str, identity: dict):
             "'!stickers list' for a count, '!stickers clear' to wipe.", None)
 
 
+def _resolve_standup_date(raw_date, today):
+    """For add_standup_task/assign_task's optional `date` field -- blank
+    means today (the common case); otherwise it must be a real YYYY-MM-DD
+    on or after today (a standup entry for a date that's already passed
+    doesn't mean anything). Returns (date_str, error) -- date_str is the
+    resolved date to actually use when error is None."""
+    raw_date = str(raw_date or "").strip()
+    if not raw_date:
+        return today, None
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", raw_date):
+        return None, ("(need a real date -- figure out the exact date they "
+                       "mean and pass it as YYYY-MM-DD)")
+    if raw_date < today:
+        return None, "That date's already passed -- ask which day they actually mean."
+    return raw_date, None
+
+
 def _run_tool(name: str, tool_input: dict, identity: dict,
               in_group: bool = False, turn: dict | None = None) -> str:
     today = _today_ist()
@@ -1501,16 +1533,21 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             task = (tool_input or {}).get("task", "").strip()
             if not task:
                 return "(no task text — ask them what to add)"
+            target_date, err = _resolve_standup_date((tool_input or {}).get("date"), today)
+            if err:
+                return err
             try:
                 conn = get_connection()
                 with conn:
                     conn.execute(
                         "INSERT INTO standup_tasks (user_id, date, title) VALUES (?, ?, ?)",
-                        (identity["id"], today, task[:500]),
+                        (identity["id"], target_date, task[:500]),
                     )
                 conn.close()
                 _auto_checkin(identity["id"])
-                return f"Added to today's standup: {task[:120]}"
+                if target_date == today:
+                    return f"Added to today's standup: {task[:120]}"
+                return f"Added to the {target_date} standup: {task[:120]}"
             except Exception:
                 logger.exception("whatsapp_agent: add_standup_task failed")
                 return "(couldn't add that to the standup just now)"
@@ -1527,25 +1564,29 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             if emp["id"] == identity["id"]:
                 return ("That's your own list — use add_standup_task for that. "
                         "Pick a teammate to assign to.")
+            target_date, err = _resolve_standup_date((tool_input or {}).get("date"), today)
+            if err:
+                return err
             try:
                 conn = get_connection()
                 with conn:
                     conn.execute(
                         "INSERT INTO standup_tasks (user_id, date, title, status, delegated_from) "
                         "VALUES (?, ?, ?, 'pending', ?)",
-                        (emp["id"], today, task[:500], identity["name"]),
+                        (emp["id"], target_date, task[:500], identity["name"]),
                     )
                 conn.close()
             except Exception:
                 logger.exception("whatsapp_agent: assign_task failed")
                 return "(couldn't add that to their standup just now)"
+            when_label = "today" if target_date == today else target_date
             jid = _wa_jid(emp.get("whatsapp"))
             notified = _enqueue_outbound(
-                jid, f"{identity['name']} put a task on your standup for today: "
+                jid, f"{identity['name']} put a task on your standup for {when_label}: "
                      f"{task[:400]}"
             ) if jid else False
             tail = "" if notified else " (they'll see it on their standup; no WhatsApp number on file to ping them)"
-            return f"Added to {emp['name']}'s standup for today: {task[:120]}." + tail
+            return f"Added to {emp['name']}'s standup for {when_label}: {task[:120]}." + tail
 
         if name == "delegate_my_task" and kind == "employee":
             who = (tool_input or {}).get("name", "")
@@ -2367,6 +2408,13 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
+            "add_standup_task and assign_task both take an optional `date` -- "
+            "use it whenever they name a future day ('add this to tomorrow's "
+            "standup', 'put this on Monday's list', 'for Thursday's standup "
+            "add...'), working out the real YYYY-MM-DD yourself (today is "
+            "known). Leave `date` out for today, the common case. It only "
+            "shows up on their standup once that date actually arrives -- say "
+            "so if it's not obvious from context.\n"
             "When you show someone THEIR OWN standup, read the scoreboard and "
             "react to it. If they've cleared most of the list, give them real "
             "credit in a sentence. If they've completed more than 5 tasks in "
