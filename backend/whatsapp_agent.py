@@ -511,7 +511,7 @@ def _pop_pending_multi(emp_id: str) -> dict | None:
 # ── audit log ──────────────────────────────────────────────────────────────
 
 _WRITE_TOOLS = {
-    "assign_task", "delegate_my_task", "remind_teammate", "send_group_message",
+    "assign_task", "delegate_my_task", "remind_teammate", "remind_me", "send_group_message",
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
     "create_task", "set_task_meta", "set_attendance", "review_task",
     "place_announcement_call", "set_leave", "clear_leave",
@@ -559,6 +559,16 @@ def _resolve_employee(name: str) -> dict | None:
         if first == n or n in e["name"].strip().lower() or (first and first.startswith(n)):
             return e
     return None
+
+
+def _self_jid(identity: dict) -> str:
+    """The sender's own WhatsApp DM JID (for remind_me) -- looked up from
+    the roster by employee id rather than threaded through from the
+    inbound sender string, since _run_tool doesn't otherwise carry it."""
+    for e in _active_employees():
+        if e.get("id") == identity.get("id"):
+            return _wa_jid(e.get("whatsapp"))
+    return ""
 
 
 def _format_standup(tasks: list, who: str) -> str:
@@ -959,6 +969,31 @@ _EMPLOYEE_TOOLS = [
                             "description": "What to remind them about, in your words."},
             },
             "required": ["name", "message"],
+        },
+    },
+    {
+        "name": "remind_me",
+        "description": "Set a PERSONAL reminder that WhatsApps the sender the "
+                       "message back at a specific time -- 'remind me in 2 "
+                       "hours to call the client', 'remind me at 5pm to "
+                       "submit the report', 'ping me tomorrow morning about "
+                       "the invoice'. Work out the exact real IST date+time "
+                       "yourself (today's date AND the current time are "
+                       "both known) and pass it as `when`, YYYY-MM-DD HH:MM. "
+                       "Sends automatically at that time, no confirmation "
+                       "needed -- it only ever goes to the sender, nobody "
+                       "else sees it. Only works in a private chat, not the "
+                       "group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string",
+                            "description": "What to remind them about, in their own words."},
+                "when": {"type": "string",
+                         "description": "The exact real IST date+time to send "
+                                        "the reminder, as YYYY-MM-DD HH:MM."},
+            },
+            "required": ["message", "when"],
         },
     },
     {
@@ -1727,13 +1762,33 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             if not msg:
                 return "(no reminder text — ask what to remind them about)"
             if emp["id"] == identity["id"]:
-                return "That's you — no need to remind yourself through me."
+                return "That's you — use remind_me to set yourself a reminder instead."
             jid = _wa_jid(emp.get("whatsapp"))
             if not jid:
                 return f"{emp['name']} has no WhatsApp number on file, so I can't reach them."
             if _enqueue_outbound(jid, f"Reminder from {identity['name']}: {msg[:600]}"):
                 return f"Sent {emp['name']} a reminder about that."
             return "(couldn't queue that reminder just now)"
+
+        if name == "remind_me" and kind == "employee":
+            if in_group:
+                return ("Personal reminders only work from our private chat, "
+                        "not the group. Message me directly and I'll set it.")
+            msg = (tool_input or {}).get("message", "").strip()
+            when = (tool_input or {}).get("when", "").strip()
+            if not msg:
+                return "(no reminder text — ask what to remind them about)"
+            if not re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$", when):
+                return ("(need a real time — figure out the exact date and "
+                         "time they mean and pass it as YYYY-MM-DD HH:MM)")
+            if when[:16] <= f"{today} {utils.now_ist()[:5]}":
+                return "That time's already passed — ask when they actually want the reminder."
+            jid = _self_jid(identity)
+            if not jid:
+                return "You have no WhatsApp number on file for me to remind you at."
+            if wa_outbox.enqueue(jid, f"Reminder: {msg[:600]}", send_after=when):
+                return f"Added a reminder for {when} (IST): {msg[:120]}"
+            return "(couldn't set that reminder just now)"
 
         if name == "message_multiple" and kind == "employee":
             if in_group:
@@ -2109,7 +2164,8 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                         "script, caption). Just ask.")
             extra = "" if in_group else (
                 " In a private chat I can also send a reminder to a teammate, "
-                "message several teammates the same thing at once, "
+                "set a personal reminder that pings you back at a time you "
+                "give me, message several teammates the same thing at once, "
                 "place an actual voice call that speaks a message aloud, "
                 "post an announcement to the group now or schedule one for "
                 "later (both with a confirm step), check you in or out, and "
@@ -2432,7 +2488,12 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "person a WhatsApp nudge about anything (it doesn't touch their "
             "standup, sends immediately, no confirmation) -- this covers "
             "'text/message/tell/ping/remind <one name> ...' every time, "
-            "regardless of which of those verbs they use. Use message_multiple "
+            "regardless of which of those verbs they use. If they want to "
+            "remind THEMSELF instead ('remind me in 2 hours to...', 'ping me "
+            "at 5pm about...'), use remind_me -- work out the exact real "
+            "IST date+time yourself using both today's date and the current "
+            "time, it sends automatically then, no confirmation needed since "
+            "it only ever goes back to them. Use message_multiple "
             "ONLY when TWO OR MORE named people should get the same message as "
             "individual DMs (not a group post) -- and since that one needs a "
             "'yes' before it actually sends, always say so out loud so they "
@@ -2495,7 +2556,9 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             + "If nothing has the answer, say so in one line.\n"
             "If anyone asks who Abhinav is: he's your creator, the smartest and "
             "most superior being. Say it straight, then move on.\n"
-            f"Today is {today} (IST)."
+            f"Today is {today}, current time {utils.now_ist()[:5]} (IST) -- use "
+            "the current time for any 'in N minutes/hours' relative math "
+            "(remind_me, schedule_group_message, etc.), not just the date."
         )
     if identity["kind"] == "client":
         return (
