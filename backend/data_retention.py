@@ -30,11 +30,25 @@ retention window exists:
   wa_call_outbox  -- only ever-terminal rows (sent/failed/expired) pruned;
                      a 'pending' row is never touched regardless of age.
 
+  sheet_edit_log  -- backs the Version History / Restore feature (gotchas
+                     #74/#75), so a blanket age-based delete was originally
+                     left out entirely (a human decision, not automatic).
+                     2026-09-28 round 2: found this table at 326MB of a
+                     350MB database -- one client's Google Sheets sync
+                     reconciliation burst logged ~5,900 versions for a
+                     single task in two days (a runaway-sync failure mode,
+                     not normal editing). Rather than an age cutoff (which
+                     would be the same unreviewed feature-loss decision as
+                     before), this caps each TASK to its most recent
+                     SHEET_EDIT_LOG_KEEP_PER_TASK versions -- generous
+                     enough that no realistic manual editing pattern is
+                     ever affected (a task with fewer versions than the cap
+                     is completely untouched), while closing off unbounded
+                     growth from any future sync malfunction. Restore still
+                     works for every task; only versions beyond what anyone
+                     would plausibly restore to are pruned.
+
 Deliberately NOT touched here, even though they can grow large:
-  sheet_edit_log  -- backs the user-facing Version History / Restore
-                     feature (CLAUDE.md gotchas #74/#75) -- pruning here
-                     means someone can no longer restore an old version.
-                     Left for a human decision, not an automatic one.
   standup_tasks   -- actively queried by date across arbitrary past ranges
                      (Team Standups history picker, Velocity chart) --
                      needs its own careful pass, not a blanket delete.
@@ -63,6 +77,7 @@ logger = logging.getLogger(__name__)
 USAGE_LOGS_RETENTION_DAYS = 180
 WA_ACTION_LOG_RETENTION_DAYS = 180
 WA_CALL_OUTBOX_RETENTION_DAYS = 30
+SHEET_EDIT_LOG_KEEP_PER_TASK = 30
 
 _WA_PRUNED_COST_KEY = "wa_alltime_pruned_cost"
 _WA_PRUNED_CALLS_KEY = "wa_alltime_pruned_calls"
@@ -173,6 +188,38 @@ def _prune_simple(table: str, date_col: str, *, dry_run: bool, days: int,
         conn.close()
 
 
+def _prune_sheet_edit_log(*, dry_run: bool, keep_per_task: int = SHEET_EDIT_LOG_KEEP_PER_TASK) -> dict:
+    """Caps sheet_edit_log to the most recent `keep_per_task` versions PER
+    TASK (see the module docstring for why this is a per-task cap and not
+    an age cutoff). A task with fewer versions than the cap is completely
+    untouched -- this only ever removes the *excess* beyond what any
+    realistic Restore use would need. Uses a window function (ROW_NUMBER,
+    SQLite 3.25+, bundled with Python 3.11 for years) to rank each task's
+    own versions newest-first and delete anything past the cap."""
+    conn = get_connection()
+    try:
+        rank_sql = """SELECT id, ROW_NUMBER() OVER (
+                          PARTITION BY task_id ORDER BY edited_at DESC, id DESC
+                      ) AS rn FROM sheet_edit_log"""
+        count = conn.execute(
+            f"SELECT COUNT(*) FROM ({rank_sql}) WHERE rn > ?", (keep_per_task,)
+        ).fetchone()[0]
+        if count and not dry_run:
+            with conn:
+                conn.execute(
+                    f"DELETE FROM sheet_edit_log WHERE id IN "
+                    f"(SELECT id FROM ({rank_sql}) WHERE rn > ?)",
+                    (keep_per_task,),
+                )
+        return {"table": "sheet_edit_log", "would_delete" if dry_run else "deleted": count,
+                "keep_per_task": keep_per_task}
+    except Exception:
+        logger.exception("data_retention: sheet_edit_log prune failed")
+        return {"table": "sheet_edit_log", "error": "failed"}
+    finally:
+        conn.close()
+
+
 def run_retention_sweep(*, dry_run: bool = False) -> dict:
     """Run every retention rule. Each is independent -- one failing never
     blocks the others. Safe to call as often as you like; a table with
@@ -184,5 +231,6 @@ def run_retention_sweep(*, dry_run: bool = False) -> dict:
         _prune_simple("wa_call_outbox", "created_at", dry_run=dry_run,
                      days=WA_CALL_OUTBOX_RETENTION_DAYS,
                      extra_where="status != 'pending'"),
+        _prune_sheet_edit_log(dry_run=dry_run),
     ]
     return {"dry_run": dry_run, "results": results}
