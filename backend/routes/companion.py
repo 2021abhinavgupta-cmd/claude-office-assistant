@@ -21,6 +21,7 @@ Routes:
   POST /api/companion/storage-cleanup?targets=hf_cache,vacuum -- free space (see docstring for order/safety)
   GET  /api/companion/db-table-sizes                      -- per-table breakdown of app.db itself
   GET  /api/companion/sheet-edit-log-stats                 -- why sheet_edit_log is big (top clients/tasks)
+  GET  /api/companion/client-real-task-count?client_id=    -- read-only: real Notion task count vs. logged task_ids
   GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
   POST /api/companion/retention/run                        -- force a real retention sweep now
 
@@ -1233,6 +1234,41 @@ def companion_sheet_edit_log_stats():
     except Exception:
         logger.exception("companion sheet-edit-log-stats failed")
         return jsonify({"error": "sheet-edit-log stats failed"}), 500
+
+
+@companion_bp.route("/api/companion/client-real-task-count", methods=["GET"])
+def companion_client_real_task_count():
+    """Read-only: how many REAL tasks a client currently has in Notion right
+    now, compared against how many distinct task_ids sheet_edit_log has
+    logged for that same client -- answers "did a sync malfunction actually
+    leave garbage tasks behind in Notion, or was it all created-and-deleted
+    churn that's already gone" without guessing or touching anything.
+    CLAUDE.md gotcha, 2026-09-28 round 2 (Omotec sync burst investigation).
+    ?client_id= is the client's Notion page id (client_notion_id)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    client_id = (request.args.get("client_id") or "").strip()
+    if not client_id:
+        return jsonify({"error": "client_id required"}), 400
+    try:
+        import notion_store
+        if not notion_store.is_configured():
+            return jsonify({"error": "Notion not configured"}), 400
+        real_tasks = notion_store.list_tasks(client_notion_id=client_id)
+        conn = get_connection()
+        logged_task_ids = conn.execute(
+            "SELECT COUNT(DISTINCT task_id) FROM sheet_edit_log WHERE client_id=?", (client_id,)
+        ).fetchone()[0]
+        conn.close()
+        return jsonify({
+            "client_id": client_id,
+            "real_tasks_in_notion_now": len(real_tasks),
+            "distinct_task_ids_ever_logged": logged_task_ids,
+            "sample_titles": [t.get("title") for t in real_tasks[:10]],
+        })
+    except Exception:
+        logger.exception("companion client-real-task-count failed")
+        return jsonify({"error": "check failed"}), 500
 
 
 # ── proactive follow-ups (backend/followups.py) ────────────────────────────
