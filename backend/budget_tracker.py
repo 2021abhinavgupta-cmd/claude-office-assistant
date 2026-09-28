@@ -181,6 +181,21 @@ def get_usage_summary(all_calls: bool = False, month_key: str = None) -> dict:
     all_logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     calls_to_return = all_logs if all_calls else all_logs[:100]
 
+    # data_retention.py's usage_logs pruning deletes rows older than its
+    # retention window and folds their WhatsApp totals into a persisted
+    # app_settings counter before doing so -- add that in here so this
+    # "all-time" figure stays honest even after old rows are gone (every
+    # OTHER number in this function already comes from the separately
+    # persisted `budget` table, unaffected by pruning raw usage_logs rows).
+    try:
+        import data_retention
+        pruned = data_retention.whatsapp_pruned_totals()
+    except Exception:
+        pruned = {"cost": 0.0, "calls": 0, "tokens": 0}
+    wa_all_calls += pruned["calls"]
+    wa_all_cost += pruned["cost"]
+    wa_all_tokens += pruned["tokens"]
+
     wa_month = task_breakdown.get("whatsapp", {"calls": 0, "cost": 0.0})
     whatsapp_summary = {
         "month_calls":      wa_month["calls"],

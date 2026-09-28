@@ -19,6 +19,9 @@ Routes:
   POST /api/companion/followups/run                      -- force a real follow-up sweep now
   GET  /api/companion/storage-report                      -- breakdown of what's using the Railway volume
   POST /api/companion/storage-cleanup?targets=hf_cache,vacuum -- free space (see docstring for order/safety)
+  GET  /api/companion/db-table-sizes                      -- per-table breakdown of app.db itself
+  GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
+  POST /api/companion/retention/run                        -- force a real retention sweep now
 
 Note: the follow-up sweep itself runs on the Railway scheduler
 (task_scheduler._run_followup_sweep), NOT from the laptop -- delivery goes
@@ -1120,6 +1123,49 @@ def companion_storage_cleanup():
     return jsonify(result)
 
 
+@companion_bp.route("/api/companion/db-table-sizes", methods=["GET"])
+def companion_db_table_sizes():
+    """Per-table breakdown of app.db itself -- storage-report only shows
+    app.db as one 350MB blob; this answers 'which TABLE is actually big'.
+    Uses SQLite's built-in dbstat virtual table (real per-table byte usage,
+    not just row counts) when available, falling back to row counts alone
+    if dbstat isn't compiled into this Python's sqlite3 build."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name NOT LIKE 'sqlite_%'")
+        tables = [r[0] for r in cur.fetchall()]
+
+        sizes = {}
+        dbstat_ok = True
+        try:
+            cur.execute("SELECT name, SUM(pgsize) FROM dbstat GROUP BY name")
+            sizes = {r[0]: r[1] for r in cur.fetchall()}
+        except Exception:
+            dbstat_ok = False
+
+        rows = []
+        for t in tables:
+            try:
+                count = cur.execute(f"SELECT COUNT(*) FROM \"{t}\"").fetchone()[0]
+            except Exception:
+                count = None
+            b = sizes.get(t)
+            rows.append({
+                "table": t, "rows": count,
+                "bytes": b, "mb": round(b / 1_000_000, 2) if b else None,
+            })
+        conn.close()
+        rows.sort(key=lambda r: (r["bytes"] or 0, r["rows"] or 0), reverse=True)
+        return jsonify({"dbstat_available": dbstat_ok, "tables": rows})
+    except Exception:
+        logger.exception("companion db-table-sizes failed")
+        return jsonify({"error": "table size report failed"}), 500
+
+
 # ── proactive follow-ups (backend/followups.py) ────────────────────────────
 
 @companion_bp.route("/api/companion/followups", methods=["GET"])
@@ -1154,6 +1200,37 @@ def companion_followups_run():
     except Exception:
         logger.exception("companion followups run failed")
         return jsonify({"error": "followups failed"}), 500
+
+
+# ── data retention (backend/data_retention.py) ─────────────────────────────
+
+@companion_bp.route("/api/companion/retention", methods=["GET"])
+def companion_retention_dry_run():
+    """What the retention sweep would delete right now, without deleting
+    anything. Same inspection-before-acting pattern as
+    GET /api/companion/followups."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import data_retention
+        return jsonify(data_retention.run_retention_sweep(dry_run=True))
+    except Exception:
+        logger.exception("companion retention (dry run) failed")
+        return jsonify({"error": "retention sweep failed"}), 500
+
+
+@companion_bp.route("/api/companion/retention/run", methods=["POST"])
+def companion_retention_run():
+    """Force a real retention sweep now, instead of waiting for the daily
+    03:30 IST scheduled job (task_scheduler.py)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import data_retention
+        return jsonify(data_retention.run_retention_sweep())
+    except Exception:
+        logger.exception("companion retention run failed")
+        return jsonify({"error": "retention sweep failed"}), 500
 
 
 # ── uploads archive ────────────────────────────────────────────────────────

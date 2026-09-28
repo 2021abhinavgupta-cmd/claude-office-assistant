@@ -345,6 +345,24 @@ def _run_followup_sweep():
         logger.warning(f"Follow-up sweep failed (non-fatal): {e}")
 
 
+def _run_data_retention():
+    """Wraps data_retention.run_retention_sweep() for the daily job below --
+    the durable fix for unbounded log-table growth (2026-09-28 disk-full
+    incident). Deliberately a plain cron, not tied to disk pressure: it's
+    cheap, safe to run on a schedule regardless of current usage, and
+    catching growth early beats waiting until the volume is nearly full
+    again."""
+    try:
+        import data_retention
+        result = data_retention.run_retention_sweep()
+        deleted = sum(r.get("deleted", 0) for r in result["results"])
+        if deleted:
+            logger.info("Data retention sweep: deleted %s old row(s) across %s table(s).",
+                       deleted, len(result["results"]))
+    except Exception as e:
+        logger.warning(f"Data retention sweep failed (non-fatal): {e}")
+
+
 def init_scheduler(app):
     """Call this once from app.py to register the background job."""
     try:
@@ -365,6 +383,11 @@ def init_scheduler(app):
         # this interval only decides how soon it can notice.
         scheduler.add_job(_run_followup_sweep, "interval", minutes=90,
                           id="followup_sweep", replace_existing=True)
+        # Data retention -- prunes old rows from tables that have no other
+        # cleanup (usage_logs, wa_action_log, wa_call_outbox). Daily is
+        # plenty; this isn't reacting to anything time-sensitive.
+        scheduler.add_job(_run_data_retention, "cron", hour=3, minute=30,
+                          id="data_retention_sweep", replace_existing=True)
         scheduler.start()
         logger.info(" Task delay scheduler started (runs daily at 08:00).")
 
