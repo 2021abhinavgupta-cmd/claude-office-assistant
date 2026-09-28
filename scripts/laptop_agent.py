@@ -1563,7 +1563,12 @@ def main() -> None:
     # Supersedes the old 10:30 attendance-nag / 11:30 standup-nudge / noon
     # roll-call -- pass --legacy-nudges to keep those too.
     ap.add_argument("--no-login-nudge", action="store_true",
-                    help="turn off the recurring 'you haven't logged in' nudge")
+                    help="turn off the recurring 'you haven't logged in' group ping")
+    ap.add_argument("--login-nudge-dm", action="store_true",
+                    help="also send the personal hourly login-nudge DM "
+                         "(OFF by default as of 2026-09-28 -- user asked to stop "
+                         "the recurring per-person attendance ping; the twice-daily "
+                         "group list at --login-group-times is unaffected)")
     ap.add_argument("--login-nudge-every", type=int, default=3600,
                     help="seconds between personal login-nudge DMs (default 3600 = hourly)")
     ap.add_argument("--login-nudge-start", default="11:20",
@@ -1648,7 +1653,7 @@ def main() -> None:
         "sheets_every": args.sheets_every,
         "outbox_every": args.outbox_every,
         "voice_calls_every": args.voice_calls_every,
-        "login_nudge": not args.no_login_nudge,
+        "login_nudge": args.login_nudge_dm,
         "login_nudge_every": max(60, args.login_nudge_every),
         "login_nudge_start": args.login_nudge_start,
         "login_nudge_end": args.login_nudge_end,
@@ -1722,11 +1727,16 @@ def main() -> None:
         else "OFF (no group)" if not cfg["rollcall_group"] else "OFF (legacy; use --legacy-nudges)",
         bridge_note,
     ))
-    _log("  login-nudge {}".format(
-        f"every {cfg['login_nudge_every']}s {cfg['login_nudge_start']}-{cfg['login_nudge_end']}, "
-        f"group ping {args.login_group_times}"
+    _log("  login-nudge personal-DM {}".format(
+        f"every {cfg['login_nudge_every']}s {cfg['login_nudge_start']}-{cfg['login_nudge_end']}"
         if (cfg["login_nudge"] and cfg["bridge_ok"] and tok)
-        else "OFF (--no-login-nudge)" if not cfg["login_nudge"] else "OFF (needs bridge + token)"))
+        else "OFF (pass --login-nudge-dm to re-enable)" if not cfg["login_nudge"]
+        else "OFF (needs bridge + token)"))
+    _log("  login-nudge group-ping {}".format(
+        f"{args.login_group_times}"
+        if (not args.no_login_nudge and cfg["rollcall_group"] and cfg["bridge_ok"] and tok)
+        else "OFF (--no-login-nudge)" if args.no_login_nudge
+        else "OFF (no group / bridge / token)"))
     _log("  legacy-nudges {}".format(
         "on (standup-nudge + attendance-nag + noon roll-call)" if args.legacy_nudges
         else "off (unified login-nudge replaces them)"))
