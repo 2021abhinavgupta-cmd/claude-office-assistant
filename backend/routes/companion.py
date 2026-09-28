@@ -1070,6 +1070,17 @@ def companion_storage_cleanup():
                   actually try this once 'hf_cache' (or something else) has
                   freed real headroom -- attempting it while free space is
                   ~0 will just error out with "database or disk is full".
+      wal_checkpoint -- PRAGMA wal_checkpoint(TRUNCATE): writes every
+                  pending frame in app.db-wal back into app.db and truncates
+                  the WAL file to 0 bytes. Unlike VACUUM this needs no extra
+                  free space (it moves already-allocated content, it doesn't
+                  build a new copy) -- use this FIRST when a large write
+                  (e.g. a big DELETE) failed partway and left a bloated
+                  app.db-wal holding all the free space hostage (CLAUDE.md
+                  gotcha, 2026-09-28 round 2: a 207K-row DELETE grew the WAL
+                  to 61MB before failing, and the WAL doesn't auto-shrink
+                  back down just because the transaction that grew it
+                  rolled back).
 
     Pass targets=hf_cache,vacuum to do both in one call, in that order.
     """
@@ -1110,6 +1121,27 @@ def companion_storage_cleanup():
             }
         except Exception as e:
             result["vacuum"] = {"error": str(e)}
+
+    if "wal_checkpoint" in targets:
+        db_path_env = os.getenv("DB_PATH", "")
+        db_path = Path(db_path_env) if db_path_env else (db_dir / "app.db")
+        wal_path = db_path.parent / (db_path.name + "-wal")
+        try:
+            before_wal = wal_path.stat().st_size if wal_path.exists() else 0
+            conn = get_connection()
+            row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            conn.close()
+            after_wal = wal_path.stat().st_size if wal_path.exists() else 0
+            result["wal_checkpoint"] = {
+                "before_wal_mb": round(before_wal / 1_000_000, 2),
+                "after_wal_mb": round(after_wal / 1_000_000, 2),
+                # PRAGMA wal_checkpoint returns (busy, log_frames, checkpointed_frames)
+                "busy": bool(row[0]) if row else None,
+                "log_frames": row[1] if row else None,
+                "checkpointed_frames": row[2] if row else None,
+            }
+        except Exception as e:
+            result["wal_checkpoint"] = {"error": str(e)}
 
     try:
         disk_total, disk_used, disk_free = shutil.disk_usage(str(db_dir))

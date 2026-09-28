@@ -188,6 +188,9 @@ def _prune_simple(table: str, date_col: str, *, dry_run: bool, days: int,
         conn.close()
 
 
+SHEET_EDIT_LOG_BATCH_SIZE = 2000
+
+
 def _prune_sheet_edit_log(*, dry_run: bool, keep_per_task: int = SHEET_EDIT_LOG_KEEP_PER_TASK) -> dict:
     """Caps sheet_edit_log to the most recent `keep_per_task` versions PER
     TASK (see the module docstring for why this is a per-task cap and not
@@ -195,22 +198,39 @@ def _prune_sheet_edit_log(*, dry_run: bool, keep_per_task: int = SHEET_EDIT_LOG_
     untouched -- this only ever removes the *excess* beyond what any
     realistic Restore use would need. Uses a window function (ROW_NUMBER,
     SQLite 3.25+, bundled with Python 3.11 for years) to rank each task's
-    own versions newest-first and delete anything past the cap."""
+    own versions newest-first, then deletes anything past the cap in small
+    batches (SHEET_EDIT_LOG_BATCH_SIZE), checkpointing the WAL after each
+    one.
+
+    Batched on purpose, learned the hard way (CLAUDE.md gotcha, 2026-09-28
+    round 2): a first version of this did the whole delete as ONE
+    transaction. On a near-full volume, that grew app.db-wal to 61MB before
+    the transaction failed -- and a failed/rolled-back transaction does NOT
+    shrink the WAL file back down by itself, so the failure left the disk
+    just as full as before, holding hostage space that had just been freed
+    for exactly this purpose. Deleting a few thousand rows at a time and
+    checkpointing between batches keeps the WAL's peak size bounded to one
+    batch's worth of change, regardless of how many rows need deleting in
+    total."""
     conn = get_connection()
     try:
         rank_sql = """SELECT id, ROW_NUMBER() OVER (
                           PARTITION BY task_id ORDER BY edited_at DESC, id DESC
                       ) AS rn FROM sheet_edit_log"""
-        count = conn.execute(
-            f"SELECT COUNT(*) FROM ({rank_sql}) WHERE rn > ?", (keep_per_task,)
-        ).fetchone()[0]
+        ids_to_delete = [r[0] for r in conn.execute(
+            f"SELECT id FROM ({rank_sql}) WHERE rn > ?", (keep_per_task,)
+        ).fetchall()]
+        count = len(ids_to_delete)
         if count and not dry_run:
-            with conn:
-                conn.execute(
-                    f"DELETE FROM sheet_edit_log WHERE id IN "
-                    f"(SELECT id FROM ({rank_sql}) WHERE rn > ?)",
-                    (keep_per_task,),
-                )
+            for i in range(0, count, SHEET_EDIT_LOG_BATCH_SIZE):
+                batch = ids_to_delete[i:i + SHEET_EDIT_LOG_BATCH_SIZE]
+                placeholders = ",".join("?" * len(batch))
+                with conn:
+                    conn.execute(f"DELETE FROM sheet_edit_log WHERE id IN ({placeholders})", batch)
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                except Exception:
+                    pass
         return {"table": "sheet_edit_log", "would_delete" if dry_run else "deleted": count,
                 "keep_per_task": keep_per_task}
     except Exception:
