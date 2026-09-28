@@ -940,8 +940,20 @@ def companion_digest():
 
 def _du(path: Path) -> tuple:
     """(total_bytes, file_count) for a file or a whole directory tree. Never
-    raises -- a permission error or a symlink loop just gets skipped."""
+    raises -- a permission error or a symlink loop just gets skipped.
+
+    Skips symlinks rather than following them (`is_symlink()` checked before
+    `is_file()`, which itself follows a link by default). huggingface_hub's
+    cache layout stores the real weights once under blobs/<hash> and adds a
+    symlink to it under snapshots/<rev>/<filename> -- walking both without
+    this guard double-counts every symlinked model file, which is exactly
+    what happened the first time this route reported hf_cache's size (it
+    read ~2x the real on-disk bytes, confirmed against the real
+    shutil.disk_usage() delta from actually deleting it).
+    """
     if not path.exists():
+        return 0, 0
+    if path.is_symlink():
         return 0, 0
     if path.is_file():
         try:
@@ -953,6 +965,8 @@ def _du(path: Path) -> tuple:
     try:
         for p in path.rglob("*"):
             try:
+                if p.is_symlink():
+                    continue
                 if p.is_file():
                     total += p.stat().st_size
                     count += 1
