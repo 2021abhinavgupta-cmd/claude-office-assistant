@@ -17,6 +17,7 @@ Routes:
   POST /api/companion/wa-call-outbox/ack                 -- report calls placed/failed
   GET  /api/companion/followups                          -- dry run: what the initiative engine sees
   POST /api/companion/followups/run                      -- force a real follow-up sweep now
+  GET  /api/companion/storage-report                      -- breakdown of what's using the Railway volume
 
 Note: the follow-up sweep itself runs on the Railway scheduler
 (task_scheduler._run_followup_sweep), NOT from the laptop -- delivery goes
@@ -931,6 +932,102 @@ def companion_digest():
     except Exception:
         logger.exception("companion digest failed")
         return jsonify({"error": "digest failed"}), 500
+
+
+# ── storage diagnostics (Railway volume full, 2026-09-28) ──────────────────
+
+def _du(path: Path) -> tuple:
+    """(total_bytes, file_count) for a file or a whole directory tree. Never
+    raises -- a permission error or a symlink loop just gets skipped."""
+    if not path.exists():
+        return 0, 0
+    if path.is_file():
+        try:
+            return path.stat().st_size, 1
+        except Exception:
+            return 0, 0
+    total = 0
+    count = 0
+    try:
+        for p in path.rglob("*"):
+            try:
+                if p.is_file():
+                    total += p.stat().st_size
+                    count += 1
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return total, count
+
+
+@companion_bp.route("/api/companion/storage-report", methods=["GET"])
+def companion_storage_report():
+    """What's actually eating the Railway volume -- read-only, no side
+    effects. Built specifically to answer that question without needing
+    Railway CLI/shell access, since this session has neither.
+
+    Breaks down: the live sqlite file + its WAL/SHM (WAL mode never gets
+    cleaned up by itself if nothing ever checkpoints -- see db.py), the
+    RotatingFileHandler's app.log (capped ~15MB, unlikely to be the culprit
+    but reported for completeness), logs/uploads/ (client dependency files
+    and voice notes -- gotcha #32 -- which have NO retention/cleanup policy
+    anywhere in this codebase and are the leading suspect for slow organic
+    growth), and the semantic-KB model cache dir if it exists.
+    """
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import shutil
+        db_dir = Path(__file__).parent.parent.parent / "logs"
+        db_path_env = os.getenv("DB_PATH", "")
+        db_path = Path(db_path_env) if db_path_env else (db_dir / "app.db")
+
+        def entry(label, p):
+            size, count = _du(p)
+            return {"path": str(p), "bytes": size, "mb": round(size / 1_000_000, 2),
+                    "files": count}
+
+        items = [
+            entry("app.db", db_path),
+            entry("app.db-wal", Path(str(db_path) + "-wal")),
+            entry("app.db-shm", Path(str(db_path) + "-shm")),
+            entry("app.log (rotated)", db_dir / "app.log"),
+            entry("uploads/", db_dir / "uploads"),
+            entry("hf_cache/ (semantic KB model)", db_dir / "hf_cache"),
+        ]
+        # Anything else sitting directly in logs/ that isn't one of the above
+        # -- catches a stray file/folder nobody's accounted for.
+        known = {"app.db", "app.db-wal", "app.db-shm", "app.log", "uploads", "hf_cache"}
+        other = []
+        try:
+            for p in db_dir.iterdir():
+                if p.name not in known:
+                    other.append(entry(p.name, p))
+        except Exception:
+            pass
+
+        disk_total, disk_used, disk_free = None, None, None
+        try:
+            disk_total, disk_used, disk_free = shutil.disk_usage(str(db_dir))
+        except Exception:
+            pass
+
+        items_sorted = sorted(items + other, key=lambda x: -x["bytes"])
+        return jsonify({
+            "logs_dir": str(db_dir),
+            "breakdown": items_sorted,
+            "total_accounted_mb": round(sum(i["bytes"] for i in items_sorted) / 1_000_000, 2),
+            "disk": None if disk_total is None else {
+                "total_mb": round(disk_total / 1_000_000, 2),
+                "used_mb": round(disk_used / 1_000_000, 2),
+                "free_mb": round(disk_free / 1_000_000, 2),
+                "used_pct": round(100 * disk_used / disk_total, 1) if disk_total else None,
+            },
+        })
+    except Exception:
+        logger.exception("companion storage-report failed")
+        return jsonify({"error": "storage report failed"}), 500
 
 
 # ── proactive follow-ups (backend/followups.py) ────────────────────────────
