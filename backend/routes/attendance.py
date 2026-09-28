@@ -424,10 +424,20 @@ def attendance_export():
     )
 
 
-# Weekday-only Full Day / Half Day / Leave threshold. Matches the >=8h
-# wording the user asked for; anything shorter but with a real checkin is
-# a Half Day, and a weekday with no checkin at all is a Leave.
-_FULL_DAY_HOURS = 8.0
+# Weekday-only Full Day / Half Day / Leave threshold. Anything shorter but
+# with a real checkin is a Half Day, a weekday with no checkin at all is a
+# Leave. Raised 8 -> 9 hours per explicit user request, 2026-09-28 (same
+# change also defines "overtime" below: hours worked beyond this).
+_FULL_DAY_HOURS = 9.0
+
+
+def _overtime_hours(hrs):
+    """Hours worked beyond _FULL_DAY_HOURS on one day, or None if hrs is
+    None (no checkout yet / no checkin at all -- nothing to compute
+    overtime from). 0.0 for a normal day, never negative."""
+    if hrs is None:
+        return None
+    return round(max(0.0, hrs - _FULL_DAY_HOURS), 2)
 _INACTIVE_STATUSES = {"inactive", "disabled", "left", "removed", "archived", "former"}
 
 
@@ -681,11 +691,12 @@ def attendance_export_sheets():
             f"Period: {start.strftime('%d/%m/%Y')} to {end.strftime('%d/%m/%Y')}"
         ])
         ws.cell(row=2, column=1, value=meta).font = META_FONT
-        style_header(ws, ["Date", "Day", "In", "Out", "Hours Worked", "Day Type",
-                          "Tasks Completed", "Tasks Carried Forward"], row=4)
+        style_header(ws, ["Date", "Day", "In", "Out", "Hours Worked", "Overtime Hours",
+                          "Day Type", "Tasks Completed", "Tasks Carried Forward"], row=4)
 
         counts = {"Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0, "In Progress": 0}
         total_hours = 0.0
+        total_overtime = 0.0
         credit_total = 0.0
         # Per-calendar-month breakdown, in the order months are first seen
         # (chronological, since d walks forward) -- a plain dict already
@@ -697,10 +708,11 @@ def attendance_export_sheets():
                 dstr = d.isoformat()
                 cin, cout = by_user_date.get((uid, dstr), (None, None))
                 hrs, day_type = _hours_and_day_type(cin, cout, dstr == today)
+                overtime = _overtime_hours(hrs)
                 completed, carried = task_counts.get((uid, dstr), (0, 0))
                 cin_obj, cout_obj = _parse_time_obj(cin), _parse_time_obj(cout)
                 ws.append([d, d.strftime("%A"), cin_obj, cout_obj,
-                          hrs if hrs is not None else None, day_type, completed, carried])
+                          hrs if hrs is not None else None, overtime, day_type, completed, carried])
                 r = ws.max_row
                 ws.cell(row=r, column=1).number_format = DATE_FMT
                 if cin_obj is not None:
@@ -709,28 +721,34 @@ def attendance_export_sheets():
                     ws.cell(row=r, column=4).number_format = TIME_FMT
                 if hrs is not None:
                     ws.cell(row=r, column=5).number_format = "0.00"
+                if overtime is not None:
+                    ws.cell(row=r, column=6).number_format = "0.00"
                 fill = DAY_TYPE_FILLS.get(day_type)
                 if fill:
-                    ws.cell(row=r, column=6).fill = fill
-                border_row(ws, r, 8)
+                    ws.cell(row=r, column=7).fill = fill
+                border_row(ws, r, 9)
                 counts[day_type] = counts.get(day_type, 0) + 1
                 credit_total += _attendance_credit(day_type)
                 if hrs is not None:
                     total_hours += hrs
+                if overtime is not None:
+                    total_overtime += overtime
                 mkey = (d.year, d.month)
                 mrow = months.setdefault(mkey, {
                     "Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0,
-                    "In Progress": 0, "hours": 0.0, "credit": 0.0,
+                    "In Progress": 0, "hours": 0.0, "overtime": 0.0, "credit": 0.0,
                 })
                 mrow[day_type] = mrow.get(day_type, 0) + 1
                 mrow["credit"] += _attendance_credit(day_type)
                 if hrs is not None:
                     mrow["hours"] += hrs
+                if overtime is not None:
+                    mrow["overtime"] += overtime
             d += _timedelta(days=1)
         data_end_row = ws.max_row
         if data_end_row >= 5:
-            ws.auto_filter.ref = f"A4:H{data_end_row}"
-        set_widths(ws, [12, 12, 10, 10, 14, 12, 14, 18])
+            ws.auto_filter.ref = f"A4:I{data_end_row}"
+        set_widths(ws, [12, 12, 10, 10, 14, 14, 12, 14, 18])
 
         considered = counts["Full Day"] + counts["Half Day"] + counts["Leave"] + counts["Incomplete"]
         pct = (credit_total / considered) if considered else None
@@ -742,7 +760,7 @@ def attendance_export_sheets():
         ws.cell(row=summary_row, column=1, value="Monthly Summary").font = TITLE_FONT
         month_header_row = summary_row + 1
         style_header_cells(ws, ["Month", "Full Days", "Half Days", "Leaves", "Incomplete",
-                                "Working Days", "Total Hours", "Attendance %"], month_header_row)
+                                "Working Days", "Total Hours", "Overtime Hours", "Attendance %"], month_header_row)
         mrow_idx = month_header_row
         for (yr, mo), m in months.items():
             m_considered = m["Full Day"] + m["Half Day"] + m["Leave"] + m["Incomplete"]
@@ -756,30 +774,34 @@ def attendance_export_sheets():
             ws.cell(row=mrow_idx, column=6, value=m_considered)
             hrs_cell = ws.cell(row=mrow_idx, column=7, value=round(m["hours"], 1))
             hrs_cell.number_format = "0.0"
-            pct_cell = ws.cell(row=mrow_idx, column=8, value=m_pct if m_pct is not None else "N/A")
+            ot_cell = ws.cell(row=mrow_idx, column=8, value=round(m["overtime"], 1))
+            ot_cell.number_format = "0.0"
+            pct_cell = ws.cell(row=mrow_idx, column=9, value=m_pct if m_pct is not None else "N/A")
             if m_pct is not None:
                 pct_cell.number_format = "0.0%"
-            border_row(ws, mrow_idx, 8)
+            border_row(ws, mrow_idx, 9)
         # A bold "Total (All Time)" row underneath every month, using the
         # same aggregate counts the old single Summary block reported.
         total_row = mrow_idx + 1
         total_cells = [
             "Total (All Time)", counts["Full Day"], counts["Half Day"], counts["Leave"],
-            counts["Incomplete"], considered, round(total_hours, 1),
+            counts["Incomplete"], considered, round(total_hours, 1), round(total_overtime, 1),
             pct if pct is not None else "N/A",
         ]
         for col, val in enumerate(total_cells, start=1):
             c = ws.cell(row=total_row, column=col, value=val)
             c.font = SUMMARY_LABEL_FONT
         ws.cell(row=total_row, column=7).number_format = "0.0"
+        ws.cell(row=total_row, column=8).number_format = "0.0"
         if pct is not None:
-            ws.cell(row=total_row, column=8).number_format = "0.0%"
-        border_row(ws, total_row, 8)
+            ws.cell(row=total_row, column=9).number_format = "0.0%"
+        border_row(ws, total_row, 9)
 
         emp_summaries.append({
             "name": name, "start": start, "full": counts["Full Day"],
             "half": counts["Half Day"], "leave": counts["Leave"],
-            "incomplete": counts["Incomplete"], "hours": round(total_hours, 1), "pct": pct,
+            "incomplete": counts["Incomplete"], "hours": round(total_hours, 1),
+            "overtime": round(total_overtime, 1), "pct": pct,
         })
 
     # ── "Summary" overview sheet: one row per employee, placed right after
@@ -795,25 +817,29 @@ def attendance_export_sheets():
         c.alignment = Alignment(horizontal="center")
     ws_sum.cell(
         row=4, column=1,
-        value=("Full Day = worked 8+ hours  |  Half Day = worked under 8 hours "
-               "(but checked in)  |  Leave = no check-in that weekday  |  "
+        value=(f"Full Day = worked {_FULL_DAY_HOURS:g}+ hours  |  Half Day = worked under "
+               f"{_FULL_DAY_HOURS:g} hours (but checked in)  |  Leave = no check-in that weekday  |  "
                "Incomplete = checked in but no checkout was logged  |  "
-               "In Progress = still checked in today, not final yet"),
+               "In Progress = still checked in today, not final yet  |  "
+               f"Overtime = hours worked beyond {_FULL_DAY_HOURS:g} on a day"),
     ).font = META_FONT
     style_header(ws_sum, ["Employee", "Period Start", "Full Days", "Half Days",
-                          "Leaves", "Incomplete", "Attendance %", "Total Hours Worked"], row=6)
+                          "Leaves", "Incomplete", "Attendance %", "Total Hours Worked",
+                          "Total Overtime Hours"], row=6)
     for s in emp_summaries:
         ws_sum.append([s["name"], s["start"], s["full"], s["half"], s["leave"],
-                      s["incomplete"], s["pct"] if s["pct"] is not None else "N/A", s["hours"]])
+                      s["incomplete"], s["pct"] if s["pct"] is not None else "N/A",
+                      s["hours"], s["overtime"]])
         r = ws_sum.max_row
         ws_sum.cell(row=r, column=2).number_format = DATE_FMT
         ws_sum.cell(row=r, column=8).number_format = "0.0"
+        ws_sum.cell(row=r, column=9).number_format = "0.0"
         if s["pct"] is not None:
             ws_sum.cell(row=r, column=7).number_format = "0.0%"
-        border_row(ws_sum, r, 8)
+        border_row(ws_sum, r, 9)
     if ws_sum.max_row >= 7:
-        ws_sum.auto_filter.ref = f"A6:H{ws_sum.max_row}"
-    set_widths(ws_sum, [18, 14, 10, 10, 10, 10, 14, 16])
+        ws_sum.auto_filter.ref = f"A6:I{ws_sum.max_row}"
+    set_widths(ws_sum, [18, 14, 10, 10, 10, 10, 14, 16, 16])
 
     buf = io.BytesIO()
     wb.save(buf)
