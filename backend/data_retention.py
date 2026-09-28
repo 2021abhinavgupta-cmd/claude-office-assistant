@@ -240,6 +240,122 @@ def _prune_sheet_edit_log(*, dry_run: bool, keep_per_task: int = SHEET_EDIT_LOG_
         conn.close()
 
 
+def _real_task_ids_for_client(client_id: str):
+    """Real, currently-existing task ids for one client (Notion page ids, or
+    local SQLite `tasks` ids) -- or None if this can't be reliably
+    determined. Checks google_sheet_links.is_notion if the client is (or
+    was) linked, to pin down which store to trust; otherwise tries Notion
+    first (the more common mode in this app), then the local SQLite `tasks`
+    table. Never raises -- any failure anywhere in here means None."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT is_notion FROM google_sheet_links WHERE client_id=?", (client_id,)
+        ).fetchone()
+    except Exception:
+        row = None
+    finally:
+        conn.close()
+    is_notion_hint = bool(row[0]) if row else None
+
+    def _try_notion():
+        try:
+            import notion_store
+            if not notion_store.is_configured():
+                return None
+            tasks = notion_store.list_tasks(client_notion_id=client_id)
+            return {t.get("notion_id") for t in tasks if t.get("notion_id")}
+        except Exception:
+            logger.exception("data_retention: Notion task lookup failed for client %s", client_id)
+            return None
+
+    def _try_sqlite():
+        try:
+            conn2 = get_connection()
+            rows = conn2.execute("SELECT id FROM tasks WHERE client_id=?", (client_id,)).fetchall()
+            conn2.close()
+            return {str(r[0]) for r in rows}
+        except Exception:
+            return None
+
+    if is_notion_hint is True:
+        return _try_notion()
+    if is_notion_hint is False:
+        return _try_sqlite()
+    return _try_notion() or _try_sqlite()
+
+
+def _prune_orphaned_sheet_edit_log(*, dry_run: bool) -> dict:
+    """Deletes sheet_edit_log rows for a task_id that no longer exists as a
+    real task at all, checked LIVE per client (see
+    _real_task_ids_for_client). Targets exactly the garbage a create-then-
+    delete sync churn leaves behind -- CLAUDE.md gotcha, 2026-09-28 round 2:
+    one client's runaway Google Sheets sync logged ~194,600 distinct
+    phantom task-creation events in a two-day burst, of which only 112
+    tasks still exist for real -- without touching a single row of history
+    for any task that's still real. _prune_sheet_edit_log's per-task cap
+    can't help with this specific shape of bloat (many distinct tasks with
+    1-2 rows each, not one task with many rows), which is why this exists
+    as a separate, complementary rule.
+
+    Deliberately conservative: a client whose real-task lookup can't be
+    confirmed, or comes back completely empty, is SKIPPED ENTIRELY for that
+    client -- this must never be the thing that decides "this client has
+    zero real tasks" off an ambiguous or failed live check (same philosophy
+    as the Google Sheets sync's own empty-snapshot safety guard, gotcha
+    #87). A client with real tasks only ever loses history for task_ids
+    that are provably gone."""
+    conn = get_connection()
+    try:
+        client_ids = [r[0] for r in conn.execute(
+            "SELECT DISTINCT client_id FROM sheet_edit_log"
+        ).fetchall()]
+        total = 0
+        by_client = []
+        for client_id in client_ids:
+            real_ids = _real_task_ids_for_client(client_id)
+            if not real_ids:
+                by_client.append({"client_id": client_id, "skipped": True,
+                                  "reason": "no confirmed real tasks -- never guess-delete"})
+                continue
+            logged_ids = [r[0] for r in conn.execute(
+                "SELECT DISTINCT task_id FROM sheet_edit_log WHERE client_id=?", (client_id,)
+            ).fetchall()]
+            orphaned = [t for t in logged_ids if t not in real_ids]
+            if not orphaned:
+                continue
+            ids_to_delete = []
+            for i in range(0, len(orphaned), 500):
+                chunk = orphaned[i:i + 500]
+                placeholders = ",".join("?" * len(chunk))
+                rows = conn.execute(
+                    f"SELECT id FROM sheet_edit_log WHERE client_id=? AND task_id IN ({placeholders})",
+                    [client_id] + chunk,
+                ).fetchall()
+                ids_to_delete.extend(r[0] for r in rows)
+            count = len(ids_to_delete)
+            if count and not dry_run:
+                for i in range(0, count, SHEET_EDIT_LOG_BATCH_SIZE):
+                    batch = ids_to_delete[i:i + SHEET_EDIT_LOG_BATCH_SIZE]
+                    placeholders = ",".join("?" * len(batch))
+                    with conn:
+                        conn.execute(f"DELETE FROM sheet_edit_log WHERE id IN ({placeholders})", batch)
+                    try:
+                        conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    except Exception:
+                        pass
+            total += count
+            count_key = "rows_would_delete" if dry_run else "rows_deleted"
+            by_client.append({"client_id": client_id, "orphaned_task_ids": len(orphaned), count_key: count})
+        return {"table": "sheet_edit_log_orphans", "would_delete" if dry_run else "deleted": total,
+                "by_client": by_client}
+    except Exception:
+        logger.exception("data_retention: orphaned sheet_edit_log prune failed")
+        return {"table": "sheet_edit_log_orphans", "error": "failed"}
+    finally:
+        conn.close()
+
+
 def run_retention_sweep(*, dry_run: bool = False) -> dict:
     """Run every retention rule. Each is independent -- one failing never
     blocks the others. Safe to call as often as you like; a table with
@@ -252,5 +368,6 @@ def run_retention_sweep(*, dry_run: bool = False) -> dict:
                      days=WA_CALL_OUTBOX_RETENTION_DAYS,
                      extra_where="status != 'pending'"),
         _prune_sheet_edit_log(dry_run=dry_run),
+        _prune_orphaned_sheet_edit_log(dry_run=dry_run),
     ]
     return {"dry_run": dry_run, "results": results}
