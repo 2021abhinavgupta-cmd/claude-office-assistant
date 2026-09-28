@@ -206,10 +206,20 @@ def kb_semantic():
     except Exception as e:
         return jsonify({"available": False, "enabled": False, "error": str(e)}), 200
 
+    # stats() calls available(), which LOADS THE MODEL (downloading it if the
+    # on-disk cache is missing) unconditionally, even just to answer a status
+    # check -- and this route had no auth at all, so anyone/anything hitting
+    # a plain GET could force that download regardless of whether the
+    # feature is even enabled. Root-caused live 2026-09-28: this is what
+    # kept re-filling the volume mid-cleanup after the cache was deleted.
+    # Now requires the same admin-tier user_id every write route in this app
+    # already requires (gotcha #60's bool(user_id) convention).
+    if not (request.args.get("user_id")
+            or (request.get_json(silent=True) or {}).get("user_id")):
+        return jsonify({"error": "user_id required"}), 403
+
     if request.method == "POST":
         body = request.get_json(silent=True) or {}
-        if not (body.get("user_id") or request.args.get("user_id")):
-            return jsonify({"error": "user_id required"}), 403
         enabled = bool(body.get("enabled"))
         semantic_kb.set_enabled(enabled)
         if enabled:
@@ -249,10 +259,15 @@ def memory_smart():
     except Exception as e:
         return jsonify({"available": False, "enabled": False, "error": str(e)}), 200
 
+    # Same issue as GET /api/kb/semantic above, same fix -- stats() forces
+    # the shared embedder to load (downloading it if needed) regardless of
+    # whether this feature is enabled, and GET had no auth at all.
+    if not (request.args.get("user_id")
+            or (request.get_json(silent=True) or {}).get("user_id")):
+        return jsonify({"error": "user_id required"}), 403
+
     if request.method == "POST":
         body = request.get_json(silent=True) or {}
-        if not (body.get("user_id") or request.args.get("user_id")):
-            return jsonify({"error": "user_id required"}), 403
         enabled = bool(body.get("enabled"))
         smart_memory.set_enabled(enabled)
         if enabled:

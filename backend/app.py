@@ -35,7 +35,36 @@ from dotenv import load_dotenv
 import anthropic
 import requests
 
-
+# ── Emergency disk-space guard — MUST run before any local module import ───
+# db.py calls init_db() (opens a real sqlite3 connection + runs migrations)
+# the instant it's imported, and several modules below (kb_retriever,
+# whatsapp_agent, notion_store, ...) import db transitively — so if the
+# persistent volume is completely full, the app can die during import,
+# before main() ever runs, before any request-time try/except gets a
+# chance to help. This runs first, needs ZERO free space to succeed
+# (deleting files never needs headroom the way writing/downloading one
+# does), and only acts when the disk is actually in trouble — on a healthy
+# volume it's a silent no-op. What it clears is semantic_kb.py's downloaded
+# embedding-model cache, which is fully disposable and self-heals: the
+# code is explicitly designed to lazily re-download it the next time
+# semantic search is actually used (see semantic_kb.py's own docstring).
+# Real incident this guards against: 2026-09-28, the volume hit 100% and
+# the app went down with 502s on every route, including /api/health.
+try:
+    import shutil as _boot_shutil
+    _boot_logs_dir = Path(__file__).parent.parent / "logs"
+    os.makedirs(_boot_logs_dir, exist_ok=True)
+    _boot_total, _boot_used, _boot_free = _boot_shutil.disk_usage(str(_boot_logs_dir))
+    if _boot_total and _boot_free < 50_000_000:   # under 50MB free -- critical
+        _boot_hf_cache = _boot_logs_dir / "hf_cache"
+        if _boot_hf_cache.exists():
+            _boot_shutil.rmtree(_boot_hf_cache, ignore_errors=True)
+            print(f"[boot disk-guard] volume was critically full "
+                  f"({_boot_free / 1_000_000:.1f}MB free) -- cleared "
+                  f"hf_cache to let the app start; it re-downloads lazily "
+                  f"on next semantic-search use.", flush=True)
+except Exception as _boot_guard_err:
+    print(f"[boot disk-guard] skipped (non-fatal): {_boot_guard_err}", flush=True)
 
 # Local modules
 from model_router import get_model_for_task, calculate_cost, get_all_routes
