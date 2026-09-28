@@ -18,6 +18,7 @@ Routes:
   GET  /api/companion/followups                          -- dry run: what the initiative engine sees
   POST /api/companion/followups/run                      -- force a real follow-up sweep now
   GET  /api/companion/storage-report                      -- breakdown of what's using the Railway volume
+  POST /api/companion/storage-cleanup?targets=hf_cache,vacuum -- free space (see docstring for order/safety)
 
 Note: the follow-up sweep itself runs on the Railway scheduler
 (task_scheduler._run_followup_sweep), NOT from the laptop -- delivery goes
@@ -39,6 +40,7 @@ from flask import Blueprint, jsonify, request, send_file
 
 from db import get_connection
 import utils
+import shutil
 
 logger = logging.getLogger(__name__)
 companion_bp = Blueprint("companion", __name__)
@@ -978,7 +980,6 @@ def companion_storage_report():
     if not _auth_ok():
         return jsonify({"error": "unauthorized"}), 401
     try:
-        import shutil
         db_dir = Path(__file__).parent.parent.parent / "logs"
         db_path_env = os.getenv("DB_PATH", "")
         db_path = Path(db_path_env) if db_path_env else (db_dir / "app.db")
@@ -1028,6 +1029,81 @@ def companion_storage_report():
     except Exception:
         logger.exception("companion storage-report failed")
         return jsonify({"error": "storage report failed"}), 500
+
+
+@companion_bp.route("/api/companion/storage-cleanup", methods=["POST"])
+def companion_storage_cleanup():
+    """Free space on a nearly-full volume. `targets` (comma-separated query
+    param, default 'hf_cache') selects what to run:
+
+      hf_cache -- deletes semantic_kb.py's downloaded embedding-model cache.
+                  Zero risk: semantic_kb.py is explicitly designed to
+                  re-download the ~30MB model lazily the next time semantic
+                  KB search runs (see CLAUDE.md gotcha #98/#112) -- nothing
+                  else reads this directory. Do this FIRST when the disk is
+                  nearly full.
+      vacuum   -- runs SQLite VACUUM on the live app.db to reclaim space
+                  left behind by deleted rows (SQLite never shrinks a file
+                  on DELETE by itself). Safe even to attempt on a full disk:
+                  VACUUM builds a fresh copy in a temp file first and only
+                  swaps it in atomically at the end, so running out of space
+                  mid-VACUUM just fails cleanly -- the live database is
+                  never touched until the rebuild has fully succeeded. Only
+                  actually try this once 'hf_cache' (or something else) has
+                  freed real headroom -- attempting it while free space is
+                  ~0 will just error out with "database or disk is full".
+
+    Pass targets=hf_cache,vacuum to do both in one call, in that order.
+    """
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    raw = (request.args.get("targets") or request.form.get("targets")
+           or "hf_cache")
+    targets = {t.strip() for t in raw.split(",") if t.strip()}
+    db_dir = Path(__file__).parent.parent.parent / "logs"
+    result = {}
+
+    if "hf_cache" in targets:
+        cache_dir = db_dir / "hf_cache"
+        before_bytes, before_n = _du(cache_dir)
+        try:
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir)
+            result["hf_cache"] = {
+                "freed_mb": round(before_bytes / 1_000_000, 2),
+                "files_removed": before_n,
+            }
+        except Exception as e:
+            result["hf_cache"] = {"error": str(e)}
+
+    if "vacuum" in targets:
+        db_path_env = os.getenv("DB_PATH", "")
+        db_path = Path(db_path_env) if db_path_env else (db_dir / "app.db")
+        try:
+            before = db_path.stat().st_size if db_path.exists() else 0
+            conn = get_connection()
+            conn.execute("VACUUM")
+            conn.close()
+            after = db_path.stat().st_size if db_path.exists() else 0
+            result["vacuum"] = {
+                "before_mb": round(before / 1_000_000, 2),
+                "after_mb": round(after / 1_000_000, 2),
+                "freed_mb": round((before - after) / 1_000_000, 2),
+            }
+        except Exception as e:
+            result["vacuum"] = {"error": str(e)}
+
+    try:
+        disk_total, disk_used, disk_free = shutil.disk_usage(str(db_dir))
+        result["disk_after"] = {
+            "total_mb": round(disk_total / 1_000_000, 2),
+            "used_mb": round(disk_used / 1_000_000, 2),
+            "free_mb": round(disk_free / 1_000_000, 2),
+            "used_pct": round(100 * disk_used / disk_total, 1) if disk_total else None,
+        }
+    except Exception:
+        pass
+    return jsonify(result)
 
 
 # ── proactive follow-ups (backend/followups.py) ────────────────────────────
