@@ -89,6 +89,27 @@ document.documentElement.style.visibility = 'hidden';
   }
 })();
 
+/**
+ * Best-effort browser geolocation, used for the HR-visible location tag on
+ * check-in/checkout (CLAUDE.md gotcha, 2026-09-28). Resolves {lat, lng} or
+ * null on any denial/timeout/unsupported browser -- NEVER throws, and the
+ * caller must never let this block or fail the actual check-in/checkout.
+ */
+function getAttendanceLocation(timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    const t = setTimeout(() => done(null), timeoutMs);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { clearTimeout(t); done({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+      () => { clearTimeout(t); done(null); },
+      { timeout: timeoutMs, maximumAge: 120000 }
+    );
+  });
+}
+window.getAttendanceLocation = getAttendanceLocation;
+
 function sendAttendancePing(authApi, userId) {
   fetch(`${authApi}/api/attendance/ping`, {
     method: "POST",
@@ -105,10 +126,11 @@ window.authLogout = async function () {
   const token = sessionStorage.getItem("_session_token") || localStorage.getItem("_session_token");
   const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
   if (user.user_id) {
+    const loc = await getAttendanceLocation().catch(() => null);
     await fetch(`${authApi}/api/attendance/checkout`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: user.user_id }),
+      body: JSON.stringify({ user_id: user.user_id, ...(loc || {}) }),
       keepalive: true,
     }).catch(() => {});
   }

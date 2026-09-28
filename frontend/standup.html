@@ -262,10 +262,13 @@ function toast(m,t="ok"){
         btn.disabled = true;
         btn.textContent = "Checking in…";
         try {
+          const loc = window.getAttendanceLocation
+            ? await window.getAttendanceLocation().catch(() => null)
+            : null;
           const r = await fetch(`${API}/api/attendance/checkin`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: UID }),
+            body: JSON.stringify({ user_id: UID, ...(loc || {}) }),
           });
           if (!r.ok) throw new Error("checkin " + r.status);
           location.reload();

@@ -73,10 +73,18 @@ def _attendance_payload():
         return {}
 
 
-def _attendance_checkin(user_id: str):
+def _attendance_checkin(user_id: str, lat=None, lng=None):
     """First IST login of day wins. checkin_time is clamped to the work-day
     window (see WORK_START/WORK_END) so a login before 9am doesn't record the
     day as having started at 2am.
+
+    lat/lng are the browser's best-effort navigator.geolocation reading at
+    the moment of check-in (HR-visibility request, 2026-09-28) -- optional,
+    only written the same first-checkin-of-the-day the time itself is, never
+    overwritten by a later call the way checkout is. None whenever the
+    employee's browser doesn't support/denies geolocation, or the call came
+    from somewhere with no browser at all (e.g. the WhatsApp bot's
+    set_attendance tool) -- never blocks the check-in itself either way.
 
     Uses DO UPDATE ... WHERE checkin_time IS NULL rather than DO NOTHING:
     _attendance_ping() (the presence heartbeat) can create today's row first
@@ -92,11 +100,14 @@ def _attendance_checkin(user_id: str):
     with conn:
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO daily_attendance (user_id, date, checkin_time)
-               VALUES (?, ?, ?)
-               ON CONFLICT(user_id, date) DO UPDATE SET checkin_time = excluded.checkin_time
+            """INSERT INTO daily_attendance (user_id, date, checkin_time, checkin_lat, checkin_lng)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(user_id, date) DO UPDATE SET
+                   checkin_time = excluded.checkin_time,
+                   checkin_lat = excluded.checkin_lat,
+                   checkin_lng = excluded.checkin_lng
                WHERE daily_attendance.checkin_time IS NULL""",
-            (user_id, d, t),
+            (user_id, d, t, lat, lng),
         )
         if cur.rowcount > 0:
             conn.execute(
@@ -136,10 +147,15 @@ def _attendance_ping(user_id: str) -> str:
     return t
 
 
-def _attendance_checkout(user_id: str):
+def _attendance_checkout(user_id: str, lat=None, lng=None):
     """Always updates checkout_time to latest IST logout (UPSERT).
     checkout_time is clamped to the work-day window (see WORK_START/WORK_END)
-    so a logout after 10:30pm doesn't stretch the recorded work day later."""
+    so a logout after 10:30pm doesn't stretch the recorded work day later.
+
+    lat/lng: same best-effort browser geolocation as _attendance_checkin()
+    (HR-visibility request, 2026-09-28) -- overwritten on every checkout call
+    the same way checkout_time itself always is (last logout wins), None if
+    unavailable/denied/no browser, never blocks the checkout."""
     d = today_ist()
     t = _clamp_work_time(now_ist())
     ts = datetime.now(IST).isoformat(timespec="seconds")
@@ -147,10 +163,19 @@ def _attendance_checkout(user_id: str):
     with conn:
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO daily_attendance (user_id, date, checkout_time)
-               VALUES (?, ?, ?)
-               ON CONFLICT(user_id, date) DO UPDATE SET checkout_time = excluded.checkout_time""",
-            (user_id, d, t),
+            # checkout_time always advances to this call's time (existing
+            # "latest logout wins" behavior). checkout_lat/lng use COALESCE
+            # the other direction on purpose: a checkout call placed with no
+            # location (e.g. the WhatsApp bot's set_attendance tool, which
+            # has no browser) must not blank out a location a PRIOR checkout
+            # call this same day already captured.
+            """INSERT INTO daily_attendance (user_id, date, checkout_time, checkout_lat, checkout_lng)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(user_id, date) DO UPDATE SET
+                   checkout_time = excluded.checkout_time,
+                   checkout_lat = COALESCE(excluded.checkout_lat, daily_attendance.checkout_lat),
+                   checkout_lng = COALESCE(excluded.checkout_lng, daily_attendance.checkout_lng)""",
+            (user_id, d, t, lat, lng),
         )
         conn.execute(
             "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'out', ?)",
@@ -168,13 +193,29 @@ def _attendance_checkout(user_id: str):
 
 # ── Attendance routes ─────────────────────────────────────────────────────────
 
+def _parse_latlng(body):
+    """Best-effort float parse of optional lat/lng fields off a request body
+    -- (None, None) for anything missing/malformed, never raises. Also
+    range-checked (real latitudes/longitudes only) so a garbled client value
+    can't land in the DB as a number that only looks plausible."""
+    try:
+        lat = float(body.get("lat"))
+        lng = float(body.get("lng"))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+    except (TypeError, ValueError):
+        pass
+    return None, None
+
+
 @attendance_bp.route("/api/attendance/checkin", methods=["POST"])
 def attendance_checkin():
     body = _attendance_payload()
     user_id = str(body.get("user_id", "")).strip()
     if not user_id:
         return jsonify({"error": "user_id required"}), 400
-    date_ist, checkin_time = _attendance_checkin(user_id)
+    lat, lng = _parse_latlng(body)
+    date_ist, checkin_time = _attendance_checkin(user_id, lat, lng)
     return jsonify({
         "success": True,
         "user_id": user_id,
@@ -190,7 +231,8 @@ def attendance_checkout():
     user_id = str(body.get("user_id", "")).strip()
     if not user_id:
         return jsonify({"error": "user_id required"}), 400
-    date_ist, checkout_time = _attendance_checkout(user_id)
+    lat, lng = _parse_latlng(body)
+    date_ist, checkout_time = _attendance_checkout(user_id, lat, lng)
     return jsonify({
         "success": True,
         "user_id": user_id,
@@ -254,7 +296,9 @@ def attendance_summary():
     conn = _attendance_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT date, checkin_time, checkout_time FROM daily_attendance WHERE user_id=? ORDER BY date DESC",
+        """SELECT date, checkin_time, checkout_time,
+                  checkin_lat, checkin_lng, checkout_lat, checkout_lng
+           FROM daily_attendance WHERE user_id=? ORDER BY date DESC""",
         (user_id,),
     )
     rows = cur.fetchall()
@@ -263,7 +307,9 @@ def attendance_summary():
         "user_id": user_id,
         "timezone": "IST",
         "records": [
-            {"date": r[0], "checkin_time": r[1], "checkout_time": r[2]}
+            {"date": r[0], "checkin_time": r[1], "checkout_time": r[2],
+             "checkin_lat": r[3], "checkin_lng": r[4],
+             "checkout_lat": r[5], "checkout_lng": r[6]}
             for r in rows
         ],
     })
@@ -278,13 +324,17 @@ def attendance_today():
     conn = _attendance_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT user_id, checkin_time, checkout_time FROM daily_attendance WHERE date=?",
+        """SELECT user_id, checkin_time, checkout_time,
+                  checkin_lat, checkin_lng, checkout_lat, checkout_lng
+           FROM daily_attendance WHERE date=?""",
         (date_ist,),
     )
     rows = cur.fetchall()
     conn.close()
     records = [
-        {"user_id": r[0], "date": date_ist, "checkin_time": r[1], "checkout_time": r[2]}
+        {"user_id": r[0], "date": date_ist, "checkin_time": r[1], "checkout_time": r[2],
+         "checkin_lat": r[3], "checkin_lng": r[4],
+         "checkout_lat": r[5], "checkout_lng": r[6]}
         for r in rows
     ]
     return jsonify({"date": date_ist, "timezone": "IST", "records": records})
@@ -316,7 +366,9 @@ def attendance_export():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT date, user_id, checkin_time, checkout_time FROM daily_attendance ORDER BY date DESC, user_id"
+        """SELECT date, user_id, checkin_time, checkout_time,
+                  checkin_lat, checkin_lng, checkout_lat, checkout_lng
+           FROM daily_attendance ORDER BY date DESC, user_id"""
     )
     rows = cursor.fetchall()
 
@@ -353,12 +405,17 @@ def attendance_export():
             return f"WhatsApp ({uid[-4:]})"
         return uid
 
+    def _maps_link(lat, lng):
+        return f"https://www.google.com/maps?q={lat},{lng}" if lat is not None and lng is not None else ""
+
     si = StringIO()
     cw = csv.writer(si)
-    cw.writerow(["Date", "In", "Out", "Employee", "Tasks Completed", "Tasks Carried Forward"])
-    for date, user_id, checkin_time, checkout_time in rows:
+    cw.writerow(["Date", "In", "Out", "Employee", "Tasks Completed", "Tasks Carried Forward",
+                 "Location In", "Location Out"])
+    for date, user_id, checkin_time, checkout_time, cin_lat, cin_lng, cout_lat, cout_lng in rows:
         completed, carried = task_counts.get((user_id, date), (0, 0))
-        cw.writerow([date, checkin_time or "", checkout_time or "", format_user(user_id), completed, carried])
+        cw.writerow([date, checkin_time or "", checkout_time or "", format_user(user_id), completed, carried,
+                     _maps_link(cin_lat, cin_lng), _maps_link(cout_lat, cout_lng)])
 
     return Response(
         si.getvalue(),
@@ -459,7 +516,9 @@ def attendance_export_sheets():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT date, user_id, checkin_time, checkout_time FROM daily_attendance ORDER BY date DESC, user_id"
+        """SELECT date, user_id, checkin_time, checkout_time,
+                  checkin_lat, checkin_lng, checkout_lat, checkout_lng
+           FROM daily_attendance ORDER BY date DESC, user_id"""
     )
     rows = cursor.fetchall()
     cursor.execute(
@@ -495,7 +554,7 @@ def attendance_export_sheets():
 
     by_user_date = {}
     earliest_by_user = {}
-    for d, uid, cin, cout in rows:
+    for d, uid, cin, cout, *_loc in rows:
         by_user_date[(uid, d)] = (cin, cout)
         if uid not in earliest_by_user or d < earliest_by_user[uid]:
             earliest_by_user[uid] = d
@@ -550,14 +609,17 @@ def attendance_export_sheets():
     ws_all = wb.active
     ws_all.title = "All"
     ws_all.sheet_properties.tabColor = "374151"
+    def _maps_link(lat, lng):
+        return f"https://www.google.com/maps?q={lat},{lng}" if lat is not None and lng is not None else None
+
     style_header(ws_all, ["Date", "In", "Out", "Employee", "Tasks Completed",
-                          "Tasks Carried Forward", "Day Type"])
-    for d, uid, cin, cout in rows:
+                          "Tasks Carried Forward", "Day Type", "Location In", "Location Out"])
+    for d, uid, cin, cout, cin_lat, cin_lng, cout_lat, cout_lng in rows:
         completed, carried = task_counts.get((uid, d), (0, 0))
         _, day_type = _hours_and_day_type(cin, cout, d == today)
         cin_obj, cout_obj = _parse_time_obj(cin), _parse_time_obj(cout)
         ws_all.append([_date.fromisoformat(d), cin_obj, cout_obj, format_user(uid),
-                       completed, carried, day_type])
+                       completed, carried, day_type, "", ""])
         r = ws_all.max_row
         ws_all.cell(row=r, column=1).number_format = DATE_FMT
         if cin_obj is not None:
@@ -567,10 +629,20 @@ def attendance_export_sheets():
         fill = DAY_TYPE_FILLS.get(day_type)
         if fill:
             ws_all.cell(row=r, column=7).fill = fill
-        border_row(ws_all, r, 7)
+        in_link = _maps_link(cin_lat, cin_lng)
+        if in_link:
+            c = ws_all.cell(row=r, column=8, value="View")
+            c.hyperlink = in_link
+            c.font = Font(color="2563EB", underline="single")
+        out_link = _maps_link(cout_lat, cout_lng)
+        if out_link:
+            c = ws_all.cell(row=r, column=9, value="View")
+            c.hyperlink = out_link
+            c.font = Font(color="2563EB", underline="single")
+        border_row(ws_all, r, 9)
     if ws_all.max_row > 1:
-        ws_all.auto_filter.ref = f"A1:G{ws_all.max_row}"
-    set_widths(ws_all, [12, 10, 10, 18, 14, 18, 12])
+        ws_all.auto_filter.ref = f"A1:I{ws_all.max_row}"
+    set_widths(ws_all, [12, 10, 10, 18, 14, 18, 12, 12, 12])
 
     # ── Per-employee sheets: each starts from its own real start date
     # (joined_date override, else that employee's own earliest

@@ -89,6 +89,14 @@ def init_db():
             conn.execute("ALTER TABLE daily_attendance ADD COLUMN last_seen_at TEXT DEFAULT NULL")
         except Exception:
             pass  # Column already exists
+        # Check-in/check-out geolocation (browser navigator.geolocation, best-effort --
+        # null whenever the employee denies/doesn't have location permission, which
+        # never blocks the check-in/checkout itself). HR-visibility request, 2026-09-28.
+        for _col in ("checkin_lat", "checkin_lng", "checkout_lat", "checkout_lng"):
+            try:
+                conn.execute(f"ALTER TABLE daily_attendance ADD COLUMN {_col} REAL DEFAULT NULL")
+            except Exception:
+                pass  # Column already exists
 
         # Daily standups
         conn.execute("""CREATE TABLE IF NOT EXISTS standups (

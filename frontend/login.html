@@ -461,6 +461,23 @@
       document.getElementById("err-msg").textContent = "";
     }
 
+    // Best-effort browser geolocation for the HR-visible check-in location
+    // tag (CLAUDE.md gotcha, 2026-09-28). Never blocks/fails the login --
+    // resolves null on denial/timeout/unsupported browser.
+    function getAttendanceLocation(timeoutMs = 4000) {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve(null);
+        let settled = false;
+        const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+        const t = setTimeout(() => done(null), timeoutMs);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => { clearTimeout(t); done({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+          () => { clearTimeout(t); done(null); },
+          { timeout: timeoutMs, maximumAge: 120000 }
+        );
+      });
+    }
+
     async function submitPin() {
       document.getElementById("loading").style.display = "block";
       const r = await fetch(`${API}/api/auth/login`, {
@@ -474,10 +491,11 @@
       if (d.success) {
         // Token is now set via HttpOnly cookie
         localStorage.setItem("agency_portal_user", JSON.stringify({ ...d.user, user_id: d.user.id }));
+        const loc = await getAttendanceLocation().catch(() => null);
         await fetch(`${API}/api/attendance/checkin`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: selectedEmp.id })
+          body: JSON.stringify({ user_id: selectedEmp.id, ...(loc || {}) })
         }).catch(() => { });
         redirect(d.user);  // go straight to Dashboard/Tasks
       } else {
