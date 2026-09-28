@@ -20,6 +20,7 @@ Routes:
   GET  /api/companion/storage-report                      -- breakdown of what's using the Railway volume
   POST /api/companion/storage-cleanup?targets=hf_cache,vacuum -- free space (see docstring for order/safety)
   GET  /api/companion/db-table-sizes                      -- per-table breakdown of app.db itself
+  GET  /api/companion/sheet-edit-log-stats                 -- why sheet_edit_log is big (top clients/tasks)
   GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
   POST /api/companion/retention/run                        -- force a real retention sweep now
 
@@ -1164,6 +1165,42 @@ def companion_db_table_sizes():
     except Exception:
         logger.exception("companion db-table-sizes failed")
         return jsonify({"error": "table size report failed"}), 500
+
+
+@companion_bp.route("/api/companion/sheet-edit-log-stats", methods=["GET"])
+def companion_sheet_edit_log_stats():
+    """Diagnostic for a bloated sheet_edit_log (CLAUDE.md gotcha, 2026-09-28
+    round 2): db-table-sizes only says the table is big, this says WHY --
+    which client/task is generating the most versions, and the date range,
+    so a prune policy can be chosen with real numbers instead of a guess."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        total = cur.execute("SELECT COUNT(*) FROM sheet_edit_log").fetchone()[0]
+        distinct_tasks = cur.execute("SELECT COUNT(DISTINCT task_id) FROM sheet_edit_log").fetchone()[0]
+        date_range = cur.execute("SELECT MIN(edited_at), MAX(edited_at) FROM sheet_edit_log").fetchone()
+        cur.execute("""SELECT client_id, COUNT(*) AS c FROM sheet_edit_log
+                       GROUP BY client_id ORDER BY c DESC LIMIT 15""")
+        by_client = [{"client_id": r[0], "rows": r[1]} for r in cur.fetchall()]
+        cur.execute("""SELECT task_id, client_id, COUNT(*) AS c,
+                              MIN(edited_at) AS first_edit, MAX(edited_at) AS last_edit
+                       FROM sheet_edit_log GROUP BY task_id ORDER BY c DESC LIMIT 15""")
+        by_task = [{"task_id": r[0], "client_id": r[1], "rows": r[2],
+                    "first_edit": r[3], "last_edit": r[4]} for r in cur.fetchall()]
+        conn.close()
+        return jsonify({
+            "total_rows": total,
+            "distinct_tasks": distinct_tasks,
+            "avg_rows_per_task": round(total / distinct_tasks, 1) if distinct_tasks else None,
+            "date_range": {"earliest": date_range[0], "latest": date_range[1]},
+            "top_clients_by_row_count": by_client,
+            "top_tasks_by_row_count": by_task,
+        })
+    except Exception:
+        logger.exception("companion sheet-edit-log-stats failed")
+        return jsonify({"error": "sheet-edit-log stats failed"}), 500
 
 
 # ── proactive follow-ups (backend/followups.py) ────────────────────────────
