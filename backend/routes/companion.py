@@ -23,6 +23,7 @@ Routes:
   GET  /api/companion/sheet-edit-log-stats                 -- why sheet_edit_log is big (top clients/tasks)
   GET  /api/companion/client-real-task-count?client_id=    -- read-only: real Notion task count vs. logged task_ids
   GET/POST /api/companion/group-allowlist                  -- view/edit the WhatsApp group allow-list
+  GET  /api/companion/wa-context-keys                       -- recent chat context keys (no content), DM vs group
   GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
   POST /api/companion/retention/run                        -- force a real retention sweep now
 
@@ -1344,6 +1345,30 @@ def companion_group_allowlist():
         logger.exception("companion group-allowlist save failed")
         return jsonify({"error": "save failed"}), 500
     return jsonify({"stored": sorted(ids), "env": env_ids, "effective": sorted(ids | set(env_ids))})
+
+
+@companion_bp.route("/api/companion/wa-context-keys", methods=["GET"])
+def companion_wa_context_keys():
+    """Read-only, keys + timestamps only (never message content): recent
+    whatsapp_agent_context rows. The sender key is 'digits' for a DM or
+    'digits|group_digits' for a group thread (see whatsapp_agent.py) -- so
+    this answers "has a group conversation ever actually been built" without
+    exposing any chat content. Diagnostic for the 2026-09-29 "bot replies to
+    DMs but not in the group" investigation."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT sender, updated_at FROM whatsapp_agent_context ORDER BY updated_at DESC LIMIT 30"
+        ).fetchall()
+        conn.close()
+        return jsonify({
+            "rows": [{"sender": r[0], "updated_at": r[1], "is_group": "|" in r[0]} for r in rows],
+        })
+    except Exception:
+        logger.exception("companion wa-context-keys failed")
+        return jsonify({"error": "check failed"}), 500
 
 
 # ── proactive follow-ups (backend/followups.py) ────────────────────────────
