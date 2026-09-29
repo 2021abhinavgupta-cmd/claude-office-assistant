@@ -22,6 +22,7 @@ Routes:
   GET  /api/companion/db-table-sizes                      -- per-table breakdown of app.db itself
   GET  /api/companion/sheet-edit-log-stats                 -- why sheet_edit_log is big (top clients/tasks)
   GET  /api/companion/client-real-task-count?client_id=    -- read-only: real Notion task count vs. logged task_ids
+  GET/POST /api/companion/group-allowlist                  -- view/edit the WhatsApp group allow-list
   GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
   POST /api/companion/retention/run                        -- force a real retention sweep now
 
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import hmac
 import io
+import json
 import logging
 import os
 import re
@@ -1269,6 +1271,79 @@ def companion_client_real_task_count():
     except Exception:
         logger.exception("companion client-real-task-count failed")
         return jsonify({"error": "check failed"}), 500
+
+
+@companion_bp.route("/api/companion/group-allowlist", methods=["GET", "POST"])
+def companion_group_allowlist():
+    """View/edit the WhatsApp group allow-list via the companion token
+    (STORAGE_SYNC_TOKEN/FLASK_SECRET_KEY) -- the same setting
+    /api/whatsapp/groups manages, but that route is gated by the SEPARATE
+    WHATSAPP_BRIDGE_TOKEN (app.py::_bridge_auth_ok, checked first if set),
+    which isn't always on hand. Same underlying storage
+    (app_settings.whatsapp_group_allowlist, a JSON array, merged at
+    read-time with any WHATSAPP_GROUP_ALLOWLIST env var by
+    whatsapp_agent._group_allowlist()) so a change here takes effect
+    immediately, no redeploy.
+
+      GET                    -> {stored, env, effective}
+      POST {"add": "<id>"}   -> add a group (numeric id or full ...@g.us)
+      POST {"remove": "<id>"} -> remove one
+
+    CLAUDE.md gotcha, 2026-09-29: used to diagnose "the bot replies to DMs
+    but not in the group" -- DM working ruled out a dead bridge, pointing
+    straight at this allow-list.
+    """
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+
+    def _digits(s):
+        return re.sub(r"\D", "", str(s or ""))
+
+    def _load():
+        try:
+            conn = get_connection()
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key='whatsapp_group_allowlist'"
+            ).fetchone()
+            conn.close()
+            if row and row[0]:
+                return [str(x) for x in json.loads(row[0])]
+        except Exception:
+            logger.exception("companion group-allowlist load failed")
+        return []
+
+    env_ids = sorted({_digits(t) for t in re.split(r"[,\s]+", os.getenv("WHATSAPP_GROUP_ALLOWLIST", "")) if _digits(t)})
+    stored = _load()
+
+    if request.method == "GET":
+        return jsonify({
+            "stored": stored,
+            "env": env_ids,
+            "effective": sorted(set(stored) | set(env_ids)),
+        })
+
+    body = request.get_json(silent=True) or {}
+    add_id = _digits(body.get("add", ""))
+    remove_id = _digits(body.get("remove", ""))
+    if not add_id and not remove_id:
+        return jsonify({"error": "pass 'add' or 'remove' with a group id"}), 400
+    ids = set(stored)
+    if add_id:
+        ids.add(add_id)
+    if remove_id:
+        ids.discard(remove_id)
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('whatsapp_group_allowlist', ?)",
+                (json.dumps(sorted(ids)),),
+            )
+        conn.close()
+    except Exception:
+        logger.exception("companion group-allowlist save failed")
+        return jsonify({"error": "save failed"}), 500
+    return jsonify({"stored": sorted(ids), "env": env_ids, "effective": sorted(ids | set(env_ids))})
 
 
 # ── proactive follow-ups (backend/followups.py) ────────────────────────────
