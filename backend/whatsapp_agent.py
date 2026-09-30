@@ -1335,15 +1335,16 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "clear_leave",
-        "description": "Cancel a leave / holiday marking. Use for 'I'm back', "
-                       "'cancel my leave', 'Nupur isn't on leave anymore'. "
-                       "Removes all recorded leave for that person.",
+        "description": "Cancel YOUR OWN still-pending leave request (not yet "
+                       "approved by HR). Use for 'cancel my leave', 'never "
+                       "mind about that leave request', 'undo my leave "
+                       "request'. Only cancels your own pending request(s) "
+                       "-- cannot target a teammate's leave, and does not "
+                       "touch anything HR has already approved (that needs "
+                       "an HR decision, not a self-service undo).",
         "input_schema": {
             "type": "object",
-            "properties": {
-                "person": {"type": "string",
-                           "description": "Whose leave to clear, if not your own."},
-            },
+            "properties": {},
         },
     },
     {
@@ -1776,8 +1777,6 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                     and re.match(r"^\d{4}-\d{2}-\d{2}$", ed)):
                 return ("(tell me the leave dates — e.g. 'today', 'tomorrow', "
                         "'Thu and Fri', or a range)")
-            if max(sd, ed) < today:
-                return "That leave window is entirely in the past — nothing to record."
             leave_type = str(ti.get("leave_type", "full")).strip().lower()
             if leave_type not in ("full", "half"):
                 leave_type = "full"
@@ -1785,7 +1784,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 import leave_store
                 row = leave_store.set_leave(
                     tid, sd, ed, reason=str(ti.get("reason", ""))[:200],
-                    created_by=identity["name"], leave_type=leave_type)
+                    created_by=identity["id"], leave_type=leave_type)
             except Exception:
                 logger.exception("whatsapp_agent: set_leave failed")
                 return "(couldn't save that leave just now)"
@@ -1793,29 +1792,23 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                     else f"{row['start_date']} to {row['end_date']}")
             whose = "you" if tid == identity["id"] else tname
             return (f"Sent {whose} leave for {span} to Noorish for approval. "
-                    f"{'You' if tid == identity['id'] else tname.capitalize()} "
+                    f"{'You' if tid == identity['id'] else tname} "
                     f"will stay locked out of standup and keep getting login "
                     f"nudges until it's approved.")
 
         if name == "clear_leave" and kind == "employee":
-            who = str((tool_input or {}).get("person") or "").strip()
-            if who:
-                emp = _resolve_employee(who)
-                if not emp:
-                    return f"Don't know who '{who}' is."
-                tid, tname = emp["id"], emp["name"]
-            else:
-                tid, tname = identity["id"], identity["name"]
             try:
                 import leave_store
-                n = leave_store.clear_leave(tid)
+                n = leave_store.clear_leave(identity["id"])
             except Exception:
                 logger.exception("whatsapp_agent: clear_leave failed")
                 return "(couldn't clear that just now)"
-            whose = "your" if tid == identity["id"] else f"{tname}'s"
             if not n:
-                return f"No leave was on record for {'you' if tid == identity['id'] else tname}."
-            return f"Cleared {whose} leave request(s) — {n} entr{'y' if n == 1 else 'ies'} removed."
+                return "You have no still-pending leave request to cancel."
+            return (f"Cancelled your pending leave request(s) — {n} "
+                    f"entr{'y' if n == 1 else 'ies'} removed. This doesn't "
+                    f"touch anything already approved, and doesn't affect "
+                    f"anyone else's leave.")
 
         if name == "get_leave_balance" and kind == "employee":
             try:
@@ -2804,8 +2797,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "tomorrow, a range, or for a named teammate), use set_leave with "
             "real YYYY-MM-DD dates -- it sends a request that exempts them "
             "from the standup lock and the login nudges once Noorish (HR) "
-            "approves it, not instantly; clear_leave cancels a still-pending "
-            "request. "
+            "approves it, not instantly; clear_leave cancels the caller's own "
+            "still-pending request (never someone else's). "
             "get_daily_brief for a full status rundown. "
             "get_pending_approvals lists what's awaiting sign-off and "
             "review_task approves or sends one back. For 'what's coming "

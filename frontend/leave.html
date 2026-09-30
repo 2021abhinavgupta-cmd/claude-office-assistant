@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Leave | Agency Portal Assistant</title>
 <script src="auth.js"></script>
+<script src="shared-config.js"></script>
 <style>
 :root {
   --bg: #0a0a0f; --s1: #12121a; --s2: #1a1a26; --bdr: rgba(255,255,255,0.08);
@@ -154,19 +155,28 @@ async function loadPending(){
       wrap.innerHTML = '<div style="color:var(--muted);font-size:.82rem;">No pending requests.</div>';
       return;
     }
-    wrap.innerHTML = d.pending.map(p => `
+    wrap.innerHTML = d.pending.map(p => {
+      const who = esc(empName(p.user_id));
+      const filedBy = p.created_by && p.created_by !== p.user_id
+        ? ` — filed by ${esc(empName(p.created_by))}` : "";
+      return `
       <div class="pending-row">
-        <span>${esc(p.user_id)} — ${esc(p.start_date)}${p.start_date!==p.end_date?" to "+esc(p.end_date):""} (${esc(p.leave_type)})${p.reason?" — "+esc(p.reason):""}</span>
+        <span>${who}${filedBy} — ${esc(p.start_date)}${p.start_date!==p.end_date?" to "+esc(p.end_date):""} (${esc(p.leave_type)})${p.reason?" — "+esc(p.reason):""}</span>
         <span class="pending-actions">
           <button class="btn-approve" onclick="decide(${p.id},'approve')">Approve</button>
           <button class="btn-reject" onclick="decide(${p.id},'reject')">Reject</button>
         </span>
       </div>
-    `).join("");
+    `;
+    }).join("");
   }catch(e){ toast("Couldn't load pending requests","err"); }
 }
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m])); }
+
+function empName(id){
+  return (window.EMP_DICT && window.EMP_DICT[id]) || id;
+}
 
 async function decide(id, action){
   try{
@@ -204,16 +214,23 @@ async function renderCalendar(){
     const info = days[dstr] || {status:"none"};
     const isWeekend = info.status === "weekend";
     const isPending = info.status === "leave_pending";
+    const isApproved = info.status === "leave_approved";
     const dot = ["full","half","leave_approved","leave_pending"].includes(info.status)
       ? `<div class="dot ${info.status}"></div>` : "";
     const clickHandler = isWeekend ? '' : isPending
       ? `onclick="openCancelConfirm(${info.leave_id}, '${dstr}')"`
+      : isApproved
+      ? `onclick="showApprovedInfo('${dstr}')"`
       : `onclick="openApplyModal('${dstr}')"`;
     html += `<div class="cal-day ${isWeekend?'weekend':''}" ${clickHandler}>
       <div>${d}</div>${dot}
     </div>`;
   }
   grid.innerHTML = html;
+}
+
+function showApprovedInfo(dstr){
+  toast(`${dstr} is already an approved leave day. Ask Noorish (HR) if it needs to change.`);
 }
 
 function openApplyModal(dstr){
@@ -258,6 +275,7 @@ async function openCancelConfirm(leaveId, dstr){
 }
 
 (async () => {
+  await loadEmployees();
   await loadBalance();
   await loadPending();
   await renderCalendar();

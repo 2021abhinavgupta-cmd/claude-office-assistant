@@ -90,7 +90,6 @@ assert days["2026-10-07"]["status"] == "half", days["2026-10-07"]
 # an already-approved overlapping row ───────────────────────────────────
 wa_row = leave_store.set_leave("emp002", "2026-12-01", "2026-12-01",
                                 reason="wa", created_by="bot")
-assert wa_row.get("status", "pending") == "pending" or True  # tolerate either shape
 conn = db.get_connection()
 st = conn.execute(
     "SELECT status FROM employee_leave WHERE id=?", (wa_row["id"],)
