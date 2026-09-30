@@ -98,6 +98,29 @@ st = conn.execute(
 assert st == "pending", st
 conn.close()
 
+# ── set_leave persists leave_type (half-day requests must not silently
+# land as full-day, and the no-arg case must still default to "full") ──
+half_row = leave_store.set_leave("emp010", "2026-12-08", "2026-12-08",
+                                  reason="half day", created_by="bot",
+                                  leave_type="half")
+assert half_row["leave_type"] == "half", half_row
+conn = db.get_connection()
+lt = conn.execute(
+    "SELECT leave_type FROM employee_leave WHERE id=?", (half_row["id"],)
+).fetchone()[0]
+assert lt == "half", lt
+conn.close()
+
+default_row = leave_store.set_leave("emp010", "2026-12-09", "2026-12-09",
+                                     reason="no type given", created_by="bot")
+assert default_row["leave_type"] == "full", default_row
+conn = db.get_connection()
+lt2 = conn.execute(
+    "SELECT leave_type FROM employee_leave WHERE id=?", (default_row["id"],)
+).fetchone()[0]
+assert lt2 == "full", lt2
+conn.close()
+
 # an approved row for emp002 elsewhere must survive a second set_leave call
 # that doesn't overlap it
 approved_row = leave_store.apply_leave("emp002", "2026-12-20", "2026-12-20")

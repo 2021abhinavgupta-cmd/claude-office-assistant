@@ -77,7 +77,7 @@ def _ensure_overtime_ledger(conn) -> None:
 
 def set_leave(user_id: str, start_date: str, end_date: str,
               reason: str = "", created_by: str = "",
-              status: str = "pending") -> dict:
+              status: str = "pending", leave_type: str = "full") -> dict:
     """Record a leave request for one person, defaulting to 'pending' --
     the WhatsApp bot's set_leave tool calls this. Only overlapping
     *pending* rows for this user are replaced first (re-requesting the
@@ -87,6 +87,8 @@ def set_leave(user_id: str, start_date: str, end_date: str,
         start_date, end_date = end_date, start_date
     if status not in ("pending", "approved"):
         status = "pending"
+    if leave_type not in ("full", "half"):
+        leave_type = "full"
     conn = get_connection()
     try:
         _ensure(conn)
@@ -98,13 +100,14 @@ def set_leave(user_id: str, start_date: str, end_date: str,
             )
             cur = conn.execute(
                 "INSERT INTO employee_leave "
-                "(user_id, start_date, end_date, reason, created_by, status) "
-                "VALUES (?,?,?,?,?,?)",
-                (user_id, start_date, end_date, reason or "", created_by or "", status),
+                "(user_id, start_date, end_date, reason, created_by, status, leave_type) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (user_id, start_date, end_date, reason or "", created_by or "", status,
+                 leave_type),
             )
         return {"id": cur.lastrowid, "user_id": user_id,
                 "start_date": start_date, "end_date": end_date,
-                "reason": reason or "", "status": status}
+                "reason": reason or "", "status": status, "leave_type": leave_type}
     finally:
         conn.close()
 

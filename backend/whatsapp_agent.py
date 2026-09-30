@@ -1785,7 +1785,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 import leave_store
                 row = leave_store.set_leave(
                     tid, sd, ed, reason=str(ti.get("reason", ""))[:200],
-                    created_by=identity["name"])
+                    created_by=identity["name"], leave_type=leave_type)
             except Exception:
                 logger.exception("whatsapp_agent: set_leave failed")
                 return "(couldn't save that leave just now)"
