@@ -203,9 +203,13 @@ async function renderCalendar(){
     const dstr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const info = days[dstr] || {status:"none"};
     const isWeekend = info.status === "weekend";
+    const isPending = info.status === "leave_pending";
     const dot = ["full","half","leave_approved","leave_pending"].includes(info.status)
       ? `<div class="dot ${info.status}"></div>` : "";
-    html += `<div class="cal-day ${isWeekend?'weekend':''}" ${isWeekend?'':`onclick="openApplyModal('${dstr}')"`}>
+    const clickHandler = isWeekend ? '' : isPending
+      ? `onclick="openCancelConfirm(${info.leave_id}, '${dstr}')"`
+      : `onclick="openApplyModal('${dstr}')"`;
+    html += `<div class="cal-day ${isWeekend?'weekend':''}" ${clickHandler}>
       <div>${d}</div>${dot}
     </div>`;
   }
@@ -235,6 +239,21 @@ async function submitApply(){
     toast("Leave request sent for approval");
     closeApplyModal();
     renderCalendar();
+  }catch(e){ toast("Network error","err"); }
+}
+
+async function openCancelConfirm(leaveId, dstr){
+  if (!confirm(`Cancel your pending leave request for ${dstr}?`)) return;
+  try{
+    const r = await fetch(`${API}/api/leave/${leaveId}/cancel`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: UID}),
+    });
+    const d = await r.json();
+    if (!r.ok){ toast(d.error || "Failed to cancel", "err"); return; }
+    toast("Request cancelled");
+    await loadBalance();
+    await renderCalendar();
   }catch(e){ toast("Network error","err"); }
 }
 

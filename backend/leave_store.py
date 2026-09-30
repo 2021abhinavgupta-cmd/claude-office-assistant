@@ -357,7 +357,7 @@ def calendar_days(user_id: str, year: int, month: int) -> dict:
         att_by_date = {r[0]: (r[1], r[2]) for r in att_rows}
 
         leave_rows = conn.execute(
-            "SELECT start_date, end_date, status FROM employee_leave "
+            "SELECT id, start_date, end_date, status FROM employee_leave "
             "WHERE user_id=? AND status IN ('approved','pending') "
             "AND start_date <= ? AND end_date >= ?",
             (user_id, f"{year:04d}-{month:02d}-{_cal.monthrange(year, month)[1]:02d}",
@@ -376,13 +376,15 @@ def calendar_days(user_id: str, year: int, month: int) -> dict:
             continue
 
         leave_status = None
-        for sd, ed, st in leave_rows:
+        leave_id = None
+        for lid, sd, ed, st in leave_rows:
             if sd <= dstr <= ed:
                 leave_status = "leave_approved" if st == "approved" else "leave_pending"
+                leave_id = lid
                 if st == "approved":
                     break  # approved wins over a coincidentally-also-pending row
         if leave_status:
-            out[dstr] = {"status": leave_status, "hours": None}
+            out[dstr] = {"status": leave_status, "hours": None, "leave_id": leave_id}
             continue
 
         cin, cout = att_by_date.get(dstr, (None, None))
