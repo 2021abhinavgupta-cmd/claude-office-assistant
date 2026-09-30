@@ -82,12 +82,14 @@ def set_leave(user_id: str, start_date: str, end_date: str,
     the WhatsApp bot's set_leave tool calls this. Only overlapping
     *pending* rows for this user are replaced first (re-requesting the
     same days doesn't pile up duplicates); an already-approved row is
-    never touched here."""
+    never touched here. `leave_type` ('full' or 'half') is normalized
+    permissively — an invalid value silently falls back to 'full' rather
+    than raising, unlike apply_leave()'s strict validation."""
     if end_date < start_date:
         start_date, end_date = end_date, start_date
     if status not in ("pending", "approved"):
         status = "pending"
-    if leave_type not in ("full", "half"):
+    if leave_type not in VALID_LEAVE_TYPES:
         leave_type = "full"
     conn = get_connection()
     try:
