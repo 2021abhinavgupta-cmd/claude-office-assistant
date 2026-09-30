@@ -19,7 +19,8 @@ routes, the scheduler, and the agent alike.
 from __future__ import annotations
 
 import logging
-from datetime import date as _date
+import sqlite3
+from datetime import date as _date, timedelta
 
 from db import get_connection
 from utils import today_ist
@@ -45,6 +46,23 @@ _DDL = """CREATE TABLE IF NOT EXISTS employee_leave (
     approved_by TEXT DEFAULT NULL,
     approved_at TEXT DEFAULT NULL
 )"""
+
+_COMP_OFF_LEDGER_DDL = """CREATE TABLE IF NOT EXISTS comp_off_ledger (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         TEXT NOT NULL,
+    days            REAL NOT NULL,
+    source_ot_hours REAL NOT NULL,
+    created_at      TEXT DEFAULT (datetime('now'))
+)"""
+
+# comp_off_ledger.created_at is UTC (SQLite datetime('now')), matching how
+# every other timestamp in this module and in db.py is stored. The leave
+# YEAR, though, is an IST calendar-year question -- so the read side shifts
+# the stored UTC value by +5:30 before bucketing it, rather than storing an
+# IST timestamp and breaking consistency with every other created_at in the
+# schema. COALESCE keeps a row with an unparseable timestamp comparing on
+# its raw string instead of silently vanishing.
+_COMP_OFF_IST_EXPR = "COALESCE(datetime(created_at, '+330 minutes'), created_at)"
 
 _OVERTIME_LEDGER_DDL = """CREATE TABLE IF NOT EXISTS overtime_ledger (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,18 +91,36 @@ def _ensure_overtime_ledger(conn) -> None:
     conn.execute(_OVERTIME_LEDGER_DDL)
 
 
+def _ensure_comp_off_ledger(conn) -> None:
+    """Deliberately called from WRITE paths only. get_balance() used to run
+    this DDL inline on every single read — and it is read on every leave
+    page load, every WhatsApp balance check, and once per employee inside
+    the Excel export loop. db.init_db() creates the table, so the read path
+    tolerates its absence with a try/except instead."""
+    conn.execute(_COMP_OFF_LEDGER_DDL)
+
+
 # ── low-level WhatsApp-facing API (existing, gotcha #119) ──────────────
 
 def set_leave(user_id: str, start_date: str, end_date: str,
               reason: str = "", created_by: str = "",
               status: str = "pending", leave_type: str = "full") -> dict:
     """Record a leave request for one person, defaulting to 'pending' --
-    the WhatsApp bot's set_leave tool calls this. Only overlapping
-    *pending* rows for this user are replaced first (re-requesting the
-    same days doesn't pile up duplicates); an already-approved row is
-    never touched here. `leave_type` ('full' or 'half') is normalized
-    permissively — an invalid value silently falls back to 'full' rather
-    than raising, unlike apply_leave()'s strict validation."""
+    the WhatsApp bot's set_leave tool calls this.
+
+    Raises ValueError if the window overlaps a leave already APPROVED for
+    this person, exactly like apply_leave() does: an approved day that
+    gets requested and approved twice is deducted from the pool twice, so
+    the conversational path must not be a way around that guard.
+
+    An overlapping still-PENDING request is instead *superseded* — marked
+    'cancelled' (never deleted, so the audit trail survives) and replaced
+    by this one. Restating a request over chat ("actually make Thursday a
+    half day") should update it, not error.
+
+    `leave_type` ('full' or 'half') is normalized permissively — an
+    invalid value silently falls back to 'full' rather than raising,
+    unlike apply_leave()'s strict validation."""
     if end_date < start_date:
         start_date, end_date = end_date, start_date
     if status not in ("pending", "approved"):
@@ -94,10 +130,13 @@ def set_leave(user_id: str, start_date: str, end_date: str,
     conn = get_connection()
     try:
         _ensure(conn)
+        if _overlapping_status(conn, user_id, start_date, end_date,
+                               statuses=("approved",)):
+            raise ValueError("overlaps a leave window already approved for this person")
         with conn:
             conn.execute(
-                "DELETE FROM employee_leave WHERE user_id=? AND status='pending' "
-                "AND NOT (end_date < ? OR start_date > ?)",
+                "UPDATE employee_leave SET status='cancelled' WHERE user_id=? "
+                "AND status='pending' AND NOT (end_date < ? OR start_date > ?)",
                 (user_id, start_date, end_date),
             )
             cur = conn.execute(
@@ -114,33 +153,44 @@ def set_leave(user_id: str, start_date: str, end_date: str,
         conn.close()
 
 
-def clear_leave(user_id: str, on_date: str | None = None) -> int:
-    """Remove pending/approved leave for `user_id` that hasn't already
-    finished. With `on_date`, only the window(s) covering that date;
-    without it, every current/future pending or approved window. Never
-    touches leave that has already fully elapsed (start_date/end_date in
-    the past) — that's history, not something to silently erase."""
-    today = today_ist()
+def cancel_pending_for_user(user_id: str, on_date: str | None = None) -> int:
+    """Cancel every still-PENDING request belonging to `user_id` (or only
+    the one(s) covering `on_date`). Returns how many were cancelled.
+
+    Same semantics as cancel_leave(), just addressed by user instead of by
+    row id: a status transition to 'cancelled', own rows only, pending
+    only. An APPROVED row is never touched — undoing HR's decision is an
+    HR action, not something an employee can do by messaging "I'm back",
+    and a hard delete would also silently refund balance with no trace of
+    the leave that was actually granted."""
     conn = get_connection()
     try:
         _ensure(conn)
         with conn:
             if on_date:
                 cur = conn.execute(
-                    "DELETE FROM employee_leave WHERE user_id=? "
-                    "AND status IN ('pending','approved') "
-                    "AND start_date <= ? AND end_date >= ? AND end_date >= ?",
-                    (user_id, on_date, on_date, today),
+                    "UPDATE employee_leave SET status='cancelled' WHERE user_id=? "
+                    "AND status='pending' AND start_date <= ? AND end_date >= ?",
+                    (user_id, on_date, on_date),
                 )
             else:
                 cur = conn.execute(
-                    "DELETE FROM employee_leave WHERE user_id=? "
-                    "AND status IN ('pending','approved') AND end_date >= ?",
-                    (user_id, today),
+                    "UPDATE employee_leave SET status='cancelled' "
+                    "WHERE user_id=? AND status='pending'",
+                    (user_id,),
                 )
         return cur.rowcount or 0
     finally:
         conn.close()
+
+
+def clear_leave(user_id: str, on_date: str | None = None) -> int:
+    """DEPRECATED — retained only as a safe alias so nothing can reach the
+    old hard-DELETE behaviour. It used to `DELETE FROM employee_leave ...
+    status IN ('pending','approved')`, which wiped HR-approved rows
+    outright (losing approved_by/approved_at) and silently refunded the
+    balance. Delegates to cancel_pending_for_user() instead."""
+    return cancel_pending_for_user(user_id, on_date=on_date)
 
 
 def is_on_leave(user_id: str, date_str: str) -> bool:
@@ -186,21 +236,36 @@ def active_leave(user_id: str, date_str: str) -> dict | None:
 
 # ── approval workflow ────────────────────────────────────────────────────
 
-def _overlaps_approved(conn, user_id: str, start_date: str, end_date: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM employee_leave WHERE user_id=? AND status='approved' "
-        "AND NOT (end_date < ? OR start_date > ?) LIMIT 1",
-        (user_id, start_date, end_date),
-    ).fetchone()
-    return row is not None
+def _overlapping_status(conn, user_id: str, start_date: str, end_date: str,
+                        statuses: tuple[str, ...] = ("pending", "approved"),
+                        exclude_id: int | None = None) -> str | None:
+    """The status of an existing live leave row for this person whose
+    window overlaps [start_date, end_date], or None. Shared by every
+    writer (apply_leave, set_leave, approve_leave) so the double-booking
+    guard can't be present on one path and missing on another — it
+    originally only existed on apply_leave(), and only for 'approved'.
+
+    An overlapping 'approved' row is reported in preference to a merely
+    'pending' one, since it's the stricter finding."""
+    sql = ("SELECT status FROM employee_leave WHERE user_id=? "
+           "AND NOT (end_date < ? OR start_date > ?) "
+           f"AND status IN ({','.join('?' * len(statuses))})")
+    params: list = [user_id, start_date, end_date, *statuses]
+    if exclude_id is not None:
+        sql += " AND id<>?"
+        params.append(exclude_id)
+    sql += " ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END LIMIT 1"
+    row = conn.execute(sql, params).fetchone()
+    return row[0] if row else None
 
 
 def apply_leave(user_id: str, start_date: str, end_date: str,
                  leave_type: str = "full", reason: str = "",
                  created_by: str = "") -> dict:
     """Create a pending leave request. Raises ValueError on an invalid
-    leave_type or a date range that overlaps a leave already approved for
-    this same person (no double-booking)."""
+    leave_type or a date range that overlaps a leave already approved OR
+    already pending for this same person (two pending requests for the
+    same day could both be approved, double-deducting the pool)."""
     if leave_type not in VALID_LEAVE_TYPES:
         raise ValueError(f"leave_type must be one of {sorted(VALID_LEAVE_TYPES)}")
     if end_date < start_date:
@@ -208,8 +273,11 @@ def apply_leave(user_id: str, start_date: str, end_date: str,
     conn = get_connection()
     try:
         _ensure(conn)
-        if _overlaps_approved(conn, user_id, start_date, end_date):
+        clash = _overlapping_status(conn, user_id, start_date, end_date)
+        if clash == "approved":
             raise ValueError("overlaps a leave window already approved for this person")
+        if clash:
+            raise ValueError("overlaps a leave request already pending for this person")
         with conn:
             cur = conn.execute(
                 "INSERT INTO employee_leave "
@@ -225,9 +293,22 @@ def apply_leave(user_id: str, start_date: str, end_date: str,
 
 
 def approve_leave(leave_id: int, approved_by: str) -> bool:
+    """Approve a pending request. Re-checks for a live overlap at decision
+    time, not just at request time — a row can go stale between the two
+    (another request for the same days was approved in the meantime), and
+    approving both would deduct the same days twice. Raises ValueError in
+    that case so the caller can say why, rather than returning the same
+    False that means "no such pending request"."""
     conn = get_connection()
     try:
         _ensure(conn)
+        row = conn.execute(
+            "SELECT user_id, start_date, end_date FROM employee_leave "
+            "WHERE id=? AND status='pending'", (leave_id,),
+        ).fetchone()
+        if row and _overlapping_status(conn, row[0], row[1], row[2],
+                                       statuses=("approved",), exclude_id=leave_id):
+            raise ValueError("overlaps a leave window already approved for this person")
         with conn:
             cur = conn.execute(
                 "UPDATE employee_leave SET status='approved', approved_by=?, "
@@ -290,6 +371,40 @@ def list_pending() -> list[dict]:
 
 # ── balance (computed live, never stored) ───────────────────────────────
 
+def _deduction_in_year(start_date: str, end_date: str, leave_type: str,
+                       year: int) -> float:
+    """How many days a single [start_date, end_date] leave window consumes
+    from `year`'s pool.
+
+    A row is a WINDOW, not a day — the balance used to charge one
+    deduction per ROW, so an approved 5-day leave cost 1.0 day instead of
+    5.0. Sat/Sun inside the window aren't leave (same weekend convention
+    as calendar_days()), and a window straddling Dec 31 splits its
+    deduction across both years rather than landing entirely in the start
+    date's year."""
+    try:
+        sd = _date.fromisoformat(str(start_date)[:10])
+        ed = _date.fromisoformat(str(end_date)[:10])
+    except Exception:
+        logger.warning("leave_store: unparseable leave window %r..%r",
+                       start_date, end_date)
+        return 0.0
+    if ed < sd:
+        sd, ed = ed, sd
+    # Clamping to the requested year also bounds the loop below to at most
+    # 366 iterations, however long the stored window happens to be.
+    sd = max(sd, _date(year, 1, 1))
+    ed = min(ed, _date(year, 12, 31))
+    per_day = _LEAVE_DEDUCTION.get(leave_type, 1.0)
+    total = 0.0
+    d = sd
+    while d <= ed:
+        if d.weekday() < 5:
+            total += per_day
+        d += timedelta(days=1)
+    return total
+
+
 def get_balance(user_id: str, year: int | None = None) -> dict:
     if year is None:
         year = _date.fromisoformat(today_ist()).year
@@ -297,24 +412,27 @@ def get_balance(user_id: str, year: int | None = None) -> dict:
     conn = get_connection()
     try:
         _ensure(conn)
+        # Every approved window OVERLAPPING the year, not just those
+        # starting in it -- a Dec 29 -> Jan 3 window owes days to both.
         rows = conn.execute(
-            "SELECT leave_type FROM employee_leave WHERE user_id=? AND status='approved' "
-            "AND start_date >= ? AND start_date <= ?",
+            "SELECT start_date, end_date, leave_type FROM employee_leave "
+            "WHERE user_id=? AND status='approved' "
+            "AND NOT (end_date < ? OR start_date > ?)",
             (user_id, y_start, y_end),
         ).fetchall()
-        used = sum(_LEAVE_DEDUCTION.get(r[0], 1.0) for r in rows)
+        used = sum(_deduction_in_year(r[0], r[1], r[2], year) for r in rows)
 
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS comp_off_ledger (id INTEGER PRIMARY KEY "
-            "AUTOINCREMENT, user_id TEXT NOT NULL, days REAL NOT NULL, "
-            "source_ot_hours REAL NOT NULL, created_at TEXT DEFAULT (datetime('now')))"
-        )
-        comp_rows = conn.execute(
-            "SELECT days FROM comp_off_ledger WHERE user_id=? "
-            "AND created_at >= ? AND created_at < ?",
-            (user_id, f"{year}-01-01 00:00:00", f"{year + 1}-01-01 00:00:00"),
-        ).fetchall()
-        comp_earned = sum(r[0] for r in comp_rows)
+        try:
+            comp_rows = conn.execute(
+                "SELECT days FROM comp_off_ledger WHERE user_id=? "
+                f"AND {_COMP_OFF_IST_EXPR} >= ? AND {_COMP_OFF_IST_EXPR} < ?",
+                (user_id, f"{year}-01-01 00:00:00", f"{year + 1}-01-01 00:00:00"),
+            ).fetchall()
+            comp_earned = sum(r[0] or 0.0 for r in comp_rows)
+        except sqlite3.OperationalError:
+            # Table not created yet (db.init_db() makes it; this is a pure
+            # read path and deliberately no longer runs DDL of its own).
+            comp_earned = 0.0
     finally:
         conn.close()
     remaining = ANNUAL_BASE_DAYS + comp_earned - used
@@ -459,9 +577,6 @@ def run_overtime_conversion_sweep(for_date: str | None = None) -> dict:
     date) constraint on overtime_ledger makes the per-day insert a no-op
     on a re-run (caught via sqlite3.IntegrityError), and conversion only
     ever consumes rows that are still unconverted."""
-    import sqlite3
-    from datetime import timedelta
-
     if for_date is None:
         for_date = (_date.fromisoformat(today_ist()) - timedelta(days=1)).isoformat()
 
@@ -470,6 +585,7 @@ def run_overtime_conversion_sweep(for_date: str | None = None) -> dict:
     converted_events = 0
     try:
         _ensure_overtime_ledger(conn)
+        _ensure_comp_off_ledger(conn)
         _ensure(conn)
         att_rows = conn.execute(
             "SELECT user_id, checkin_time, checkout_time FROM daily_attendance WHERE date=?",
@@ -494,8 +610,17 @@ def run_overtime_conversion_sweep(for_date: str | None = None) -> dict:
             except sqlite3.IntegrityError:
                 pass  # already computed for this user+date, re-run is a no-op here
 
-            converted_events += _convert_overtime_for_user(conn, user_id)
-        conn.commit()
+            # Each user's conversion gets its OWN transaction. Previously
+            # these writes sat in the connection's implicit transaction
+            # with no `with conn:` of their own, so the NEXT user's
+            # IntegrityError-rollback could discard a prior user's
+            # already-committed-looking conversion in the same sweep.
+            try:
+                with conn:
+                    converted_events += _convert_overtime_for_user(conn, user_id)
+            except Exception:
+                logger.exception("leave_store: comp-off conversion failed for %s",
+                                 user_id)
     finally:
         conn.close()
     return {"processed": processed, "converted_events": converted_events}
