@@ -401,6 +401,7 @@
       <div style="display:flex;gap:8px">
         <button id="my-checkin-btn" onclick="myCheckIn()" style="display:none;background:var(--green,#22d3a0);border:none;color:#0a1a14;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check In</button>
         <button id="my-checkout-btn" onclick="myCheckOut()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check Out</button>
+        <button id="my-undo-checkout-btn" onclick="myUndoCheckout()" title="Clicked Check Out by mistake? This clears today's Out time." style="display:none;background:none;border:1px solid var(--border);color:var(--muted);padding:9px 14px;border-radius:8px;font-size:.8rem;cursor:pointer">Undo checkout</button>
       </div>
     </div>
     <div id="my-att-msg" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
@@ -584,6 +585,7 @@ function renderMyAttendance(myRow, isViewingToday) {
   const statusEl = document.getElementById("my-att-status");
   const inBtn = document.getElementById("my-checkin-btn");
   const outBtn = document.getElementById("my-checkout-btn");
+  const undoBtn = document.getElementById("my-undo-checkout-btn");
   if (!statusEl || !inBtn || !outBtn) return;
 
   // Only meaningful for today -- browsing a past date on the picker above
@@ -592,6 +594,7 @@ function renderMyAttendance(myRow, isViewingToday) {
     statusEl.textContent = "Viewing a past date -- switch back to today to check in/out.";
     inBtn.style.display = "none";
     outBtn.style.display = "none";
+    if (undoBtn) undoBtn.style.display = "none";
     return;
   }
   if (myAttBusy) return; // don't yank buttons out from under an in-flight click
@@ -600,14 +603,17 @@ function renderMyAttendance(myRow, isViewingToday) {
     statusEl.textContent = "Not checked in yet today.";
     inBtn.style.display = "inline-block";
     outBtn.style.display = "none";
+    if (undoBtn) undoBtn.style.display = "none";
   } else if (!myRow.checkout_time) {
     statusEl.textContent = `Checked in at ${myRow.checkin_time} IST.`;
     inBtn.style.display = "none";
     outBtn.style.display = "inline-block";
+    if (undoBtn) undoBtn.style.display = "none";
   } else {
     statusEl.textContent = `In ${myRow.checkin_time} IST · Out ${myRow.checkout_time} IST.`;
     inBtn.style.display = "none";
     outBtn.style.display = "inline-block"; // still correctable if they come back
+    if (undoBtn) undoBtn.style.display = "inline-block"; // clicked Check Out by mistake? clear it
   }
 }
 
@@ -647,15 +653,55 @@ async function _myAttendanceAction(kind) {
       msgEl.style.color = "#ef4444";
       msgEl.textContent = `Couldn't ${kind === "checkin" ? "check in" : "check out"}: ${e.message}`;
     }
+  } finally {
+    // Always reset the button's own label/disabled state, success or failure --
+    // on success this ran before but never fired (only the catch branch did),
+    // so a completed checkout left the button permanently stuck on "Checking
+    // out..." / disabled until a full page reload (2026-09-30). renderMyAttendance()
+    // (called via loadAttendance() below) only toggles .style.display, never
+    // .textContent/.disabled, so it can't paper over this on its own.
     btn.textContent = origLabel;
     btn.disabled = false;
-  } finally {
     myAttBusy = false;
     await loadAttendance(); // re-render both the grid and this widget from the real server state
   }
 }
 function myCheckIn() { _myAttendanceAction("checkin"); }
 function myCheckOut() { _myAttendanceAction("checkout"); }
+
+async function myUndoCheckout() {
+  if (myAttBusy) return;
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+  if (!user.user_id) return;
+  const undoBtn = document.getElementById("my-undo-checkout-btn");
+  const msgEl = document.getElementById("my-att-msg");
+  myAttBusy = true;
+  if (undoBtn) { undoBtn.disabled = true; undoBtn.textContent = "Undoing…"; }
+  try {
+    const r = await fetch(`${API}/api/attendance/undo-checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.user_id })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) throw new Error(d.error || "undo failed");
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.color = "var(--muted)";
+      msgEl.textContent = "Checkout undone -- you're back to checked in.";
+    }
+  } catch (e) {
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.color = "#ef4444";
+      msgEl.textContent = `Couldn't undo checkout: ${e.message}`;
+    }
+  } finally {
+    if (undoBtn) { undoBtn.disabled = false; undoBtn.textContent = "Undo checkout"; }
+    myAttBusy = false;
+    await loadAttendance();
+  }
+}
 
 // Auto-refresh every 60 seconds
 loadAttendance();

@@ -191,6 +191,29 @@ def _attendance_checkout(user_id: str, lat=None, lng=None):
     return d, stored_checkout
 
 
+def _attendance_undo_checkout(user_id: str):
+    """Clears today's checkout_time (+ its lat/lng) back to NULL -- recovery
+    for an accidental Check Out click (2026-09-30). Without this, a mistaken
+    checkout is only self-correcting if the person clicks Check Out again
+    later for real ("last wins") -- if they don't, the wrong early time sits
+    there permanently, since sweep_stale_checkouts() (task_scheduler.py) only
+    ever fires when checkout_time IS NULL and so never revisits one that's
+    already set. Self-service, same as checkin/checkout: no-op (rowcount 0)
+    if there's nothing to undo today."""
+    d = today_ist()
+    conn = _attendance_conn()
+    with conn:
+        cur = conn.execute(
+            """UPDATE daily_attendance
+               SET checkout_time = NULL, checkout_lat = NULL, checkout_lng = NULL
+               WHERE user_id = ? AND date = ? AND checkout_time IS NOT NULL""",
+            (user_id, d),
+        )
+        undone = cur.rowcount > 0
+    conn.close()
+    return d, undone
+
+
 # ── Attendance routes ─────────────────────────────────────────────────────────
 
 def _parse_latlng(body):
@@ -238,6 +261,22 @@ def attendance_checkout():
         "user_id": user_id,
         "date": date_ist,
         "checkout_time": checkout_time,
+        "timezone": "IST",
+    })
+
+
+@attendance_bp.route("/api/attendance/undo-checkout", methods=["POST"])
+def attendance_undo_checkout():
+    body = _attendance_payload()
+    user_id = str(body.get("user_id", "")).strip()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    date_ist, undone = _attendance_undo_checkout(user_id)
+    return jsonify({
+        "success": True,
+        "user_id": user_id,
+        "date": date_ist,
+        "undone": undone,
         "timezone": "IST",
     })
 
@@ -550,6 +589,23 @@ def attendance_export_sheets():
         "SELECT user_id, start_date, end_date FROM employee_leave WHERE status='approved'"
     )
     approved_leave_rows = cursor.fetchall()
+    # Comp-off ("+1 leave for every 24h overtime", leave management system,
+    # gotcha #126) earned per calendar month -- same IST-shifted bucketing
+    # leave_store.get_balance() itself uses for this table (comp_off_ledger.
+    # created_at is stored UTC), so a conversion near the UTC/IST midnight
+    # boundary lands in the same month here as it does in the employee's own
+    # balance. Summed by (user, year, month) up front rather than re-querying
+    # per employee per month inside the loop below.
+    cursor.execute(
+        f"SELECT user_id, days, {leave_store._COMP_OFF_IST_EXPR} AS ist_ts FROM comp_off_ledger"
+    )
+    comp_off_by_user_month = {}
+    for c_uid, c_days, c_ist_ts in cursor.fetchall():
+        try:
+            c_key = (c_uid, int(c_ist_ts[:4]), int(c_ist_ts[5:7]))
+        except (TypeError, ValueError):
+            continue
+        comp_off_by_user_month[c_key] = comp_off_by_user_month.get(c_key, 0.0) + (c_days or 0.0)
     conn.close()
 
     def _is_approved_leave_day(uid, dstr):
@@ -776,12 +832,23 @@ def attendance_export_sheets():
         summary_row = data_end_row + 2
         ws.cell(row=summary_row, column=1, value="Monthly Summary").font = TITLE_FONT
         month_header_row = summary_row + 1
+        # "Approved Leaves" = weekdays that month covered by an HR-approved
+        # leave request (leave management system, gotcha #126) -- distinct
+        # from "Leaves" (col D), which is a plain no-checkin absence with no
+        # approved request behind it. "Comp-Off Earned" = leave days this
+        # employee's overtime converted into that month (every 24 cumulative
+        # OT hours = +1, see leave_store.run_overtime_conversion_sweep()) --
+        # the "worked extra +1" the export is meant to surface.
         style_header_cells(ws, ["Month", "Full Days", "Half Days", "Leaves", "Incomplete",
-                                "Working Days", "Total Hours", "Overtime Hours", "Attendance %"], month_header_row)
+                                "Working Days", "Total Hours", "Overtime Hours", "Attendance %",
+                                "Approved Leaves", "Comp-Off Earned"], month_header_row)
         mrow_idx = month_header_row
+        comp_off_total = 0.0
         for (yr, mo), m in months.items():
             m_considered = m["Full Day"] + m["Half Day"] + m["Leave"] + m["Incomplete"]
             m_pct = (m["credit"] / m_considered) if m_considered else None
+            m_comp_off = comp_off_by_user_month.get((uid, yr, mo), 0.0)
+            comp_off_total += m_comp_off
             mrow_idx += 1
             ws.cell(row=mrow_idx, column=1, value=_date(yr, mo, 1).strftime("%B %Y"))
             ws.cell(row=mrow_idx, column=2, value=m["Full Day"])
@@ -796,7 +863,10 @@ def attendance_export_sheets():
             pct_cell = ws.cell(row=mrow_idx, column=9, value=m_pct if m_pct is not None else "N/A")
             if m_pct is not None:
                 pct_cell.number_format = "0.0%"
-            border_row(ws, mrow_idx, 9)
+            ws.cell(row=mrow_idx, column=10, value=m.get("Leave (Approved)", 0))
+            comp_off_cell = ws.cell(row=mrow_idx, column=11, value=round(m_comp_off, 1))
+            comp_off_cell.number_format = "0.0"
+            border_row(ws, mrow_idx, 11)
         # A bold "Total (All Time)" row underneath every month, using the
         # same aggregate counts the old single Summary block reported.
         total_row = mrow_idx + 1
@@ -804,6 +874,7 @@ def attendance_export_sheets():
             "Total (All Time)", counts["Full Day"], counts["Half Day"], counts["Leave"],
             counts["Incomplete"], considered, round(total_hours, 1), round(total_overtime, 1),
             pct if pct is not None else "N/A",
+            counts.get("Leave (Approved)", 0), round(comp_off_total, 1),
         ]
         for col, val in enumerate(total_cells, start=1):
             c = ws.cell(row=total_row, column=col, value=val)
@@ -812,7 +883,10 @@ def attendance_export_sheets():
         ws.cell(row=total_row, column=8).number_format = "0.0"
         if pct is not None:
             ws.cell(row=total_row, column=9).number_format = "0.0%"
-        border_row(ws, total_row, 9)
+        ws.cell(row=total_row, column=11).number_format = "0.0"
+        border_row(ws, total_row, 11)
+        ws.column_dimensions["J"].width = max(ws.column_dimensions["J"].width or 0, 16)
+        ws.column_dimensions["K"].width = max(ws.column_dimensions["K"].width or 0, 16)
 
         bal = leave_store.get_balance(uid)
         emp_summaries.append({
