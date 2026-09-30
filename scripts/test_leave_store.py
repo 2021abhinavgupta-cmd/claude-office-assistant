@@ -169,5 +169,15 @@ accrued = conn.execute(
 conn.close()
 assert accrued >= 1, f"expected at least 1 comp-off accrual after 24+ OT hours, got {accrued}"
 
+# ── calendar_days now returns leave_id for pending/approved days ─────────
+pending_row = leave_store.apply_leave("emp010", "2026-09-16", "2026-09-16",
+                                       leave_type="full", reason="test pending")
+days_sep = leave_store.calendar_days("emp010", 2026, 9)
+assert days_sep["2026-09-16"]["status"] == "leave_pending", days_sep["2026-09-16"]
+assert days_sep["2026-09-16"]["leave_id"] == pending_row["id"], days_sep["2026-09-16"]
+# a full/half/weekend/no-data day has no leave_id key at all
+assert "leave_id" not in days_sep.get("2026-09-15", {}), days_sep.get("2026-09-15")
+assert "leave_id" not in days_sep.get("2026-09-17", {}), days_sep.get("2026-09-17")
+
 os.remove(tmp_path)
 print("OK: test_leave_store")
