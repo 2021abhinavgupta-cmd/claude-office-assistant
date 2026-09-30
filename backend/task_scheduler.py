@@ -407,8 +407,7 @@ def init_scheduler(app):
                           id="data_retention_sweep", replace_existing=True)
         # Overtime -> comp-off conversion -- computes yesterday's overtime
         # for every active employee and converts any 24hr crossing into a
-        # +1 leave day (leave_store.py). Off-peak, after the data
-        # retention sweep.
+        # +1 leave day (leave_store.py). Off-peak overnight job (02:00 IST).
         scheduler.add_job(_run_overtime_conversion, "cron", hour=2, minute=0,
                           id="overtime_conversion_sweep", replace_existing=True)
         scheduler.start()
