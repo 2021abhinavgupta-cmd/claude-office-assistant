@@ -386,6 +386,25 @@
   <!--Usage top-banner: driven by /api/budget alert_level (#11) -->
   <div class="budget-topbanner" id="budget-topbanner" role="alert"></div>
 
+  <!-- My Attendance -- manual check-in/out, decoupled from login/logout (see auth.js's
+       automatic checkin-on-login / checkout-on-logout, gotcha #94/2026-09-28 geolocation).
+       Both buttons hit the same /api/attendance/checkin|checkout endpoints, so clicking
+       Check In here when already auto-checked-in today is a harmless no-op (first-checkin
+       wins) and Check Out always safely updates to "latest wins", same as Logout's. -->
+  <div class="panel" style="margin-bottom:24px" id="my-attendance-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <h2 style="margin-bottom:4px"> My Attendance</h2>
+        <div style="color:var(--muted);font-size:.8rem" id="my-att-status">Loading…</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="my-checkin-btn" onclick="myCheckIn()" style="display:none;background:var(--green,#22d3a0);border:none;color:#0a1a14;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check In</button>
+        <button id="my-checkout-btn" onclick="myCheckOut()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check Out</button>
+      </div>
+    </div>
+    <div id="my-att-msg" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
+  </div>
+
   <!-- Admin Attendance Panel -->
   <div class="panel" style="margin-bottom:24px" id="admin-attendance-panel">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -493,6 +512,9 @@ async function loadAttendance() {
     const visibleRows = isAdmin ? allRows : allRows.filter(r => r.emp_id === user.user_id);
     const inCount = allRows.filter(r => r.checkin_time && !r.checkout_time).length;
 
+    const myRow = allRows.find(r => r.emp_id === user.user_id) || null;
+    renderMyAttendance(myRow, isViewingToday);
+
     if (badge) {
       badge.textContent = isAdmin ? `${inCount} / ${allRows.length} ${isViewingToday ? "in office" : "checked in"}` : "My Attendance";
       badge.style.color = (isViewingToday && inCount > 0) ? "var(--green)" : "var(--muted)";
@@ -553,6 +575,86 @@ async function loadAttendance() {
     wrap.innerHTML = `<div class="empty-state">⚠ Could not load attendance: ${e.message}</div>`;
   }
 }
+
+// ── My Attendance widget: manual check-in/out with geolocation ──
+let myAttBusy = false;
+
+function renderMyAttendance(myRow, isViewingToday) {
+  const statusEl = document.getElementById("my-att-status");
+  const inBtn = document.getElementById("my-checkin-btn");
+  const outBtn = document.getElementById("my-checkout-btn");
+  if (!statusEl || !inBtn || !outBtn) return;
+
+  // Only meaningful for today -- browsing a past date on the picker above
+  // shouldn't let someone "check in" for a day that's already over.
+  if (!isViewingToday) {
+    statusEl.textContent = "Viewing a past date -- switch back to today to check in/out.";
+    inBtn.style.display = "none";
+    outBtn.style.display = "none";
+    return;
+  }
+  if (myAttBusy) return; // don't yank buttons out from under an in-flight click
+
+  if (!myRow || !myRow.checkin_time) {
+    statusEl.textContent = "Not checked in yet today.";
+    inBtn.style.display = "inline-block";
+    outBtn.style.display = "none";
+  } else if (!myRow.checkout_time) {
+    statusEl.textContent = `Checked in at ${myRow.checkin_time} IST.`;
+    inBtn.style.display = "none";
+    outBtn.style.display = "inline-block";
+  } else {
+    statusEl.textContent = `In ${myRow.checkin_time} IST · Out ${myRow.checkout_time} IST.`;
+    inBtn.style.display = "none";
+    outBtn.style.display = "inline-block"; // still correctable if they come back
+  }
+}
+
+async function _myAttendanceAction(kind) {
+  if (myAttBusy) return;
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+  if (!user.user_id) return;
+  const inBtn = document.getElementById("my-checkin-btn");
+  const outBtn = document.getElementById("my-checkout-btn");
+  const msgEl = document.getElementById("my-att-msg");
+  const btn = kind === "checkin" ? inBtn : outBtn;
+  myAttBusy = true;
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Getting location…";
+  if (msgEl) msgEl.style.display = "none";
+  try {
+    const loc = (window.getAttendanceLocation ? await window.getAttendanceLocation().catch(() => null) : null);
+    btn.textContent = kind === "checkin" ? "Checking in…" : "Checking out…";
+    const r = await fetch(`${API}/api/attendance/${kind}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.user_id, ...(loc || {}) })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) throw new Error(d.error || `${kind} failed`);
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.color = "var(--muted)";
+      msgEl.textContent = loc
+        ? (kind === "checkin" ? "Checked in with location." : "Checked out with location.")
+        : (kind === "checkin" ? "Checked in (location unavailable)." : "Checked out (location unavailable).");
+    }
+  } catch (e) {
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.color = "#ef4444";
+      msgEl.textContent = `Couldn't ${kind === "checkin" ? "check in" : "check out"}: ${e.message}`;
+    }
+    btn.textContent = origLabel;
+    btn.disabled = false;
+  } finally {
+    myAttBusy = false;
+    await loadAttendance(); // re-render both the grid and this widget from the real server state
+  }
+}
+function myCheckIn() { _myAttendanceAction("checkin"); }
+function myCheckOut() { _myAttendanceAction("checkout"); }
 
 // Auto-refresh every 60 seconds
 loadAttendance();
