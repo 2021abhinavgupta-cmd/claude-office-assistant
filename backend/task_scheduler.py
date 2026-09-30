@@ -363,6 +363,23 @@ def _run_data_retention():
         logger.warning(f"Data retention sweep failed (non-fatal): {e}")
 
 
+def _run_overtime_conversion():
+    """Wraps leave_store.run_overtime_conversion_sweep() for the nightly
+    job below -- computes yesterday's per-employee overtime and converts
+    any 24hr-crossing into a +1 leave day. Imported lazily so this module
+    has no hard import-time dependency on leave_store."""
+    try:
+        import leave_store
+        result = leave_store.run_overtime_conversion_sweep()
+        if result.get("converted_events"):
+            logger.info(
+                "Overtime conversion: %s comp-off day(s) accrued across %s employee(s) processed.",
+                result["converted_events"], result["processed"],
+            )
+    except Exception as e:
+        logger.warning(f"Overtime conversion sweep failed (non-fatal): {e}")
+
+
 def init_scheduler(app):
     """Call this once from app.py to register the background job."""
     try:
@@ -388,6 +405,12 @@ def init_scheduler(app):
         # plenty; this isn't reacting to anything time-sensitive.
         scheduler.add_job(_run_data_retention, "cron", hour=3, minute=30,
                           id="data_retention_sweep", replace_existing=True)
+        # Overtime -> comp-off conversion -- computes yesterday's overtime
+        # for every active employee and converts any 24hr crossing into a
+        # +1 leave day (leave_store.py). Off-peak, after the data
+        # retention sweep.
+        scheduler.add_job(_run_overtime_conversion, "cron", hour=2, minute=0,
+                          id="overtime_conversion_sweep", replace_existing=True)
         scheduler.start()
         logger.info(" Task delay scheduler started (runs daily at 08:00).")
 
