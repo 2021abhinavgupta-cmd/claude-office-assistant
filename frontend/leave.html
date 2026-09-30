@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Leave | Agency Portal Assistant</title>
+<script src="auth.js"></script>
+<style>
+:root {
+  --bg: #0a0a0f; --s1: #12121a; --s2: #1a1a26; --bdr: rgba(255,255,255,0.08);
+  --txt: #e8e8f0; --muted: #6b6b8a; --acc: #8B5A2B;
+  --green: #22d3a0; --yellow: #fbbf24; --red: #ef4444; --orange: #f97316;
+  --rs: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; padding:24px; }
+.wrap { max-width: 960px; margin: 0 auto; }
+.hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+.hdr h1 { font-size:1.4rem; }
+.nav a { color:var(--muted); text-decoration:none; margin-left:14px; font-size:.85rem; }
+.nav a:hover { color:var(--txt); }
+.card { background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); padding:18px; margin-bottom:18px; }
+.balance-strip { display:flex; gap:24px; flex-wrap:wrap; }
+.balance-item .num { font-size:1.6rem; font-weight:700; }
+.balance-item .lbl { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.cal-nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.cal-nav button { background:var(--s2); border:1px solid var(--bdr); color:var(--txt); border-radius:8px; padding:6px 12px; cursor:pointer; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.cal-h { font-size:.7rem; color:var(--muted); text-align:center; padding:4px; }
+.cal-day { position:relative; aspect-ratio:1; border:1px solid var(--bdr); border-radius:8px; padding:4px; font-size:.75rem; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; }
+.cal-day:hover { border-color:var(--acc); }
+.cal-day.empty { border:none; cursor:default; }
+.cal-day.weekend { opacity:.35; cursor:default; }
+.dot { width:8px; height:8px; border-radius:50%; margin-top:4px; }
+.dot.full { background:var(--green); }
+.dot.half { background:var(--yellow); }
+.dot.leave_approved { background:var(--red); }
+.dot.leave_pending { background:var(--orange); }
+.legend { display:flex; gap:16px; flex-wrap:wrap; font-size:.72rem; color:var(--muted); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:5px; }
+#toast { display:none; position:fixed; bottom:20px; right:20px; padding:10px 16px; border-radius:8px; font-size:.85rem; z-index:999; }
+#toast.ok { background:var(--green); color:#04241a; }
+#toast.err { background:var(--red); color:#2a0505; }
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); align-items:center; justify-content:center; z-index:998; }
+.modal-bg.open { display:flex; }
+.modal { background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); padding:20px; width:340px; }
+.modal h3 { margin-bottom:12px; font-size:1rem; }
+.modal label { display:block; font-size:.75rem; color:var(--muted); margin:10px 0 4px; }
+.modal select, .modal textarea, .modal input { width:100%; background:var(--s2); border:1px solid var(--bdr); color:var(--txt); border-radius:6px; padding:7px; font-size:.85rem; font-family:inherit; }
+.modal-actions { display:flex; gap:8px; margin-top:16px; }
+.modal-actions button { flex:1; padding:8px; border-radius:6px; border:none; cursor:pointer; font-size:.85rem; }
+.btn-submit { background:var(--acc); color:#fff; }
+.btn-cancel { background:var(--s2); color:var(--txt); }
+.pending-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--bdr); font-size:.82rem; }
+.pending-row:last-child { border-bottom:none; }
+.pending-actions button { padding:4px 10px; border-radius:6px; border:none; cursor:pointer; font-size:.75rem; margin-left:6px; }
+.btn-approve { background:var(--green); color:#04241a; }
+.btn-reject { background:var(--red); color:#2a0505; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>Leave</h1>
+    <div class="nav">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="standup.html">Daily Standup</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="balance-strip" id="balance-strip">Loading…</div>
+  </div>
+
+  <div class="card" id="hr-panel" style="display:none;">
+    <h3 style="margin-bottom:10px;">Pending Approvals</h3>
+    <div id="pending-list"><div style="color:var(--muted);font-size:.82rem;">No pending requests.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="cal-nav">
+      <button onclick="calPrev()">&#8592;</button>
+      <span id="cal-label" style="font-weight:600;"></span>
+      <button onclick="calNext()">&#8594;</button>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="legend">
+      <span><span class="dot full"></span> Full day worked</span>
+      <span><span class="dot half"></span> Half day worked</span>
+      <span><span class="dot leave_approved"></span> Approved leave</span>
+      <span><span class="dot leave_pending"></span> Pending request</span>
+      <span>Click a date to apply for leave</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="apply-modal">
+  <div class="modal">
+    <h3 id="apply-modal-date">Apply for leave</h3>
+    <label>Type</label>
+    <select id="apply-type"><option value="full">Full Day</option><option value="half">Half Day</option></select>
+    <label>Reason</label>
+    <textarea id="apply-reason" rows="3" placeholder="Optional"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeApplyModal()">Cancel</button>
+      <button class="btn-submit" onclick="submitApply()">Submit</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
+const UID = user.user_id;
+if (!UID) window.location.href = "login.html";
+const IS_HR = UID === "emp009";
+
+function toast(m,t="ok"){
+  const e=document.getElementById("toast");
+  e.textContent=m; e.className=t; e.style.display="block";
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>e.style.display="none",2500);
+}
+
+let calDate = new Date();
+let pickedDate = null;
+
+function calPrev(){ calDate.setMonth(calDate.getMonth()-1); renderCalendar(); }
+function calNext(){ calDate.setMonth(calDate.getMonth()+1); renderCalendar(); }
+
+async function loadBalance(){
+  try{
+    const r = await fetch(`${API}/api/leave/balance?user_id=${encodeURIComponent(UID)}`);
+    const d = await r.json();
+    document.getElementById("balance-strip").innerHTML = `
+      <div class="balance-item"><div class="num">${d.remaining}</div><div class="lbl">Remaining</div></div>
+      <div class="balance-item"><div class="num">${d.used}</div><div class="lbl">Used (${d.year})</div></div>
+      <div class="balance-item"><div class="num">${d.comp_earned}</div><div class="lbl">Comp-Off Earned</div></div>
+      <div class="balance-item"><div class="num">${d.base}</div><div class="lbl">Base Pool</div></div>
+    `;
+  }catch(e){ toast("Couldn't load balance","err"); }
+}
+
+async function loadPending(){
+  if (!IS_HR) return;
+  document.getElementById("hr-panel").style.display = "block";
+  try{
+    const r = await fetch(`${API}/api/leave/pending?user_id=${encodeURIComponent(UID)}`);
+    const d = await r.json();
+    const wrap = document.getElementById("pending-list");
+    if (!d.pending || !d.pending.length){
+      wrap.innerHTML = '<div style="color:var(--muted);font-size:.82rem;">No pending requests.</div>';
+      return;
+    }
+    wrap.innerHTML = d.pending.map(p => `
+      <div class="pending-row">
+        <span>${esc(p.user_id)} — ${esc(p.start_date)}${p.start_date!==p.end_date?" to "+esc(p.end_date):""} (${esc(p.leave_type)})${p.reason?" — "+esc(p.reason):""}</span>
+        <span class="pending-actions">
+          <button class="btn-approve" onclick="decide(${p.id},'approve')">Approve</button>
+          <button class="btn-reject" onclick="decide(${p.id},'reject')">Reject</button>
+        </span>
+      </div>
+    `).join("");
+  }catch(e){ toast("Couldn't load pending requests","err"); }
+}
+
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m])); }
+
+async function decide(id, action){
+  try{
+    const r = await fetch(`${API}/api/leave/${id}/${action}`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: UID}),
+    });
+    const d = await r.json();
+    if (!r.ok){ toast(d.error || "Failed", "err"); return; }
+    toast(action === "approve" ? "Approved" : "Rejected");
+    loadPending(); renderCalendar();
+  }catch(e){ toast("Network error","err"); }
+}
+
+async function renderCalendar(){
+  const year = calDate.getFullYear(), month = calDate.getMonth()+1;
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  document.getElementById("cal-label").textContent = `${monthNames[month-1]} ${year}`;
+
+  let days = {};
+  try{
+    const r = await fetch(`${API}/api/leave/calendar?user_id=${encodeURIComponent(UID)}&year=${year}&month=${month}`);
+    const d = await r.json();
+    days = d.days || {};
+  }catch(e){ toast("Couldn't load calendar","err"); }
+
+  const firstDay = new Date(year, month-1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const grid = document.getElementById("cal-grid");
+  let html = "";
+  ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(d => html += `<div class="cal-h">${d}</div>`);
+  for (let i=0;i<firstDay;i++) html += `<div class="cal-day empty"></div>`;
+  for (let d=1; d<=daysInMonth; d++){
+    const dstr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const info = days[dstr] || {status:"none"};
+    const isWeekend = info.status === "weekend";
+    const dot = ["full","half","leave_approved","leave_pending"].includes(info.status)
+      ? `<div class="dot ${info.status}"></div>` : "";
+    html += `<div class="cal-day ${isWeekend?'weekend':''}" ${isWeekend?'':`onclick="openApplyModal('${dstr}')"`}>
+      <div>${d}</div>${dot}
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function openApplyModal(dstr){
+  pickedDate = dstr;
+  document.getElementById("apply-modal-date").textContent = `Apply for leave — ${dstr}`;
+  document.getElementById("apply-reason").value = "";
+  document.getElementById("apply-type").value = "full";
+  document.getElementById("apply-modal").classList.add("open");
+}
+function closeApplyModal(){ document.getElementById("apply-modal").classList.remove("open"); }
+
+async function submitApply(){
+  if (!pickedDate) return;
+  const leave_type = document.getElementById("apply-type").value;
+  const reason = document.getElementById("apply-reason").value;
+  try{
+    const r = await fetch(`${API}/api/leave/apply`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: UID, date: pickedDate, leave_type, reason}),
+    });
+    const d = await r.json();
+    if (!r.ok){ toast(d.error || "Failed to apply", "err"); return; }
+    toast("Leave request sent for approval");
+    closeApplyModal();
+    renderCalendar();
+  }catch(e){ toast("Network error","err"); }
+}
+
+(async () => {
+  await loadBalance();
+  await loadPending();
+  await renderCalendar();
+})();
+</script>
+</body>
+</html>
