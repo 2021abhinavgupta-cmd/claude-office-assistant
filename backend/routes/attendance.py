@@ -441,13 +441,18 @@ def _overtime_hours(hrs):
 _INACTIVE_STATUSES = {"inactive", "disabled", "left", "removed", "archived", "former"}
 
 
-def _hours_and_day_type(checkin, checkout, is_today):
+def _hours_and_day_type(checkin, checkout, is_today, is_approved_leave=False):
     """(hours:float|None, label:str) for one (checkin_time, checkout_time)
     pair, both plain 'HH:MM:SS' IST or falsy. No midnight-rollover handling
     needed -- both are already clamped inside the same work-day window by
-    _clamp_work_time() before they're ever stored."""
+    _clamp_work_time() before they're ever stored. is_approved_leave
+    distinguishes a day covered by an HR-approved leave request (leave
+    management system, 2026-09-30) from a plain unexplained absence --
+    both still mean "no checkin", but only the approved kind is excluded
+    from the attendance-% denominator (see `considered` below, unchanged
+    on purpose: it only ever sums the plain "Leave" bucket)."""
     if not checkin:
-        return None, "Leave"
+        return None, ("Leave (Approved)" if is_approved_leave else "Leave")
     if not checkout:
         return None, ("In Progress" if is_today else "Incomplete")
     try:
@@ -523,6 +528,7 @@ def attendance_export_sheets():
     from openpyxl.utils import get_column_letter
 
     from db import get_connection
+    import leave_store
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -540,7 +546,14 @@ def attendance_export_sheets():
            GROUP BY user_id, date"""
     )
     task_counts = {(r[0], r[1]): (r[2] or 0, r[3] or 0) for r in cursor.fetchall()}
+    cursor.execute(
+        "SELECT user_id, start_date, end_date FROM employee_leave WHERE status='approved'"
+    )
+    approved_leave_rows = cursor.fetchall()
     conn.close()
+
+    def _is_approved_leave_day(uid, dstr):
+        return any(u == uid and sd <= dstr <= ed for u, sd, ed in approved_leave_rows)
 
     emp_map = {}
     active_employees = []
@@ -586,6 +599,7 @@ def attendance_export_sheets():
         "Full Day": PatternFill("solid", fgColor="D1FAE5"),
         "Half Day": PatternFill("solid", fgColor="FEF3C7"),
         "Leave": PatternFill("solid", fgColor="FEE2E2"),
+        "Leave (Approved)": PatternFill("solid", fgColor="FBCFE8"),
     }
 
     def style_header_cells(ws, headers, row):
@@ -626,7 +640,8 @@ def attendance_export_sheets():
                           "Tasks Carried Forward", "Day Type", "Location In", "Location Out"])
     for d, uid, cin, cout, cin_lat, cin_lng, cout_lat, cout_lng in rows:
         completed, carried = task_counts.get((uid, d), (0, 0))
-        _, day_type = _hours_and_day_type(cin, cout, d == today)
+        _, day_type = _hours_and_day_type(cin, cout, d == today,
+                                          is_approved_leave=_is_approved_leave_day(uid, d))
         cin_obj, cout_obj = _parse_time_obj(cin), _parse_time_obj(cout)
         ws_all.append([_date.fromisoformat(d), cin_obj, cout_obj, format_user(uid),
                        completed, carried, day_type, "", ""])
@@ -707,7 +722,9 @@ def attendance_export_sheets():
             if d.weekday() < 5:  # Mon-Fri only -- weekends aren't a "Leave"
                 dstr = d.isoformat()
                 cin, cout = by_user_date.get((uid, dstr), (None, None))
-                hrs, day_type = _hours_and_day_type(cin, cout, dstr == today)
+                hrs, day_type = _hours_and_day_type(
+                    cin, cout, dstr == today,
+                    is_approved_leave=_is_approved_leave_day(uid, dstr))
                 overtime = _overtime_hours(hrs)
                 completed, carried = task_counts.get((uid, dstr), (0, 0))
                 cin_obj, cout_obj = _parse_time_obj(cin), _parse_time_obj(cout)
@@ -797,11 +814,14 @@ def attendance_export_sheets():
             ws.cell(row=total_row, column=9).number_format = "0.0%"
         border_row(ws, total_row, 9)
 
+        bal = leave_store.get_balance(uid)
         emp_summaries.append({
             "name": name, "start": start, "full": counts["Full Day"],
             "half": counts["Half Day"], "leave": counts["Leave"],
             "incomplete": counts["Incomplete"], "hours": round(total_hours, 1),
             "overtime": round(total_overtime, 1), "pct": pct,
+            "leave_used": bal["used"], "comp_earned": bal["comp_earned"],
+            "leave_remaining": bal["remaining"],
         })
 
     # ── "Summary" overview sheet: one row per employee, placed right after
@@ -819,27 +839,31 @@ def attendance_export_sheets():
         row=4, column=1,
         value=(f"Full Day = worked {_FULL_DAY_HOURS:g}+ hours  |  Half Day = worked under "
                f"{_FULL_DAY_HOURS:g} hours (but checked in)  |  Leave = no check-in that weekday  |  "
+               "Leave (Approved) = no check-in, covered by an HR-approved leave request "
+               "(does not count against Attendance %)  |  "
                "Incomplete = checked in but no checkout was logged  |  "
                "In Progress = still checked in today, not final yet  |  "
                f"Overtime = hours worked beyond {_FULL_DAY_HOURS:g} on a day"),
     ).font = META_FONT
     style_header(ws_sum, ["Employee", "Period Start", "Full Days", "Half Days",
                           "Leaves", "Incomplete", "Attendance %", "Total Hours Worked",
-                          "Total Overtime Hours"], row=6)
+                          "Total Overtime Hours", "Leave Used (Formal)",
+                          "Comp-Off Earned", "Leave Remaining"], row=6)
     for s in emp_summaries:
         ws_sum.append([s["name"], s["start"], s["full"], s["half"], s["leave"],
                       s["incomplete"], s["pct"] if s["pct"] is not None else "N/A",
-                      s["hours"], s["overtime"]])
+                      s["hours"], s["overtime"], s["leave_used"], s["comp_earned"],
+                      s["leave_remaining"]])
         r = ws_sum.max_row
         ws_sum.cell(row=r, column=2).number_format = DATE_FMT
         ws_sum.cell(row=r, column=8).number_format = "0.0"
         ws_sum.cell(row=r, column=9).number_format = "0.0"
         if s["pct"] is not None:
             ws_sum.cell(row=r, column=7).number_format = "0.0%"
-        border_row(ws_sum, r, 9)
+        border_row(ws_sum, r, 12)
     if ws_sum.max_row >= 7:
-        ws_sum.auto_filter.ref = f"A6:I{ws_sum.max_row}"
-    set_widths(ws_sum, [18, 14, 10, 10, 10, 10, 14, 16, 16])
+        ws_sum.auto_filter.ref = f"A6:L{ws_sum.max_row}"
+    set_widths(ws_sum, [18, 14, 10, 10, 10, 10, 14, 16, 16, 16, 14, 14])
 
     buf = io.BytesIO()
     wb.save(buf)
