@@ -211,21 +211,67 @@ def init_db():
             locked_until TEXT DEFAULT NULL
         )""")
 
-        # Employee leave / holiday — inclusive [start_date, end_date] windows.
-        # A row here exempts the person from the daily-standup lock and from
-        # every "you haven't logged in" nudge for the days it covers
-        # (CLAUDE.md gotcha #119). Set/cleared via the WhatsApp bot.
+        # Employee leave / holiday -- inclusive [start_date, end_date]
+        # windows. A row here exempts the person from the daily-standup
+        # lock and from every "you haven't logged in" nudge for the days
+        # it covers, but ONLY once status='approved' (CLAUDE.md gotcha
+        # #119, extended by the leave management system to add a real
+        # approval workflow -- 2026-09-30). status defaults to 'approved'
+        # so every row written before this change (all WhatsApp instant
+        # grants) stays valid and still correctly counts as leave taken.
         conn.execute("""CREATE TABLE IF NOT EXISTS employee_leave (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id    TEXT NOT NULL,
-            start_date TEXT NOT NULL,
-            end_date   TEXT NOT NULL,
-            reason     TEXT DEFAULT '',
-            created_by TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now'))
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT NOT NULL,
+            start_date  TEXT NOT NULL,
+            end_date    TEXT NOT NULL,
+            reason      TEXT DEFAULT '',
+            created_by  TEXT DEFAULT '',
+            created_at  TEXT DEFAULT (datetime('now')),
+            status      TEXT DEFAULT 'approved',
+            leave_type  TEXT DEFAULT 'full',
+            approved_by TEXT DEFAULT NULL,
+            approved_at TEXT DEFAULT NULL
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_employee_leave_user "
                      "ON employee_leave(user_id, start_date, end_date)")
+        for _col, _ddl in (
+            ("status", "TEXT DEFAULT 'approved'"),
+            ("leave_type", "TEXT DEFAULT 'full'"),
+            ("approved_by", "TEXT DEFAULT NULL"),
+            ("approved_at", "TEXT DEFAULT NULL"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE employee_leave ADD COLUMN {_col} {_ddl}")
+            except Exception:
+                pass  # Column already exists
+
+        # Daily overtime -- one row per employee per day with a computed
+        # worked/overtime figure, feeding the leave-conversion sweep below.
+        # Reuses the same 9hr/day baseline as the attendance Excel export
+        # (routes/attendance.py::_FULL_DAY_HOURS/_overtime_hours).
+        conn.execute("""CREATE TABLE IF NOT EXISTS overtime_ledger (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      TEXT NOT NULL,
+            date         TEXT NOT NULL,
+            worked_hours REAL NOT NULL,
+            ot_hours     REAL NOT NULL,
+            converted_at TEXT DEFAULT NULL,
+            created_at   TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, date)
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_overtime_ledger_user "
+                     "ON overtime_ledger(user_id, converted_at)")
+
+        # One row per 24hr-overtime -> +1 leave day conversion event.
+        conn.execute("""CREATE TABLE IF NOT EXISTS comp_off_ledger (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         TEXT NOT NULL,
+            days            REAL NOT NULL,
+            source_ot_hours REAL NOT NULL,
+            created_at      TEXT DEFAULT (datetime('now'))
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comp_off_ledger_user "
+                     "ON comp_off_ledger(user_id, created_at)")
 
         # Standing instructions -- "from now on always..." rules the WhatsApp
         # agent honours indefinitely (backend/standing_rules.py).
