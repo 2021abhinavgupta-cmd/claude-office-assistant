@@ -1302,14 +1302,18 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "set_leave",
-        "description": "Mark someone as on leave / holiday for a day or a "
-                       "date range. While on leave they're exempt from the "
-                       "daily standup lock and get NO 'you haven't logged in' "
-                       "nudges. Use for 'I'm on leave today', 'on holiday "
-                       "tomorrow', 'off Thursday and Friday', 'mark Nupur on "
-                       "leave next week'. Work out the real calendar dates "
-                       "yourself (today is known) and pass them as YYYY-MM-DD. "
-                       "For a single day, pass the same date as start and end.",
+        "description": "REQUEST leave / holiday for a day or a date range "
+                       "-- this creates a pending request that Noorish "
+                       "(HR) must approve before it counts against the "
+                       "15-day leave pool or exempts anyone from the "
+                       "standup lock. Use for 'I'm on leave today', 'on "
+                       "holiday tomorrow', 'off Thursday and Friday', "
+                       "'mark Nupur on leave next week'. Work out the "
+                       "real calendar dates yourself (today is known) and "
+                       "pass them as YYYY-MM-DD. For a single day, pass "
+                       "the same date as start and end. Optionally pass "
+                       "leave_type='half' for a half day (default is a "
+                       "full day).",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -1322,6 +1326,9 @@ _EMPLOYEE_TOOLS = [
                            "description": "Whose leave, if not your own — a teammate's name."},
                 "reason": {"type": "string",
                            "description": "Optional short note, e.g. 'sick', 'vacation'."},
+                "leave_type": {"type": "string", "enum": ["full", "half"],
+                               "description": "Optional -- 'half' for a half "
+                                              "day. Default is a full day."},
             },
             "required": ["start_date", "end_date"],
         },
@@ -1338,6 +1345,15 @@ _EMPLOYEE_TOOLS = [
                            "description": "Whose leave to clear, if not your own."},
             },
         },
+    },
+    {
+        "name": "get_leave_balance",
+        "description": "Check leave balance -- the 15-day annual pool, "
+                       "comp-off earned from overtime, days used, and "
+                       "days remaining this year. Use for 'how much leave "
+                       "do I have left', 'my leave balance', 'how many "
+                       "days off do I have'.",
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "set_standing_rule",
@@ -1762,6 +1778,9 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                         "'Thu and Fri', or a range)")
             if max(sd, ed) < today:
                 return "That leave window is entirely in the past — nothing to record."
+            leave_type = str(ti.get("leave_type", "full")).strip().lower()
+            if leave_type not in ("full", "half"):
+                leave_type = "full"
             try:
                 import leave_store
                 row = leave_store.set_leave(
@@ -1773,8 +1792,10 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             span = (row["start_date"] if row["start_date"] == row["end_date"]
                     else f"{row['start_date']} to {row['end_date']}")
             whose = "you" if tid == identity["id"] else tname
-            return (f"Marked {whose} on leave {span}. No standup lock and no "
-                    f"login nudges for {whose} on those days.")
+            return (f"Sent {whose} leave for {span} to Noorish for approval. "
+                    f"{'You' if tid == identity['id'] else tname.capitalize()} "
+                    f"will stay locked out of standup and keep getting login "
+                    f"nudges until it's approved.")
 
         if name == "clear_leave" and kind == "employee":
             who = str((tool_input or {}).get("person") or "").strip()
@@ -1794,7 +1815,18 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             whose = "your" if tid == identity["id"] else f"{tname}'s"
             if not n:
                 return f"No leave was on record for {'you' if tid == identity['id'] else tname}."
-            return f"Cleared {whose} leave — {n} entr{'y' if n == 1 else 'ies'} removed."
+            return f"Cleared {whose} leave request(s) — {n} entr{'y' if n == 1 else 'ies'} removed."
+
+        if name == "get_leave_balance" and kind == "employee":
+            try:
+                import leave_store
+                bal = leave_store.get_balance(identity["id"])
+            except Exception:
+                logger.exception("whatsapp_agent: get_leave_balance failed")
+                return "(couldn't look that up just now)"
+            return (f"{bal['base']}-day pool + {bal['comp_earned']} comp-off "
+                    f"earned this year, {bal['used']} used -> "
+                    f"{bal['remaining']} remaining ({bal['year']}).")
 
         if name == "set_standing_rule" and kind == "employee":
             rule = str((tool_input or {}).get("rule") or "").strip()
