@@ -27,6 +27,7 @@ Routes:
   GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
   POST /api/companion/retention/run                        -- force a real retention sweep now
   POST /api/companion/backfill-overtime                     -- one-time catch-up of pre-2026-09-30 overtime_ledger rows
+  GET  /api/companion/ot-ledger-summary                      -- read-only: current overtime_ledger/comp_off_ledger contents
 
 Note: the follow-up sweep itself runs on the Railway scheduler
 (task_scheduler._run_followup_sweep), NOT from the laptop -- delivery goes
@@ -1437,6 +1438,46 @@ def companion_retention_run():
     except Exception:
         logger.exception("companion retention run failed")
         return jsonify({"error": "retention sweep failed"}), 500
+
+
+@companion_bp.route("/api/companion/ot-ledger-summary", methods=["GET"])
+def companion_ot_ledger_summary():
+    """Read-only: exactly what's in overtime_ledger/comp_off_ledger right
+    now, so a correction to either can be targeted precisely instead of
+    guessed at — same "inspect before you touch balance data" discipline
+    as every other destructive-adjacent companion route in this file."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        from utils import today_ist
+        conn = get_connection()
+        comp_rows = conn.execute(
+            "SELECT id, user_id, days, source_ot_hours, created_at "
+            "FROM comp_off_ledger ORDER BY created_at DESC"
+        ).fetchall()
+        unconverted = conn.execute(
+            "SELECT user_id, date, worked_hours, ot_hours, created_at "
+            "FROM overtime_ledger WHERE converted_at IS NULL ORDER BY date ASC"
+        ).fetchall()
+        converted_count = conn.execute(
+            "SELECT COUNT(*) FROM overtime_ledger WHERE converted_at IS NOT NULL"
+        ).fetchone()[0]
+        conn.close()
+        return jsonify({
+            "today": today_ist(),
+            "comp_off_ledger": [
+                {"id": r[0], "user_id": r[1], "days": r[2], "source_ot_hours": r[3],
+                 "created_at": r[4]} for r in comp_rows
+            ],
+            "unconverted_overtime_rows": [
+                {"user_id": r[0], "date": r[1], "worked_hours": r[2], "ot_hours": r[3],
+                 "created_at": r[4]} for r in unconverted
+            ],
+            "converted_overtime_row_count": converted_count,
+        })
+    except Exception:
+        logger.exception("companion ot-ledger-summary failed")
+        return jsonify({"error": "lookup failed"}), 500
 
 
 @companion_bp.route("/api/companion/backfill-overtime", methods=["POST"])
