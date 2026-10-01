@@ -26,6 +26,7 @@ Routes:
   GET  /api/companion/wa-context-keys                       -- recent chat context keys (no content), DM vs group
   GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
   POST /api/companion/retention/run                        -- force a real retention sweep now
+  POST /api/companion/backfill-overtime                     -- one-time catch-up of pre-2026-09-30 overtime_ledger rows
 
 Note: the follow-up sweep itself runs on the Railway scheduler
 (task_scheduler._run_followup_sweep), NOT from the laptop -- delivery goes
@@ -1436,6 +1437,23 @@ def companion_retention_run():
     except Exception:
         logger.exception("companion retention run failed")
         return jsonify({"error": "retention sweep failed"}), 500
+
+
+@companion_bp.route("/api/companion/backfill-overtime", methods=["POST"])
+def companion_backfill_overtime():
+    """One-time catch-up: compute overtime_ledger rows for every day of
+    real attendance history that predates the nightly conversion sweep
+    (leave management system shipped 2026-09-30) — see
+    leave_store.backfill_overtime_ledger()'s docstring. Idempotent, safe
+    to call more than once."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import leave_store
+        return jsonify(leave_store.backfill_overtime_ledger())
+    except Exception:
+        logger.exception("companion backfill-overtime failed")
+        return jsonify({"error": "backfill failed"}), 500
 
 
 # ── uploads archive ────────────────────────────────────────────────────────

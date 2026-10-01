@@ -695,3 +695,66 @@ def run_overtime_conversion_sweep(for_date: str | None = None) -> dict:
     finally:
         conn.close()
     return {"processed": processed, "converted_events": converted_events}
+
+
+def backfill_overtime_ledger() -> dict:
+    """One-time (but idempotent — safe to re-run) catch-up for real
+    history that predates this feature.
+
+    run_overtime_conversion_sweep() only started running nightly once the
+    leave management system shipped (2026-09-30), so it only ever
+    computed overtime_ledger rows for "yesterday" from that point on.
+    Someone who worked a lot of overtime across September never got any
+    of it into the ledger — even though the Attendance Excel export has
+    always shown that same overtime, computed straight from
+    daily_attendance with no dependency on this table at all. This walks
+    every day of real attendance history (excluding today, which is still
+    in progress and will be picked up by tomorrow's regular sweep like
+    always) for every active employee, inserting whatever rows are
+    missing using the exact same hours/overtime math as the nightly job,
+    then runs the normal conversion check once so any comp-off days
+    already earned fire immediately instead of waiting for tomorrow.
+
+    Already-present dates are skipped up front (not relied on via
+    IntegrityError) since a full-history backfill can touch thousands of
+    rows."""
+    conn = get_connection()
+    processed = 0
+    try:
+        _ensure_overtime_ledger(conn)
+        _ensure_comp_off_ledger(conn)
+        today = today_ist()
+        existing = {(r[0], r[1]) for r in conn.execute(
+            "SELECT user_id, date FROM overtime_ledger").fetchall()}
+        active = set(_active_employee_ids())
+        att_rows = conn.execute(
+            "SELECT user_id, date, checkin_time, checkout_time FROM daily_attendance "
+            "WHERE date < ?", (today,),
+        ).fetchall()
+        for user_id, date, cin, cout in att_rows:
+            if user_id not in active or (user_id, date) in existing:
+                continue
+            hrs = _hours_worked(cin, cout)
+            if hrs is None:
+                continue
+            ot = _overtime_hours_for(hrs)
+            try:
+                with conn:
+                    conn.execute(
+                        "INSERT INTO overtime_ledger (user_id, date, worked_hours, ot_hours) "
+                        "VALUES (?,?,?,?)", (user_id, date, hrs, ot),
+                    )
+                processed += 1
+            except sqlite3.IntegrityError:
+                pass  # race with a concurrent sweep/backfill — harmless, already there
+
+        converted_events = 0
+        for user_id in active:
+            try:
+                with conn:
+                    converted_events += _convert_overtime_for_user(conn, user_id)
+            except Exception:
+                logger.exception("leave_store: backfill conversion failed for %s", user_id)
+    finally:
+        conn.close()
+    return {"processed": processed, "converted_events": converted_events}
