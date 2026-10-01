@@ -21,9 +21,12 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
 .nav a { color:var(--muted); text-decoration:none; margin-left:14px; font-size:.85rem; }
 .nav a:hover { color:var(--txt); }
 .card { background:var(--s1); border:1px solid var(--bdr); border-radius:var(--rs); padding:18px; margin-bottom:18px; }
-.balance-strip { display:flex; gap:24px; flex-wrap:wrap; }
+.balance-strip { display:flex; gap:24px; flex-wrap:wrap; align-items:center; }
 .balance-item .num { font-size:1.6rem; font-weight:700; }
 .balance-item .lbl { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.btn-convert { background:var(--acc); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:.8rem; cursor:pointer; margin-left:auto; }
+.btn-convert:disabled { opacity:.4; cursor:default; }
+.ot-hint { font-size:.72rem; color:var(--muted); margin-top:4px; }
 .cal-nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 .cal-nav button { background:var(--s2); border:1px solid var(--bdr); color:var(--txt); border-radius:8px; padding:6px 12px; cursor:pointer; }
 .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
@@ -135,13 +138,41 @@ async function loadBalance(){
   try{
     const r = await fetch(`${API}/api/leave/balance?user_id=${encodeURIComponent(UID)}`);
     const d = await r.json();
+    const otHours = d.ot_pending_hours || 0;
+    const otThreshold = d.ot_conversion_hours || 24;
+    const canConvert = otHours >= otThreshold;
     document.getElementById("balance-strip").innerHTML = `
       <div class="balance-item"><div class="num">${d.remaining}</div><div class="lbl">Remaining</div></div>
       <div class="balance-item"><div class="num">${d.used}</div><div class="lbl">Used (${d.year})</div></div>
       <div class="balance-item"><div class="num">${d.comp_earned}</div><div class="lbl">Comp-Off Earned</div></div>
       <div class="balance-item"><div class="num">${d.base}</div><div class="lbl">Base Pool</div></div>
+      <div class="balance-item">
+        <div class="num">${otHours}h</div>
+        <div class="lbl">OT Hours Pending</div>
+        <div class="ot-hint">${canConvert ? "Ready to convert" : `${(otThreshold - otHours).toFixed(2)}h more needed`}</div>
+      </div>
+      <button class="btn-convert" id="convert-ot-btn" ${canConvert ? "" : "disabled"} onclick="convertOvertime()">Convert to Leave</button>
     `;
   }catch(e){ toast("Couldn't load balance","err"); }
+}
+
+async function convertOvertime(){
+  const btn = document.getElementById("convert-ot-btn");
+  if (btn){ btn.disabled = true; btn.textContent = "Converting…"; }
+  try{
+    const r = await fetch(`${API}/api/leave/convert-ot`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: UID}),
+    });
+    const d = await r.json();
+    if (!r.ok){ toast(d.error || "Failed to convert","err"); await loadBalance(); return; }
+    if (d.converted_days > 0){
+      toast(`Converted ${d.converted_days} day(s) of leave — ${d.pending_hours}h still pending`);
+    } else {
+      toast("Not enough overtime hours yet","err");
+    }
+    await loadBalance();
+  }catch(e){ toast("Network error","err"); await loadBalance(); }
 }
 
 async function loadPending(){

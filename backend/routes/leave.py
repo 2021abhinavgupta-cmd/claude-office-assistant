@@ -118,6 +118,18 @@ def leave_cancel(leave_id: int):
     return jsonify({"success": True})
 
 
+@leave_bp.route("/api/leave/convert-ot", methods=["POST"])
+def leave_convert_ot():
+    """Self-service: convert the caller's own pending overtime into
+    comp-off leave right now, instead of waiting for the nightly sweep.
+    Whole 24h blocks convert; any leftover hours stay pending and carry
+    forward (leave_store._convert_overtime_for_user)."""
+    uid, err = _require_session()
+    if err:
+        return err
+    return jsonify(leave_store.convert_overtime_now(uid))
+
+
 @leave_bp.route("/api/leave/pending", methods=["GET"])
 def leave_pending():
     uid, err = _require_hr()

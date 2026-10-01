@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from datetime import date as _date, timedelta
+from uuid import uuid4
 
 from db import get_connection
 from utils import today_ist
@@ -433,11 +434,22 @@ def get_balance(user_id: str, year: int | None = None) -> dict:
             # Table not created yet (db.init_db() makes it; this is a pure
             # read path and deliberately no longer runs DDL of its own).
             comp_earned = 0.0
+
+        try:
+            ot_row = conn.execute(
+                "SELECT COALESCE(SUM(ot_hours), 0) FROM overtime_ledger "
+                "WHERE user_id=? AND converted_at IS NULL", (user_id,),
+            ).fetchone()
+            ot_pending_hours = round(ot_row[0] or 0.0, 2)
+        except sqlite3.OperationalError:
+            ot_pending_hours = 0.0
     finally:
         conn.close()
     remaining = ANNUAL_BASE_DAYS + comp_earned - used
     return {"base": ANNUAL_BASE_DAYS, "comp_earned": round(comp_earned, 2),
-            "used": round(used, 2), "remaining": round(remaining, 2), "year": year}
+            "used": round(used, 2), "remaining": round(remaining, 2), "year": year,
+            "ot_pending_hours": ot_pending_hours,
+            "ot_conversion_hours": OT_CONVERSION_HOURS}
 
 
 # ── calendar (per-day dot status for the UI) ────────────────────────────
@@ -537,37 +549,90 @@ def _active_employee_ids() -> list[str]:
     return [e for e in out if e]
 
 
-def _convert_overtime_for_user(conn, user_id: str) -> int:
-    """Walk this user's unconverted overtime_ledger rows oldest-first,
-    marking them converted as the running total crosses 24hrs, firing one
-    comp_off_ledger accrual per crossing. Returns how many accrual events
-    fired. A day that pushes the total past 24 has its FULL ot_hours
-    consumed (no fractional-day splitting) — any overshoot just means the
-    next cycle starts slightly ahead, deliberately simple."""
+def _convert_overtime_for_user(conn, user_id: str) -> float:
+    """Convert this user's unconverted overtime into whole comp-off days,
+    right now, carrying any leftover hours forward instead of discarding
+    them. 26 unconverted hours converts to +1 day and leaves exactly 2
+    hours still pending for next time — not 0.
+
+    Every currently-unconverted ledger row is marked converted (its hours
+    are fully accounted for in the total), one comp_off_ledger row records
+    the whole days earned, and — if there's a remainder — a single new
+    synthetic ledger row carries it forward as still-unconverted overtime.
+    That row's `date` is a non-date sentinel (`carry-<uuid>`), never a real
+    calendar date, purely so it keeps UNIQUE(user_id, date) happy and reads
+    back indistinguishably from any other unconverted row next time this
+    runs. Returns how many whole days were converted (0 if under 24h)."""
     rows = conn.execute(
         "SELECT id, ot_hours FROM overtime_ledger WHERE user_id=? "
-        "AND converted_at IS NULL ORDER BY date ASC", (user_id,),
+        "AND converted_at IS NULL", (user_id,),
     ).fetchall()
-    converted_events = 0
-    running = 0.0
-    batch_ids = []
-    for rid, ot in rows:
-        running += (ot or 0.0)
-        batch_ids.append(rid)
-        if running >= OT_CONVERSION_HOURS:
-            conn.execute(
-                f"UPDATE overtime_ledger SET converted_at=datetime('now') "
-                f"WHERE id IN ({','.join('?' * len(batch_ids))})",
-                batch_ids,
-            )
-            conn.execute(
-                "INSERT INTO comp_off_ledger (user_id, days, source_ot_hours) "
-                "VALUES (?, 1, ?)", (user_id, running),
-            )
-            converted_events += 1
-            batch_ids = []
-            running = 0.0
-    return converted_events
+    total = sum((ot or 0.0) for _rid, ot in rows)
+    if total < OT_CONVERSION_HOURS:
+        return 0.0
+    whole_days = int(total // OT_CONVERSION_HOURS)
+    consumed = whole_days * OT_CONVERSION_HOURS
+    remainder = round(total - consumed, 4)
+    ids = [rid for rid, _ot in rows]
+    conn.execute(
+        f"UPDATE overtime_ledger SET converted_at=datetime('now') "
+        f"WHERE id IN ({','.join('?' * len(ids))})",
+        ids,
+    )
+    conn.execute(
+        "INSERT INTO comp_off_ledger (user_id, days, source_ot_hours) "
+        "VALUES (?, ?, ?)", (user_id, whole_days, consumed),
+    )
+    if remainder > 1e-6:
+        conn.execute(
+            "INSERT INTO overtime_ledger (user_id, date, worked_hours, ot_hours) "
+            "VALUES (?, ?, ?, ?)",
+            (user_id, f"carry-{uuid4()}", remainder, remainder),
+        )
+    return float(whole_days)
+
+
+def get_unconverted_ot_hours(user_id: str) -> float:
+    """Total still-pending (not yet converted to comp-off) overtime hours
+    for this person, right now — what the Leave page shows next to the
+    Convert action. Read-only; tolerates the table not existing yet
+    (db.init_db() creates it) rather than running DDL on every read, same
+    convention as get_balance()'s comp_off_ledger read."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(ot_hours), 0) FROM overtime_ledger "
+            "WHERE user_id=? AND converted_at IS NULL", (user_id,),
+        ).fetchone()
+        return round(row[0] or 0.0, 2)
+    except sqlite3.OperationalError:
+        return 0.0
+    except Exception:
+        logger.exception("leave_store.get_unconverted_ot_hours failed")
+        return 0.0
+    finally:
+        conn.close()
+
+
+def convert_overtime_now(user_id: str) -> dict:
+    """Manually trigger the overtime -> comp-off conversion for one person
+    immediately, instead of waiting for the nightly sweep (which runs the
+    exact same logic, just automatically, once a day for every employee).
+    Safe to call anytime, including with under 24h pending (a no-op)."""
+    conn = get_connection()
+    try:
+        _ensure_overtime_ledger(conn)
+        _ensure_comp_off_ledger(conn)
+        with conn:
+            converted_days = _convert_overtime_for_user(conn, user_id)
+        row = conn.execute(
+            "SELECT COALESCE(SUM(ot_hours), 0) FROM overtime_ledger "
+            "WHERE user_id=? AND converted_at IS NULL", (user_id,),
+        ).fetchone()
+        pending_hours = round(row[0] or 0.0, 2)
+        return {"converted_days": converted_days, "pending_hours": pending_hours}
+    finally:
+        conn.close()
 
 
 def run_overtime_conversion_sweep(for_date: str | None = None) -> dict:
@@ -576,7 +641,13 @@ def run_overtime_conversion_sweep(for_date: str | None = None) -> dict:
     Safe to call more than once for the same date — the UNIQUE(user_id,
     date) constraint on overtime_ledger makes the per-day insert a no-op
     on a re-run (caught via sqlite3.IntegrityError), and conversion only
-    ever consumes rows that are still unconverted."""
+    ever consumes rows that are still unconverted.
+
+    `converted_events` in the returned dict is actually a count of whole
+    comp-off DAYS converted across everyone this run (_convert_overtime_
+    for_user can return >1 in one call if someone's pending total already
+    spans multiple 24h blocks) — kept as the same dict key for anything
+    already reading this return value."""
     if for_date is None:
         for_date = (_date.fromisoformat(today_ist()) - timedelta(days=1)).isoformat()
 
