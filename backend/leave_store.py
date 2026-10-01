@@ -697,6 +697,58 @@ def run_overtime_conversion_sweep(for_date: str | None = None) -> dict:
     return {"processed": processed, "converted_events": converted_events}
 
 
+def freeze_backlog_and_revert_grants() -> dict:
+    """One-time correction for the 2026-10-01 OT backfill, per an explicit
+    user decision made right after seeing its effect: the 24h->1-day
+    carry-forward cycle should start fresh from today, not retroactively
+    grant leave from whatever attendance history existed before this
+    feature was ever built.
+
+    backfill_overtime_ledger()'s trailing conversion step treated that
+    entire historical backlog as live pending overtime and immediately
+    granted comp-off days from it — this undoes exactly that:
+      - Every comp_off_ledger row is deleted (this session's own
+        ot-ledger-summary diagnostic confirmed, before running this, that
+        every existing row carries that exact backfill run's timestamp —
+        not any separate legitimate grant — so there's nothing else to
+        preserve).
+      - Every still-unconverted overtime_ledger row dated before today,
+        PLUS any leftover carry-<uuid> remainder row from that run's own
+        conversion (a synthetic sentinel date that doesn't compare as
+        "before today" via plain string ordering, so it needs its own
+        clause), is marked with a converted_at sentinel ('frozen-backlog'
+        — never a real timestamp) so it's permanently excluded from
+        every future pending-hours sum and conversion check. The row
+        itself is kept, not deleted — it stays as a historical record,
+        it just stops counting toward anything from here on.
+
+    A genuinely new row dated today or later is never touched by this —
+    that's exactly the "starts fresh from today" behavior this
+    implements. Safe to call more than once; a second call simply finds
+    nothing left to revert or freeze."""
+    conn = get_connection()
+    try:
+        _ensure_overtime_ledger(conn)
+        _ensure_comp_off_ledger(conn)
+        today = today_ist()
+        with conn:
+            agg = conn.execute(
+                "SELECT COALESCE(SUM(days), 0), COUNT(*) FROM comp_off_ledger"
+            ).fetchone()
+            days_reverted, rows_reverted = agg[0] or 0.0, agg[1] or 0
+            conn.execute("DELETE FROM comp_off_ledger")
+            frozen = conn.execute(
+                "UPDATE overtime_ledger SET converted_at='frozen-backlog' "
+                "WHERE converted_at IS NULL AND (date < ? OR date LIKE 'carry-%')",
+                (today,),
+            ).rowcount
+        return {"comp_off_days_reverted": days_reverted,
+                "comp_off_rows_reverted": rows_reverted,
+                "overtime_rows_frozen": frozen}
+    finally:
+        conn.close()
+
+
 def backfill_overtime_ledger() -> dict:
     """One-time (but idempotent — safe to re-run) catch-up for real
     history that predates this feature.

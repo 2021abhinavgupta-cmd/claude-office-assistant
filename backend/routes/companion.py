@@ -27,6 +27,7 @@ Routes:
   GET  /api/companion/retention                            -- dry run: what the retention sweep would delete
   POST /api/companion/retention/run                        -- force a real retention sweep now
   POST /api/companion/backfill-overtime                     -- one-time catch-up of pre-2026-09-30 overtime_ledger rows
+  POST /api/companion/freeze-ot-backlog                      -- one-time: revert backfill-granted comp-off, freeze the backlog
   GET  /api/companion/ot-ledger-summary                      -- read-only: current overtime_ledger/comp_off_ledger contents
 
 Note: the follow-up sweep itself runs on the Railway scheduler
@@ -1495,6 +1496,23 @@ def companion_backfill_overtime():
     except Exception:
         logger.exception("companion backfill-overtime failed")
         return jsonify({"error": "backfill failed"}), 500
+
+
+@companion_bp.route("/api/companion/freeze-ot-backlog", methods=["POST"])
+def companion_freeze_ot_backlog():
+    """One-time correction for the backfill above: reverts any comp-off
+    days it granted from pre-existing attendance history and freezes that
+    whole backlog out of future conversion, so the 24h carry-forward
+    cycle starts fresh from today — see
+    leave_store.freeze_backlog_and_revert_grants()'s docstring."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import leave_store
+        return jsonify(leave_store.freeze_backlog_and_revert_grants())
+    except Exception:
+        logger.exception("companion freeze-ot-backlog failed")
+        return jsonify({"error": "freeze failed"}), 500
 
 
 # ── uploads archive ────────────────────────────────────────────────────────
