@@ -402,6 +402,8 @@
         <button id="my-checkin-btn" onclick="myCheckIn()" style="display:none;background:var(--green,#22d3a0);border:none;color:#0a1a14;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check In</button>
         <button id="my-checkout-btn" onclick="myCheckOut()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check Out</button>
         <button id="my-undo-checkout-btn" onclick="myUndoCheckout()" title="Clicked Check Out by mistake? This clears today's Out time." style="display:none;background:none;border:1px solid var(--border);color:var(--muted);padding:9px 14px;border-radius:8px;font-size:.8rem;cursor:pointer">Undo checkout</button>
+        <button id="my-add-inloc-btn" onclick="openLocModal('set-checkin')" title="Your check-in was recorded without a location. Add it now." style="display:none;background:none;border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:8px;font-size:.8rem;cursor:pointer">Add check-in location</button>
+        <button id="my-add-outloc-btn" onclick="openLocModal('set-checkout')" title="Your check-out was recorded without a location. Add it now." style="display:none;background:none;border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:8px;font-size:.8rem;cursor:pointer">Add check-out location</button>
       </div>
     </div>
     <div id="my-att-msg" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
@@ -417,8 +419,9 @@
   <div id="loc-modal-bg" onclick="if(event.target===this)closeLocModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:9999">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;width:360px;max-width:90vw">
       <h3 id="loc-modal-title" style="font-size:1rem;margin-bottom:10px">Location</h3>
-      <input id="loc-modal-input" type="text" placeholder="e.g. 19.0760, 72.8777" onkeydown="if(event.key==='Enter')confirmLocModal()" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:8px;font-size:.85rem">
+      <input id="loc-modal-input" type="text" placeholder="e.g. 19.0760, 72.8777" oninput="locModalTouched=true" onkeydown="if(event.key==='Enter')confirmLocModal()" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:8px;font-size:.85rem">
       <div id="loc-modal-hint" style="font-size:.72rem;color:var(--muted);margin-top:8px">Detecting your location…</div>
+      <button onclick="runLocDetect(true)" style="background:none;border:none;color:var(--muted);font-size:.72rem;text-decoration:underline;cursor:pointer;padding:0;margin-top:6px">Detect again</button>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
         <button id="loc-modal-forget" onclick="forgetSavedLoc()" style="display:none;background:none;border:none;color:var(--muted);font-size:.72rem;text-decoration:underline;cursor:pointer;padding:0">Forget saved location</button>
         <div style="display:flex;gap:8px;margin-left:auto">
@@ -608,6 +611,8 @@ function renderMyAttendance(myRow, isViewingToday) {
   const inBtn = document.getElementById("my-checkin-btn");
   const outBtn = document.getElementById("my-checkout-btn");
   const undoBtn = document.getElementById("my-undo-checkout-btn");
+  const addInLocBtn = document.getElementById("my-add-inloc-btn");
+  const addOutLocBtn = document.getElementById("my-add-outloc-btn");
   if (!statusEl || !inBtn || !outBtn) return;
 
   // Only meaningful for today -- browsing a past date on the picker above
@@ -617,9 +622,19 @@ function renderMyAttendance(myRow, isViewingToday) {
     inBtn.style.display = "none";
     outBtn.style.display = "none";
     if (undoBtn) undoBtn.style.display = "none";
+    if (addInLocBtn) addInLocBtn.style.display = "none";
+    if (addOutLocBtn) addOutLocBtn.style.display = "none";
     return;
   }
   if (myAttBusy) return; // don't yank buttons out from under an in-flight click
+
+  // A check-in/out that was recorded without a location (browser blocked it,
+  // or the portal auto-checked them in on page load) can have one added after
+  // the fact -- same popup, auto-detect + manual entry, times untouched.
+  const noInLoc = !!(myRow && myRow.checkin_time && (myRow.checkin_lat == null || myRow.checkin_lng == null));
+  const noOutLoc = !!(myRow && myRow.checkout_time && (myRow.checkout_lat == null || myRow.checkout_lng == null));
+  if (addInLocBtn) addInLocBtn.style.display = noInLoc ? "inline-block" : "none";
+  if (addOutLocBtn) addOutLocBtn.style.display = noOutLoc ? "inline-block" : "none";
 
   if (!myRow || !myRow.checkin_time) {
     statusEl.textContent = "Not checked in yet today.";
@@ -627,12 +642,12 @@ function renderMyAttendance(myRow, isViewingToday) {
     outBtn.style.display = "none";
     if (undoBtn) undoBtn.style.display = "none";
   } else if (!myRow.checkout_time) {
-    statusEl.textContent = `Checked in at ${myRow.checkin_time} IST.`;
+    statusEl.textContent = `Checked in at ${myRow.checkin_time} IST${noInLoc ? " (no location)" : ""}.`;
     inBtn.style.display = "none";
     outBtn.style.display = "inline-block";
     if (undoBtn) undoBtn.style.display = "none";
   } else {
-    statusEl.textContent = `In ${myRow.checkin_time} IST · Out ${myRow.checkout_time} IST.`;
+    statusEl.textContent = `In ${myRow.checkin_time} IST${noInLoc ? " (no location)" : ""} · Out ${myRow.checkout_time} IST${noOutLoc ? " (no location)" : ""}.`;
     inBtn.style.display = "none";
     outBtn.style.display = "inline-block"; // still correctable if they come back
     if (undoBtn) undoBtn.style.display = "inline-block"; // clicked Check Out by mistake? clear it
@@ -698,7 +713,14 @@ async function _myAttendanceAction(kind, loc) {
 // falls back to their last-confirmed value (remembered per-user in
 // localStorage, most people check in from the same place most days) or
 // stays blank for them to paste coordinates into.
+//
+// Modes: 'checkin' / 'checkout' perform the action with whatever location
+// is confirmed (blank is allowed -- location never blocks attendance);
+// 'set-checkin' / 'set-checkout' only attach a location to an existing
+// check-in/out (the "Add check-in/out location" buttons), so a location is
+// required there.
 let locModalKind = null;
+let locModalTouched = false; // user typed in the field -- don't overwrite it with a detection
 
 function _manualLocKey(userId) { return `attn_manual_loc_${userId}`; }
 
@@ -714,34 +736,61 @@ function getManualLoc(userId) {
 
 function openLocModal(kind) {
   locModalKind = kind;
+  locModalTouched = false;
   const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
   const title = document.getElementById("loc-modal-title");
   const input = document.getElementById("loc-modal-input");
-  const hint = document.getElementById("loc-modal-hint");
   const forgetBtn = document.getElementById("loc-modal-forget");
-  title.textContent = kind === "checkin" ? "Check-in location" : "Check-out location";
+  const confirmBtn = document.getElementById("loc-modal-confirm");
+  const isCheckin = kind === "checkin" || kind === "set-checkin";
+  const isSet = kind.startsWith("set-");
+  title.textContent = (isSet ? "Add " : "") + (isCheckin ? "check-in location" : "check-out location");
+  confirmBtn.textContent = isSet ? "Save location" : "Confirm";
   const saved = getManualLoc(user.user_id);
   input.value = saved ? `${saved.lat}, ${saved.lng}` : "";
-  hint.style.color = "var(--muted)";
-  hint.textContent = "Detecting your location…";
   forgetBtn.style.display = saved ? "inline-block" : "none";
   document.getElementById("loc-modal-bg").style.display = "flex";
   input.focus();
+  runLocDetect(false);
+}
 
-  if (window.getAttendanceLocation) {
-    window.getAttendanceLocation().then(loc => {
-      if (locModalKind !== kind) return; // modal was closed/reused before this resolved
-      if (loc) {
-        if (!input.value.trim()) input.value = `${loc.lat}, ${loc.lng}`;
-        hint.textContent = "Detected automatically -- edit if this isn't right, or Confirm to use it.";
-      } else {
-        hint.textContent = input.value.trim()
-          ? "Couldn't detect automatically -- using your saved location below."
-          : "Couldn't detect automatically. Paste coordinates from Google Maps (right-click your spot -> click the coordinates to copy), or leave blank to skip.";
-      }
-    }).catch(() => {});
+// Try the browser for a live position and fill the field with it. A live
+// reading beats the remembered one (it's where they actually are now) but
+// never overwrites something the person has started typing. `manual` = they
+// pressed "Detect again", so always replace the field and re-ask.
+async function runLocDetect(manual) {
+  const kind = locModalKind;
+  if (!kind) return;
+  const input = document.getElementById("loc-modal-input");
+  const hint = document.getElementById("loc-modal-hint");
+  const isSet = kind.startsWith("set-");
+  hint.style.color = "var(--muted)";
+  hint.textContent = "Detecting your location…";
+
+  let denied = false;
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      denied = (await navigator.permissions.query({ name: "geolocation" })).state === "denied";
+    }
+  } catch (e) { /* Permissions API unavailable -- fall through to a plain attempt */ }
+
+  const loc = (!denied && window.getAttendanceLocation)
+    ? await window.getAttendanceLocation(6000).catch(() => null)
+    : null;
+  if (locModalKind !== kind) return; // closed or reused while we were waiting
+
+  if (loc) {
+    if (manual || !locModalTouched) input.value = `${loc.lat}, ${loc.lng}`;
+    hint.textContent = "Detected automatically -- edit if this isn't right, or " + (isSet ? "Save" : "Confirm") + " to use it.";
+    return;
+  }
+  const have = input.value.trim();
+  if (denied) {
+    hint.textContent = "Your browser is blocking location for this site. Click the lock icon next to the address bar -> Site settings -> Location -> Allow, then press Detect again. Or paste coordinates from Google Maps below."
+      + (have ? " (Using your saved location for now.)" : "");
   } else {
-    hint.textContent = "Paste coordinates from Google Maps, or leave blank to skip.";
+    hint.textContent = "Couldn't detect your location automatically. Paste coordinates from Google Maps (right-click your spot -> click the coordinates to copy)"
+      + (have ? ". (Using your saved location for now.)" : (isSet ? "." : ", or leave blank to skip."));
   }
 }
 
@@ -765,7 +814,13 @@ function confirmLocModal() {
   const input = document.getElementById("loc-modal-input");
   const hint = document.getElementById("loc-modal-hint");
   const raw = input.value.trim();
+  const isSet = kind.startsWith("set-");
   let loc = null;
+  if (!raw && isSet) {
+    hint.style.color = "#ef4444";
+    hint.textContent = "Enter or detect a location first -- there's nothing to save yet.";
+    return;
+  }
   if (raw) {
     // Accepts "lat, lng" or "lat lng" -- how Google Maps' own
     // right-click-to-copy-coordinates feature formats a location.
@@ -782,7 +837,43 @@ function confirmLocModal() {
     if (user.user_id) localStorage.setItem(_manualLocKey(user.user_id), JSON.stringify(loc));
   }
   closeLocModal();
-  _myAttendanceAction(kind, loc);
+  if (isSet) _myAttendanceSetLocation(kind.slice(4), loc);
+  else _myAttendanceAction(kind, loc);
+}
+
+// Attach a location to today's existing check-in / check-out ('checkin' |
+// 'checkout') without changing any time.
+async function _myAttendanceSetLocation(kind, loc) {
+  if (myAttBusy) return;
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+  if (!user.user_id) return;
+  const msgEl = document.getElementById("my-att-msg");
+  const label = kind === "checkin" ? "check-in" : "check-out";
+  myAttBusy = true;
+  if (msgEl) msgEl.style.display = "none";
+  try {
+    const r = await fetch(`${API}/api/attendance/location`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.user_id, kind, lat: loc.lat, lng: loc.lng })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) throw new Error(d.error || "couldn't save the location");
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.color = "var(--muted)";
+      msgEl.textContent = `Saved your ${label} location (${loc.lat}, ${loc.lng}).`;
+    }
+  } catch (e) {
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.color = "#ef4444";
+      msgEl.textContent = `Couldn't add the ${label} location: ${e.message}`;
+    }
+  } finally {
+    myAttBusy = false;
+    await loadAttendance();
+  }
 }
 
 function myCheckIn() { openLocModal("checkin"); }

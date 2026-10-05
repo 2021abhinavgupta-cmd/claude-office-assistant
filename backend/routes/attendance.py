@@ -114,6 +114,35 @@ def _attendance_checkin(user_id: str, lat=None, lng=None):
                 "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'in', ?)",
                 (user_id, ts),
             )
+        else:
+            # The day already has a check-in (the portal auto-checks anyone with a
+            # live session in on their first page load, with no location). The time
+            # stays as the first of the day, but a location supplied now fills in the
+            # blank instead of being thrown away.
+            if lat is not None and lng is not None:
+                cur.execute(
+                    """UPDATE daily_attendance SET checkin_lat = ?, checkin_lng = ?
+                       WHERE user_id = ? AND date = ?
+                         AND checkin_time IS NOT NULL
+                         AND (checkin_lat IS NULL OR checkin_lng IS NULL)""",
+                    (lat, lng, user_id, d),
+                )
+            # An explicit check-in after a Check Out / Logout the same day means
+            # "I'm back" (a PIN login after a lunch-break logout, "in" on WhatsApp).
+            # /api/auth/verify no longer reopens manual checkouts on a page refresh,
+            # so this is where they resume.
+            reopened = cur.execute(
+                """UPDATE daily_attendance
+                   SET checkout_time = NULL, checkout_lat = NULL, checkout_lng = NULL,
+                       checkout_auto = 0
+                   WHERE user_id = ? AND date = ? AND checkout_time IS NOT NULL""",
+                (user_id, d),
+            ).rowcount
+            if reopened > 0:
+                conn.execute(
+                    "INSERT INTO attendance (user_id, action, timestamp) VALUES (?, 'in', ?)",
+                    (user_id, ts),
+                )
         cur.execute(
             "SELECT checkin_time FROM daily_attendance WHERE user_id=? AND date=?",
             (user_id, d),
@@ -169,10 +198,11 @@ def _attendance_checkout(user_id: str, lat=None, lng=None):
             # location (e.g. the WhatsApp bot's set_attendance tool, which
             # has no browser) must not blank out a location a PRIOR checkout
             # call this same day already captured.
-            """INSERT INTO daily_attendance (user_id, date, checkout_time, checkout_lat, checkout_lng)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO daily_attendance (user_id, date, checkout_time, checkout_lat, checkout_lng, checkout_auto)
+               VALUES (?, ?, ?, ?, ?, 0)
                ON CONFLICT(user_id, date) DO UPDATE SET
                    checkout_time = excluded.checkout_time,
+                   checkout_auto = 0,
                    checkout_lat = COALESCE(excluded.checkout_lat, daily_attendance.checkout_lat),
                    checkout_lng = COALESCE(excluded.checkout_lng, daily_attendance.checkout_lng)""",
             (user_id, d, t, lat, lng),
@@ -205,13 +235,37 @@ def _attendance_undo_checkout(user_id: str):
     with conn:
         cur = conn.execute(
             """UPDATE daily_attendance
-               SET checkout_time = NULL, checkout_lat = NULL, checkout_lng = NULL
+               SET checkout_time = NULL, checkout_lat = NULL, checkout_lng = NULL,
+                   checkout_auto = 0
                WHERE user_id = ? AND date = ? AND checkout_time IS NOT NULL""",
             (user_id, d),
         )
         undone = cur.rowcount > 0
     conn.close()
     return d, undone
+
+
+def _attendance_set_location(user_id: str, kind: str, lat: float, lng: float):
+    """Attach (or replace) the location on an EXISTING check-in or check-out
+    without touching any time. For the person who checked in with location
+    blocked/unavailable and wants to add it afterwards -- the dashboard's
+    "Add check-in location" / "Add check-out location" buttons. Only updates
+    when that side of today's row actually exists, so it can't invent a
+    check-in or check-out. Returns (date, updated)."""
+    if kind == "checkin":
+        sql = ("UPDATE daily_attendance SET checkin_lat = ?, checkin_lng = ? "
+               "WHERE user_id = ? AND date = ? AND checkin_time IS NOT NULL")
+    elif kind == "checkout":
+        sql = ("UPDATE daily_attendance SET checkout_lat = ?, checkout_lng = ? "
+               "WHERE user_id = ? AND date = ? AND checkout_time IS NOT NULL")
+    else:
+        raise ValueError("kind must be 'checkin' or 'checkout'")
+    d = today_ist()
+    conn = _attendance_conn()
+    with conn:
+        updated = conn.execute(sql, (lat, lng, user_id, d)).rowcount > 0
+    conn.close()
+    return d, updated
 
 
 # ── Attendance routes ─────────────────────────────────────────────────────────
@@ -263,6 +317,32 @@ def attendance_checkout():
         "checkout_time": checkout_time,
         "timezone": "IST",
     })
+
+
+@attendance_bp.route("/api/attendance/location", methods=["POST"])
+def attendance_set_location():
+    """Add a location to today's existing check-in or check-out. Unlike
+    checkin/checkout this requires the caller's real session cookie to match
+    user_id -- it edits a record HR relies on after the fact, with no time
+    change to anchor it."""
+    body = _attendance_payload()
+    user_id = str(body.get("user_id", "")).strip()
+    kind = str(body.get("kind", "")).strip().lower()
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+    from routes.auth import _verify_session
+    if _verify_session(request.cookies.get("session_token", "")) != user_id:
+        return jsonify({"error": "login required"}), 403
+    if kind not in ("checkin", "checkout"):
+        return jsonify({"error": "kind must be 'checkin' or 'checkout'"}), 400
+    lat, lng = _parse_latlng(body)
+    if lat is None:
+        return jsonify({"error": "a valid lat and lng are required"}), 400
+    date_ist, updated = _attendance_set_location(user_id, kind, lat, lng)
+    if not updated:
+        return jsonify({"error": f"no {kind} recorded today to attach a location to"}), 404
+    return jsonify({"success": True, "user_id": user_id, "date": date_ist, "kind": kind,
+                    "lat": lat, "lng": lng})
 
 
 @attendance_bp.route("/api/attendance/undo-checkout", methods=["POST"])
@@ -319,7 +399,8 @@ def sweep_stale_checkouts(stale_after_seconds: int = 240):
                 continue
             if (now_dt - last_seen_dt).total_seconds() >= stale_after_seconds:
                 conn.execute(
-                    "UPDATE daily_attendance SET checkout_time=? WHERE user_id=? AND date=?",
+                    "UPDATE daily_attendance SET checkout_time=?, checkout_auto=1 "
+                    "WHERE user_id=? AND date=?",
                     (_clamp_work_time(last_seen_at), user_id, d),
                 )
                 swept += 1

@@ -84,9 +84,10 @@ def _attendance_checkout(user_id: str):
     with conn:
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO daily_attendance (user_id, date, checkout_time)
-               VALUES (?, ?, ?)
-               ON CONFLICT(user_id, date) DO UPDATE SET checkout_time = excluded.checkout_time""",
+            """INSERT INTO daily_attendance (user_id, date, checkout_time, checkout_auto)
+               VALUES (?, ?, ?, 0)
+               ON CONFLICT(user_id, date) DO UPDATE SET
+                   checkout_time = excluded.checkout_time, checkout_auto = 0""",
             (user_id, d, t),
         )
         conn.execute(
@@ -183,14 +184,19 @@ def auth_verify():
     if not user_id:
         return jsonify({"valid": False}), 401
         
-    # Implicitly ensure the user is checked "in" for today.
-    # If they were checked out prematurely, this clears the checkout_time.
+    # Implicitly ensure the user is checked "in" for today. This runs on every
+    # page load/refresh, so it must only undo a checkout the SYSTEM made
+    # (sweep_stale_checkouts: the heartbeat went quiet, the person is clearly
+    # back now). It used to clear checkout_time unconditionally, which silently
+    # reverted an explicit Check Out / Logout the moment the page was refreshed.
+    # A manual checkout (checkout_auto = 0) now sticks until they check in again.
     conn = _attendance_conn()
     with conn:
         conn.execute("""
             INSERT INTO daily_attendance (user_id, date, checkin_time)
             VALUES (?, ?, ?)
-            ON CONFLICT(user_id, date) DO UPDATE SET checkout_time = NULL
+            ON CONFLICT(user_id, date) DO UPDATE SET checkout_time = NULL, checkout_auto = 0
+            WHERE daily_attendance.checkout_auto = 1
         """, (user_id, today_ist(), now_ist()))
     conn.close()
     data = _load_employees()

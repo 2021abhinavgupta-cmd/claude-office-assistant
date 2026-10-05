@@ -97,6 +97,14 @@ def init_db():
                 conn.execute(f"ALTER TABLE daily_attendance ADD COLUMN {_col} REAL DEFAULT NULL")
             except Exception:
                 pass  # Column already exists
+        # 1 when checkout_time was filled in by the heartbeat sweep (the tab simply
+        # went quiet), 0 for an explicit Check Out / Logout. Only an auto checkout
+        # is undone when the person is seen again (/api/auth/verify); a manual one
+        # sticks until they check in again.
+        try:
+            conn.execute("ALTER TABLE daily_attendance ADD COLUMN checkout_auto INTEGER DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
 
         # Daily standups
         conn.execute("""CREATE TABLE IF NOT EXISTS standups (
