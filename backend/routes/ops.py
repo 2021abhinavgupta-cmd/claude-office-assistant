@@ -908,10 +908,16 @@ def auto_fill_standup():
                 
             # If sync_all is true, we update tasks for ALL assignees
             if sync_all:
+                # Live roster, active employees only. This used to be a
+                # hardcoded name->id dict that still mapped "Mohit"/"Palak"
+                # onto emp006/emp007 after those ids were reassigned to
+                # Lakshmi/Charulata, so every old Mohit/Palak task in Notion
+                # was pushed into the new people's standups on Sync All.
+                _inactive = {"inactive", "disabled", "left", "removed", "archived", "former"}
                 emp_name_to_id = {
-                    "Vidit":"emp001","Nupur":"emp002","Abhinav":"emp003",
-                    "Kshitij":"emp004","Mohit":"emp006",
-                    "Palak":"emp007","Happy":"emp008", "Prathmesh":"emp009", "Om":"emp010"
+                    e["name"]: e["id"]
+                    for e in _load_employees().get("employees", [])
+                    if e.get("name") and str(e.get("status", "active")).lower() not in _inactive
                 }
                 assignees = vt.get("assigned_to", "")
                 names = [n.strip() for n in assignees.split(",") if n.strip()]
