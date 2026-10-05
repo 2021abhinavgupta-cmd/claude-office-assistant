@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Leave | Agency Portal Assistant</title>
+<title>Calendar | Agency Portal Assistant</title>
 <script src="auth.js"></script>
 <script src="shared-config.js"></script>
 <script src="gcal.js"></script>
@@ -28,21 +28,6 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
 .btn-convert { background:var(--acc); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-size:.8rem; cursor:pointer; margin-left:auto; }
 .btn-convert:disabled { opacity:.4; cursor:default; }
 .ot-hint { font-size:.72rem; color:var(--muted); margin-top:4px; }
-.cal-nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
-.cal-nav button { background:var(--s2); border:1px solid var(--bdr); color:var(--txt); border-radius:8px; padding:6px 12px; cursor:pointer; }
-.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
-.cal-h { font-size:.7rem; color:var(--muted); text-align:center; padding:4px; }
-.cal-day { position:relative; aspect-ratio:1; border:1px solid var(--bdr); border-radius:8px; padding:4px; font-size:.75rem; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; }
-.cal-day:hover { border-color:var(--acc); }
-.cal-day.empty { border:none; cursor:default; }
-.cal-day.weekend { opacity:.35; cursor:default; }
-.dot { width:8px; height:8px; border-radius:50%; margin-top:4px; }
-.dot.full { background:var(--green); }
-.dot.half { background:var(--yellow); }
-.dot.leave_approved { background:var(--red); }
-.dot.leave_pending { background:var(--orange); }
-.legend { display:flex; gap:16px; flex-wrap:wrap; font-size:.72rem; color:var(--muted); margin-top:12px; }
-.legend span { display:flex; align-items:center; gap:5px; }
 #toast { display:none; position:fixed; bottom:20px; right:20px; padding:10px 16px; border-radius:8px; font-size:.85rem; z-index:999; }
 #toast.ok { background:var(--green); color:#04241a; }
 #toast.err { background:var(--red); color:#2a0505; }
@@ -66,7 +51,7 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
 <body>
 <div class="wrap">
   <div class="hdr">
-    <h1>Leave</h1>
+    <h1>Calendar</h1>
     <div class="nav">
       <a href="dashboard.html">Dashboard</a>
       <a href="standup.html">Daily Standup</a>

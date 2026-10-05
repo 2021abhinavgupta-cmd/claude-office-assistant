@@ -988,6 +988,29 @@ def _du(path: Path) -> tuple:
     return total, count
 
 
+@companion_bp.route("/api/companion/email-status", methods=["GET"])
+def companion_email_status():
+    """Is outbound email (mailer.py, SMTP_* env vars) configured, and who
+    gets leave-request mail. ?test=1 sends a real test message to HR
+    synchronously and reports whether the SMTP server accepted it."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import mailer
+    out = {
+        "configured": mailer.is_configured(),
+        "smtp_host": os.getenv("SMTP_HOST", ""),
+        "smtp_port": os.getenv("SMTP_PORT", "587"),
+        "sender": os.getenv("SMTP_USER", ""),
+        "hr_email": mailer.email_for(mailer.HR_USER_ID),
+    }
+    if request.args.get("test") and out["configured"]:
+        out["test_sent"] = mailer.send(
+            out["hr_email"], "Lumina email test",
+            "This is a test from Lumina. Leave requests will arrive at this address.",
+            wait=True)
+    return jsonify(out)
+
+
 @companion_bp.route("/api/companion/storage-report", methods=["GET"])
 def companion_storage_report():
     """What's actually eating the Railway volume -- read-only, no side

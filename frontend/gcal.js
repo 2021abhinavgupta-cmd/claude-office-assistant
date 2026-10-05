@@ -66,11 +66,11 @@
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .gc-chip span{overflow:hidden;text-overflow:ellipsis}
 .gc-chip:hover{filter:brightness(1.15)}
-.gc-chip.fill{background:var(--c);color:#0b1f15;font-weight:500}
-.gc-chip.fill i{display:none}
-.gc-chip.dot i,.gc-chip.ring i{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--c)}
-.gc-chip.ring i{background:transparent;border:2px solid var(--c)}
-.gc-chip.dot:hover,.gc-chip.ring:hover{background:rgba(255,255,255,.08)}
+.gc-chip.gc-fill{background:var(--c);color:#0b1f15;font-weight:500}
+.gc-chip.gc-fill i{display:none}
+.gc-chip.gc-dot i,.gc-chip.gc-ring i{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--c)}
+.gc-chip.gc-ring i{background:transparent;border:2px solid var(--c)}
+.gc-chip.gc-dot:hover,.gc-chip.gc-ring:hover{background:rgba(255,255,255,.08)}
 .gc-more{font-size:.72rem;color:var(--g-mut);padding:2px 6px;cursor:pointer;border-radius:4px}
 .gc-more:hover{background:rgba(255,255,255,.08)}
 .gc-sched{padding:8px 24px}
@@ -171,7 +171,7 @@
     const byUid = {};
     function chip(ev) {
       byUid[ev.uid] = ev;
-      return `<div class="gc-chip ${ev.style || 'dot'}" style="--c:${ev.color || '#8ab4f8'}" data-ev="${ev.uid}" title="${esc(ev.title)}"><i></i><span>${esc(ev.title)}</span></div>`;
+      return `<div class="gc-chip gc-${ev.style || 'dot'}" style="--c:${ev.color || '#8ab4f8'}" data-ev="${ev.uid}" title="${esc(ev.title)}"><i></i><span>${esc(ev.title)}</span></div>`;
     }
 
     function renderMain() {

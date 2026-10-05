@@ -147,11 +147,13 @@ def set_leave(user_id: str, start_date: str, end_date: str,
                 (user_id, start_date, end_date, reason or "", created_by or "", status,
                  leave_type),
             )
-        return {"id": cur.lastrowid, "user_id": user_id,
-                "start_date": start_date, "end_date": end_date,
-                "reason": reason or "", "status": status, "leave_type": leave_type}
+        row = {"id": cur.lastrowid, "user_id": user_id,
+               "start_date": start_date, "end_date": end_date,
+               "reason": reason or "", "status": status, "leave_type": leave_type}
     finally:
         conn.close()
+    _email_hr(row)
+    return row
 
 
 def cancel_pending_for_user(user_id: str, on_date: str | None = None) -> int:
@@ -286,11 +288,24 @@ def apply_leave(user_id: str, start_date: str, end_date: str,
                 "VALUES (?,?,?,?,?,'pending',?)",
                 (user_id, start_date, end_date, reason or "", created_by or "", leave_type),
             )
-        return {"id": cur.lastrowid, "user_id": user_id, "start_date": start_date,
-                "end_date": end_date, "leave_type": leave_type,
-                "reason": reason or "", "status": "pending"}
+        row = {"id": cur.lastrowid, "user_id": user_id, "start_date": start_date,
+               "end_date": end_date, "leave_type": leave_type,
+               "reason": reason or "", "status": "pending"}
     finally:
         conn.close()
+    _email_hr(row)
+    return row
+
+
+def _email_hr(row: dict) -> None:
+    """Fire-and-forget email to HR for a new pending request. Never raises."""
+    if row.get("status") != "pending":
+        return
+    try:
+        import mailer
+        mailer.notify_leave_request(row)
+    except Exception:
+        logger.exception("leave_store: HR email failed")
 
 
 def approve_leave(leave_id: int, approved_by: str) -> bool:
