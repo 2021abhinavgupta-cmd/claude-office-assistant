@@ -1774,13 +1774,37 @@ def notion_dashboard():
         su_cur = su_conn.cursor()
         su_cur.execute("SELECT notion_id, status, subtasks FROM standup_tasks WHERE notion_id IS NOT NULL ORDER BY date ASC, id ASC")
         standup_map = {r[0]: {"status": r[1], "subtasks": r[2]} for r in su_cur.fetchall()}
+
+        # "Daily Standup Tasks" board block = only tasks sitting in someone's
+        # CURRENT standup. standup_map above keeps the last row ever seen per
+        # task (any date, any status incl. deleted/delegated), so old rows
+        # kept hundreds of finished/abandoned tasks on the board. Here, a
+        # person's "current" standup is their most recent standup date (not
+        # strictly today, so someone who hasn't opened the app yet still
+        # counts). A task shows only while it is open there, and drops the
+        # moment anyone has it ticked done.
+        su_cur.execute(
+            "SELECT s.notion_id, s.status FROM standup_tasks s "
+            "JOIN (SELECT user_id, MAX(date) AS d FROM standup_tasks GROUP BY user_id) m "
+            "ON m.user_id = s.user_id AND m.d = s.date WHERE s.notion_id IS NOT NULL")
+        _gone = {"deleted", "delegated"}
+        standup_open, standup_done = set(), set()
+        for nid_, st_ in su_cur.fetchall():
+            st_l = (st_ or "").strip().lower()
+            if st_l == "done":
+                standup_done.add(nid_)
+            elif st_l not in _gone:
+                standup_open.add(nid_)
         su_conn.close()
-        
+
         if "clients" in data:
             for c in data["clients"]:
                 filtered_tasks = []
                 for t in c.get("tasks", []):
                     t_id = t.get("notion_id") or t.get("id")
+                    if c.get("notion_id") == "unassigned":
+                        if t_id not in standup_open or t_id in standup_done:
+                            continue
                     # Filter out if marked done in standup, and filter out random unassigned tasks
                     if t_id and t_id in standup_map:
                         if standup_map[t_id]["status"] == "done":
