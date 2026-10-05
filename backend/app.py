@@ -91,6 +91,7 @@ from routes.ops import ops_bp
 from routes.sheets_sync import sheets_sync_bp, get_link_for_client
 from routes.companion import companion_bp
 from routes.leave import leave_bp
+from routes.office_calendar import office_calendar_bp
 
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
@@ -130,6 +131,7 @@ app.register_blueprint(ops_bp)
 app.register_blueprint(sheets_sync_bp)
 app.register_blueprint(companion_bp)
 app.register_blueprint(leave_bp)
+app.register_blueprint(office_calendar_bp)
 
 # ── Run DB Migrations ─────────────────────────────────────────────────────────
 import db

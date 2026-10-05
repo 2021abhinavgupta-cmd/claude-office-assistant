@@ -6,6 +6,7 @@
 <title>Leave | Agency Portal Assistant</title>
 <script src="auth.js"></script>
 <script src="shared-config.js"></script>
+<script src="gcal.js"></script>
 <style>
 :root {
   --bg: #0a0a0f; --s1: #12121a; --s2: #1a1a26; --bdr: rgba(255,255,255,0.08);
@@ -15,7 +16,7 @@
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; padding:24px; }
-.wrap { max-width: 960px; margin: 0 auto; }
+.wrap { max-width: 1280px; margin: 0 auto; }
 .hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
 .hdr h1 { font-size:1.4rem; }
 .nav a { color:var(--muted); text-decoration:none; margin-left:14px; font-size:.85rem; }
@@ -69,6 +70,7 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
     <div class="nav">
       <a href="dashboard.html">Dashboard</a>
       <a href="standup.html">Daily Standup</a>
+      <a href="office-calendar.html" id="oc-link" style="display:none;">Office Calendar</a>
     </div>
   </div>
 
@@ -81,21 +83,8 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
     <div id="pending-list"><div style="color:var(--muted);font-size:.82rem;">No pending requests.</div></div>
   </div>
 
-  <div class="card">
-    <div class="cal-nav">
-      <button onclick="calPrev()">&#8592;</button>
-      <span id="cal-label" style="font-weight:600;"></span>
-      <button onclick="calNext()">&#8594;</button>
-    </div>
-    <div class="cal-grid" id="cal-grid"></div>
-    <div class="legend">
-      <span><span class="dot full"></span> Full day worked</span>
-      <span><span class="dot half"></span> Half day worked</span>
-      <span><span class="dot leave_approved"></span> Approved leave</span>
-      <span><span class="dot leave_pending"></span> Pending request</span>
-      <span>Click a date to apply for leave</span>
-    </div>
-  </div>
+  <div id="cal"></div>
+  <div class="ot-hint" style="margin-top:8px;">Click a weekday to apply for leave. Public holidays and work-from-home / office days are set by HR.</div>
 </div>
 
 <div class="modal-bg" id="apply-modal">
@@ -128,11 +117,69 @@ function toast(m,t="ok"){
   window.__toastTimer=setTimeout(()=>e.style.display="none",2500);
 }
 
-let calDate = new Date();
 let pickedDate = null;
+if (IS_HR) document.getElementById("oc-link").style.display = "";
 
-function calPrev(){ calDate.setMonth(calDate.getMonth()-1); renderCalendar(); }
-function calNext(){ calDate.setMonth(calDate.getMonth()+1); renderCalendar(); }
+const LAYERS = {
+  holiday: {label:"Public holidays",   color:"#4cc38a"},
+  wfh:     {label:"Work from home",    color:"#6ea8fe"},
+  office:  {label:"In-person office",  color:"#c58af9"},
+  leave:   {label:"My leave",          color:"#f28b82"},
+  worked:  {label:"My attendance",     color:"#fbbf24"},
+};
+const OFFICE_LABEL = {holiday:"Public holiday", wfh:"Work from home", office:"In-person office"};
+
+async function loadCalendarEvents(startISO, endISO){
+  const s = GCal.parse(startISO), e = GCal.parse(endISO);
+  const months = [];
+  for (let d = new Date(s.getFullYear(), s.getMonth(), 1); d <= e; d = new Date(d.getFullYear(), d.getMonth()+1, 1))
+    months.push([d.getFullYear(), d.getMonth()+1]);
+
+  const [officeRes, ...monthRes] = await Promise.all([
+    fetch(`${API}/api/office-calendar?start=${startISO}&end=${endISO}`).then(r => r.ok ? r.json() : {events:[]}).catch(() => ({events:[]})),
+    ...months.map(([y,m]) => fetch(`${API}/api/leave/calendar?year=${y}&month=${m}`).then(r => r.ok ? r.json() : {days:{}}).catch(() => ({days:{}}))),
+  ]);
+
+  const out = [];
+  (officeRes.events || []).forEach(x => out.push({
+    source:x.kind, title:x.title || OFFICE_LABEL[x.kind], start:x.start_date, end:x.end_date,
+    style: x.kind === "holiday" ? "fill" : "dot", color:LAYERS[x.kind].color,
+  }));
+  monthRes.forEach(res => Object.entries(res.days || {}).forEach(([ds, info]) => {
+    if (ds < startISO || ds > endISO) return;
+    const st = info.status;
+    if (st === "leave_approved")
+      out.push({source:"leave", title:"On leave", start:ds, end:ds, style:"fill", color:"#f28b82", leave:info});
+    else if (st === "leave_pending")
+      out.push({source:"leave", title:"Leave (pending)", start:ds, end:ds, style:"ring", color:"#fb923c", leave:info, pending:true});
+    else if (st === "full")
+      out.push({source:"worked", title:`Full day worked${info.hours ? " ("+info.hours+"h)" : ""}`, start:ds, end:ds, style:"dot", color:"#22d3a0"});
+    else if (st === "half")
+      out.push({source:"worked", title:`Half day worked${info.hours ? " ("+info.hours+"h)" : ""}`, start:ds, end:ds, style:"dot", color:"#fbbf24"});
+  }));
+  return out;
+}
+
+const cal = GCal.create({
+  root: document.getElementById("cal"),
+  storageKey: "gcal_leave",
+  sources: Object.entries(LAYERS).map(([id,l]) => ({id, label:l.label, color:l.color})),
+  loadEvents: loadCalendarEvents,
+  onDayClick: dstr => {
+    const dow = GCal.parse(dstr).getDay();
+    if (dow === 0 || dow === 6){ toast("Weekends don't need leave"); return; }
+    openApplyModal(dstr);
+  },
+  onEventClick: ev => {
+    if (ev.source === "leave"){
+      if (ev.pending) openCancelConfirm(ev.leave.leave_id, ev.start);
+      else showApprovedInfo(ev.start);
+    } else if (ev.source === "holiday" || ev.source === "wfh" || ev.source === "office"){
+      toast(`${ev.title} — ${OFFICE_LABEL[ev.source]}`);
+    }
+  },
+});
+function renderCalendar(){ cal.refresh(); }
 
 async function loadBalance(){
   try{
@@ -220,44 +267,6 @@ async function decide(id, action){
     toast(action === "approve" ? "Approved" : "Rejected");
     loadPending(); renderCalendar();
   }catch(e){ toast("Network error","err"); }
-}
-
-async function renderCalendar(){
-  const year = calDate.getFullYear(), month = calDate.getMonth()+1;
-  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  document.getElementById("cal-label").textContent = `${monthNames[month-1]} ${year}`;
-
-  let days = {};
-  try{
-    const r = await fetch(`${API}/api/leave/calendar?user_id=${encodeURIComponent(UID)}&year=${year}&month=${month}`);
-    const d = await r.json();
-    days = d.days || {};
-  }catch(e){ toast("Couldn't load calendar","err"); }
-
-  const firstDay = new Date(year, month-1, 1).getDay();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const grid = document.getElementById("cal-grid");
-  let html = "";
-  ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(d => html += `<div class="cal-h">${d}</div>`);
-  for (let i=0;i<firstDay;i++) html += `<div class="cal-day empty"></div>`;
-  for (let d=1; d<=daysInMonth; d++){
-    const dstr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const info = days[dstr] || {status:"none"};
-    const isWeekend = info.status === "weekend";
-    const isPending = info.status === "leave_pending";
-    const isApproved = info.status === "leave_approved";
-    const dot = ["full","half","leave_approved","leave_pending"].includes(info.status)
-      ? `<div class="dot ${info.status}"></div>` : "";
-    const clickHandler = isWeekend ? '' : isPending
-      ? `onclick="openCancelConfirm(${info.leave_id}, '${dstr}')"`
-      : isApproved
-      ? `onclick="showApprovedInfo('${dstr}')"`
-      : `onclick="openApplyModal('${dstr}')"`;
-    html += `<div class="cal-day ${isWeekend?'weekend':''}" ${clickHandler}>
-      <div>${d}</div>${dot}
-    </div>`;
-  }
-  grid.innerHTML = html;
 }
 
 function showApprovedInfo(dstr){

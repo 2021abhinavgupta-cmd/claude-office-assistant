@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Office Calendar | Agency Portal Assistant</title>
+<script src="auth.js"></script>
+<script src="shared-config.js"></script>
+<script src="gcal.js"></script>
+<style>
+:root {
+  --bg:#0a0a0f; --s1:#12121a; --s2:#1a1a26; --bdr:rgba(255,255,255,0.08);
+  --txt:#e8e8f0; --muted:#6b6b8a; --acc:#8B5A2B; --green:#22d3a0; --red:#ef4444;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; padding:24px; }
+.wrap { max-width:1280px; margin:0 auto; }
+.hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px; }
+.hdr h1 { font-size:1.4rem; }
+.hdr p { font-size:.8rem; color:var(--muted); margin-top:2px; }
+.nav a { color:var(--muted); text-decoration:none; margin-left:14px; font-size:.85rem; }
+.nav a:hover { color:var(--txt); }
+#toast { display:none; position:fixed; bottom:20px; right:20px; padding:10px 16px; border-radius:8px; font-size:.85rem; z-index:9999; }
+#toast.ok { background:var(--green); color:#04241a; }
+#toast.err { background:var(--red); color:#2a0505; }
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); align-items:center; justify-content:center; z-index:998; }
+.modal-bg.open { display:flex; }
+.modal { background:#2b2b2e; border:1px solid var(--bdr); border-radius:14px; padding:22px; width:380px; max-width:92vw; }
+.modal h3 { margin-bottom:6px; font-size:1.05rem; font-weight:500; }
+.modal label { display:block; font-size:.75rem; color:#9aa0a6; margin:12px 0 4px; }
+.modal input[type=text], .modal input[type=date] { width:100%; background:#1f1f1f; border:1px solid #3c4043; color:var(--txt); border-radius:6px; padding:8px; font-size:.88rem; font-family:inherit; color-scheme:dark; }
+.kinds { display:flex; gap:6px; margin-top:10px; }
+.kinds button { flex:1; padding:8px 4px; border-radius:8px; border:1px solid #3c4043; background:transparent; color:var(--txt); font-size:.78rem; cursor:pointer; font-family:inherit; }
+.kinds button.on { background:var(--c); color:#0b1f15; border-color:var(--c); font-weight:600; }
+.modal-actions { display:flex; gap:8px; margin-top:18px; }
+.modal-actions button { padding:9px 16px; border-radius:18px; border:none; cursor:pointer; font-size:.85rem; font-family:inherit; }
+.btn-save { background:#8ab4f8; color:#062e6f; font-weight:600; margin-left:auto; }
+.btn-cancel { background:transparent; color:var(--txt); }
+.btn-del { background:transparent; color:#f28b82; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div>
+      <h1>Office Calendar</h1>
+      <p>Set public holidays and work-from-home / in-person office days. Everyone sees these on their Leave calendar.</p>
+    </div>
+    <div class="nav">
+      <a href="leave.html">Leave</a>
+      <a href="dashboard.html">Dashboard</a>
+    </div>
+  </div>
+  <div id="cal"></div>
+</div>
+
+<div class="modal-bg" id="ev-modal">
+  <div class="modal">
+    <h3 id="ev-modal-title">Add to calendar</h3>
+    <div class="kinds" id="kinds"></div>
+    <label>Title</label>
+    <input type="text" id="ev-title" maxlength="120" />
+    <label>From</label>
+    <input type="date" id="ev-start" lang="en-GB" />
+    <label>To (same day if left as is)</label>
+    <input type="date" id="ev-end" lang="en-GB" />
+    <div class="modal-actions">
+      <button class="btn-del" id="ev-del" onclick="delEvent()" style="display:none;">Delete</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveEvent()">Save</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
+const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
+if (!user.user_id) window.location.href = "login.html";
+if (user.user_id !== "emp009") window.location.href = "leave.html";
+
+const KINDS = {
+  holiday: {label:"Public holiday", color:"#4cc38a", style:"fill", defTitle:""},
+  wfh:     {label:"Work from home", color:"#6ea8fe", style:"dot",  defTitle:"Work from home"},
+  office:  {label:"In-person office", color:"#c58af9", style:"dot", defTitle:"In-person office"},
+};
+
+function toast(m,t="ok"){
+  const e=document.getElementById("toast");
+  e.textContent=m; e.className=t; e.style.display="block";
+  clearTimeout(window.__tt); window.__tt=setTimeout(()=>e.style.display="none",2600);
+}
+
+const cal = GCal.create({
+  root: document.getElementById("cal"),
+  storageKey: "gcal_office",
+  sources: Object.entries(KINDS).map(([id,k]) => ({id, label:k.label, color:k.color})),
+  loadEvents: async (s, e) => {
+    const r = await fetch(`${API}/api/office-calendar?start=${s}&end=${e}`);
+    if (!r.ok) throw new Error("load failed");
+    const d = await r.json();
+    return d.events.map(x => ({
+      id:x.id, source:x.kind, title:x.title || KINDS[x.kind].label,
+      start:x.start_date, end:x.end_date, style:KINDS[x.kind].style, color:KINDS[x.kind].color, raw:x,
+    }));
+  },
+  onDayClick: d => openModal(null, d),
+  onEventClick: ev => openModal(ev.raw),
+  onCreate: d => openModal(null, d),
+});
+
+let editingId = null, kind = "holiday";
+
+function renderKinds(){
+  document.getElementById("kinds").innerHTML = Object.entries(KINDS).map(([id,k]) =>
+    `<button class="${id===kind?'on':''}" style="--c:${k.color}" onclick="setKind('${id}')">${k.label}</button>`).join("");
+}
+function setKind(k){
+  const prevDef = KINDS[kind].defTitle, titleEl = document.getElementById("ev-title");
+  kind = k;
+  if (!titleEl.value || titleEl.value === prevDef) titleEl.value = KINDS[k].defTitle;
+  titleEl.placeholder = k === "holiday" ? "e.g. Diwali" : "";
+  renderKinds();
+}
+function openModal(ev, dateStr){
+  editingId = ev ? ev.id : null;
+  kind = ev ? ev.kind : "holiday";
+  document.getElementById("ev-modal-title").textContent = ev ? "Edit entry" : "Add to calendar";
+  document.getElementById("ev-title").value = ev ? ev.title : KINDS[kind].defTitle;
+  document.getElementById("ev-title").placeholder = kind === "holiday" ? "e.g. Diwali" : "";
+  document.getElementById("ev-start").value = ev ? ev.start_date : dateStr;
+  document.getElementById("ev-end").value = ev ? ev.end_date : dateStr;
+  document.getElementById("ev-del").style.display = ev ? "" : "none";
+  renderKinds();
+  document.getElementById("ev-modal").classList.add("open");
+}
+function closeModal(){ document.getElementById("ev-modal").classList.remove("open"); }
+
+async function saveEvent(){
+  const start = document.getElementById("ev-start").value;
+  let end = document.getElementById("ev-end").value || start;
+  if (end < start) end = start;
+  const body = {kind, title:document.getElementById("ev-title").value.trim(), start_date:start, end_date:end};
+  if (!body.title) body.title = KINDS[kind].defTitle;
+  try{
+    const r = await fetch(`${API}/api/office-calendar${editingId?'/'+editingId:''}`, {
+      method: editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok){ toast(d.error || "Failed to save","err"); return; }
+    toast("Saved"); closeModal(); cal.refresh();
+  }catch(e){ toast("Network error","err"); }
+}
+async function delEvent(){
+  if (!editingId || !confirm("Delete this entry?")) return;
+  try{
+    const r = await fetch(`${API}/api/office-calendar/${editingId}`, {method:"DELETE"});
+    const d = await r.json();
+    if (!r.ok){ toast(d.error || "Failed to delete","err"); return; }
+    toast("Deleted"); closeModal(); cal.refresh();
+  }catch(e){ toast("Network error","err"); }
+}
+</script>
+</body>
+</html>

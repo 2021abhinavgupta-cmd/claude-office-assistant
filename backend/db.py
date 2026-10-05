@@ -253,6 +253,21 @@ def init_db():
             except Exception:
                 pass  # Column already exists
 
+        # Company-wide office calendar maintained by HR (emp009): public
+        # holidays, work-from-home days, in-person office days. Inclusive
+        # [start_date, end_date] ranges; shown on every employee's Leave page.
+        conn.execute("""CREATE TABLE IF NOT EXISTS office_calendar (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind        TEXT NOT NULL,
+            title       TEXT DEFAULT '',
+            start_date  TEXT NOT NULL,
+            end_date    TEXT NOT NULL,
+            created_by  TEXT DEFAULT '',
+            created_at  TEXT DEFAULT (datetime('now'))
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_office_calendar_dates "
+                     "ON office_calendar(start_date, end_date)")
+
         # Daily overtime -- one row per employee per day with a computed
         # worked/overtime figure, feeding the leave-conversion sweep below.
         # Reuses the same 9hr/day baseline as the attendance Excel export
