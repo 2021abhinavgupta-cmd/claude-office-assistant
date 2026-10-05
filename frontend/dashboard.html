@@ -398,11 +398,17 @@
         <h2 style="margin-bottom:4px"> My Attendance</h2>
         <div style="color:var(--muted);font-size:.8rem" id="my-att-status">Loading…</div>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
         <button id="my-checkin-btn" onclick="myCheckIn()" style="display:none;background:var(--green,#22d3a0);border:none;color:#0a1a14;padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check In</button>
         <button id="my-checkout-btn" onclick="myCheckOut()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 20px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">Check Out</button>
         <button id="my-undo-checkout-btn" onclick="myUndoCheckout()" title="Clicked Check Out by mistake? This clears today's Out time." style="display:none;background:none;border:1px solid var(--border);color:var(--muted);padding:9px 14px;border-radius:8px;font-size:.8rem;cursor:pointer">Undo checkout</button>
+        <button id="my-manual-loc-toggle" onclick="toggleManualLoc()" title="If your browser has blocked or can't get your location, enter it here once and it'll be used for Check In/Out automatically." style="display:none;background:none;border:none;color:var(--muted);font-size:.72rem;text-decoration:underline;cursor:pointer;padding:4px">Set location manually</button>
       </div>
+    </div>
+    <div id="my-manual-loc-row" style="display:none;margin-top:10px;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="my-manual-loc-input" type="text" placeholder="Paste from Google Maps, e.g. 19.0760, 72.8777" style="flex:1;min-width:220px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:8px;font-size:.78rem">
+      <button onclick="saveManualLoc()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 14px;border-radius:8px;font-size:.78rem;cursor:pointer">Save</button>
+      <button id="my-manual-loc-clear" onclick="clearManualLoc()" style="display:none;background:none;border:none;color:var(--muted);font-size:.72rem;text-decoration:underline;cursor:pointer">Clear</button>
     </div>
     <div id="my-att-msg" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
   </div>
@@ -586,6 +592,7 @@ function renderMyAttendance(myRow, isViewingToday) {
   const inBtn = document.getElementById("my-checkin-btn");
   const outBtn = document.getElementById("my-checkout-btn");
   const undoBtn = document.getElementById("my-undo-checkout-btn");
+  const locToggleBtn = document.getElementById("my-manual-loc-toggle");
   if (!statusEl || !inBtn || !outBtn) return;
 
   // Only meaningful for today -- browsing a past date on the picker above
@@ -595,9 +602,23 @@ function renderMyAttendance(myRow, isViewingToday) {
     inBtn.style.display = "none";
     outBtn.style.display = "none";
     if (undoBtn) undoBtn.style.display = "none";
+    if (locToggleBtn) locToggleBtn.style.display = "none";
+    const locRow = document.getElementById("my-manual-loc-row");
+    if (locRow) locRow.style.display = "none";
     return;
   }
   if (myAttBusy) return; // don't yank buttons out from under an in-flight click
+
+  if (locToggleBtn) {
+    locToggleBtn.style.display = "inline-block";
+    const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+    const existing = getManualLoc(user.user_id);
+    locToggleBtn.textContent = existing ? "Manual location set (edit)" : "Set location manually";
+    const clearBtn = document.getElementById("my-manual-loc-clear");
+    if (clearBtn && document.getElementById("my-manual-loc-row").style.display !== "flex") {
+      clearBtn.style.display = existing ? "inline-block" : "none";
+    }
+  }
 
   if (!myRow || !myRow.checkin_time) {
     statusEl.textContent = "Not checked in yet today.";
@@ -631,7 +652,14 @@ async function _myAttendanceAction(kind) {
   btn.textContent = "Getting location…";
   if (msgEl) msgEl.style.display = "none";
   try {
-    const loc = (window.getAttendanceLocation ? await window.getAttendanceLocation().catch(() => null) : null);
+    // A manually-entered location (set via "Set location manually", for
+    // anyone whose browser has blocked/can't get navigator.geolocation)
+    // always wins over a live browser reading -- they went to the trouble
+    // of entering it specifically because the automatic path doesn't work
+    // for them, so prefer it rather than trying the browser first and only
+    // falling back on failure.
+    const manual = getManualLoc(user.user_id);
+    const loc = manual || (window.getAttendanceLocation ? await window.getAttendanceLocation().catch(() => null) : null);
     btn.textContent = kind === "checkin" ? "Checking in…" : "Checking out…";
     const r = await fetch(`${API}/api/attendance/${kind}`, {
       method: "POST",
@@ -668,6 +696,81 @@ async function _myAttendanceAction(kind) {
 }
 function myCheckIn() { _myAttendanceAction("checkin"); }
 function myCheckOut() { _myAttendanceAction("checkout"); }
+
+// ── Manual location fallback -- for anyone whose browser blocks/can't
+// get navigator.geolocation (denied permission, corporate policy, etc.)
+// so Check In/Out still records a location instead of silently going
+// without. Stored per-user in localStorage so it's remembered across
+// visits -- most people check in from the same place most days. ──
+function _manualLocKey(userId) { return `attn_manual_loc_${userId}`; }
+
+function getManualLoc(userId) {
+  try {
+    const raw = localStorage.getItem(_manualLocKey(userId));
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (typeof v.lat === "number" && typeof v.lng === "number") return v;
+  } catch (e) { /* corrupt/old value -- treat as unset */ }
+  return null;
+}
+
+function toggleManualLoc() {
+  const row = document.getElementById("my-manual-loc-row");
+  const input = document.getElementById("my-manual-loc-input");
+  if (!row || !input) return;
+  const opening = row.style.display === "none" || !row.style.display;
+  row.style.display = opening ? "flex" : "none";
+  if (opening) {
+    const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+    const existing = getManualLoc(user.user_id);
+    input.value = existing ? `${existing.lat}, ${existing.lng}` : "";
+    document.getElementById("my-manual-loc-clear").style.display = existing ? "inline-block" : "none";
+    input.focus();
+  }
+}
+
+function saveManualLoc() {
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+  const input = document.getElementById("my-manual-loc-input");
+  const msgEl = document.getElementById("my-att-msg");
+  if (!user.user_id || !input) return;
+  // Accepts "lat, lng" or "lat lng" -- how Google Maps' own
+  // right-click-to-copy-coordinates feature formats a location.
+  const m = input.value.trim().match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
+  const lat = m ? parseFloat(m[1]) : NaN;
+  const lng = m ? parseFloat(m[2]) : NaN;
+  if (!m || Number.isNaN(lat) || Number.isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    if (msgEl) {
+      msgEl.style.display = "block";
+      msgEl.style.color = "#ef4444";
+      msgEl.textContent = "Couldn't read that -- paste coordinates like 19.0760, 72.8777 (from Google Maps: right-click your spot -> click the coordinates to copy).";
+    }
+    return;
+  }
+  localStorage.setItem(_manualLocKey(user.user_id), JSON.stringify({ lat, lng }));
+  document.getElementById("my-manual-loc-row").style.display = "none";
+  document.getElementById("my-manual-loc-clear").style.display = "inline-block";
+  if (msgEl) {
+    msgEl.style.display = "block";
+    msgEl.style.color = "var(--muted)";
+    msgEl.textContent = `Manual location saved (${lat}, ${lng}) -- it'll be used for Check In/Out automatically from now on.`;
+  }
+}
+
+function clearManualLoc() {
+  const user = JSON.parse(localStorage.getItem("agency_portal_user") || "{}");
+  if (!user.user_id) return;
+  localStorage.removeItem(_manualLocKey(user.user_id));
+  const input = document.getElementById("my-manual-loc-input");
+  if (input) input.value = "";
+  document.getElementById("my-manual-loc-clear").style.display = "none";
+  const msgEl = document.getElementById("my-att-msg");
+  if (msgEl) {
+    msgEl.style.display = "block";
+    msgEl.style.color = "var(--muted)";
+    msgEl.textContent = "Manual location cleared -- back to using your browser's location (if it allows it).";
+  }
+}
 
 async function myUndoCheckout() {
   if (myAttBusy) return;
