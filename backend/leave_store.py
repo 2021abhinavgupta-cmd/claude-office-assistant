@@ -562,7 +562,10 @@ def _hours_worked(checkin, checkout) -> float | None:
 def calendar_days(user_id: str, year: int, month: int) -> dict:
     """{"YYYY-MM-DD": {"status": ..., "hours": float|None}} for every day
     in the given month. status is one of: 'weekend', 'leave_approved',
-    'leave_pending', 'full', 'half', 'none'."""
+    'leave_pending', 'full', 'half', 'none'. Leave days also carry
+    'leave_type' ('full'/'half'). A day covered by a REJECTED request (and
+    no live pending/approved one) keeps its normal status but gains
+    'rejected': True so the person can see it was turned down."""
     import calendar as _cal
     conn = get_connection()
     try:
@@ -576,8 +579,8 @@ def calendar_days(user_id: str, year: int, month: int) -> dict:
         att_by_date = {r[0]: (r[1], r[2]) for r in att_rows}
 
         leave_rows = conn.execute(
-            "SELECT id, start_date, end_date, status FROM employee_leave "
-            "WHERE user_id=? AND status IN ('approved','pending') "
+            "SELECT id, start_date, end_date, status, leave_type FROM employee_leave "
+            "WHERE user_id=? AND status IN ('approved','pending','rejected') "
             "AND start_date <= ? AND end_date >= ?",
             (user_id, f"{year:04d}-{month:02d}-{_cal.monthrange(year, month)[1]:02d}",
              f"{year:04d}-{month:02d}-01"),
@@ -596,14 +599,22 @@ def calendar_days(user_id: str, year: int, month: int) -> dict:
 
         leave_status = None
         leave_id = None
-        for lid, sd, ed, st in leave_rows:
-            if sd <= dstr <= ed:
-                leave_status = "leave_approved" if st == "approved" else "leave_pending"
-                leave_id = lid
-                if st == "approved":
-                    break  # approved wins over a coincidentally-also-pending row
+        leave_type = "full"
+        rejected = False
+        for lid, sd, ed, st, lt in leave_rows:
+            if not (sd <= dstr <= ed):
+                continue
+            if st == "rejected":
+                rejected = True
+                continue
+            leave_status = "leave_approved" if st == "approved" else "leave_pending"
+            leave_id = lid
+            leave_type = lt or "full"
+            if st == "approved":
+                break  # approved wins over a coincidentally-also-pending row
         if leave_status:
-            out[dstr] = {"status": leave_status, "hours": None, "leave_id": leave_id}
+            out[dstr] = {"status": leave_status, "hours": None, "leave_id": leave_id,
+                         "leave_type": leave_type}
             continue
 
         cin, cout = att_by_date.get(dstr, (None, None))
@@ -614,6 +625,8 @@ def calendar_days(user_id: str, year: int, month: int) -> dict:
             out[dstr] = {"status": "full", "hours": hrs}
         else:
             out[dstr] = {"status": "half", "hours": hrs}
+        if rejected:
+            out[dstr]["rejected"] = True
     return out
 
 

@@ -112,6 +112,7 @@ const LAYERS = {
   event:   {label:"Events",            color:"#f6ae2d"},
   leave:   {label:"My leave",          color:"#f28b82"},
   worked:  {label:"My attendance",     color:"#fbbf24"},
+  rejected:{label:"Rejected requests", color:"#9aa0a6"},
 };
 const OFFICE_LABEL = {holiday:"Public holiday", wfh:"Work from home", office:"In-person office", event:"Event"};
 function fmt12(t){
@@ -141,10 +142,13 @@ async function loadCalendarEvents(startISO, endISO){
   monthRes.forEach(res => Object.entries(res.days || {}).forEach(([ds, info]) => {
     if (ds < startISO || ds > endISO) return;
     const st = info.status;
+    const half = info.leave_type === "half" ? "Half-day leave" : "Leave";
     if (st === "leave_approved")
-      out.push({source:"leave", title:"On leave", start:ds, end:ds, style:"fill", color:"#f28b82", leave:info});
+      out.push({source:"leave", title: info.leave_type === "half" ? "Half-day leave (approved)" : "On leave (approved)", start:ds, end:ds, style:"fill", color:"#f28b82", leave:info});
     else if (st === "leave_pending")
-      out.push({source:"leave", title:"Leave (pending)", start:ds, end:ds, style:"ring", color:"#fb923c", leave:info, pending:true});
+      out.push({source:"leave", title:`${half} applied — awaiting approval`, start:ds, end:ds, style:"ring", color:"#fb923c", leave:info, pending:true});
+    if (info.rejected)
+      out.push({source:"rejected", title:"Leave request rejected", start:ds, end:ds, style:"ring", color:"#9aa0a6", rejectedDay:true});
     else if (st === "full")
       out.push({source:"worked", title:`Full day worked${info.hours ? " ("+fmtHM(info.hours)+")" : ""}`, start:ds, end:ds, style:"dot", color:"#22d3a0"});
     else if (st === "half")
@@ -164,7 +168,9 @@ const cal = GCal.create({
     openApplyModal(dstr);
   },
   onEventClick: ev => {
-    if (ev.source === "leave"){
+    if (ev.source === "rejected"){
+      toast(`Your leave request for ${ev.start} was rejected. Check WhatsApp/email for the reason, or apply again.`);
+    } else if (ev.source === "leave"){
       if (ev.pending) openCancelConfirm(ev.leave.leave_id, ev.start);
       else showApprovedInfo(ev.start);
     } else if (ev.source === "event" && ev.raw){
