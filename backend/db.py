@@ -267,6 +267,16 @@ def init_db():
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_office_calendar_dates "
                      "ON office_calendar(start_date, end_date)")
+        # Timed events (kind='event'): time of day, whether to notify
+        # everyone, and when the pre-start reminder went out (office_events.py).
+        for _col, _ddl in (("start_time", "TEXT DEFAULT NULL"),
+                           ("end_time", "TEXT DEFAULT NULL"),
+                           ("notify", "INTEGER DEFAULT 1"),
+                           ("reminded_at", "TEXT DEFAULT NULL")):
+            try:
+                conn.execute(f"ALTER TABLE office_calendar ADD COLUMN {_col} {_ddl}")
+            except Exception:
+                pass  # Column already exists
 
         # Daily overtime -- one row per employee per day with a computed
         # worked/overtime figure, feeding the leave-conversion sweep below.

@@ -109,10 +109,16 @@ const LAYERS = {
   holiday: {label:"Public holidays",   color:"#4cc38a"},
   wfh:     {label:"Work from home",    color:"#6ea8fe"},
   office:  {label:"In-person office",  color:"#c58af9"},
+  event:   {label:"Events",            color:"#f6ae2d"},
   leave:   {label:"My leave",          color:"#f28b82"},
   worked:  {label:"My attendance",     color:"#fbbf24"},
 };
-const OFFICE_LABEL = {holiday:"Public holiday", wfh:"Work from home", office:"In-person office"};
+const OFFICE_LABEL = {holiday:"Public holiday", wfh:"Work from home", office:"In-person office", event:"Event"};
+function fmt12(t){
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  return `${(h % 12) || 12}:${String(m).padStart(2,"0")} ${h < 12 ? "AM" : "PM"}`;
+}
 
 async function loadCalendarEvents(startISO, endISO){
   const s = GCal.parse(startISO), e = GCal.parse(endISO);
@@ -127,7 +133,9 @@ async function loadCalendarEvents(startISO, endISO){
 
   const out = [];
   (officeRes.events || []).forEach(x => out.push({
-    source:x.kind, title:x.title || OFFICE_LABEL[x.kind], start:x.start_date, end:x.end_date,
+    source:x.kind,
+    title: (x.kind === "event" && x.start_time ? fmt12(x.start_time) + " " : "") + (x.title || OFFICE_LABEL[x.kind]),
+    start:x.start_date, end:x.end_date, raw:x,
     style: x.kind === "holiday" ? "fill" : "dot", color:LAYERS[x.kind].color,
   }));
   monthRes.forEach(res => Object.entries(res.days || {}).forEach(([ds, info]) => {
@@ -159,6 +167,9 @@ const cal = GCal.create({
     if (ev.source === "leave"){
       if (ev.pending) openCancelConfirm(ev.leave.leave_id, ev.start);
       else showApprovedInfo(ev.start);
+    } else if (ev.source === "event" && ev.raw){
+      const r = ev.raw, t = r.start_time ? (r.end_time ? `${fmt12(r.start_time)} – ${fmt12(r.end_time)}` : fmt12(r.start_time)) : "";
+      toast(`${r.title}${t ? " — " + t : ""}`);
     } else if (ev.source === "holiday" || ev.source === "wfh" || ev.source === "office"){
       toast(`${ev.title} — ${OFFICE_LABEL[ev.source]}`);
     }

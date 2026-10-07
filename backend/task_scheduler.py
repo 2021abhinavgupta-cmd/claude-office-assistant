@@ -326,6 +326,16 @@ def _run_attendance_sweep():
         logger.warning(f"Attendance sweep failed (non-fatal): {e}")
 
 
+def _run_event_reminders():
+    try:
+        import office_events
+        n = office_events.reminder_sweep()
+        if n:
+            logger.info(f"office_events: reminded {n} event(s)")
+    except Exception:
+        logger.exception("office event reminder sweep failed")
+
+
 def _run_followup_sweep():
     """Wraps followups.sweep() for the interval job below.
 
@@ -410,6 +420,11 @@ def init_scheduler(app):
         # +1 leave day (leave_store.py). Off-peak overnight job (02:00 IST).
         scheduler.add_job(_run_overtime_conversion, "cron", hour=2, minute=0,
                           id="overtime_conversion_sweep", replace_existing=True)
+        # Office-calendar event reminders -- emails + WhatsApps everyone ~30
+        # min before an HR-created timed event (office_events.py). Interval
+        # job; the sweep reads the IST clock itself, so container TZ is moot.
+        scheduler.add_job(_run_event_reminders, "interval", minutes=5,
+                          id="office_event_reminders", replace_existing=True)
         scheduler.start()
         logger.info(" Task delay scheduler started (runs daily at 08:00).")
 
