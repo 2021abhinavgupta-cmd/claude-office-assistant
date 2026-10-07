@@ -1060,6 +1060,8 @@ def companion_email_status():
             out["hr_email"], "Lumina email test",
             "This is a test from Lumina. Leave requests will arrive at this address.",
             wait=True)
+        if not out["test_sent"]:
+            out["error"] = mailer.last_error
     return jsonify(out)
 
 

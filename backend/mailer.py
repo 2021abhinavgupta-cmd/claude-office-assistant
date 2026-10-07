@@ -26,6 +26,7 @@ from email.utils import formataddr
 logger = logging.getLogger(__name__)
 
 EMAIL_DOMAIN = "mmga.agency"
+last_error = ""   # most recent send failure (shown by /api/companion/email-status)
 HR_USER_ID = "emp009"
 
 
@@ -83,6 +84,8 @@ def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
         logger.info(f"mailer: sent '{subject}' to {to}")
         return True
     except Exception as e:
+        global last_error
+        last_error = f"{type(e).__name__}: {e}"[:400]
         logger.warning(f"mailer: send failed for '{subject}' to {to}: {e}")
         return False
 
