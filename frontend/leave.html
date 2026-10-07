@@ -37,6 +37,8 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
 .modal h3 { margin-bottom:12px; font-size:1rem; }
 .modal label { display:block; font-size:.75rem; color:var(--muted); margin:10px 0 4px; }
 .modal select, .modal textarea, .modal input { width:100%; background:var(--s2); border:1px solid var(--bdr); color:var(--txt); border-radius:6px; padding:7px; font-size:.85rem; font-family:inherit; }
+.mail-meta { display:flex; gap:10px; font-size:.82rem; padding:6px 0; border-bottom:1px solid var(--bdr); }
+.mail-meta span { color:var(--muted); width:42px; }
 .modal-actions { display:flex; gap:8px; margin-top:16px; }
 .modal-actions button { flex:1; padding:8px; border-radius:6px; border:none; cursor:pointer; font-size:.85rem; }
 .btn-submit { background:var(--acc); color:#fff; }
@@ -73,15 +75,25 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
 </div>
 
 <div class="modal-bg" id="apply-modal">
-  <div class="modal">
+  <div class="modal" style="width:520px;max-width:94vw;">
     <h3 id="apply-modal-date">Apply for leave</h3>
-    <label>Type</label>
-    <select id="apply-type"><option value="full">Full Day</option><option value="half">Half Day</option></select>
+    <div class="mail-meta"><span>From</span><b id="apply-from"></b></div>
+    <div class="mail-meta"><span>To</span><b id="apply-to"></b></div>
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1"><label>Type</label>
+        <select id="apply-type" oninput="rebuildMail()"><option value="full">Full Day</option><option value="half">Half Day</option></select></div>
+      <div style="flex:1"><label>From date</label><input type="date" id="apply-start" lang="en-GB" oninput="rebuildMail()" /></div>
+      <div style="flex:1"><label>Until (optional)</label><input type="date" id="apply-end" lang="en-GB" oninput="rebuildMail()" /></div>
+    </div>
     <label>Reason</label>
-    <textarea id="apply-reason" rows="3" placeholder="Optional"></textarea>
+    <input type="text" id="apply-reason" maxlength="200" placeholder="e.g. family function" oninput="rebuildMail()" />
+    <label>Subject</label>
+    <input type="text" id="apply-subject" maxlength="150" oninput="subjectTouched=true" />
+    <label>Message (this is exactly what Noorish receives by email)</label>
+    <textarea id="apply-body" rows="8" oninput="bodyTouched=true"></textarea>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeApplyModal()">Cancel</button>
-      <button class="btn-submit" onclick="submitApply()">Submit</button>
+      <button class="btn-submit" onclick="submitApply()">Send request</button>
     </div>
   </div>
 </div>
@@ -287,11 +299,43 @@ function showApprovedInfo(dstr){
   toast(`${dstr} is already an approved leave day. Ask Noorish (HR) if it needs to change.`);
 }
 
+let subjectTouched = false, bodyTouched = false;
+const HR_NAME = "Noorish", HR_MAIL = "noorish@mmga.agency";
+function myMail(){
+  return (empName(UID) || UID).split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g,"") + "@mmga.agency";
+}
+function prettyDate(s){
+  const d = GCal.parse(s);
+  return `${GCal.DOW[d.getDay()]}, ${d.getDate()} ${GCal.MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}`;
+}
+// Fill the email subject/message from the form, until the person edits that field by hand.
+function rebuildMail(){
+  const start = document.getElementById("apply-start").value || pickedDate;
+  let end = document.getElementById("apply-end").value || start;
+  if (end < start) end = start;
+  const half = document.getElementById("apply-type").value === "half";
+  const reason = document.getElementById("apply-reason").value.trim();
+  const when = start === end ? prettyDate(start) : `${prettyDate(start)} to ${prettyDate(end)}`;
+  const me = (empName(UID) || UID);
+  if (!subjectTouched)
+    document.getElementById("apply-subject").value = `${half ? "Half-day leave" : "Leave"} request — ${me} (${when})`;
+  if (!bodyTouched)
+    document.getElementById("apply-body").value =
+      `Hi ${HR_NAME},\n\nI would like to apply for ${half ? "a half day of leave" : "leave"} on ${when}.\n` +
+      (reason ? `\nReason: ${reason}\n` : "") + `\nThanks,\n${me}`;
+}
+
 function openApplyModal(dstr){
   pickedDate = dstr;
-  document.getElementById("apply-modal-date").textContent = `Apply for leave — ${dstr}`;
+  subjectTouched = bodyTouched = false;
+  document.getElementById("apply-modal-date").textContent = "Apply for leave";
+  document.getElementById("apply-from").textContent = `${empName(UID) || UID} <${myMail()}>`;
+  document.getElementById("apply-to").textContent = `${HR_NAME} <${HR_MAIL}>`;
   document.getElementById("apply-reason").value = "";
   document.getElementById("apply-type").value = "full";
+  document.getElementById("apply-start").value = dstr;
+  document.getElementById("apply-end").value = "";
+  rebuildMail();
   document.getElementById("apply-modal").classList.add("open");
 }
 function closeApplyModal(){ document.getElementById("apply-modal").classList.remove("open"); }
@@ -300,14 +344,19 @@ async function submitApply(){
   if (!pickedDate) return;
   const leave_type = document.getElementById("apply-type").value;
   const reason = document.getElementById("apply-reason").value;
+  const start = document.getElementById("apply-start").value || pickedDate;
+  let end = document.getElementById("apply-end").value || start;
+  if (end < start) end = start;
+  const email_subject = document.getElementById("apply-subject").value.trim();
+  const email_body = document.getElementById("apply-body").value.trim();
   try{
     const r = await fetch(`${API}/api/leave/apply`, {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({user_id: UID, date: pickedDate, leave_type, reason}),
+      body: JSON.stringify({user_id: UID, date: start, end_date: end, leave_type, reason, email_subject, email_body}),
     });
     const d = await r.json();
     if (!r.ok){ toast(d.error || "Failed to apply", "err"); return; }
-    toast("Leave request sent for approval");
+    toast("Leave request sent to Noorish for approval");
     closeApplyModal();
     renderCalendar();
   }catch(e){ toast("Network error","err"); }

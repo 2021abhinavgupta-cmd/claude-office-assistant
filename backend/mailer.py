@@ -185,9 +185,11 @@ def notify_leave_decision(row: dict, decision: str, decided_by: str, reason: str
         return False
 
 
-def notify_leave_request(row: dict) -> bool:
+def notify_leave_request(row: dict, subject: str = "", message: str = "") -> bool:
     """Email HR about a new pending leave request. Reply-To is the applicant,
-    so HR can answer them straight from the mail."""
+    so HR can answer them straight from the mail. If the applicant wrote their
+    own subject/message in the Apply box, that exact text is what HR receives
+    (plus a one-line approve link); otherwise a standard summary is used."""
     try:
         uid = row.get("user_id", "")
         who = name_for(uid)
@@ -206,8 +208,12 @@ def notify_leave_request(row: dict) -> bool:
             f"Approve or reject it here: {base}/leave.html\n\n"
             f"Reply to this email to reach {who} directly."
         )
-        return send(hr, f"Leave request: {who} ({when})", body,
-                    reply_to=applicant, from_name=f"{who} via Lumina")
+        if (message or "").strip():
+            body = (f"{message.strip()}\n\n"
+                    f"-- \nApprove or reject: {base}/leave.html\n"
+                    f"Reply to this email to reach {who} directly.")
+        subj = (subject or "").strip() or f"Leave request: {who} ({when})"
+        return send(hr, subj, body, reply_to=applicant, from_name=f"{who} via Lumina")
     except Exception:
         logger.exception("mailer: notify_leave_request failed")
         return False

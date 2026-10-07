@@ -293,7 +293,8 @@ def _overlapping_status(conn, user_id: str, start_date: str, end_date: str,
 
 def apply_leave(user_id: str, start_date: str, end_date: str,
                  leave_type: str = "full", reason: str = "",
-                 created_by: str = "") -> dict:
+                 created_by: str = "", email_subject: str = "",
+                 email_body: str = "") -> dict:
     """Create a pending leave request. Raises ValueError on an invalid
     leave_type or a date range that overlaps a leave already approved OR
     already pending for this same person (two pending requests for the
@@ -322,17 +323,17 @@ def apply_leave(user_id: str, start_date: str, end_date: str,
                "reason": reason or "", "status": "pending"}
     finally:
         conn.close()
-    _email_hr(row)
+    _email_hr(row, email_subject, email_body)
     return row
 
 
-def _email_hr(row: dict) -> None:
+def _email_hr(row: dict, subject: str = "", message: str = "") -> None:
     """Fire-and-forget email to HR for a new pending request. Never raises."""
     if row.get("status") != "pending":
         return
     try:
         import mailer
-        mailer.notify_leave_request(row)
+        mailer.notify_leave_request(row, subject, message)
     except Exception:
         logger.exception("leave_store: HR email failed")
 

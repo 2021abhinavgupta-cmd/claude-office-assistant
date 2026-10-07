@@ -100,8 +100,10 @@ def leave_apply():
     if not _DATE_RE.match(date_) or not _DATE_RE.match(end_date):
         return jsonify({"error": "date must be YYYY-MM-DD"}), 400
     try:
-        row = leave_store.apply_leave(uid, date_, end_date, leave_type=leave_type,
-                                       reason=reason, created_by=uid)
+        row = leave_store.apply_leave(
+            uid, date_, end_date, leave_type=leave_type, reason=reason, created_by=uid,
+            email_subject=str(body.get("email_subject") or "")[:150],
+            email_body=str(body.get("email_body") or "")[:3000])
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify(row)
