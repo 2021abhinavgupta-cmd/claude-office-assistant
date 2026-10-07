@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 EMAIL_DOMAIN = "mmga.agency"
 last_error = ""   # most recent send failure (shown by /api/companion/email-status)
 HR_USER_ID = "emp009"
+# Always copied on leave-request mails to HR (Vidit, Kshitij).
+LEAVE_CC_USER_IDS = ("emp001", "emp004")
 
 
 def _brevo_key() -> str:
@@ -79,7 +81,7 @@ def name_for(user_id: str) -> str:
 
 
 def _send_brevo(to: list[str], subject: str, body: str, reply_to: str = "",
-                from_name: str = "") -> bool:
+                from_name: str = "", cc: list[str] | None = None) -> bool:
     """One API call per recipient, so people never see each other's
     addresses and "reply all" can't spray the whole company."""
     import requests
@@ -92,6 +94,8 @@ def _send_brevo(to: list[str], subject: str, body: str, reply_to: str = "",
                    "to": [{"email": addr}], "subject": subject, "textContent": body}
         if reply_to:
             payload["replyTo"] = {"email": reply_to}
+        if cc:
+            payload["cc"] = [{"email": c} for c in cc if c and c != addr]
         try:
             r = requests.post("https://api.brevo.com/v3/smtp/email", json=payload,
                               headers={"api-key": _brevo_key(), "accept": "application/json"},
@@ -110,9 +114,9 @@ def _send_brevo(to: list[str], subject: str, body: str, reply_to: str = "",
 
 
 def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
-              from_name: str = "") -> bool:
+              from_name: str = "", cc: list[str] | None = None) -> bool:
     if provider() == "brevo":
-        return _send_brevo(to, subject, body, reply_to, from_name)
+        return _send_brevo(to, subject, body, reply_to, from_name, cc)
     host = os.getenv("SMTP_HOST", "")
     port = int(os.getenv("SMTP_PORT", "587") or 587)
     user = os.getenv("SMTP_USER", "")
@@ -123,17 +127,20 @@ def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
     msg["To"] = ", ".join(to)
     if reply_to:
         msg["Reply-To"] = reply_to
+    cc = [c for c in (cc or []) if c and c not in to]
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg.set_content(body)
     try:
         if port == 465:
             with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
                 srv.login(user, pwd)
-                srv.send_message(msg)
+                srv.send_message(msg, to_addrs=to + cc)
         else:
             with smtplib.SMTP(host, port, timeout=15) as srv:
                 srv.starttls()
                 srv.login(user, pwd)
-                srv.send_message(msg)
+                srv.send_message(msg, to_addrs=to + cc)
         logger.info(f"mailer: sent '{subject}' to {to}")
         return True
     except Exception as e:
@@ -144,7 +151,7 @@ def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
 
 
 def send(to, subject: str, body: str, reply_to: str = "", from_name: str = "",
-         wait: bool = False) -> bool:
+         wait: bool = False, cc=None) -> bool:
     """Send an email. Returns False (and logs) when no transport is configured.
     By default sends on a background thread so a slow mail server never
     delays the HTTP request; wait=True sends inline and returns the result."""
@@ -154,9 +161,10 @@ def send(to, subject: str, body: str, reply_to: str = "", from_name: str = "",
     if not is_configured():
         logger.info(f"mailer: email not configured, skipping '{subject}' to {to}")
         return False
+    cc = [c for c in ([cc] if isinstance(cc, str) else list(cc or [])) if c]
     if wait:
-        return _send_now(to, subject, body, reply_to, from_name)
-    threading.Thread(target=_send_now, args=(to, subject, body, reply_to, from_name),
+        return _send_now(to, subject, body, reply_to, from_name, cc)
+    threading.Thread(target=_send_now, args=(to, subject, body, reply_to, from_name, cc),
                      daemon=True).start()
     return True
 
@@ -213,7 +221,8 @@ def notify_leave_request(row: dict, subject: str = "", message: str = "") -> boo
                     f"-- \nApprove or reject: {base}/leave.html\n"
                     f"Reply to this email to reach {who} directly.")
         subj = (subject or "").strip() or f"Leave request: {who} ({when})"
-        return send(hr, subj, body, reply_to=applicant, from_name=f"{who} via Lumina")
+        cc = [a for a in (email_for(u) for u in LEAVE_CC_USER_IDS) if a and a != applicant]
+        return send(hr, subj, body, reply_to=applicant, from_name=f"{who} via Lumina", cc=cc)
     except Exception:
         logger.exception("mailer: notify_leave_request failed")
         return False
