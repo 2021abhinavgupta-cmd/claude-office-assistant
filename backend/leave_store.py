@@ -84,6 +84,17 @@ def _ensure(conn) -> None:
     conn.execute(_DDL)
 
 
+def fmt_hm(hours) -> str:
+    """Decimal hours -> a plain "10h 31m" / "35m" / "0m" string. Every place a
+    person reads a duration should use this (decimals like 10.52 confuse)."""
+    try:
+        mins = int(round(float(hours or 0) * 60))
+    except (TypeError, ValueError):
+        return "0m"
+    h, m = divmod(max(mins, 0), 60)
+    return f"{h}h {m:02d}m" if h else f"{m}m"
+
+
 # Overtime worked on a work-from-home day or public holiday never counts toward comp-off
 # leave (HR marks them in office_calendar, kind 'wfh'/'holiday'). Appended to every
 # "unconverted overtime" query so it applies retroactively: the moment HR

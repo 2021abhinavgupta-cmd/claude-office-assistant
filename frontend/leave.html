@@ -138,9 +138,9 @@ async function loadCalendarEvents(startISO, endISO){
     else if (st === "leave_pending")
       out.push({source:"leave", title:"Leave (pending)", start:ds, end:ds, style:"ring", color:"#fb923c", leave:info, pending:true});
     else if (st === "full")
-      out.push({source:"worked", title:`Full day worked${info.hours ? " ("+info.hours+"h)" : ""}`, start:ds, end:ds, style:"dot", color:"#22d3a0"});
+      out.push({source:"worked", title:`Full day worked${info.hours ? " ("+fmtHM(info.hours)+")" : ""}`, start:ds, end:ds, style:"dot", color:"#22d3a0"});
     else if (st === "half")
-      out.push({source:"worked", title:`Half day worked${info.hours ? " ("+info.hours+"h)" : ""}`, start:ds, end:ds, style:"dot", color:"#fbbf24"});
+      out.push({source:"worked", title:`Half day worked${info.hours ? " ("+fmtHM(info.hours)+")" : ""}`, start:ds, end:ds, style:"dot", color:"#fbbf24"});
   }));
   return out;
 }
@@ -179,9 +179,9 @@ async function loadBalance(){
       <div class="balance-item"><div class="num">${d.comp_earned}</div><div class="lbl">Comp-Off Earned</div></div>
       <div class="balance-item"><div class="num">${d.base}</div><div class="lbl">Base Pool</div></div>
       <div class="balance-item">
-        <div class="num">${otHours}h</div>
+        <div class="num">${fmtHM(otHours)}</div>
         <div class="lbl">OT Hours Pending</div>
-        <div class="ot-hint">${canConvert ? "Ready to convert" : `${(otThreshold - otHours).toFixed(2)}h more needed`}</div>
+        <div class="ot-hint">${canConvert ? "Ready to convert" : `${fmtHM(otThreshold - otHours)} more needed`}</div>
       </div>
       <button class="btn-convert" id="convert-ot-btn" ${canConvert ? "" : "disabled"} onclick="convertOvertime()">Convert to Leave</button>
     `;
@@ -199,7 +199,7 @@ async function convertOvertime(){
     const d = await r.json();
     if (!r.ok){ toast(d.error || "Failed to convert","err"); await loadBalance(); return; }
     if (d.converted_days > 0){
-      toast(`Converted ${d.converted_days} day(s) of leave — ${d.pending_hours}h still pending`);
+      toast(`Converted ${d.converted_days} day(s) of leave — ${fmtHM(d.pending_hours)} still pending`);
     } else {
       toast("Not enough overtime hours yet","err");
     }
@@ -233,6 +233,13 @@ async function loadPending(){
     `;
     }).join("");
   }catch(e){ toast("Couldn't load pending requests","err"); }
+}
+
+// 10.52 -> "10h 31m"; 0.59 -> "35m". Decimal hours are hard to read.
+function fmtHM(h){
+  const mins = Math.max(0, Math.round((Number(h) || 0) * 60));
+  const hh = Math.floor(mins / 60), mm = mins % 60;
+  return hh ? `${hh}h ${String(mm).padStart(2,"0")}m` : `${mm}m`;
 }
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m])); }

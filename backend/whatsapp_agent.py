@@ -1819,7 +1819,9 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 return "(couldn't look that up just now)"
             return (f"{bal['base']}-day pool + {bal['comp_earned']} comp-off "
                     f"earned this year, {bal['used']} used -> "
-                    f"{bal['remaining']} remaining ({bal['year']}).")
+                    f"{bal['remaining']} remaining ({bal['year']}). "
+                    f"Overtime pending: {leave_store.fmt_hm(bal.get('ot_pending_hours'))} "
+                    f"(every 24h converts to 1 leave day).")
 
         if name == "set_standing_rule" and kind == "employee":
             rule = str((tool_input or {}).get("rule") or "").strip()

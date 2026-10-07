@@ -551,6 +551,17 @@ def attendance_export():
 _FULL_DAY_HOURS = 9.0
 
 
+_HM_FMT = '[h]"h" mm"m"'
+
+
+def _hm(hours):
+    """Decimal hours -> an Excel time value (days) rounded to the minute, so a
+    cell shows "10h 31m" via _HM_FMT yet stays a real number (sums, filters)."""
+    if hours is None:
+        return None
+    return round(float(hours) * 60) / 60 / 24
+
+
 def _overtime_hours(hrs):
     """Hours worked beyond _FULL_DAY_HOURS on one day, or None if hrs is
     None (no checkout yet / no checkin at all -- nothing to compute
@@ -866,7 +877,7 @@ def attendance_export_sheets():
                 completed, carried = task_counts.get((uid, dstr), (0, 0))
                 cin_obj, cout_obj = _parse_time_obj(cin), _parse_time_obj(cout)
                 ws.append([d, d.strftime("%A"), cin_obj, cout_obj,
-                          hrs if hrs is not None else None, overtime, day_type, completed, carried])
+                          _hm(hrs), _hm(overtime), day_type, completed, carried])
                 r = ws.max_row
                 ws.cell(row=r, column=1).number_format = DATE_FMT
                 if cin_obj is not None:
@@ -874,9 +885,9 @@ def attendance_export_sheets():
                 if cout_obj is not None:
                     ws.cell(row=r, column=4).number_format = TIME_FMT
                 if hrs is not None:
-                    ws.cell(row=r, column=5).number_format = "0.00"
+                    ws.cell(row=r, column=5).number_format = _HM_FMT
                 if overtime is not None:
-                    ws.cell(row=r, column=6).number_format = "0.00"
+                    ws.cell(row=r, column=6).number_format = _HM_FMT
                 fill = DAY_TYPE_FILLS.get(day_type)
                 if fill:
                     ws.cell(row=r, column=7).fill = fill
@@ -937,10 +948,10 @@ def attendance_export_sheets():
             ws.cell(row=mrow_idx, column=4, value=m["Leave"])
             ws.cell(row=mrow_idx, column=5, value=m["Incomplete"])
             ws.cell(row=mrow_idx, column=6, value=m_considered)
-            hrs_cell = ws.cell(row=mrow_idx, column=7, value=round(m["hours"], 1))
-            hrs_cell.number_format = "0.0"
-            ot_cell = ws.cell(row=mrow_idx, column=8, value=round(m["overtime"], 1))
-            ot_cell.number_format = "0.0"
+            hrs_cell = ws.cell(row=mrow_idx, column=7, value=_hm(m["hours"]))
+            hrs_cell.number_format = _HM_FMT
+            ot_cell = ws.cell(row=mrow_idx, column=8, value=_hm(m["overtime"]))
+            ot_cell.number_format = _HM_FMT
             pct_cell = ws.cell(row=mrow_idx, column=9, value=m_pct if m_pct is not None else "N/A")
             if m_pct is not None:
                 pct_cell.number_format = "0.0%"
@@ -953,15 +964,15 @@ def attendance_export_sheets():
         total_row = mrow_idx + 1
         total_cells = [
             "Total (All Time)", counts["Full Day"], counts["Half Day"], counts["Leave"],
-            counts["Incomplete"], considered, round(total_hours, 1), round(total_overtime, 1),
+            counts["Incomplete"], considered, _hm(total_hours), _hm(total_overtime),
             pct if pct is not None else "N/A",
             counts.get("Leave (Approved)", 0), round(comp_off_total, 1),
         ]
         for col, val in enumerate(total_cells, start=1):
             c = ws.cell(row=total_row, column=col, value=val)
             c.font = SUMMARY_LABEL_FONT
-        ws.cell(row=total_row, column=7).number_format = "0.0"
-        ws.cell(row=total_row, column=8).number_format = "0.0"
+        ws.cell(row=total_row, column=7).number_format = _HM_FMT
+        ws.cell(row=total_row, column=8).number_format = _HM_FMT
         if pct is not None:
             ws.cell(row=total_row, column=9).number_format = "0.0%"
         ws.cell(row=total_row, column=11).number_format = "0.0"
@@ -973,8 +984,8 @@ def attendance_export_sheets():
         emp_summaries.append({
             "name": name, "start": start, "full": counts["Full Day"],
             "half": counts["Half Day"], "leave": counts["Leave"],
-            "incomplete": counts["Incomplete"], "hours": round(total_hours, 1),
-            "overtime": round(total_overtime, 1), "pct": pct,
+            "incomplete": counts["Incomplete"], "hours": _hm(total_hours),
+            "overtime": _hm(total_overtime), "pct": pct,
             "leave_used": bal["used"], "comp_earned": bal["comp_earned"],
             "leave_remaining": bal["remaining"],
         })
@@ -1011,8 +1022,8 @@ def attendance_export_sheets():
                       s["leave_remaining"]])
         r = ws_sum.max_row
         ws_sum.cell(row=r, column=2).number_format = DATE_FMT
-        ws_sum.cell(row=r, column=8).number_format = "0.0"
-        ws_sum.cell(row=r, column=9).number_format = "0.0"
+        ws_sum.cell(row=r, column=8).number_format = _HM_FMT
+        ws_sum.cell(row=r, column=9).number_format = _HM_FMT
         if s["pct"] is not None:
             ws_sum.cell(row=r, column=7).number_format = "0.0%"
         border_row(ws_sum, r, 12)
