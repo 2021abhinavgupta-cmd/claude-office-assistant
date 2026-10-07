@@ -19,6 +19,7 @@ routes, the scheduler, and the agent alike.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from datetime import date as _date, timedelta
 from uuid import uuid4
@@ -336,6 +337,35 @@ def _email_hr(row: dict, subject: str = "", message: str = "") -> None:
         mailer.notify_leave_request(row, subject, message)
     except Exception:
         logger.exception("leave_store: HR email failed")
+    _whatsapp_hr(row, subject, message)
+
+
+def _whatsapp_hr(row: dict, subject: str = "", message: str = "") -> None:
+    """WhatsApp DM to HR (Noorish) for a new pending request. Best-effort,
+    never raises. Delivered by the laptop's outbox poller."""
+    try:
+        import mailer
+        import wa_outbox
+        from utils import _load_employees
+        wa = next((e.get("whatsapp", "") for e in _load_employees().get("employees", [])
+                   if e.get("id") == mailer.HR_USER_ID), "")
+        jid = wa_outbox.wa_jid(wa)
+        if not jid:
+            logger.info("leave_store: HR has no WhatsApp number, skipping")
+            return
+        who = mailer.name_for(row.get("user_id", ""))
+        sd, ed = row.get("start_date", ""), row.get("end_date", "")
+        when = sd if sd == ed else f"{sd} to {ed}"
+        kind = "half day" if row.get("leave_type") == "half" else "full day"
+        reason = (row.get("reason") or "").strip()
+        text = f"*Leave request* from {who}\n{kind.capitalize()}: {when}"
+        if reason:
+            text += f"\nReason: {reason}"
+        base = (os.getenv("PUBLIC_BASE_URL") or "https://lumina.mmga.agency").rstrip("/")
+        text += f"\n\nApprove or reject: {base}/leave.html"
+        wa_outbox.enqueue(jid, text)
+    except Exception:
+        logger.exception("leave_store: HR WhatsApp failed")
 
 
 def _row_for_notice(conn, leave_id: int) -> dict | None:
