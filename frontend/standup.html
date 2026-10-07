@@ -242,47 +242,62 @@ function toast(m,t="ok"){
   window.__toastTimer=setTimeout(()=>e.style.display="none",2500);
 }
 
-(async()=>{
-  if (new URLSearchParams(location.search).get("locked") === "1") {
-    const need = (new URLSearchParams(location.search).get("need") || "")
-      .split(",").filter(Boolean);
-    const b = document.getElementById("lock-banner");
-    const t = document.getElementById("lock-banner-text");
-    const needCheckin = need.includes("checkin");
-    const needStandup = need.includes("standup");
-    if (needCheckin && needStandup)
-      t.textContent = "Add at least one task below to unlock the rest of Lumina for today (that also checks you in) — or check in now with the button on the right.";
-    else if (needStandup)
-      t.textContent = "Add at least one task below to unlock the rest of Lumina for today.";
-    else if (needCheckin)
-      t.textContent = "Check in for today to unlock the rest of Lumina.";
-    if (needCheckin) {
-      const btn = document.getElementById("lock-checkin-btn");
-      btn.style.display = "inline-block";
-      btn.onclick = async () => {
-        btn.disabled = true;
-        btn.textContent = "Checking in…";
-        try {
-          const loc = window.getAttendanceLocation
-            ? await window.getAttendanceLocation().catch(() => null)
-            : null;
-          const r = await fetch(`${API}/api/attendance/checkin`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: UID, ...(loc || {}) }),
-          });
-          if (!r.ok) throw new Error("checkin " + r.status);
-          location.reload();
-        } catch (e) {
-          btn.disabled = false;
-          btn.textContent = "Check In";
-          toast("Check-in failed — try again", "err");
-        }
-      };
-    }
-    b.style.display = "block";
+async function refreshLockBanner() {
+  const b = document.getElementById("lock-banner");
+  const t = document.getElementById("lock-banner-text");
+  const btn = document.getElementById("lock-checkin-btn");
+  let st = null;
+  try {
+    const r = await fetch(`${API}/api/standup/lock-status?user_id=${encodeURIComponent(UID)}`);
+    if (r.ok) st = await r.json();
+  } catch (e) { /* fall through: leave the banner as it is */ }
+  if (!st) return;
+  if (!st.locked) {
+    b.style.display = "none";
+    // drop ?locked=1&need=... so a later reload/back-nav can't resurrect it
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    return;
   }
-  await loadEmployees();
+  const needCheckin = !!st.needs_checkin, needStandup = !!st.needs_standup;
+  if (needCheckin && needStandup)
+    t.textContent = "Add at least one task below to unlock the rest of Lumina for today (that also checks you in) — or check in now with the button on the right.";
+  else if (needStandup)
+    t.textContent = "You're checked in. Add at least one task below to unlock the rest of Lumina for today.";
+  else if (needCheckin)
+    t.textContent = "Check in for today to unlock the rest of Lumina.";
+  btn.style.display = needCheckin ? "inline-block" : "none";
+  btn.disabled = false;
+  btn.textContent = "Check In";
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = "Checking in…";
+    try {
+      const loc = window.getAttendanceLocation
+        ? await window.getAttendanceLocation().catch(() => null)
+        : null;
+      const r = await fetch(`${API}/api/attendance/checkin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: UID, ...(loc || {}) }),
+      });
+      if (!r.ok) throw new Error("checkin " + r.status);
+      toast("Checked in");
+      await refreshLockBanner();   // hides the button/banner right away
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = "Check In";
+      toast("Check-in failed — try again", "err");
+    }
+  };
+  b.style.display = "block";
+}
+(async()=>{
+  // Lock banner: always driven by the server's CURRENT lock state, never by
+  // the ?locked=1 in the URL (that goes stale the moment you check in, which
+  // is why the Check In button used to stay on screen after checking in).
+  if (new URLSearchParams(location.search).get("locked") === "1") {
+    await refreshLockBanner();
+  }  await loadEmployees();
   populateVelocityEmployeeOptions();
   const hour = new Date().getHours();
   const greet = hour<12?"Good morning":hour<17?"Good afternoon":"Good evening";
@@ -531,8 +546,7 @@ async function addTask(btnEl){
       // lock (CLAUDE.md gotcha #108/#119), no separate Check In click
       // needed. Hide the banner immediately instead of leaving it stale
       // until the next full page load.
-      const lockBanner = document.getElementById("lock-banner");
-      if (lockBanner) lockBanner.style.display = "none";
+      refreshLockBanner();
       if(d.is_project) {
           // Toast or subtle indicator could go here. 
           console.log("AI Auto-Router created this as a project task in Notion.");
