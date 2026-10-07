@@ -84,14 +84,14 @@ def _ensure(conn) -> None:
     conn.execute(_DDL)
 
 
-# Overtime worked on a work-from-home day never counts toward comp-off
-# leave (HR marks WFH days in office_calendar, kind='wfh'). Appended to every
+# Overtime worked on a work-from-home day or public holiday never counts toward comp-off
+# leave (HR marks them in office_calendar, kind 'wfh'/'holiday'). Appended to every
 # "unconverted overtime" query so it applies retroactively: the moment HR
 # adds/changes a WFH day, that day's ledger hours stop counting for everyone,
 # with no data deleted and nothing to re-run. Carry rows use a 'carry-<uuid>'
 # date, which sorts after any digit date, so BETWEEN never matches them.
 # Only still-unconverted rows are affected -- days already granted stay.
-_NOT_WFH_SQL = (" AND NOT EXISTS (SELECT 1 FROM office_calendar oc WHERE oc.kind='wfh' "
+_NOT_WFH_SQL = (" AND NOT EXISTS (SELECT 1 FROM office_calendar oc WHERE oc.kind IN ('wfh','holiday') "
                 "AND overtime_ledger.date BETWEEN oc.start_date AND oc.end_date)")
 
 
