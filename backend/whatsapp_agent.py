@@ -2615,7 +2615,12 @@ def compose_followup(employee: dict, items: list) -> str:
                     "Mention every item below and nothing else; do not invent "
                     "any task, date, name or number that isn't in the list. "
                     "No greeting boilerplate, no offer to help, no questions "
-                    "back. Two or three short lines total."
+                    "back. Two or three short lines total. "
+                    "You have NO tools in this turn and nothing to look up: "
+                    "everything you need is in the list. Never write tool "
+                    "calls, XML tags, or narration like 'let me check' or "
+                    "'based on the data' -- output ONLY the message text "
+                    "that will be sent, nothing before or after it."
                 ),
             }],
             messages=[{
@@ -2645,10 +2650,37 @@ def compose_followup(employee: dict, items: list) -> str:
         # Strip a stray <REMEMBER> tag -- the prompt mentions the mechanism, and
         # there's no inbound message here that could justify saving anything.
         text = re.sub(r'\s*<REMEMBER>[\s\S]*?</REMEMBER>\s*', ' ', text).strip()
-        return _humanize(text)
+        text = _clean_followup(text)
+        return _humanize(text) if text else ""
     except Exception:
         logger.exception("whatsapp_agent: compose_followup failed")
         return ""
+
+
+_LEAK_MARKERS = re.compile(r'<\s*/?\s*(function_calls|invoke|parameter|antml)', re.I)
+_META_OPENERS = re.compile(
+    r"^\s*(i need to|i'll |i will |let me|based on|first,? i|checking|verifying)", re.I)
+
+
+def _clean_followup(text: str) -> str:
+    """The composer has no tools, but its prompt describes them, so the model
+    sometimes narrates ("I need to verify...") or writes fake tool-call XML
+    before the real message. Never send that. Salvage the text after the last
+    '---' divider if there is one, otherwise return "" so the caller uses the
+    deterministic fallback."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    leaked = bool(_LEAK_MARKERS.search(text)) or bool(_META_OPENERS.match(text))
+    if not leaked:
+        return text
+    parts = re.split(r'\n\s*-{3,}\s*\n', text)
+    if len(parts) > 1:
+        tail = parts[-1].strip()
+        if tail and not _LEAK_MARKERS.search(tail) and not _META_OPENERS.match(tail):
+            return tail
+    logger.warning("whatsapp_agent: followup composer leaked scaffolding, using fallback")
+    return ""
 
 
 def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = "") -> str:
