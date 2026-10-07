@@ -84,12 +84,28 @@ def _ensure(conn) -> None:
     conn.execute(_DDL)
 
 
+# Overtime worked on a work-from-home day never counts toward comp-off
+# leave (HR marks WFH days in office_calendar, kind='wfh'). Appended to every
+# "unconverted overtime" query so it applies retroactively: the moment HR
+# adds/changes a WFH day, that day's ledger hours stop counting for everyone,
+# with no data deleted and nothing to re-run. Carry rows use a 'carry-<uuid>'
+# date, which sorts after any digit date, so BETWEEN never matches them.
+# Only still-unconverted rows are affected -- days already granted stay.
+_NOT_WFH_SQL = (" AND NOT EXISTS (SELECT 1 FROM office_calendar oc WHERE oc.kind='wfh' "
+                "AND overtime_ledger.date BETWEEN oc.start_date AND oc.end_date)")
+
+
 def _ensure_overtime_ledger(conn) -> None:
     """Same idempotent-defensive-create idiom as _ensure() above, so every
     public function in this module tolerates being called before
     db.init_db() has ever run — not just the ones that happened to touch
     employee_leave/comp_off_ledger already."""
     conn.execute(_OVERTIME_LEDGER_DDL)
+    # _NOT_WFH_SQL reads office_calendar (HR's calendar) in every pending sum.
+    conn.execute("""CREATE TABLE IF NOT EXISTS office_calendar (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT DEFAULT '',
+        start_date TEXT NOT NULL, end_date TEXT NOT NULL, created_by TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')))""")
 
 
 def _ensure_comp_off_ledger(conn) -> None:
@@ -453,7 +469,7 @@ def get_balance(user_id: str, year: int | None = None) -> dict:
         try:
             ot_row = conn.execute(
                 "SELECT COALESCE(SUM(ot_hours), 0) FROM overtime_ledger "
-                "WHERE user_id=? AND converted_at IS NULL", (user_id,),
+                "WHERE user_id=? AND converted_at IS NULL" + _NOT_WFH_SQL, (user_id,),
             ).fetchone()
             ot_pending_hours = round(ot_row[0] or 0.0, 2)
         except sqlite3.OperationalError:
@@ -580,7 +596,7 @@ def _convert_overtime_for_user(conn, user_id: str) -> float:
     runs. Returns how many whole days were converted (0 if under 24h)."""
     rows = conn.execute(
         "SELECT id, ot_hours FROM overtime_ledger WHERE user_id=? "
-        "AND converted_at IS NULL", (user_id,),
+        "AND converted_at IS NULL" + _NOT_WFH_SQL, (user_id,),
     ).fetchall()
     total = sum((ot or 0.0) for _rid, ot in rows)
     if total < OT_CONVERSION_HOURS:
@@ -617,7 +633,7 @@ def get_unconverted_ot_hours(user_id: str) -> float:
     try:
         row = conn.execute(
             "SELECT COALESCE(SUM(ot_hours), 0) FROM overtime_ledger "
-            "WHERE user_id=? AND converted_at IS NULL", (user_id,),
+            "WHERE user_id=? AND converted_at IS NULL" + _NOT_WFH_SQL, (user_id,),
         ).fetchone()
         return round(row[0] or 0.0, 2)
     except sqlite3.OperationalError:
@@ -642,7 +658,7 @@ def convert_overtime_now(user_id: str) -> dict:
             converted_days = _convert_overtime_for_user(conn, user_id)
         row = conn.execute(
             "SELECT COALESCE(SUM(ot_hours), 0) FROM overtime_ledger "
-            "WHERE user_id=? AND converted_at IS NULL", (user_id,),
+            "WHERE user_id=? AND converted_at IS NULL" + _NOT_WFH_SQL, (user_id,),
         ).fetchone()
         pending_hours = round(row[0] or 0.0, 2)
         return {"converted_days": converted_days, "pending_hours": pending_hours}
