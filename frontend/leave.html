@@ -260,10 +260,15 @@ function empName(id){
 }
 
 async function decide(id, action){
+  let reason = "";
+  if (action === "reject"){
+    reason = prompt("Reason for rejecting (optional — the person is told):") ;
+    if (reason === null) return;   // cancelled
+  }
   try{
     const r = await fetch(`${API}/api/leave/${id}/${action}`, {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({user_id: UID}),
+      body: JSON.stringify({user_id: UID, reason}),
     });
     const d = await r.json();
     if (!r.ok){ toast(d.error || "Failed", "err"); return; }

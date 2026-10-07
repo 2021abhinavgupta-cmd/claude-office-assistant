@@ -161,6 +161,30 @@ def send(to, subject: str, body: str, reply_to: str = "", from_name: str = "",
     return True
 
 
+def notify_leave_decision(row: dict, decision: str, decided_by: str, reason: str = "") -> bool:
+    """Email the applicant that HR approved/rejected their leave. Reply-To is
+    the person who decided, so a reply reaches HR."""
+    try:
+        uid = row.get("user_id", "")
+        to = email_for(uid)
+        by = name_for(decided_by)
+        sd, ed = row.get("start_date", ""), row.get("end_date", "")
+        when = sd if sd == ed else f"{sd} to {ed}"
+        verb = "approved" if decision == "approved" else "rejected"
+        lines = [f"Hi {name_for(uid)},", "",
+                 f"Your leave request for {when} has been {verb} by {by}."]
+        if decision == "rejected" and (reason or "").strip():
+            lines += ["", f"Reason: {reason.strip()}"]
+        base = (os.getenv("PUBLIC_BASE_URL") or "https://lumina.mmga.agency").rstrip("/")
+        lines += ["", f"See your calendar and balance: {base}/leave.html",
+                  "", f"Reply to this email to reach {by}."]
+        return send(to, f"Leave {verb}: {when}", "\n".join(lines),
+                    reply_to=email_for(decided_by), from_name=f"{by} via Lumina")
+    except Exception:
+        logger.exception("mailer: notify_leave_decision failed")
+        return False
+
+
 def notify_leave_request(row: dict) -> bool:
     """Email HR about a new pending leave request. Reply-To is the applicant,
     so HR can answer them straight from the mail."""

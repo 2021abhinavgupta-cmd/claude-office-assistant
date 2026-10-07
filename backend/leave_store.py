@@ -337,6 +337,43 @@ def _email_hr(row: dict) -> None:
         logger.exception("leave_store: HR email failed")
 
 
+def _row_for_notice(conn, leave_id: int) -> dict | None:
+    r = conn.execute(
+        "SELECT user_id, start_date, end_date, leave_type FROM employee_leave WHERE id=?",
+        (leave_id,)).fetchone()
+    return ({"user_id": r[0], "start_date": r[1], "end_date": r[2], "leave_type": r[3]}
+            if r else None)
+
+
+def _notify_applicant(row: dict, decision: str, decided_by: str, reason: str = "") -> None:
+    """Tell the person their leave request was approved/rejected -- email to
+    their @mmga.agency address and a WhatsApp DM. Best-effort, never raises,
+    so a notification problem can't undo HR's decision."""
+    try:
+        import mailer
+        mailer.notify_leave_decision(row, decision, decided_by, reason)
+    except Exception:
+        logger.exception("leave_store: decision email failed")
+    try:
+        import mailer
+        import wa_outbox
+        from utils import _load_employees
+        wa = next((e.get("whatsapp", "") for e in _load_employees().get("employees", [])
+                   if e.get("id") == row.get("user_id")), "")
+        jid = wa_outbox.wa_jid(wa)
+        if jid:
+            sd, ed = row["start_date"], row["end_date"]
+            when = sd if sd == ed else f"{sd} to {ed}"
+            by = mailer.name_for(decided_by)
+            verb = "approved" if decision == "approved" else "rejected"
+            text = f"Your leave request for {when} was *{verb}* by {by}."
+            if decision == "rejected" and (reason or "").strip():
+                text += f"\nReason: {reason.strip()}"
+            wa_outbox.enqueue(jid, text)
+    except Exception:
+        logger.exception("leave_store: decision WhatsApp failed")
+
+
 def approve_leave(leave_id: int, approved_by: str) -> bool:
     """Approve a pending request. Re-checks for a live overlap at decision
     time, not just at request time — a row can go stale between the two
@@ -360,9 +397,13 @@ def approve_leave(leave_id: int, approved_by: str) -> bool:
                 "approved_at=datetime('now') WHERE id=? AND status='pending'",
                 (approved_by, leave_id),
             )
-        return cur.rowcount > 0
+        done = cur.rowcount > 0
+        decided = _row_for_notice(conn, leave_id) if done else None
     finally:
         conn.close()
+    if decided:
+        _notify_applicant(decided, "approved", approved_by)
+    return done
 
 
 def reject_leave(leave_id: int, approved_by: str, reason: str = "") -> bool:
@@ -375,9 +416,13 @@ def reject_leave(leave_id: int, approved_by: str, reason: str = "") -> bool:
                 "approved_at=datetime('now') WHERE id=? AND status='pending'",
                 (approved_by, leave_id),
             )
-        return cur.rowcount > 0
+        done = cur.rowcount > 0
+        decided = _row_for_notice(conn, leave_id) if done else None
     finally:
         conn.close()
+    if decided:
+        _notify_applicant(decided, "rejected", approved_by, reason)
+    return done
 
 
 def cancel_leave(leave_id: int, user_id: str) -> bool:
