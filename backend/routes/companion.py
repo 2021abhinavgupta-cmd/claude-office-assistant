@@ -1062,6 +1062,29 @@ def companion_email_status():
             wait=True)
         if not out["test_sent"]:
             out["error"] = mailer.last_error
+    if request.args.get("diag"):
+        # Which outbound connections can this host actually make? Separates
+        # "wrong password" from "the platform blocks SMTP" (Railway blocks
+        # outbound SMTP on some plans) and from IPv6-only routing.
+        import socket
+        diag = {}
+        host = out["smtp_host"] or "smtp.gmail.com"
+        for fam, label in ((socket.AF_INET, "ipv4"), (socket.AF_INET6, "ipv6")):
+            try:
+                addrs = socket.getaddrinfo(host, None, fam)
+                diag[f"{label}_resolves"] = bool(addrs)
+            except Exception as e:
+                diag[f"{label}_resolves"] = f"no ({e})"
+                continue
+            for port in (587, 465, 2525, 443):
+                try:
+                    s = socket.socket(fam, socket.SOCK_STREAM); s.settimeout(6)
+                    s.connect((addrs[0][4][0], port) if fam == socket.AF_INET
+                              else (addrs[0][4][0], port, 0, 0))
+                    s.close(); diag[f"{label}:{port}"] = "open"
+                except Exception as e:
+                    diag[f"{label}:{port}"] = f"{type(e).__name__}: {e}"[:80]
+        out["diag"] = diag
     return jsonify(out)
 
 
