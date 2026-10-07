@@ -265,6 +265,58 @@ _ROLLCALL_WA_HINT = (
 )
 
 
+@companion_bp.route("/api/companion/checkout-missing", methods=["GET"])
+def companion_checkout_missing():
+    """Who checked IN today but has NOT checked out -- powers the 11 PM
+    personal "please check out" DM. Only people with a check-in today are
+    ever listed (someone who never checked in is not nagged to check out).
+    Excluded: inactive staff, anyone without a WhatsApp number, and the ids in
+    app_settings key `checkout_nudge_exclude_ids` (extra ids; emp001 and\n    emp004 = Vidit and Kshitij are ALWAYS excluded -- explicitly never pinged)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+
+    today = utils.today_ist()
+    exclude = {"emp001", "emp004"}
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='checkout_nudge_exclude_ids'").fetchone()
+        conn.close()
+        if row and row[0] is not None:
+            # Vidit and Kshitij stay excluded no matter what; the setting only ADDS people.
+            exclude |= {x.strip() for x in str(row[0]).replace(",", " ").split() if x.strip()}
+    except Exception:
+        pass
+
+    try:
+        conn = get_connection()
+        open_ids = {r[0] for r in conn.execute(
+            "SELECT user_id FROM daily_attendance WHERE date=? "
+            "AND checkin_time IS NOT NULL AND checkin_time<>'' "
+            "AND (checkout_time IS NULL OR checkout_time='')", (today,)).fetchall()}
+        conn.close()
+    except Exception:
+        logger.exception("checkout-missing: query failed")
+        return jsonify({"error": "query failed"}), 500
+
+    people = []
+    try:
+        for e in utils._load_employees().get("employees", []):
+            eid = e.get("id", "")
+            if eid not in open_ids or eid in exclude:
+                continue
+            if str(e.get("status", "active")).strip().lower() in _INACTIVE:
+                continue
+            wa = re.sub(r"\D", "", e.get("whatsapp", "") or "")
+            if not wa:
+                continue
+            people.append({"id": eid, "name": e.get("name") or eid, "whatsapp": wa})
+    except Exception:
+        logger.exception("checkout-missing: roster load failed")
+        return jsonify({"error": "roster load failed"}), 500
+    return jsonify({"date": today, "missing_checkout": people, "excluded_ids": sorted(exclude)})
+
+
 @companion_bp.route("/api/companion/attendance-missing", methods=["GET"])
 def companion_attendance_missing():
     """Who on the active roster has NOT checked in today. Powers the laptop

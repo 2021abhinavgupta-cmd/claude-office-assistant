@@ -1375,6 +1375,29 @@ def job_attendance_nag(cfg: dict) -> None:
     _log(f"attendance-nag: {sent} DM(s)")
 
 
+def job_checkout_nudge(cfg: dict) -> None:
+    """23:00 -- one personal DM to everyone who checked in today but hasn't
+    checked out (Vidit/Kshitij excluded server-side). Strictly one message
+    per person per day: the daily-job state is persisted, so a restart can't
+    fire it twice, and there is no retry loop."""
+    if not cfg["bridge_ok"]:
+        return
+    j = _companion_get(cfg, "/api/companion/checkout-missing")
+    if not j:
+        return
+    sent = 0
+    for p in j.get("missing_checkout", []):
+        wa = re.sub(r"\D", "", p.get("whatsapp", ""))
+        if not wa:
+            continue
+        name = p.get("name") or "there"
+        text = (f"Hey *{name}*, it's 11 PM and you haven't checked out on Lumina yet. "
+                "Please check out, or just reply \"out\" here and I'll do it for you.")
+        if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
+            sent += 1
+    _log(f"checkout-nudge: {sent} DM(s)")
+
+
 def job_tomorrow_live(cfg: dict) -> None:
     """09:30 and 18:30 -- DM Vidit (or whoever's configured) everything due
     to go live tomorrow, read straight from the Lumina Sheets/Notion data,
@@ -1583,6 +1606,10 @@ def main() -> None:
                     help="also run the old separate 10:30 attendance-nag, 11:30 "
                          "standup-nudge and noon roll-call (all superseded by "
                          "the unified login nudge)")
+    ap.add_argument("--checkout-nudge-time", default="23:00",
+                    help="daily time to DM anyone who checked in today but hasn't "
+                         "checked out (one message; Vidit/Kshitij excluded)")
+    ap.add_argument("--no-checkout-nudge", action="store_true")
     ap.add_argument("--tomorrow-live-morning", default="09:30",
                     help="daily morning time to DM the content-calendar lead (default "
                          "Vidit) everything due to go live tomorrow")
@@ -1700,6 +1727,8 @@ def main() -> None:
         daily_jobs.append(("standup-nudge", job_standup_nudge, args.standup_nudge_time))
     if args.legacy_nudges and not args.no_attendance_nag:
         daily_jobs.append(("attendance-nag", job_attendance_nag, args.attendance_nag_time))
+    if not args.no_checkout_nudge:
+        daily_jobs.append(("checkout-nudge", job_checkout_nudge, args.checkout_nudge_time))
     if not args.no_tomorrow_live:
         daily_jobs.append(("tomorrow-live-am", job_tomorrow_live, args.tomorrow_live_morning))
         daily_jobs.append(("tomorrow-live-pm", job_tomorrow_live, args.tomorrow_live_evening))
@@ -1740,6 +1769,9 @@ def main() -> None:
     _log("  legacy-nudges {}".format(
         "on (standup-nudge + attendance-nag + noon roll-call)" if args.legacy_nudges
         else "off (unified login-nudge replaces them)"))
+    _log("  checkout-nudge {}".format(
+        args.checkout_nudge_time if (not args.no_checkout_nudge and cfg["bridge_ok"] and tok)
+        else "OFF (--no-checkout-nudge)" if args.no_checkout_nudge else "OFF (needs bridge + token)"))
     _log("  tomorrow-live {}".format(
         f"{args.tomorrow_live_morning}/{args.tomorrow_live_evening}"
         if (not args.no_tomorrow_live and cfg["bridge_ok"] and tok)
