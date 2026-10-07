@@ -1,7 +1,14 @@
 """
-Outbound email over SMTP. Used to tell HR about a new leave request.
+Outbound email: leave-request mail to HR, event announcements/reminders.
 
-Configured entirely by env vars (Railway):
+Two transports, picked automatically (first one configured wins):
+
+  1. Brevo HTTPS API  -- PREFERRED. Railway blocks outbound SMTP on some plans
+     (diagnosed live 2026-10-08: ports 587/465 time out), but HTTPS works.
+       BREVO_API_KEY   from Brevo > SMTP & API > API Keys
+       BREVO_SENDER    verified sender address, default marketing@mmga.agency
+       SMTP_FROM_NAME  optional display name, default "Lumina"
+  2. SMTP -- only useful where outbound SMTP isn't blocked:
   SMTP_HOST   e.g. smtp.gmail.com            (Google Workspace)
   SMTP_PORT   587 (STARTTLS, default) or 465 (SSL)
   SMTP_USER   the mailbox that sends, e.g. lumina@mmga.agency
@@ -30,8 +37,21 @@ last_error = ""   # most recent send failure (shown by /api/companion/email-stat
 HR_USER_ID = "emp009"
 
 
+def _brevo_key() -> str:
+    return (os.getenv("BREVO_API_KEY") or "").strip()
+
+
+def provider() -> str:
+    """'brevo', 'smtp', or '' when email isn't configured."""
+    if _brevo_key():
+        return "brevo"
+    if os.getenv("SMTP_HOST") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASS"):
+        return "smtp"
+    return ""
+
+
 def is_configured() -> bool:
-    return bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASS"))
+    return bool(provider())
 
 
 def _employee(user_id: str) -> dict:
@@ -58,8 +78,41 @@ def name_for(user_id: str) -> str:
     return str(_employee(user_id).get("name") or user_id)
 
 
+def _send_brevo(to: list[str], subject: str, body: str, reply_to: str = "",
+                from_name: str = "") -> bool:
+    """One API call per recipient, so people never see each other's
+    addresses and "reply all" can't spray the whole company."""
+    import requests
+    global last_error
+    sender = (os.getenv("BREVO_SENDER") or os.getenv("SMTP_USER") or "marketing@mmga.agency").strip()
+    name = from_name or os.getenv("SMTP_FROM_NAME", "Lumina")
+    ok_all = True
+    for addr in to:
+        payload = {"sender": {"name": name, "email": sender},
+                   "to": [{"email": addr}], "subject": subject, "textContent": body}
+        if reply_to:
+            payload["replyTo"] = {"email": reply_to}
+        try:
+            r = requests.post("https://api.brevo.com/v3/smtp/email", json=payload,
+                              headers={"api-key": _brevo_key(), "accept": "application/json"},
+                              timeout=20)
+            if r.status_code >= 300:
+                ok_all = False
+                last_error = f"Brevo HTTP {r.status_code}: {r.text}"[:400]
+                logger.warning(f"mailer: brevo rejected '{subject}' to {addr}: {last_error}")
+            else:
+                logger.info(f"mailer: brevo sent '{subject}' to {addr}")
+        except Exception as e:
+            ok_all = False
+            last_error = f"{type(e).__name__}: {e}"[:400]
+            logger.warning(f"mailer: brevo send failed to {addr}: {e}")
+    return ok_all
+
+
 def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
               from_name: str = "") -> bool:
+    if provider() == "brevo":
+        return _send_brevo(to, subject, body, reply_to, from_name)
     host = os.getenv("SMTP_HOST", "")
     port = int(os.getenv("SMTP_PORT", "587") or 587)
     user = os.getenv("SMTP_USER", "")
@@ -92,14 +145,14 @@ def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
 
 def send(to, subject: str, body: str, reply_to: str = "", from_name: str = "",
          wait: bool = False) -> bool:
-    """Send an email. Returns False (and logs) when SMTP isn't configured.
+    """Send an email. Returns False (and logs) when no transport is configured.
     By default sends on a background thread so a slow mail server never
     delays the HTTP request; wait=True sends inline and returns the result."""
     to = [t for t in ([to] if isinstance(to, str) else list(to or [])) if t]
     if not to:
         return False
     if not is_configured():
-        logger.info(f"mailer: SMTP not configured, skipping '{subject}' to {to}")
+        logger.info(f"mailer: email not configured, skipping '{subject}' to {to}")
         return False
     if wait:
         return _send_now(to, subject, body, reply_to, from_name)

@@ -1050,6 +1050,7 @@ def companion_email_status():
     import mailer
     out = {
         "configured": mailer.is_configured(),
+        "provider": mailer.provider(),
         "smtp_host": os.getenv("SMTP_HOST", ""),
         "smtp_port": os.getenv("SMTP_PORT", "587"),
         "sender": os.getenv("SMTP_USER", ""),
