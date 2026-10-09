@@ -94,8 +94,39 @@ def _get(b, k, default=""):
     return b.get(k, default) if isinstance(b, dict) else getattr(b, k, default)
 
 
-def _messages_to_openai(system, messages: list) -> list:
-    out = [{"role": "system", "content": _system_text(system)}]
+# Models OpenRouter documents as honouring explicit `cache_control` (Alibaba-hosted
+# Qwen). Anything else would get the marker ignored at best, so it is only sent to
+# these. Extend with OPENROUTER_CACHE_MODELS="slug,slug" if OpenRouter adds more.
+_CACHE_MODELS = {"qwen/qwen3-max", "qwen/qwen-plus", "qwen/qwen3.6-plus",
+                 "qwen/qwen3-coder-plus", "qwen/qwen3-coder-flash"}
+
+
+def supports_cache_control(model: str | None = None) -> bool:
+    m = (model or model_name()).strip().lower()
+    extra = {x.strip().lower() for x in os.getenv("OPENROUTER_CACHE_MODELS", "").split(",")
+             if x.strip()}
+    return m in _CACHE_MODELS or m in extra
+
+
+def _system_message(system, cache: bool) -> dict:
+    """With caching on, keep the system prompt as separate text parts and mark
+    only the blocks the caller marked (the big static one) -- the per-message
+    memory tail stays uncached so it can't invalidate the cache."""
+    if cache and isinstance(system, list):
+        parts = []
+        for b in system:
+            if isinstance(b, dict) and b.get("type") == "text" and b.get("text"):
+                part = {"type": "text", "text": b["text"]}
+                if b.get("cache_control"):
+                    part["cache_control"] = {"type": "ephemeral"}
+                parts.append(part)
+        if parts:
+            return {"role": "system", "content": parts}
+    return {"role": "system", "content": _system_text(system)}
+
+
+def _messages_to_openai(system, messages: list, cache: bool = False) -> list:
+    out = [_system_message(system, cache)]
     for m in messages:
         role, content = m.get("role"), m.get("content")
         if isinstance(content, str):
@@ -160,7 +191,8 @@ def create(*, system, tools, messages: list, max_tokens: int = 600):
     """One chat-completion call. Raises on any failure (callers fall back)."""
     payload = {
         "model": model_name(),
-        "messages": _messages_to_openai(system, messages),
+        "messages": _messages_to_openai(system, messages,
+                                        cache=supports_cache_control()),
         "max_tokens": max_tokens,
         "temperature": 0.3,
         "reasoning": {"enabled": False},   # no hidden thinking tokens on a chat reply

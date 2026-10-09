@@ -1067,6 +1067,7 @@ def companion_llm_status():
         "setting": lo._setting() or "(default)",
         "using": "qwen" if lo.enabled() else "claude",
         "qwen_model": lo.model_name(),
+        "prompt_caching": lo.supports_cache_control(),
     }
     if request.args.get("test") in ("1", "true"):
         if not out["openrouter_key_set"]:

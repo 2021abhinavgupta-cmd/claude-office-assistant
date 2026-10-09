@@ -47,8 +47,10 @@ MODEL_COSTS = {
     # Qwen via OpenRouter (llm_openrouter.py) -- WhatsApp agent only. Never chosen
     # by TASK_ROUTING; it exists so usage is billed at Qwen's own rate.
     "qwen": {
-        "input":  0.29,   # $0.29 / 1M input tokens  (qwen/qwen3.6-27b)
-        "output": 1.95,   # $1.95 / 1M output tokens
+        # $0.29 in / $1.95 out per 1M = qwen/qwen3.6-27b. If OPENROUTER_MODEL is
+        # changed (e.g. qwen/qwen3.6-plus is ~$0.325 in), set these two to match.
+        "input":  float(os.getenv("OPENROUTER_PRICE_IN", "0.29")),
+        "output": float(os.getenv("OPENROUTER_PRICE_OUT", "1.95")),
         "name":   os.getenv("OPENROUTER_MODEL", "qwen/qwen3.6-27b"),
     },
 }
