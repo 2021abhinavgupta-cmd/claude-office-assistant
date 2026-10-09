@@ -38,10 +38,55 @@ import semantic_kb
 import smart_memory
 import utils
 import wa_outbox
+import llm_openrouter
 
 logger = logging.getLogger(__name__)
 
 _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+
+def _llm_create(model: dict, system, tools, messages: list, max_tokens: int,
+                usage: dict):
+    """One model call. Uses Qwen via OpenRouter when it is configured and on
+    (llm_openrouter.enabled()), otherwise -- or if that call fails for any
+    reason -- Claude. Token counts are added to `usage` per provider so each
+    is billed at its own rate. Returns an Anthropic-shaped response either way."""
+    if llm_openrouter.enabled():
+        try:
+            resp = llm_openrouter.create(system=system, tools=tools,
+                                         messages=messages, max_tokens=max_tokens)
+            u = usage.setdefault("qwen", [0, 0])
+            u[0] += resp.usage.input_tokens
+            u[1] += resp.usage.output_tokens
+            return resp
+        except Exception:
+            logger.exception("whatsapp_agent: OpenRouter call failed, falling back to Claude")
+    kwargs = {"model": model["name"], "max_tokens": max_tokens, "system": system,
+              "messages": llm_openrouter.to_anthropic_messages(messages)}
+    if tools:
+        kwargs["tools"] = tools
+    resp = _client.messages.create(**kwargs)
+    u = usage.setdefault("claude", [0, 0])
+    u[0] += resp.usage.input_tokens
+    u[1] += resp.usage.output_tokens
+    return resp
+
+
+def _record_llm_usage(model: dict, usage: dict, user_id: str) -> None:
+    """record_usage once per provider actually used, at that provider's rate."""
+    for prov, (tin, tout) in usage.items():
+        if not (tin or tout):
+            continue
+        if prov == "qwen":
+            tier, name = "qwen", llm_openrouter.model_name()
+        else:
+            tier, name = model["tier"], model["name"]
+        try:
+            record_usage(task_type="whatsapp", model_tier=tier, model_name=name,
+                         input_tokens=tin, output_tokens=tout,
+                         cost=calculate_cost(tier, tin, tout), user_id=user_id)
+        except Exception:
+            logger.debug("whatsapp_agent: usage record failed", exc_info=True)
 
 # Rolling per-sender context. Older than this and we start a fresh thread.
 # TTL was 6h, which meant a morning conversation was already forgotten by the
@@ -2685,11 +2730,11 @@ def compose_followup(employee: dict, items: list) -> str:
                 "name": employee.get("name"), "role": employee.get("role", "")}
     facts = "\n".join(f"- {i['text']}" for i in items)
     model = get_model_for_task("whatsapp")
+    usage: dict = {}
     try:
-        resp = _client.messages.create(
-            model=model["name"],
-            max_tokens=300,
-            system=[{
+        resp = _llm_create(
+            model,
+            [{
                 "type": "text",
                 "text": _system_prompt(identity) + (
                     "\nRIGHT NOW you are not replying to anything -- you "
@@ -2706,30 +2751,21 @@ def compose_followup(employee: dict, items: list) -> str:
                     "that will be sent, nothing before or after it."
                 ),
             }],
-            messages=[{
+            None,
+            [{
                 "role": "user",
                 "content": ("Loose ends you just noticed for "
                             f"{employee.get('name')}:\n{facts}\n\n"
                             "Write the message you'd send them."),
             }],
+            300,
+            usage,
         )
         text = "".join(
             getattr(b, "text", "") for b in resp.content
             if getattr(b, "type", "") == "text"
         ).strip()
-        try:
-            record_usage(
-                task_type="whatsapp",
-                model_tier=model["tier"],
-                model_name=model["name"],
-                input_tokens=resp.usage.input_tokens,
-                output_tokens=resp.usage.output_tokens,
-                cost=calculate_cost(model["tier"], resp.usage.input_tokens,
-                                    resp.usage.output_tokens),
-                user_id=f"wa_followup_{employee.get('id')}",
-            )
-        except Exception:
-            logger.debug("whatsapp_agent: followup usage record failed", exc_info=True)
+        _record_llm_usage(model, usage, f"wa_followup_{employee.get('id')}")
         # Strip a stray <REMEMBER> tag -- the prompt mentions the mechanism, and
         # there's no inbound message here that could justify saving anything.
         text = re.sub(r'\s*<REMEMBER>[\s\S]*?</REMEMBER>\s*', ' ', text).strip()
@@ -3132,22 +3168,16 @@ def handle_message(sender: str, text: str, *,
         if mem_ctx:
             sys_prompt.append({"type": "text", "text": mem_ctx})
 
-    total_in = total_out = 0
+    usage: dict = {}
     reply = ""
     last_tool_text = ""
     turn = {"sticker": None}
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
-            resp = _client.messages.create(
-                model=model["name"],
-                max_tokens=600,   # was 1200 -- WhatsApp replies are short, this just
-                                  # caps the worst-case cost per call lower
-                system=sys_prompt,
-                tools=tools,
-                messages=messages,
-            )
-            total_in += resp.usage.input_tokens
-            total_out += resp.usage.output_tokens
+            resp = _llm_create(model, sys_prompt, tools, messages,
+                               600,   # was 1200 -- WhatsApp replies are short, this just
+                                      # caps the worst-case cost per call lower
+                               usage)
             stop = resp.stop_reason
 
             if stop == "tool_use":
@@ -3224,18 +3254,7 @@ def handle_message(sender: str, text: str, *,
         {"role": "assistant", "content": reply},
     ])
 
-    try:
-        record_usage(
-            task_type="whatsapp",
-            model_tier=model["tier"],
-            model_name=model["name"],
-            input_tokens=total_in,
-            output_tokens=total_out,
-            cost=calculate_cost(model["tier"], total_in, total_out),
-            user_id=f"wa_{ctx_key}",
-        )
-    except Exception:
-        logger.debug("whatsapp_agent: usage record failed", exc_info=True)
+    _record_llm_usage(model, usage, f"wa_{ctx_key}")
 
     if turn["sticker"]:
         return {"reply": reply, "sticker": turn["sticker"]}

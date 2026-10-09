@@ -1052,6 +1052,42 @@ def _du(path: Path) -> tuple:
     return total, count
 
 
+@companion_bp.route("/api/companion/llm-status", methods=["GET"])
+def companion_llm_status():
+    """Which model the WhatsApp agent is using right now (Qwen via OpenRouter
+    or Claude). ?test=1 makes one tiny live call to OpenRouter -- including a
+    tool call, since the bot depends on tool calling -- and reports the result
+    or the exact error. Switch back to Claude any time by setting
+    WHATSAPP_LLM=claude (env) or the app_settings key whatsapp_llm."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import llm_openrouter as lo
+    out = {
+        "openrouter_key_set": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
+        "setting": lo._setting() or "(default)",
+        "using": "qwen" if lo.enabled() else "claude",
+        "qwen_model": lo.model_name(),
+    }
+    if request.args.get("test") in ("1", "true"):
+        if not out["openrouter_key_set"]:
+            out["test"] = "OPENROUTER_API_KEY is not set on this server"
+        else:
+            try:
+                tool = [{"name": "get_time", "description": "Returns the current time.",
+                         "input_schema": {"type": "object", "properties": {}}}]
+                r = lo.create(system="You are a test. Use the tool when asked.",
+                              tools=tool,
+                              messages=[{"role": "user", "content": "What time is it? Use the tool."}],
+                              max_tokens=100)
+                out["test"] = "ok"
+                out["tool_call_made"] = any(b.type == "tool_use" for b in r.content)
+                out["tokens"] = {"in": r.usage.input_tokens, "out": r.usage.output_tokens}
+            except Exception as e:
+                out["test"] = "failed"
+                out["error"] = str(e)[:400]
+    return jsonify(out)
+
+
 @companion_bp.route("/api/companion/email-status", methods=["GET"])
 def companion_email_status():
     """Is outbound email (mailer.py, SMTP_* env vars) configured, and who

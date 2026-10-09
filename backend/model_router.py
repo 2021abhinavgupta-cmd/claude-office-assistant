@@ -43,7 +43,14 @@ MODEL_COSTS = {
         "input":  3.00,   # $3.00 / 1M input tokens  (claude-sonnet-4-6)
         "output": 15.00,  # $15.00 / 1M output tokens
         "name":   os.getenv("SONNET_MODEL", "claude-sonnet-4-6"),
-    }
+    },
+    # Qwen via OpenRouter (llm_openrouter.py) -- WhatsApp agent only. Never chosen
+    # by TASK_ROUTING; it exists so usage is billed at Qwen's own rate.
+    "qwen": {
+        "input":  0.29,   # $0.29 / 1M input tokens  (qwen/qwen3.6-27b)
+        "output": 1.95,   # $1.95 / 1M output tokens
+        "name":   os.getenv("OPENROUTER_MODEL", "qwen/qwen3.6-27b"),
+    },
 }
 
 def get_model_for_task(task_type: str) -> dict:
