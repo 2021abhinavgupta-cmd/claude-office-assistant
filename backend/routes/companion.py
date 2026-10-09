@@ -864,8 +864,19 @@ def companion_eod_summary():
         })
 
     if with_tasks:
+        tick, cross = "✅", "❌"
         gl = [f"*Tasks done today: {done_total}/{task_total}* across the team."]
-        gl += [f"  • {r['name']}: {s['done']}/{s['total']}" for r, s in with_tasks]
+        for r, s in with_tasks:
+            gl.append("")
+            gl.append(f"*{r['name']}* ({s['done']}/{s['total']})")
+            for t in s["done_titles"][:15]:
+                gl.append(f"{tick} {t} - done")
+            if len(s["done_titles"]) > 15:
+                gl.append(f"+{len(s['done_titles']) - 15} more done")
+            for t in s["pending"][:15]:
+                gl.append(f"{cross} {t} - not done")
+            if len(s["pending"]) > 15:
+                gl.append(f"+{len(s['pending']) - 15} more not done")
         if no_standup:
             gl.append("")
             gl.append("No standup yet: " + ", ".join(no_standup))
