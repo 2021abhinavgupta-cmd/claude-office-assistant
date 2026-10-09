@@ -1310,31 +1310,6 @@ def job_weekly_wrap(cfg: dict) -> None:
         _log("weekly-wrap: sent")
 
 
-def job_eod_heads_up(cfg: dict) -> None:
-    """16:55 -- five minutes before the group summary, DM anyone with an open
-    task on today's standup so they can tick what's finished (the 17:00 post
-    reads the database at that moment)."""
-    if not cfg["bridge_ok"]:
-        return
-    j = _companion_get(cfg, "/api/companion/eod-summary")
-    if not j or j.get("weekend"):
-        return
-    sent = 0
-    for p in j.get("per_person", []):
-        pend = p.get("pending") or []
-        wa = re.sub(r"\D", "", p.get("whatsapp", ""))
-        if not pend or not wa:
-            continue
-        text = (
-            f"*{p.get('name', 'there')}*, the 5 PM team summary goes out in 5 minutes. "
-            f"You have {len(pend)} open task(s) on today's standup. "
-            "Tick what's finished (or tell me here) and add anything you worked on that isn't listed."
-        )
-        if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
-            sent += 1
-    _log(f"eod-heads-up: {sent} DMs")
-
-
 def job_eod_group(cfg: dict) -> None:
     """17:00 — post a short per-person 'tasks done today' summary to the group."""
     grp = cfg["rollcall_group"]
@@ -1593,8 +1568,6 @@ def main() -> None:
     ap.add_argument("--no-class-meeting", action="store_true")
     ap.add_argument("--eod-group-time", default="17:00",
                     help="daily time to post the 'tasks done today' summary to the group")
-    ap.add_argument("--eod-heads-up-time", default="16:55",
-                    help="daily time to DM people with open tasks just before the 5 PM group summary")
     ap.add_argument("--eod-personal-time", default="19:30",
                     help="daily time to DM everyone their still-open tasks + the leads report")
     ap.add_argument("--no-eod", action="store_true")
@@ -1746,7 +1719,6 @@ def main() -> None:
         daily_jobs.append(("class-meeting", job_class_meeting, args.class_meeting_time))
     if not args.no_eod:
         if cfg["rollcall_group"]:
-            daily_jobs.append(("eod-heads-up", job_eod_heads_up, args.eod_heads_up_time))
             daily_jobs.append(("eod-group", job_eod_group, args.eod_group_time))
         daily_jobs.append(("eod-personal", job_eod_personal, args.eod_personal_time))
     if not args.no_weekly and cfg["rollcall_group"]:
