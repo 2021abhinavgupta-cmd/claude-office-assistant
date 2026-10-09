@@ -764,7 +764,8 @@ def companion_wa_audit():
     ]})
 
 
-_DONE_WORDS = {"done", "completed", "complete"}
+# need_for_approval = a social-media task ticked off in standup (work finished, awaiting sign-off)
+_DONE_WORDS = {"done", "completed", "complete", "need_for_approval"}
 
 
 def _eod_rows(today: str) -> dict:
