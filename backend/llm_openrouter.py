@@ -32,7 +32,7 @@ from db import get_connection
 logger = logging.getLogger(__name__)
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "qwen/qwen3.6-27b"
+DEFAULT_MODEL = "qwen/qwen3.8-27b"
 TIMEOUT = 60
 
 
