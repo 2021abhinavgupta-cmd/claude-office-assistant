@@ -604,10 +604,22 @@ def _format_standup(tasks: list, who: str) -> str:
     return head + "\n" + "\n".join(lines)
 
 
-def _match_standup_task(user_id: str, query: str) -> dict | None:
+_DONE_WORDS = ("done", "completed", "complete", "need_for_approval")
+
+
+def _match_standup_task(user_id: str, query: str, *, prefer: str | None = None,
+                        ambiguous: list | None = None) -> dict | None:
     """Find one of today's standup rows for this user by a loose description
     ('whatsapp bot testing' -> 'testing of the whatsapp bot'). Returns
-    {id, title, status, notion_id} or None."""
+    {id, title, status, notion_id, blocker, pos} or None.
+
+    A write tool must not guess when two tasks fit ("reel" vs "reel 2"), so:
+      - prefer="open"/"done" narrows a tie to tasks that make sense for the
+        action (marking done -> not-yet-done ones first);
+      - if it is still a tie and `ambiguous` (a list) was passed, the tied
+        candidates are put in it and None is returned so the caller can ask
+        "which one?" -- without `ambiguous`, the first match is returned, as
+        before."""
     q = (query or "").strip().lower()
     if not q:
         return None
@@ -626,7 +638,8 @@ def _match_standup_task(user_id: str, query: str) -> dict | None:
         logger.exception("whatsapp_agent: standup match query failed")
         return None
     cand = [{"id": r[0], "title": r[1] or "", "status": (r[2] or "pending"),
-             "notion_id": r[3], "blocker": (r[4] or "")} for r in rows]
+             "notion_id": r[3], "blocker": (r[4] or ""), "pos": i}
+            for i, r in enumerate(rows, 1)]
     # Bare/near-bare number ("4", "#4", "task 4") -> 1-based position in
     # this same `cand` order, which is exactly the order _format_standup()
     # numbers the list in (both order by `id`). Checked before any text
@@ -638,18 +651,45 @@ def _match_standup_task(user_id: str, query: str) -> dict | None:
     for c in cand:
         if c["title"].strip().lower() == q:
             return c
-    for c in cand:
-        tl = c["title"].lower()
-        if q in tl or (len(tl) > 4 and tl in q):
-            return c
+    def _resolve(matches: list):
+        """One match -> it. Several -> narrow by `prefer`, then ask/first."""
+        if len(matches) <= 1:
+            return matches[0] if matches else None
+        if prefer in ("open", "done"):
+            want_done = prefer == "done"
+            narrowed = [c for c in matches
+                        if (str(c["status"]).lower() in _DONE_WORDS) == want_done]
+            if len(narrowed) == 1:
+                return narrowed[0]
+            if narrowed:
+                matches = narrowed
+        if ambiguous is not None:
+            ambiguous.extend(matches[:5])
+            return None
+        return matches[0]
+
+    subs = [c for c in cand
+            if q in c["title"].lower()
+            or (len(c["title"]) > 4 and c["title"].lower() in q)]
+    if subs:
+        return _resolve(subs)
     qt = set(re.findall(r"\w+", q))
-    best, score = None, 0
+    scored = []
     for c in cand:
-        ct = set(re.findall(r"\w+", c["title"].lower()))
-        s = len(qt & ct)
-        if s > score:
-            best, score = c, s
-    return best if score >= 2 else None
+        s = len(qt & set(re.findall(r"\w+", c["title"].lower())))
+        if s >= 2:
+            scored.append((s, c))
+    if not scored:
+        return None
+    top = max(s for s, _ in scored)
+    return _resolve([c for s, c in scored if s == top])
+
+
+def _which_one(matches: list) -> str:
+    """The question a write tool asks instead of guessing between tasks."""
+    opts = "; ".join(f"{c['pos']}. {c['title']}" for c in matches)
+    return (f"More than one task fits: {opts}. Ask which one they mean "
+            "(a few more words of the title, or its number).")
 
 
 def _find_notion_task(query: str, pool: list) -> dict | None:
@@ -1485,9 +1525,12 @@ def group_vibe_sticker(group_id: str, messages: list, tags: list | None = None) 
     match there is honoured too. Pure heuristic, no API call."""
     if not group_id or not _group_allowed(group_id) or not messages:
         return None
+    # A reaction is a short, un-questioning message ("lmaooo", "nice", a
+    # 🔥). A long work sentence or a question that merely contains "true" or
+    # "fire" is not a vibe, so those never count.
     transcript = " ".join(
-        str(m.get("text") or "")[:200]
-        for m in messages[-15:] if str(m.get("text") or "").strip()
+        t for t in (str(m.get("text") or "").strip() for m in messages[-15:])
+        if t and len(t) <= 60 and not t.endswith("?")
     )
     if not transcript.strip():
         return None
@@ -1543,8 +1586,18 @@ def _resolve_standup_date(raw_date, today):
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", raw_date):
         return None, ("(need a real date -- figure out the exact date they "
                        "mean and pass it as YYYY-MM-DD)")
+    try:
+        # The regex only checks the shape: "2026-13-45" passes it and would
+        # create a standup row for a day that doesn't exist, which no screen
+        # ever shows. Parse it as a real calendar date.
+        parsed = datetime.strptime(raw_date, "%Y-%m-%d")
+    except ValueError:
+        return None, ("(that isn't a real calendar date -- work out the exact "
+                      "date they mean and pass it as YYYY-MM-DD)")
     if raw_date < today:
         return None, "That date's already passed -- ask which day they actually mean."
+    if (parsed - datetime.strptime(today, "%Y-%m-%d")).days > 366:
+        return None, "That's more than a year away -- ask which day they actually mean."
     return raw_date, None
 
 
@@ -1579,9 +1632,17 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             new_status = str((tool_input or {}).get("status", "done")).strip().lower()
             if new_status in ("complete", "completed", "finished"):
                 new_status = "done"
+            if new_status in ("open", "reopen", "undone", "not done", "todo"):
+                new_status = "pending"
             if new_status not in ("done", "pending"):
-                new_status = "done"
-            m = _match_standup_task(identity["id"], q)
+                # Never guess: an unknown status ("blocked", "in progress")
+                # silently becoming "done" would close live work.
+                return "(status has to be 'done' or 'pending')"
+            amb: list = []
+            m = _match_standup_task(identity["id"], q, ambiguous=amb,
+                                    prefer="open" if new_status == "done" else "done")
+            if not m and amb:
+                return _which_one(amb)
             if not m:
                 have = _standup_tasks_today(identity["id"])
                 names = "; ".join(t["title"] for t in have) or "nothing yet"
@@ -1663,7 +1724,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 )
 
         if name == "add_standup_task" and kind == "employee":
-            task = (tool_input or {}).get("task", "").strip()
+            task = re.sub(r"\s+", " ", str((tool_input or {}).get("task") or "")).strip()
             if not task:
                 return "(no task text — ask them what to add)"
             target_date, err = _resolve_standup_date((tool_input or {}).get("date"), today)
@@ -1671,6 +1732,17 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 return err
             try:
                 conn = get_connection()
+                dup = conn.execute(
+                    "SELECT 1 FROM standup_tasks WHERE user_id=? AND date=? "
+                    "AND LOWER(TRIM(title))=LOWER(TRIM(?)) "
+                    "AND status NOT IN ('deleted','delegated') LIMIT 1",
+                    (identity["id"], target_date, task[:500]),
+                ).fetchone()
+                if dup:
+                    # A retried message / repeated "add X" must not stack up
+                    # copies of the same task.
+                    conn.close()
+                    return f"Already on the list for {target_date}: {task[:120]}"
                 with conn:
                     conn.execute(
                         "INSERT INTO standup_tasks (user_id, date, title) VALUES (?, ?, ?)",
@@ -1730,7 +1802,10 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 return f"Don't know who '{who}' is. Team: {names}."
             if emp["id"] == identity["id"]:
                 return "That's you — pick a different teammate to hand it to."
-            m = _match_standup_task(identity["id"], q)
+            amb: list = []
+            m = _match_standup_task(identity["id"], q, ambiguous=amb, prefer="open")
+            if not m and amb:
+                return _which_one(amb)
             if not m:
                 have = _standup_tasks_today(identity["id"])
                 names = "; ".join(t["title"] for t in have) or "nothing yet"
@@ -2158,9 +2233,17 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             q = (tool_input or {}).get("task", "")
             blk = (tool_input or {}).get("blocker", None)
             due = (tool_input or {}).get("due_date", None)
-            if due not in (None, "") and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(due)):
-                return "Give the date as YYYY-MM-DD."
-            m = _match_standup_task(identity["id"], q)
+            if due not in (None, ""):
+                # A real calendar date, not just a date-shaped string: Notion
+                # rejects the WHOLE page update on "2026-13-45".
+                try:
+                    datetime.strptime(str(due), "%Y-%m-%d")
+                except ValueError:
+                    return "Give the date as a real YYYY-MM-DD date."
+            amb: list = []
+            m = _match_standup_task(identity["id"], q, ambiguous=amb)
+            if not m and amb:
+                return _which_one(amb)
             if not m:
                 have = _standup_tasks_today(identity["id"])
                 names = "; ".join(t["title"] for t in have) or "nothing yet"

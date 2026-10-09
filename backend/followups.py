@@ -431,7 +431,20 @@ def _fallback_text(employee: dict, items: list) -> str:
     lead = f"{employee.get('name', 'Hi')} — a couple of things still hanging:"
     if len(items) == 1:
         lead = f"{employee.get('name', 'Hi')} — one thing still hanging:"
-    return lead + "\n" + "\n".join(f"- {i['text']}" for i in items)
+    return lead + "\n" + "\n".join(f"- {_second_person(i['text'])}" for i in items)
+
+
+_THEY = re.compile(r"\bthey\b", re.I)
+_THEIR = re.compile(r"\btheir\b", re.I)
+
+
+def _second_person(text: str) -> str:
+    """Item texts are written about the person ("they gave Noorish ...") for
+    the model composer. The deterministic fallback talks TO them, so turn
+    they/their into you/your instead of sending a note about someone in the
+    third person to that very someone."""
+    text = _THEY.sub("you", text)
+    return _THEIR.sub("your", text)
 
 
 def _compose(employee: dict, items: list) -> str:

@@ -1214,7 +1214,13 @@ def update_my_task(task_id: int):
             import notion_store
             notion_status = None
             notion_progress = None
-            
+
+            if status == "pending":
+                # Un-tick: only the toggle sends `status`, so this always means
+                # "undo the tick". Without it Notion kept saying Done / Need for
+                # approval for a task the person had just reopened.
+                notion_store.update_task(notion_id, status="in_progress")
+
             # Explicit progress override
             if progress is not None and current_status == "done":
                 notion_progress = int(progress)
@@ -2442,6 +2448,28 @@ def meeting_to_tasks():
     if not notes:
         return jsonify({"error": "notes is required"}), 400
 
+    # Idempotency: the same notes arriving twice (a retried request, the same
+    # meeting exported under two filenames) must not create every task twice.
+    # `force: true` overrides it for a deliberate re-run.
+    import hashlib
+    notes_key = "meeting_notes_" + hashlib.sha256(
+        re.sub(r"\s+", " ", notes).lower().encode("utf-8")).hexdigest()[:24]
+    if not body.get("force"):
+        try:
+            _c = _su_conn()
+            _row = _c.execute("SELECT value FROM app_settings WHERE key=?",
+                              (notes_key,)).fetchone()
+            _c.close()
+            if _row:
+                return jsonify({"success": True, "tasks_created": 0, "tasks_failed": 0,
+                                "items": [], "duplicate": True,
+                                "message": "These notes were already processed "
+                                           f"({_row[0]}); nothing was created again. "
+                                           "Send force:true to run them again."})
+        except Exception:
+            logger.debug("meeting_to_tasks: dedupe lookup failed", exc_info=True)
+    truncated = len(notes) > 12000
+
     today = today_ist()
     system = (
         "You extract action items from a meeting transcript or summary for "
@@ -2457,7 +2485,15 @@ def meeting_to_tasks():
     try:
         raw = _claude_call(system, notes[:12000], max_tokens=1200)
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
-        items = json.loads(raw)
+        try:
+            items = json.loads(raw)
+        except ValueError:
+            # The model sometimes wraps the array in a sentence. Take the
+            # outermost [...] instead of failing the whole request.
+            lo, hi = raw.find("["), raw.rfind("]")
+            if lo == -1 or hi <= lo:
+                raise
+            items = json.loads(raw[lo:hi + 1])
         if not isinstance(items, list):
             items = []
     except Exception:
@@ -2473,15 +2509,23 @@ def meeting_to_tasks():
     default_c = _find_client(default_client) if default_client else None
     created, failed = [], []
     for it in items[:15]:
-        title = str(it.get("title") or "").strip()
+        if not isinstance(it, dict):      # e.g. the model returned ["do X", ...]
+            continue
+        title = re.sub(r"\s+", " ", str(it.get("title") or "")).strip()
         if not title:
             continue
         if meeting_title:
-            title = f"{title} ({meeting_title})"[:500]
+            title = f"{title} ({meeting_title})"
+        title = title[:500]
         owner_name = str(it.get("owner") or "").strip()
         due = str(it.get("due_date") or "").strip()
-        if due and not re.match(r"^\d{4}-\d{2}-\d{2}$", due):
-            due = ""
+        if due:
+            # A real calendar date, not just a date-shaped string: Notion
+            # rejects the WHOLE create on "2026-13-45".
+            try:
+                datetime.strptime(due, "%Y-%m-%d")
+            except ValueError:
+                due = ""
         emp = _resolve_employee(owner_name) if owner_name else None
         cname = (default_c or {}).get("name", "") or default_client
         cnid = (default_c or {}).get("notion_id", "")
@@ -2511,12 +2555,25 @@ def meeting_to_tasks():
             logger.exception("meeting_to_tasks: item creation failed (%r)", title)
             failed.append(title)
 
+    if created:
+        # Remember these notes only once something was actually created, so a
+        # run where everything failed can simply be retried.
+        try:
+            _c = _su_conn()
+            with _c:
+                _c.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                           (notes_key, today))
+            _c.close()
+        except Exception:
+            logger.debug("meeting_to_tasks: dedupe record failed", exc_info=True)
+
     return jsonify({
         "success": True,
         "tasks_created": len(created),
         "tasks_failed": len(failed),
         "items": created,
         "failed_items": failed,
+        "truncated": truncated,
     })
 
 

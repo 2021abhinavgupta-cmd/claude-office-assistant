@@ -872,12 +872,32 @@ _DATE_INPUT_FORMATS = ["%d/%m/%Y", "%d/%B/%Y", "%d-%m-%Y", "%d-%B-%Y", "%d/%b/%Y
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+# A delete pass that would remove this many tasks AND more than half of the
+# client's tasks in one webhook call is almost never a person deleting rows:
+# it's a truncated payload (Apps Script timing out mid-read, a half-loaded
+# sheet) that happens to recognize SOME tasks, which the "recognized zero"
+# guard doesn't catch. Real incident class: gotcha #93 (26 tasks deleted).
+MASS_DELETE_MIN = 5
+MASS_DELETE_FRACTION = 0.5
+
+
+def _mass_delete_suspicious(n_delete: int, n_current: int) -> bool:
+    return n_delete >= MASS_DELETE_MIN and n_delete > n_current * MASS_DELETE_FRACTION
+
+
 def _normalize_date(value: str) -> str:
     value = (value or "").strip()
     if not value:
         return ""
     if _ISO_DATE_RE.match(value):
-        return value
+        # Shape isn't enough: "2026-13-45" matches it, and Notion rejects the
+        # WHOLE create/update page on a date that doesn't exist.
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+            return value
+        except ValueError:
+            logger.warning(f"Sheets sync: '{value}' isn't a real date -- dropping it")
+            return ""
     for fmt in _DATE_INPUT_FORMATS:
         try:
             return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
@@ -887,9 +907,18 @@ def _normalize_date(value: str) -> str:
     return ""
 
 
+def _row_is_blank(row: list) -> bool:
+    """True when every raw cell is empty/whitespace. Decided on the RAW cells,
+    not on _row_to_fields(): that fills in defaults (Type -> "Post"), so a
+    row of empty cells never looked blank and an empty row inserted in the
+    middle of the calendar became a junk "[Post] New Idea" task."""
+    return not any(str(c if c is not None else "").strip() for c in row)
+
+
 def _row_to_fields(row: list) -> dict:
     padded = list(row) + [""] * (13 - len(row))
-    fields = dict(zip(SHEET_FIELDS, [str(v).strip() for v in padded[1:13]]))
+    fields = dict(zip(SHEET_FIELDS,
+                      ["" if v is None else str(v).strip() for v in padded[1:13]]))
     fields["status"] = fields["status"].lower().replace(" ", "_")
     fields["due_date"] = _normalize_date(fields.get("due_date"))
     fields["creation_date"] = _normalize_date(fields.get("creation_date"))
@@ -1319,7 +1348,7 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                 continue
             task_id = str(row[0]).strip() if row else ""
             row_fields = _row_to_fields(row)
-            if not task_id and not any(row_fields.values()):
+            if not task_id and _row_is_blank(row):
                 continue  # fully blank row
 
             if not task_id:
@@ -1489,6 +1518,19 @@ def _reconcile_sheet_rows_locked(link: dict, rows: list) -> dict:
                 "update_failed": update_failed, "delete_failed": 0, "create_failed": create_failed,
                 "deletes_skipped_safety": len(current)}
 
+    would_delete = [i for i in current if i not in recognized_ids]
+    if _mass_delete_suspicious(len(would_delete), len(current)):
+        logger.warning(
+            f"Sheets reconcile: snapshot for client {client_id} would delete "
+            f"{len(would_delete)} of {len(current)} tasks in one pass -- skipping the "
+            f"delete pass (truncated/partial payload?). Delete deliberately instead."
+        )
+        return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
+                "errored": errored, "duplicates": duplicates, "recreated": recreated,
+                "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
+                "update_failed": update_failed, "delete_failed": 0, "create_failed": create_failed,
+                "deletes_skipped_safety": len(would_delete)}
+
     for existing_id in current:
         if existing_id not in recognized_ids:
             # Same discarded-return-value bug as _update_task above: a
@@ -1560,7 +1602,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
                     continue
                 task_id = str(row[0]).strip() if row else ""
                 row_fields = _row_to_fields(row)
-                if not task_id and not any(row_fields.values()):
+                if not task_id and _row_is_blank(row):
                     continue  # fully blank row
 
                 if not task_id:
@@ -1685,6 +1727,7 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
     # guards elsewhere in this file.
     payload_tab_names = set(tabs.keys())
     deletes_skipped_missing_tab = 0
+    pending_deletes = []
     for existing_id in current:
         if existing_id in recognized_ids:
             continue
@@ -1697,6 +1740,22 @@ def _reconcile_sheet_tabs_locked(link: dict, tabs: dict) -> dict:
             )
             deletes_skipped_missing_tab += 1
             continue
+        pending_deletes.append(existing_id)
+
+    if _mass_delete_suspicious(len(pending_deletes), len(current)):
+        logger.warning(
+            f"Sheets reconcile (multi-tab): snapshot for client {client_id} would delete "
+            f"{len(pending_deletes)} of {len(current)} tasks in one pass -- skipping the "
+            f"delete pass (truncated/partial payload?). Delete deliberately instead."
+        )
+        return {"created": created, "updated": updated, "deleted": 0, "skipped": skipped,
+                "errored": errored, "duplicates": duplicates, "recreated": recreated,
+                "tombstoned": tombstoned, "skipped_recent_push": skipped_recent_push,
+                "update_failed": update_failed, "delete_failed": 0, "create_failed": create_failed,
+                "deletes_skipped_safety": len(pending_deletes),
+                "deletes_skipped_missing_tab": deletes_skipped_missing_tab}
+
+    for existing_id in pending_deletes:
         if _delete_task(existing_id, is_notion):
             deleted += 1
         else:
