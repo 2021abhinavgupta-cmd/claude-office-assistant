@@ -1310,6 +1310,14 @@ def job_weekly_wrap(cfg: dict) -> None:
         _log("weekly-wrap: sent")
 
 
+def _quote_tasks(titles: list) -> str:
+    """'a', 'a and b', 'a, b and c' -- quoted, max 3 then 'N more'."""
+    q = [f'"{t}"' for t in titles[:3]]
+    if len(titles) > 3:
+        q.append(f"{len(titles) - 3} more")
+    return q[0] if len(q) == 1 else ", ".join(q[:-1]) + " and " + q[-1]
+
+
 def job_eod_heads_up(cfg: dict) -> None:
     """16:55 -- five minutes before the group summary, DM anyone with an open
     task on today's standup so they can tick what's finished (the 17:00 post
@@ -1325,10 +1333,11 @@ def job_eod_heads_up(cfg: dict) -> None:
         wa = re.sub(r"\D", "", p.get("whatsapp", ""))
         if not pend or not wa:
             continue
+        n = p.get("name", "there")
         text = (
-            f"*{p.get('name', 'there')}*, the 5 PM team summary goes out in 5 minutes. "
-            f"You have {len(pend)} open task(s) on today's standup. "
-            "Tick what's finished (or tell me here) and add anything you worked on that isn't listed."
+            f"yo {n}, 5 PM summary goes to the group in 5 min and "
+            f"{_quote_tasks(pend)} {'is' if len(pend) == 1 else 'are'} still open on your standup. "
+            "what's the status? tick what's done or tell me here."
         )
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
@@ -1362,11 +1371,10 @@ def job_eod_personal(cfg: dict) -> None:
         wa = re.sub(r"\D", "", p.get("whatsapp", ""))
         if not pend or not wa:
             continue
-        body = "\n".join(f"• {t}" for t in pend)
+        n = p.get("name", "there")
         text = (
-            f"Wrapping up for the day, *{p.get('name', 'there')}*. Still open on "
-            f"your standup for today:\n{body}\n\n"
-            "Mark them done here if they're finished, otherwise they carry to tomorrow."
+            f"hey {n}, {_quote_tasks(pend)} {'is' if len(pend) == 1 else 'are'} still open on today's standup. "
+            "done with any of them? tick them or they roll over to tomorrow."
         )
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
