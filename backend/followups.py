@@ -18,10 +18,11 @@ before, and what this looks for:
   assigned_stalled  work THIS person put on a teammate that hasn't moved,
                     told to the person who assigned it (nobody was ever
                     told their delegation went nowhere)
-  approval          something they submitted that's been awaiting sign-off
-                    too long
   rule              a recurring standing instruction coming due
                     (standing_rules.py)
+
+Scope: ONLY what is on people's daily standup (today's standup_tasks rows)
+plus their own standing rules. It never reads Notion or older standup days.
 
 Safety rails, because an engine that messages people unprompted is only
 useful if it stays quiet most of the time:
@@ -56,8 +57,6 @@ STALE_TASK_DAYS = 3
 # A delegated task nobody has touched for this long gets reported back to
 # whoever assigned it.
 ASSIGNED_STALLED_DAYS = 2
-# Something awaiting sign-off longer than this is worth chasing.
-APPROVAL_STALE_DAYS = 2
 
 # Don't repeat the same specific item to the same person more often than this.
 ITEM_COOLDOWN_HOURS = 20
@@ -240,11 +239,14 @@ def _stalled_delegations(user_id: str, name: str, today: str,
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT user_id, title, MIN(date) AS first_seen FROM standup_tasks "
-            "WHERE LOWER(delegated_from)=LOWER(?) AND status NOT IN "
+            "SELECT s.user_id, s.title, "
+            "(SELECT MIN(date) FROM standup_tasks x "
+            " WHERE x.user_id=s.user_id AND x.title=s.title) AS first_seen "
+            "FROM standup_tasks s "
+            "WHERE LOWER(s.delegated_from)=LOWER(?) AND s.date=? AND s.status NOT IN "
             "('done','deleted','delegated') "
-            "GROUP BY user_id, title",
-            (name,),
+            "GROUP BY s.user_id, s.title",
+            (name, today),
         ).fetchall()
     except Exception:
         logger.debug("followups: delegation query failed", exc_info=True)
@@ -263,44 +265,6 @@ def _stalled_delegations(user_id: str, name: str, today: str,
                 "days": age,
                 "text": (f"they gave {who} \"{title}\" {age} days ago and it "
                          "still hasn't moved"),
-            })
-    return out
-
-
-def _stale_approvals(name: str, today: str) -> list:
-    """Their tasks parked in an approval state for too long."""
-    out = []
-    try:
-        import notion_store
-        if not notion_store.is_configured():
-            return []
-        tasks = notion_store.list_tasks()
-    except Exception:
-        logger.debug("followups: approval lookup failed", exc_info=True)
-        return []
-    nl = (name or "").strip().lower()
-    if not nl:
-        return []
-    for t in tasks or []:
-        status = str(t.get("status") or "").strip().lower().replace("_", " ")
-        if status not in {s.replace("_", " ") for s in _APPROVAL}:
-            continue
-        assignee = str(t.get("assigned_to") or "").lower()
-        if nl not in assignee:
-            continue
-        # last_edited_at is the only "how long has it sat here" signal Notion
-        # tasks carry in this schema; fall back to due_date when it's absent.
-        stamp = t.get("last_edited_at") or t.get("due_date") or ""
-        age = _days_since(stamp, today) if stamp else 0
-        if age >= APPROVAL_STALE_DAYS:
-            title = t.get("title") or "an untitled task"
-            client = t.get("client_name") or ""
-            out.append({
-                "kind": "approval",
-                "ref": t.get("notion_id") or title,
-                "days": age,
-                "text": (f"\"{title}\"" + (f" ({client})" if client else "")
-                         + f" has been waiting on approval for {age} days"),
             })
     return out
 
@@ -338,7 +302,6 @@ def loose_ends_for(employee: dict, *, today: str | None = None,
     items += _due_rules(uid, now)
     items += _stale_standup_tasks(uid, today)
     items += _stalled_delegations(uid, name, today, names_by_id)
-    items += _stale_approvals(name, today)
     # Longest-stalled first: if the per-person cap trims the list, the worst
     # loose end is the one that survives.
     items.sort(key=lambda i: (i["kind"] != "rule", -int(i.get("days") or 0)))
