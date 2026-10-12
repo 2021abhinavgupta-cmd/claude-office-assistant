@@ -1,4 +1,4 @@
-"""OpenRouter (Qwen) adapter for the WhatsApp agent.
+﻿"""OpenRouter (Qwen) adapter for the WhatsApp agent.
 
 The agent's tool loop (whatsapp_agent.handle_message) is written against
 Anthropic's response shape: `resp.content` blocks with `.type` of "text" or
@@ -38,6 +38,7 @@ DEFAULT_MODEL = "qwen/qwen3.8-max-0902"
 # is only tried LAST.
 DEFAULT_CHAIN = "qwen/qwen3.8-max-0902,qwen/qwen3.6-plus,qwen/qwen3.8-27b"
 _START = 0
+_MUST_REASON: set = set()   # slugs that answered 'Reasoning is mandatory'
 TIMEOUT = 60
 
 
@@ -226,8 +227,14 @@ def _create_one(model_slug, system, tools, messages, max_tokens):
                                         cache=supports_cache_control(model_slug)),
         "max_tokens": max_tokens,
         "temperature": 0.3,
-        "reasoning": {"enabled": False},   # no hidden thinking tokens on a chat reply
     }
+    if model_slug in _MUST_REASON:
+        # some models (qwen3.8-max) refuse to run with reasoning off: keep it light, and leave
+        # room in max_tokens for the thinking tokens it will spend
+        payload["reasoning"] = {"enabled": True, "effort": "low"}
+        payload["max_tokens"] = max_tokens + 2000
+    else:
+        payload["reasoning"] = {"enabled": False}   # no hidden thinking tokens on a chat reply
     oa_tools = _tools_to_openai(tools)
     if oa_tools:
         payload["tools"] = oa_tools
@@ -246,6 +253,11 @@ def _create_one(model_slug, system, tools, messages, max_tokens):
             if r.status_code in (429, 500, 502, 503, 504) and attempt == 0:
                 time.sleep(2)
                 continue
+            if r.status_code == 400 and "reasoning is mandatory" in r.text.lower() and model_slug not in _MUST_REASON:
+                _MUST_REASON.add(model_slug)
+                payload["reasoning"] = {"enabled": True, "effort": "low"}
+                payload["max_tokens"] = max_tokens + 2000
+                continue
             if r.status_code >= 400:
                 raise RuntimeError(f"OpenRouter {r.status_code}: {r.text[:300]}")
             data = r.json()
@@ -258,7 +270,7 @@ def _create_one(model_slug, system, tools, messages, max_tokens):
                 time.sleep(2)
                 continue
             raise
-    raise last  # pragma: no cover
+    raise last or RuntimeError("openrouter: no response")  # pragma: no cover
 
 
 def to_anthropic_messages(messages: list) -> list:
