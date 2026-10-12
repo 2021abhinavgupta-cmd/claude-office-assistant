@@ -472,8 +472,7 @@ def run_weekly(now: datetime | None = None, force: bool = False,
 
 
 # ── mid-week change alert (held 60 min, merged per entry, sent as one) ───
-CHANGE_HOLD_MIN = 60        # quiet time after the LAST edit before anything is sent
-CHANGE_MAX_HOLD_MIN = 180   # ...but never hold a change longer than this in total
+CHANGE_HOLD_MIN = 30        # quiet time after the LAST edit; every new edit restarts it
 _SNAP = ("kind", "title", "start_date", "end_date")
 _TS = "%Y-%m-%d %H:%M:%S"
 
@@ -488,9 +487,7 @@ def queue_change(entry_id: int, before: dict | None, after: dict | None,
     merged (original 'before' kept, latest 'after' wins) so a mistaken change
     that is corrected sends one message about the final state, or none if it
     ends up as it was. Every queued change slides the timer of ALL held changes
-    (so a sitting of many edits goes out as one message), capped at
-    CHANGE_MAX_HOLD_MIN after each entry's first edit so constant editing can't
-    delay an alert forever."""
+    (so a sitting of many edits goes out as one message)."""
     import json
     try:
         now = _ist_now()
@@ -510,14 +507,8 @@ def queue_change(entry_id: int, before: dict | None, after: dict | None,
                     "(entry_id, before_json, after_json, editor_id, due_at, first_at) VALUES (?,?,?,?,?,?)",
                     (entry_id, json.dumps(b) if b else None, json.dumps(a) if a else None,
                      editor_id, now.strftime(_TS), first))
-                for eid, fa in conn.execute("SELECT entry_id, first_at FROM cal_change_pending").fetchall():
-                    try:
-                        cap = datetime.strptime(fa, _TS) + timedelta(minutes=CHANGE_MAX_HOLD_MIN)
-                    except Exception:
-                        cap = now + timedelta(minutes=CHANGE_MAX_HOLD_MIN)
-                    due = min(now + timedelta(minutes=CHANGE_HOLD_MIN), cap)
-                    conn.execute("UPDATE cal_change_pending SET due_at=? WHERE entry_id=?",
-                                 (due.strftime(_TS), eid))
+                conn.execute("UPDATE cal_change_pending SET due_at=?",
+                             ((now + timedelta(minutes=CHANGE_HOLD_MIN)).strftime(_TS),))
         finally:
             conn.close()
     except Exception:
