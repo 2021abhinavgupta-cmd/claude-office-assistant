@@ -1102,6 +1102,29 @@ def companion_llm_status():
     return jsonify(out)
 
 
+@companion_bp.route("/api/companion/rhythm/run", methods=["POST"])
+def companion_rhythm_run():
+    """Test send of one rhythm message: ?kind=planning|reminder|approvals&to=emp003,..
+    (`to` is required so it can never go to the whole company by accident)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import ops_rhythm
+    ids = [x.strip() for x in (request.args.get("to") or "").split(",") if x.strip()]
+    kind = request.args.get("kind", "")
+    if kind not in ops_rhythm._WINDOWS or not ids:
+        return jsonify({"error": "pass ?kind=planning|reminder|approvals&to=emp003"}), 400
+    return jsonify(ops_rhythm.run_tick(force_kind=kind, only_ids=ids))
+
+
+@companion_bp.route("/api/companion/client-card", methods=["GET"])
+def companion_client_card():
+    """Preview the status card: ?client=Mellow"""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import client_card
+    return jsonify({"card": client_card.card(request.args.get("client", ""))})
+
+
 @companion_bp.route("/api/companion/week-digest", methods=["GET", "POST"])
 def companion_week_digest():
     """GET: preview the coming week's text (sends nothing). POST ?to=emp003,emp001

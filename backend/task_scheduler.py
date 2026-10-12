@@ -361,6 +361,18 @@ def _run_week_digest():
         logger.exception("week digest failed")
 
 
+def _run_rhythm():
+    """MMGA OS rhythm messages (ops_rhythm.py): Mon 10:00 planning, Mon 15:00
+    reminder, weekday 17:30 approvals. Every 5 min; each kind has its own IST
+    window and fires at most once a day."""
+    try:
+        import ops_rhythm
+        for r in ops_rhythm.run_tick():
+            logger.info("ops_rhythm: %s", r)
+    except Exception:
+        logger.exception("ops rhythm failed")
+
+
 def _run_pa_brief():
     """Personal morning brief for the boss (pa_brief.py). Runs every 10 min;
     run_daily() itself keeps it to one send per weekday, 09:00-11:00 IST."""
@@ -468,6 +480,8 @@ def init_scheduler(app):
         # job; the sweep reads the IST clock itself, so container TZ is moot.
         scheduler.add_job(_run_event_reminders, "interval", minutes=5,
                           id="office_event_reminders", replace_existing=True)
+        scheduler.add_job(_run_rhythm, "interval", minutes=5,
+                          id="ops_rhythm", replace_existing=True)
         scheduler.add_job(_run_week_digest, "interval", minutes=10,
                           id="week_digest", replace_existing=True)
         scheduler.start()

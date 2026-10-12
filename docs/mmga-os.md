@@ -102,6 +102,10 @@ yet, but I found these two possible directions."
   mark).
 - **C. Branding:** **TopGreen, Bothra.** Project-based: brief, concept,
   review, execution, final. No daily meeting, just daily approval.
+- **D. Project (added by the user, 2026-10-12, not in the PDF):** **Mastek**
+  is a **CRM** project; **Abhinav is the only DM** (no co-DM).
+- The Website DM rule in the PDF (Nupur + Abhinav) applies to client website
+  projects; Mastek is a CRM, so it does not follow it.
 - Performance layer for OMOTEC, Agrius and Mellow: Meet + Shums.
 - MMGA Production is an internal project (Happy + Saurav).
 

@@ -54,7 +54,7 @@ _PEOPLE = [
     ("Shums", "", "Performance Marketing",
      "same as Meet: performance layer of OMOTEC, Agrius, Mellow", ""),
     ("Abhinav", "emp003", "Full Stack + AI Generalist",
-     "websites, full-stack, CRM, AI, automation, internal tools. Co-DM of Website with Nupur. Works "
+     "websites, full-stack, CRM, AI, automation, internal tools. Co-DM of website projects with Nupur; sole DM of the Mastek CRM project. Works "
      "with KG and VG on the AI CRM, MMGA OS, agents, integrations", ""),
     ("Noorish", "emp009", "HR + Culture",
      "hiring, onboarding, culture, attendance, team activities, internal communication. NOT "
@@ -75,7 +75,7 @@ _PROJECTS = [
      "brief, concept, review, execution, final; daily approval, no daily meeting"),
     ("Bothra", "Branding", "project", "Nupur", "", "",
      "brief, concept, review, execution, final; daily approval, no daily meeting"),
-    ("Websites", "Website", "project", "Nupur", "Abhinav", "", "any client website project"),
+    ("Mastek", "CRM", "project", "Abhinav", "", "", "CRM project; Abhinav is the only DM, no co-DM"),
     ("MMGA Production", "Production (internal)", "project", "Happy", "Saurav", "", ""),
 ]
 
@@ -94,6 +94,9 @@ _PLAYBOOK = (
 )
 
 
+_SEED_VERSION = 3   # v3: Mastek is a CRM project, Abhinav the only DM (v2 had it as a website with Nupur)
+
+
 def _ensure() -> None:
     conn = get_connection()
     try:
@@ -107,6 +110,24 @@ def _ensure() -> None:
                 conn.executemany("INSERT INTO org_people VALUES (?,?,?,?,?)", _PEOPLE)
             if conn.execute("SELECT COUNT(*) FROM org_projects").fetchone()[0] == 0:
                 conn.executemany("INSERT INTO org_projects VALUES (?,?,?,?,?,?,?)", _PROJECTS)
+            # Newer seed rows are added once per version; rows a human edited are
+            # never overwritten (INSERT OR IGNORE) and deleted ones stay deleted
+            # until the next version bump.
+            row = conn.execute("SELECT value FROM app_settings WHERE key='org_seed_version'").fetchone()
+            ver = int(row[0]) if row and str(row[0]).isdigit() else 0
+            if ver < _SEED_VERSION:
+                conn.executemany("INSERT OR IGNORE INTO org_projects VALUES (?,?,?,?,?,?,?)", _PROJECTS)
+                conn.execute("DELETE FROM org_projects WHERE client='Websites' "
+                             "AND notes='any client website project'")
+                conn.execute("UPDATE org_projects SET service_type='CRM', co_dm='', notes='CRM project; Abhinav is the only DM, no co-DM' "
+                             "WHERE client='Mastek' AND notes='website project; Abhinav is DM, Nupur co-DM'")
+                # refresh the two people rows whose text changed, only if still the old seed wording
+                for nm in ("Nupur", "Abhinav"):
+                    new_owns = next(p[3] for p in _PEOPLE if p[0] == nm)
+                    conn.execute("UPDATE org_people SET owns=? WHERE name=? AND owns LIKE '%Co-DM of Website%'",
+                                 (new_owns, nm))
+                conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('org_seed_version', ?)",
+                             (str(_SEED_VERSION),))
     finally:
         conn.close()
 

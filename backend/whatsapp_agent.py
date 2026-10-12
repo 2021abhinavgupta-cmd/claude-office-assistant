@@ -580,12 +580,29 @@ _MARK_DONE = re.compile(
     r"|(.+?)\s+is\s+(?:done|completed|finished))[\s.!]*$", re.I)
 
 
+_CLIENT_Q = re.compile(
+    r"^(?:lumina[,:\s]+)?(?:what(?:'s|\s+is)\s+(?:happening|going\s+on|up)\s+(?:with|on|in)|"
+    r"(?:status|update)\s+(?:on|of|for)|how(?:'s|\s+is)|where\s+are\s+we\s+(?:with|on))\s+"
+    r"(?:the\s+)?([A-Za-z0-9][\w .&'-]{1,40}?)(?:\s+(?:doing|going|now|today))?[\s?.!]*$", re.I)
+
+
 def _fast_standup_command(text: str):
     """(tool, args) for the plain standup commands that don't need the model:
     add X to my standup, show my tasks, mark X done. None otherwise. Anything
     naming a date or another person is left to the model."""
     if not text or len(text) > 320 or "\n" in text.strip():
         return None
+    cm = _CLIENT_Q.match(text)
+    if cm:
+        who = cm.group(1).strip(" .,:;-\"'")
+        if who and not re.fullmatch(r"(?:my|me|i|it|everyone|everything|the team|team|you|abhinav)", who, re.I):
+            try:
+                import org_profile
+                known = org_profile.find_project(who)
+            except Exception:
+                known = None
+            if known:  # only the named MMGA clients take the shortcut
+                return "get_client_status", {"client": known["client"] if known["client"] != "Websites" else who}
     m = _ADD_STANDUP.match(text)
     if m:
         task = m.group(1).strip(" .,:;-\"'")
@@ -1384,11 +1401,12 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "get_client_status",
-        "description": "A full snapshot for one client in a single reply: open "
-                       "task count, overdue items, what's due in the next 7 "
-                       "days, anything awaiting approval, blockers, and the last "
-                       "time the client did something in their portal. Use for "
-                       "'status on Omotec', 'where are we with Mellow'.",
+        "description": "The fixed status card for one client: SMM active or not, "
+                       "posts this week and next week, production pending, open client "
+                       "feedback, blocker, the client's DM and whether it Needs VG. "
+                       "Use for 'what is happening with Mellow', 'status on Omotec', "
+                       "'where are we with X'. The reply is already formatted: copy "
+                       "it EXACTLY, line for line, with nothing added.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -3012,71 +3030,10 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
 
         if name == "get_client_status" and kind == "employee":
             cli = (tool_input or {}).get("client", "").strip()
-            c = _find_client(cli)
-            cname = (c or {}).get("name", "") or cli
-            cnid = (c or {}).get("notion_id", "")
-            if not cname:
+            if not cli:
                 return "Which client? Use get_clients for the list."
-            try:
-                tasks = _tasks_for_client(cname, cnid)
-            except Exception:
-                tasks = []
-            wk_end = (datetime.strptime(today, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
-            open_t = [t for t in tasks
-                      if (t.get("status") or "").strip().lower().replace(" ", "_") not in _CLOSED_STATUSES]
-            overdue = [t for t in open_t if _is_overdue(t.get("due_date"), today)]
-            upcoming = sorted(
-                (t for t in open_t
-                 if re.match(r"^\d{4}-\d{2}-\d{2}$", str(t.get("due_date") or "")[:10])
-                 and today <= str(t.get("due_date"))[:10] <= wk_end),
-                key=lambda t: str(t.get("due_date")))
-            appr = [t for t in tasks
-                    if (t.get("status") or "").strip().lower() in _APPROVAL_STATUSES]
-            lines = [f"{cname}:"]
-            lines.append(f"Open tasks: {len(open_t)}"
-                         + (f", {len(overdue)} overdue" if overdue else ""))
-            if overdue:
-                lines.append("Overdue: " + "; ".join(
-                    f"{t.get('title')} ({t.get('assigned_to') or '?'})" for t in overdue[:6]))
-            if upcoming:
-                lines.append("Next 7 days: " + "; ".join(
-                    f"{t.get('title')} {str(t.get('due_date'))[:10]}" for t in upcoming[:6]))
-            if appr:
-                lines.append(f"Awaiting approval ({len(appr)}): "
-                             + "; ".join(t.get("title") for t in appr[:5]))
-            ctitles = {_norm(t.get("title") or "") for t in tasks if t.get("title")}
-            try:
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT title, blocker FROM standup_tasks "
-                    "WHERE date=? AND blocker IS NOT NULL AND blocker<>''", (today,))
-                for tt, bb in cur.fetchall():
-                    nt = _norm(tt)
-                    if any(nt == ct or (len(ct) > 5 and (nt in ct or ct in nt)) for ct in ctitles):
-                        lines.append(f"Blocked: {tt} — {bb}")
-                conn.close()
-            except Exception:
-                pass
-            try:
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT id FROM client_users WHERE lower(client_name)=lower(?) "
-                    "OR (client_notion_id<>'' AND client_notion_id=?)", (cname, cnid))
-                cu = cur.fetchone()
-                if cu:
-                    cur.execute("SELECT MAX(created_at) FROM client_dependencies WHERE client_id=?",
-                                (str(cu[0]),))
-                    r = cur.fetchone()
-                    if r and r[0]:
-                        lines.append(f"Last portal activity: {str(r[0])[:16].replace('T', ' ')}")
-                conn.close()
-            except Exception:
-                pass
-            if len(lines) == 2 and not open_t:
-                return f"{cname}: no open tasks, nothing pending."
-            return "\n".join(lines)
+            import client_card
+            return client_card.card(cli)
 
         return f"(tool '{name}' is not available to you)"
     except Exception:
