@@ -603,7 +603,9 @@ _DEEP = re.compile(
     r"negotiat\w*|pricing|analy[sz]e|summari[sz]e|calculate|how (?:do|can|would|should|to) |"
     r"help me (?:decide|think|plan|write|figure|understand)|best way|trade-?off|improve|"
     r"feedback on|review (?:this|my)|translate|what would happen|what if|is it (?:worth|a good)|"
-    r"which (?:is|one|should)|tell me about|how does|how do)\b", re.I)
+    r"which (?:is|one|should)|tell me about|how does|how do|what should (?:i|we)|priorit\w*|"
+    r"focus on|thoughts on|any (?:advice|tips|thoughts|ideas)|tips for|kya karu|kya karein|"
+    r"samjha\w*)\b", re.I)
 _CMD_START = re.compile(
     r"^(?:please\s+|pls\s+|lumina[,:\s]+)?(?:add|mark|assign|delegate|remind|create|move|delay|"
     r"approve|reject|set|clear|show|list|get|send|schedule|tell|ping|call|text|put|push|"
