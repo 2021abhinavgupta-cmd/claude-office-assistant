@@ -264,10 +264,35 @@ def _point_ok(text: str, ids: list, rows) -> bool:
     for n in re.findall(r"\d+", text):
         if n not in hay:
             return False
-    return _words_ok(text, hay) and quotes_ok(text, hay)
+    return quotes_ok(text, hay)
 
 
 LAST: dict = {}   # last summary attempt (raw model points + verdicts), for the debug route
+
+
+def _verify(cand, use, llm) -> dict:
+    """{n: bool} from an independent fact-check call, or {} if it can't be run."""
+    if not cand or llm is None:
+        return {}
+    blocks = []
+    for n, (ids, text) in enumerate(cand, 1):
+        msgs = "\n".join(f"  [{_hm(use[i - 1]['created_at'])}] {use[i - 1]['sender_name']}: "
+                         f"{_clean(use[i - 1]['text'], 400)}" for i in ids)
+        blocks.append(f"CLAIM {n}: {text}\nMESSAGES:\n{msgs}")
+    system = ("You are a strict fact checker. For each CLAIM decide if the MESSAGES under it "
+              "directly support EVERY detail of the claim (who, what, when, numbers). A claim "
+              "that adds a purpose, motive, feeling or detail not in the messages is NOT supported. "
+              'Reply ONLY with JSON: {"results":[{"n":1,"supported":true}]}.')
+    try:
+        raw = llm(system, "\n\n".join(blocks)[:20000])
+        m = re.search(r"\{[\s\S]*\}", raw or "")
+        res = json.loads(m.group(0)).get("results") if m else None
+        out = {int(r["n"]): bool(r.get("supported")) for r in res or []}
+        LAST["verifier"] = out
+        return out if len(out) == len(cand) else {}
+    except Exception:
+        logger.debug("group_digest: verifier failed", exc_info=True)
+        return {}
 
 
 def _summary(rows, label: str, notes: list, llm) -> str | None:
@@ -288,7 +313,7 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
         return None
     if not isinstance(points, list) or not points:
         return None
-    good, bad = [], 0
+    cand, bad = [], 0
     for pt in points[:14]:
         try:
             ids = sorted({i for i in pt.get("ids", []) if isinstance(i, int) and 1 <= i <= len(use)})[:12]
@@ -298,6 +323,19 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
             continue
         ok = bool(ids) and _point_ok(text, ids, use)
         LAST.setdefault("verdicts", []).append({"ok": ok, "text": text, "ids": ids})
+        if ok:
+            cand.append((ids, text))
+        else:
+            bad += 1
+    # Second opinion: a strict fact-checker pass over each surviving point and
+    # the exact messages it cites. If the checker is unavailable, fall back to
+    # the conservative word-by-word test instead of trusting the writer.
+    verdict = _verify(cand, use, llm)
+    good = []
+    for n, (ids, text) in enumerate(cand, 1):
+        hay = " ".join(f"{use[i - 1]['sender_name']} {use[i - 1]['text']}" for i in ids).lower()
+        ok = verdict.get(n) if verdict else _words_ok(text, hay)
+        LAST["verdicts"].append({"checked": ok, "text": text})
         if ok:
             good.append((ids[0], text))
         else:
