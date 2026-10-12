@@ -50,7 +50,7 @@ _READY = _LIVE | {"scheduled", "approved", "complete", "completed", "done"} | _A
 
 
 def _st(t: dict) -> str:
-    return re.sub(r"\s+", "_", (t.get("status") or "").strip().lower())
+    return re.sub(r"\s+", "_", str(t.get("status") or "").strip().lower())
 
 
 def _due(t: dict) -> str:
@@ -108,9 +108,10 @@ def _feedback_open(tasks: list) -> int:
     return n
 
 
-def _blockers(tasks: list, today: date) -> list:
+def _blockers(tasks: list, today: date, client_name: str = "") -> list:
     titles = {_norm(t.get("title")) for t in tasks if t.get("title")}
-    if not titles:
+    cname = re.sub(r"[^a-z0-9]", "", (client_name or "").lower())
+    if not titles and len(cname) < 4:
         return []
     since = (today - timedelta(days=3)).isoformat()
     out = []
@@ -124,7 +125,9 @@ def _blockers(tasks: list, today: date) -> list:
             conn.close()
         for tt, bb in rows:
             nt = _norm(tt)
-            if any(nt == c or (len(c) > 5 and (nt in c or c in nt)) for c in titles):
+            # a standup task that is not linked to Notion still counts when its title names the client
+            names_client = len(cname) >= 4 and cname in re.sub(r"[^a-z0-9]", "", nt)
+            if names_client or any(nt == c or (len(c) > 5 and (nt in c or c in nt)) for c in titles):
                 b = str(bb).strip()
                 if b and b not in out:
                     out.append(b)
@@ -173,7 +176,7 @@ def gather_row(c: dict) -> dict | None:
         "next_week": next_w, "plan_week": plan_w,
         "production_pending": [t for t in next_w if _st(t) not in _READY],
         "overdue": overdue, "backlog": backlog, "approvals": approvals, "due_next": due_next,
-        "feedback_open": _feedback_open(tasks), "blockers": _blockers(tasks, today),
+        "feedback_open": _feedback_open(tasks), "blockers": _blockers(tasks, today, c.get("name", "")),
     }
 
 

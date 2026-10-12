@@ -587,8 +587,8 @@ _MARK_DONE = re.compile(
 
 
 _CLIENT_Q = re.compile(
-    r"^(?:lumina[,:\s]+)?(?:what(?:'s|\s+is)\s+(?:happening|going\s+on|up)\s+(?:with|on|in)|"
-    r"(?:status|update)\s+(?:on|of|for)|how(?:'s|\s+is)|where\s+are\s+we\s+(?:with|on))\s+"
+    r"^(?:lumina[,:\s]+)?(?:what(?:'s|s|\s+is)\s+(?:happening|going\s+on|up)\s+(?:with|on|in)|"
+    r"(?:status|update)\s+(?:on|of|for)|how(?:'s|s|\s+is)|where\s+are\s+we\s+(?:with|on))\s+"
     r"(?:the\s+)?([A-Za-z0-9][\w .&'-]{1,40}?)(?:\s+(?:doing|going|now|today))?[\s?.!]*$", re.I)
 
 
@@ -627,8 +627,13 @@ def _fast_standup_command(text: str):
                 known = org_profile.find_project(who)
             except Exception:
                 known = None
-            if known:  # only the named MMGA clients take the shortcut
-                return "get_client_status", {"client": known["client"] if known["client"] != "Websites" else who}
+            # only when the phrase is just the client's name ("omotec", "omotec ltd"); anything
+            # longer ("the omotec shoot on friday") is a different question for the model
+            if known:
+                cs = re.sub(r"[^a-z0-9]", "", known["client"].lower())
+                ws = re.sub(r"[^a-z0-9]", "", who.lower())
+                if ws == cs or (cs in ws and len(ws) <= len(cs) + 4):
+                    return "get_client_status", {"client": known["client"]}
     m = _ADD_STANDUP.match(text)
     if m:
         task = m.group(1).strip(" .,:;-\"'")
@@ -894,7 +899,7 @@ def _match_approval(query: str, pend: list):
         return None, []
     ql = (query or "").strip().lower()
     for t in pend:
-        if (t.get("title") or "").strip().lower() == ql:
+        if str(t.get("title") or "").strip().lower() == ql:
             return t, []
     scored = []
     for t in pend:
@@ -1983,6 +1988,12 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
               in_group: bool = False, turn: dict | None = None) -> str:
     today = _today_ist()
     kind = identity["kind"]
+    if name in _WRITE_TOOLS:
+        try:  # a write may change what the cross-client views would report
+            import mgmt_views
+            mgmt_views.invalidate()
+        except Exception:
+            pass
 
     try:
         if name == "get_clients" and kind == "employee":
@@ -2755,6 +2766,8 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 have = _standup_tasks_today(identity["id"])
                 names = "; ".join(t["title"] for t in have) or "nothing yet"
                 return f"Couldn't find a task matching '{q}'. Today's list: {names}."
+            if str(m.get("status") or "").lower() in ("done", "completed", "complete", "need_for_approval"):
+                return f"'{m['title']}' is already done, so there is nothing to move."
             try:
                 conn = get_connection()
                 with conn:
@@ -2773,8 +2786,12 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                     logger.debug("whatsapp_agent: notion reschedule mirror failed", exc_info=True)
             nice = datetime.strptime(to, "%Y-%m-%d").strftime("%a %d %b")
             tail = "" if to == today else " It is off today's list and will show on that day."
+            left = _standup_tasks_today(identity["id"])
+            if not left and to != today:
+                # Lumina locks the app for anyone with nothing on today's standup
+                tail += " Today's list is now empty; add something to it or Lumina will stay locked until you do."
             return (f"Updated '{m['title']}': moved to {nice}.{tail}\n\n"
-                    + _format_standup(_standup_tasks_today(identity["id"]), "Your"))
+                    + _format_standup(left, "Your"))
 
         if name == "get_task_schedule" and kind == "employee":
             when = str((tool_input or {}).get("when", "week")).strip().lower()

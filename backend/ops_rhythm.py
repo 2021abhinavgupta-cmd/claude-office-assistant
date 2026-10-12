@@ -160,6 +160,14 @@ def _approval_text(items: dict) -> str:
 
 
 # ── the tick ────────────────────────────────────────────────────────────
+def _notion_down() -> bool:
+    try:
+        import notion_store
+        return (not notion_store.is_configured()) or not notion_store.list_clients()
+    except Exception:
+        return True
+
+
 def _in_window(kind: str, now: datetime) -> bool:
     days, a, b = _WINDOWS[kind]
     return now.weekday() in days and a <= now.strftime("%H:%M") < b
@@ -233,7 +241,10 @@ def run_tick(now: datetime | None = None, force_kind: str = "", only_ids: list |
             if not _in_window(kind, now) or not _claim(kind, today):
                 continue
             try:
-                results.append(run_kind(kind, now))
+                res = run_kind(kind, now)
+                results.append(res)
+                if res["sent"] == 0 and kind in ("planning", "approvals") and _notion_down():
+                    _release(kind, today)  # could not read the CRM; try again in 5 minutes
             except Exception:
                 logger.exception("ops_rhythm: %s failed", kind)
                 _release(kind, today)  # let the next 5-min tick retry inside the window

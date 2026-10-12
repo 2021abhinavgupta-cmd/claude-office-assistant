@@ -168,13 +168,22 @@ def _squash(x: str) -> str:
 
 
 def find_project(name: str) -> dict | None:
-    """Loose match of a client/project name ('mellow', 'omotec ltd', '1 FOUNDER') -> its row."""
+    """Loose match of a client/project name ('mellow', 'omotec ltd', '1 FOUNDER') -> its row.
+    Order: exact (ignoring spaces/punctuation), then a client name contained in the
+    query (longest first, 4+ letters), then the query contained in a client name only
+    when it is most of that name -- so 'ma' / 'mmga' never match 'Mastek' / 'MMGA Production'."""
     n = _squash(name)
-    if not n:
+    if len(n) < 3:
         return None
-    for p in projects():
-        c = _squash(p["client"])
-        if c == n or c in n or n in c:
+    rows = [(_squash(p["client"]), p) for p in projects()]
+    for c, p in rows:
+        if c == n:
+            return p
+    inside = sorted(((c, p) for c, p in rows if len(c) >= 4 and c in n), key=lambda x: -len(x[0]))
+    if inside:
+        return inside[0][1]
+    for c, p in rows:
+        if len(n) >= 4 and n in c and len(n) >= 0.6 * len(c):
             return p
     return None
 

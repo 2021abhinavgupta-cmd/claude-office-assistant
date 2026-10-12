@@ -34,8 +34,27 @@ def _today() -> date:
     return date.fromisoformat(today_ist())
 
 
+_CACHE: dict = {"at": 0.0, "data": None}
+_CACHE_TTL = 45.0   # seconds; every view re-reads every client otherwise (3-10 s on real data)
+
+
+def invalidate() -> None:
+    """Forget the cached client snapshot (called whenever the bot writes anything)."""
+    _CACHE["data"] = None
+
+
 def _all_clients() -> list:
-    """client_card.gather_row() dicts for every real Notion client."""
+    """client_card.gather_row() dicts for every real Notion client, cached briefly."""
+    import time
+    if _CACHE["data"] is not None and time.time() - _CACHE["at"] < _CACHE_TTL:
+        return _CACHE["data"]
+    data = _all_clients_uncached()
+    if data:  # never cache an empty result (Notion hiccup)
+        _CACHE["data"], _CACHE["at"] = data, time.time()
+    return data
+
+
+def _all_clients_uncached() -> list:
     import client_card
     import notion_store
     out = []
