@@ -4111,11 +4111,31 @@ def handle_message(sender: str, text: str, *,
     if turn.get("group_log") and reply:
         try:
             import group_digest
-            if not group_digest.quotes_ok(reply, turn["group_log"]):
-                logger.warning("whatsapp_agent: reply quoted text not in the group log; replaced")
-                gids = {group_id} if (in_group and group_id) else _group_allowlist()
-                reply = ("I couldn't verify my own summary, so here are the real messages:\n\n"
-                         + group_digest.build(text or "", gids, llm=None))
+            bad = group_digest.bad_quotes(reply, turn["group_log"])
+            if bad:
+                logger.warning("whatsapp_agent: reply quoted text not in the group log: %s", bad[:3])
+                # 1) ask the model once to fix it, using only what the log really says
+                try:
+                    messages.append({"role": "assistant", "content": reply})
+                    messages.append({"role": "user", "content": (
+                        "[system] These quoted phrases are NOT in the group chat log: "
+                        + " | ".join(f'"{q[:80]}"' for q in bad[:4])
+                        + ". Rewrite your answer using only what the log shows. Do not put "
+                          "quotation marks around anything unless it is copied exactly; "
+                          "paraphrase instead. Keep the same style and length.")})
+                    resp2 = _llm_create(model, sys_prompt, tools, messages,
+                                        2500 if smart else 900, usage, smart=smart)
+                    fixed = "".join(getattr(b2, "text", "") for b2 in resp2.content
+                                    if getattr(b2, "type", "") == "text").strip()
+                except Exception:
+                    fixed = ""
+                if fixed and group_digest.quotes_ok(fixed, turn["group_log"]):
+                    reply = fixed
+                else:
+                    # 2) still not clean: show the checked summary of the real messages, no apology
+                    gids = {group_id} if (in_group and group_id) else _group_allowlist()
+                    reply = group_digest.build(text or "", gids, llm=_digest_llm,
+                                               llm_smart=_digest_llm_smart)
         except Exception:
             logger.exception("whatsapp_agent: quote guard failed")
 

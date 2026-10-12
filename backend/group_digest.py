@@ -480,10 +480,13 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", re.sub(r"\s+", " ", str(s).lower())).strip()
 
 
+def bad_quotes(reply: str, log: str) -> list:
+    """Quoted passages (>=12 chars) in the reply that are NOT in the log."""
+    hay = _norm(log)
+    return [q for q in re.findall(r'["\u201c]([^"\u201d]{12,})["\u201d]', reply or "")
+            if _norm(q) not in hay]
+
+
 def quotes_ok(reply: str, log: str) -> bool:
     """True if every quoted passage (>=12 chars) in the reply exists in the log."""
-    hay = _norm(log)
-    for q in re.findall(r'["“]([^"”]{12,})["”]', reply or ""):
-        if _norm(q) not in hay:
-            return False
-    return True
+    return not bad_quotes(reply, log)
