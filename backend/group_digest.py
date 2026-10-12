@@ -326,23 +326,20 @@ def _verify(cand, use, llm) -> dict:
         return {}
 
 
-def _summary(rows, label: str, notes: list, llm) -> str | None:
-    if llm is None or not rows:
-        return None
-    use = rows[-300:]
+def _gen(use, llm):
+    """One writer + checker pass over `use`. Returns ([(ids, text)] accepted, bad_count),
+    or None if the model call itself failed."""
     numbered = "\n".join(f"{i + 1}|{_hm(r['created_at'])}|{r['sender_name']}|{_clean(r['text'], 220)}"
                          for i, r in enumerate(use))
     try:
         raw = llm(_SUM_SYSTEM, numbered[:24000])
-        LAST.clear()
         LAST["raw"] = (raw or "")[:4000]
-        LAST["verdicts"] = []
         m = re.search(r"\{[\s\S]*\}", raw or "")
         points = json.loads(m.group(0)).get("points") if m else None
     except Exception:
         logger.debug("group_digest: summary call failed", exc_info=True)
         return None
-    if not isinstance(points, list) or not points:
+    if not isinstance(points, list):
         return None
     cand, bad = [], 0
     for pt in points[:14]:
@@ -358,41 +355,44 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
             cand.append((ids, text))
         else:
             bad += 1
-    # Second opinion: a strict fact-checker pass over each surviving point and
-    # the exact messages it cites. If the checker is unavailable, fall back to
-    # the conservative word-by-word test instead of trusting the writer.
+    # Second opinion: a strict fact-checker pass over each surviving point and the exact
+    # messages it cites; the conservative word-by-word test only if the checker is unavailable.
     verdict = _verify(cand, use, llm)
     good = []
     for n, (ids, text) in enumerate(cand, 1):
         hay = " ".join(f"{use[i - 1]['sender_name']} {use[i - 1]['text']}" for i in ids).lower()
         ok = verdict.get(n) if verdict else _words_ok(text, hay)
-        LAST["verdicts"].append({"checked": ok, "text": text})
+        LAST.setdefault("verdicts", []).append({"checked": ok, "text": text})
         if ok:
-            good.append((ids[0], text))
+            good.append((ids, text))
         else:
             bad += 1
-    if len(good) < 1 or bad > len(good):
-        logger.warning("group_digest: summary rejected (%d ok, %d bad)", len(good), bad)
+    return good, bad
+
+
+def _summary(rows, label: str, notes: list, llm) -> str | None:
+    """Short, checked summary: just the points, newest-last. Messages the first pass did not
+    cover get a second pass of their own, so nothing real is left out and nothing is dumped."""
+    if llm is None or not rows:
         return None
-    good.sort()
-    accepted_ids = set()
-    for n, (ids, text) in enumerate(cand, 1):
-        hay = " ".join(f"{use[i - 1]['sender_name']} {use[i - 1]['text']}" for i in ids).lower()
-        if (verdict.get(n) if verdict else _words_ok(text, hay)):
-            accepted_ids.update(ids)
-    # Nothing may go missing: every substantive message not covered by an accepted point
-    # is listed word for word under the summary.
-    rest = [r for i, r in enumerate(use, 1) if i not in accepted_ids and len(_clean(r["text"], 400)) >= 6]
-    head = (f"*Group summary, {label}*: {len(rows)} messages, "
-            f"{_hm(rows[0]['created_at'])} to {_hm(rows[-1]['created_at'])}\n")
-    body = "\n".join(f"- {t} ({_hm(use[i - 1]['created_at'])})" for i, t in good)
-    if rest:
-        shown = rest[-14:]
-        body += ("\n\n*Also in the chat (exact words):*\n" + "\n".join(_line(r, 150, False) for r in shown)
-                 + (f"\n(+{len(rest) - len(shown)} earlier ones; ask for the exact messages)" if len(rest) > len(shown) else ""))
-    foot = "\n".join(notes + ["The points were checked against the real messages; the lines under "
-                              "\"Also in the chat\" are exactly what was said."])
-    out = f"{head}\n{body}\n\n{foot}"
+    LAST.clear()
+    LAST["verdicts"] = []
+    use = rows[-300:]
+    first = _gen(use, llm)
+    if first is None or not first[0] or first[1] > len(first[0]):
+        logger.warning("group_digest: summary rejected")
+        return None
+    pts = [(use[ids[0] - 1]["created_at"], text) for ids, text in first[0]]
+    covered = {i for ids, _ in first[0] for i in ids}
+    rest = [r for i, r in enumerate(use, 1) if i not in covered and len(_clean(r["text"], 400)) >= 15]
+    if len(rest) >= 2:
+        second = _gen(rest, llm)
+        if second and second[0]:
+            pts += [(rest[ids[0] - 1]["created_at"], text) for ids, text in second[0]]
+    pts.sort()
+    head = f"*Group summary, {label}* ({len(rows)} messages)\n"
+    body = "\n".join(f"- {t}" for _, t in pts)
+    out = f"{head}\n{body}"
     return out if len(out) <= MAX_REPLY else out[:MAX_REPLY - 3] + "..."
 
 
@@ -462,8 +462,6 @@ def try_answer(text: str, group_ids, llm=None, llm_smart=None) -> str | None:
         return None
     try:
         out = build(text, group_ids, llm, llm_smart=llm_smart)
-        if _BARE.match((text or "").strip()):
-            out += "\n\n(For your own tasks and meetings, say \"my dashboard\".)"
         if _PRESSING.search(text or ""):
             # "what is pressing / important": the tracked open asks and promises first
             try:
