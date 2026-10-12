@@ -18,6 +18,7 @@ Every function is best-effort and returns "" / [] on failure.
 from __future__ import annotations
 
 import logging
+import re
 
 from db import get_connection
 
@@ -162,13 +163,17 @@ def projects() -> list:
         return []
 
 
+def _squash(x: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (x or "").lower())
+
+
 def find_project(name: str) -> dict | None:
-    """Loose match of a client/project name ('mellow', 'omotec ltd') -> its row."""
-    n = (name or "").strip().lower()
+    """Loose match of a client/project name ('mellow', 'omotec ltd', '1 FOUNDER') -> its row."""
+    n = _squash(name)
     if not n:
         return None
     for p in projects():
-        c = p["client"].lower()
+        c = _squash(p["client"])
         if c == n or c in n or n in c:
             return p
     return None

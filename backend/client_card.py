@@ -23,6 +23,8 @@ week, plan the week after):
   Production     next week's posts that are not ready yet (still Need to Start /
                  In Progress / Paused / blank); ready = Scheduled/Approved/Posted/
                  Final/Need for approval
+  Overdue        unfinished and due within the last 14 days; anything older is shown
+                 separately as "Old backlog" and does not set Needs VG
   Client feedback open  portal feedback on the client's still-open tasks that
                  asks for changes or has a comment, not an approval
   SMM: Active    the client has social posts within 14 days back or 30 days ahead
@@ -43,6 +45,7 @@ _APPROVAL = {"need_for_approval", "need_approval", "needs_approval", "pending_re
 _CLOSED = {"done", "approved", "posted", "final", "complete", "completed",
            "cancelled", "canceled"}
 _LIVE = {"posted", "final"}
+OVERDUE_DAYS = 14   # overdue = due within the last 14 days; older unfinished items are "old backlog"
 _READY = _LIVE | {"scheduled", "approved", "complete", "completed", "done"} | _APPROVAL
 
 
@@ -151,7 +154,9 @@ def gather(client_name: str) -> dict | None:
     plan_w = [t for t in social if in_rng(t, p2)]
     lo, hi = (today - timedelta(days=14)).isoformat(), (today + timedelta(days=30)).isoformat()
     proj = org_profile.find_project(c.get("name", ""))
-    overdue = [t for t in open_t if _due(t) and _due(t) < iso_today]
+    stale_cut = (today - timedelta(days=OVERDUE_DAYS)).isoformat()
+    overdue = [t for t in open_t if _due(t) and stale_cut <= _due(t) < iso_today]
+    backlog = [t for t in open_t if _due(t) and _due(t) < stale_cut]
     approvals = [t for t in tasks if _st(t) in _APPROVAL]
     due_next = sorted((t for t in open_t if _due(t) >= iso_today), key=_due)
     return {
@@ -162,7 +167,7 @@ def gather(client_name: str) -> dict | None:
         "this_week": this_w, "live": [t for t in this_w if _st(t) in _LIVE],
         "next_week": next_w, "plan_week": plan_w,
         "production_pending": [t for t in next_w if _st(t) not in _READY],
-        "overdue": overdue, "approvals": approvals, "due_next": due_next,
+        "overdue": overdue, "backlog": backlog, "approvals": approvals, "due_next": due_next,
         "feedback_open": _feedback_open(tasks), "blockers": _blockers(tasks, today),
     }
 
@@ -189,6 +194,12 @@ def _plural(n: int, word: str) -> str:
 def card(client_name: str) -> str:
     g = gather(client_name)
     if not g:
+        import org_profile
+        proj = org_profile.find_project(client_name)
+        if proj:  # an MMGA client that has no page in the CRM (Notion) yet
+            return (f"*{proj['client'].upper()}*  ({proj['service_type']})\n"
+                    "Not in the CRM yet, so there are no tasks to report.\n"
+                    f"DM: {_dm_text(proj)}")
         return "I can't find that client. Use get_clients for the list."
     proj = g["proj"]
     lines = [f"*{g['name'].upper()}*"]
@@ -213,4 +224,6 @@ def card(client_name: str) -> str:
     lines.append("Blocker: " + ("; ".join(g["blockers"][:2]) if g["blockers"] else "None"))
     lines.append(f"DM: {_dm_text(proj)}")
     lines.append(f"Needs VG: {_needs_vg(g)}")
+    if g["backlog"]:
+        lines.append(f"Old backlog: {len(g['backlog'])} unfinished, due more than {OVERDUE_DAYS} days ago")
     return "\n".join(lines)

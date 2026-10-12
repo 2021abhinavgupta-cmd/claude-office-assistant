@@ -328,6 +328,12 @@ def _find_client(name: str) -> dict | None:
             for c in notion_store.list_clients():
                 if name_l in (c.get("name", "") or "").strip().lower():
                     return c
+            sq = re.sub(r"[^a-z0-9]", "", name_l)
+            if sq:  # "1Founder" vs "1 FOUNDER"
+                for c in notion_store.list_clients():
+                    cs = re.sub(r"[^a-z0-9]", "", (c.get("name", "") or "").lower())
+                    if cs and (cs == sq or sq in cs):
+                        return c
         except Exception:
             logger.exception("whatsapp_agent: notion client resolve failed")
     return None
