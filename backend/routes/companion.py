@@ -1560,6 +1560,37 @@ def companion_followups_run():
         return jsonify({"error": "followups failed"}), 500
 
 
+# ── group chat intelligence (backend/group_intel.py) ────────────────────────
+
+@companion_bp.route("/api/companion/group-commitments", methods=["GET"])
+def companion_group_commitments():
+    """Promises tracked from the team group chat (?status=open|done|dropped|all,
+    ?person=). The inspection window for group_intel."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import group_intel
+        rows = group_intel.list_commitments(request.args.get("person", ""),
+                                            request.args.get("status", "open"), 100)
+        return jsonify({"count": len(rows), "commitments": rows})
+    except Exception:
+        logger.exception("companion group-commitments failed")
+        return jsonify({"error": "failed"}), 500
+
+
+@companion_bp.route("/api/companion/group-intel/run", methods=["POST"])
+def companion_group_intel_run():
+    """Run one extraction pass now (normally every 8 min on the scheduler)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import group_intel
+        return jsonify(group_intel.extract_pending())
+    except Exception:
+        logger.exception("companion group-intel run failed")
+        return jsonify({"error": "failed"}), 500
+
+
 # ── data retention (backend/data_retention.py) ─────────────────────────────
 
 @companion_bp.route("/api/companion/retention", methods=["GET"])

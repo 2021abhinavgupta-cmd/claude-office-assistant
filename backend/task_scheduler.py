@@ -336,6 +336,18 @@ def _run_event_reminders():
         logger.exception("office event reminder sweep failed")
 
 
+def _run_group_intel():
+    """Read new team-group messages and track the promises in them
+    (group_intel.py). One small model call per batch; nothing when quiet."""
+    try:
+        import group_intel
+        result = group_intel.extract_pending()
+        if result:
+            logger.info("group_intel: %s", result)
+    except Exception:
+        logger.exception("group_intel pass failed")
+
+
 def _run_followup_sweep():
     """Wraps followups.sweep() for the interval job below.
 
@@ -410,6 +422,10 @@ def init_scheduler(app):
         # this interval only decides how soon it can notice.
         scheduler.add_job(_run_followup_sweep, "interval", minutes=90,
                           id="followup_sweep", replace_existing=True)
+        # Group chat -> tracked promises (group_intel.py). Only calls the model
+        # when there are new messages in an allow-listed group.
+        scheduler.add_job(_run_group_intel, "interval", minutes=8,
+                          id="group_intel", replace_existing=True)
         # Data retention -- prunes old rows from tables that have no other
         # cleanup (usage_logs, wa_action_log, wa_call_outbox). Daily is
         # plenty; this isn't reacting to anything time-sensitive.

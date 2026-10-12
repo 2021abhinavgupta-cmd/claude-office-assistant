@@ -1,0 +1,494 @@
+"""Group intelligence -- the assistant follows what people PROMISE in the team
+group and chases it when nothing shows it happened.
+
+Layer on top of group_memory.py (which just stores messages, free):
+
+  1. extract_pending()  every few minutes, one small model call over the NEW
+     group messages. It returns commitments ("I'll post the story today"),
+     completions ("posted it"), cancellations and date changes. Every item must
+     carry the exact quote it came from and that quote is checked against the
+     real messages -- an item the messages don't back up is thrown away, so the
+     model can't invent a promise. (Extract-then-verify pattern; owner is never
+     guessed, an unknown owner becomes "team" and is never nudged.)
+  2. commitments live in `group_commitments` with status open/done/dropped.
+  3. commitment_items() feeds followups.py: at end of day (or when overdue) it
+     first looks for evidence the thing was done (a ticked standup task, a
+     Notion task that is Posted/Final/Done) and only if there is none does it
+     surface "you said X in the group, is it done?" to the owner. The existing
+     followup rails (working hours, leave, 20h cooldown, 2/day cap) still apply.
+
+Nothing here sends a message itself. Cost is one small call per batch of new
+messages (none when the group is quiet).
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from datetime import datetime, timedelta, timezone
+
+from db import get_connection
+
+logger = logging.getLogger(__name__)
+
+_IST = timezone(timedelta(hours=5, minutes=30))
+MAX_BATCH = 60            # new messages handled per group per pass
+CONTEXT_LINES = 12        # older messages shown for context only
+MAX_NUDGES = 3            # stop chasing one item after this many nudges
+STALE_UNPROCESSED_HOURS = 24
+END_OF_DAY_HOUR, END_OF_DAY_MIN = 16, 30     # due-today items surface from here
+NO_DUE_SAME_DAY_HOUR = 17                    # undated promise made today
+
+_CLOSED_STATUS = {"done", "complete", "completed", "posted", "final", "approved",
+                  "need for approval", "need_for_approval", "published"}
+_STOP = {"the", "a", "an", "to", "of", "for", "and", "on", "in", "my", "our", "it",
+         "this", "that", "i", "will", "ill", "we", "is", "be", "do", "post",
+         "today", "tomorrow", "please", "pls", "with", "at", "by", "up"}
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _today_ist() -> str:
+    return datetime.now(_IST).strftime("%Y-%m-%d")
+
+
+def ensure_schema(conn) -> None:
+    conn.execute("""CREATE TABLE IF NOT EXISTS group_commitments (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id      TEXT NOT NULL,
+        group_name    TEXT,
+        owner_name    TEXT,
+        owner_id      TEXT,
+        action        TEXT NOT NULL,
+        due_date      TEXT,
+        quote         TEXT,
+        source_ts     TEXT,
+        status        TEXT NOT NULL DEFAULT 'open',
+        evidence      TEXT,
+        nudge_count   INTEGER NOT NULL DEFAULT 0,
+        last_nudged_at TEXT,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gc_status ON group_commitments (status, owner_id)")
+    try:
+        conn.execute("ALTER TABLE wa_group_log ADD COLUMN processed INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass   # already there
+
+
+# ── roster / text helpers ────────────────────────────────────────────────────
+
+def _roster() -> list:
+    try:
+        import utils
+        return [e for e in utils._load_employees().get("employees", [])
+                if str(e.get("status", "active")).strip().lower()
+                not in {"inactive", "disabled", "left", "removed", "archived", "former"}]
+    except Exception:
+        return []
+
+
+def _owner(name: str, roster: list) -> tuple:
+    """(display name, employee id or ''). Never guesses: no unambiguous roster
+    match -> ('team', '')."""
+    n = re.sub(r"[^a-z0-9 ]", "", str(name or "").lower()).strip()
+    if not n or n in {"team", "everyone", "all", "someone", "unknown"}:
+        return ("team", "")
+    hits = []
+    for e in roster:
+        en = re.sub(r"[^a-z0-9 ]", "", str(e.get("name") or "").lower()).strip()
+        if en and (en == n or en.split()[0] == n.split()[0]):
+            hits.append(e)
+    if len(hits) == 1:
+        return (hits[0].get("name") or "", hits[0].get("id") or "")
+    return ("team", "")
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", str(s or "").lower())).strip()
+
+
+def _grounded(quote: str, texts: list) -> bool:
+    """The quote must really be in the messages (or very nearly): the guard
+    that stops the model inventing a promise nobody made."""
+    q = _norm(quote)
+    if len(q) < 6:
+        return False
+    for t in texts:
+        nt = _norm(t)
+        if q in nt or nt in q and len(nt) >= 12:
+            return True
+        qa, ta = set(q.split()), set(nt.split())
+        if qa and len(qa & ta) / len(qa) >= 0.8:
+            return True
+    return False
+
+
+def _keywords(s: str) -> set:
+    return {w for w in _norm(s).split() if len(w) > 2 and w not in _STOP}
+
+
+def _overlap(a: str, b: str) -> float:
+    ka, kb = _keywords(a), _keywords(b)
+    return (len(ka & kb) / len(ka)) if ka else 0.0
+
+
+def _valid_date(s) -> str:
+    try:
+        d = datetime.strptime(str(s or "").strip()[:10], "%Y-%m-%d").date()
+        today = datetime.now(_IST).date()
+        if today - timedelta(days=1) <= d <= today + timedelta(days=60):
+            return d.isoformat()
+    except Exception:
+        pass
+    return ""
+
+
+# ── extraction ───────────────────────────────────────────────────────────────
+
+_SYSTEM = (
+    "You read a team's WhatsApp group chat and track commitments. Reply with "
+    "ONE JSON object and nothing else.\n"
+    "A commitment is a clear promise or assignment about work: 'I'll post the "
+    "story today', 'Nupur will send the logo by 5', 'can you share the report "
+    "tomorrow?' answered with 'sure'. NOT commitments: jokes, vague wishes, "
+    "questions, things already finished, general chat.\n"
+    "Schema: {\"new\":[{\"owner\":\"exact name from the team list, or team\","
+    "\"action\":\"short imperative phrase\",\"due\":\"YYYY-MM-DD or empty\","
+    "\"quote\":\"the exact words from one message\"}],"
+    "\"done\":[{\"id\":<open commitment id>,\"quote\":\"exact words showing it is "
+    "done\"}],\"dropped\":[{\"id\":<id>,\"quote\":\"exact words cancelling it\"}],"
+    "\"moved\":[{\"id\":<id>,\"due\":\"YYYY-MM-DD\",\"quote\":\"...\"}]}.\n"
+    "Rules: every item needs a quote copied EXACTLY from a message. The owner is "
+    "the person who will do the work (if someone says 'I will', that speaker). "
+    "Never guess an owner: use team if unclear. Resolve 'today', 'tomorrow', "
+    "'Friday' to a real date from today's date; leave due empty if no time was "
+    "given. Mark an open commitment done only if a message clearly says it is "
+    "finished (posted, sent, shared, done). Empty lists are the normal answer."
+)
+
+
+def _llm_json(prompt: str) -> dict | None:
+    import whatsapp_agent as wa
+    budget = wa.check_budget_available()
+    if not budget.get("allowed"):
+        return None
+    model = wa.get_model_for_task("whatsapp")
+    usage: dict = {}
+    resp = wa._llm_create(model, [{"type": "text", "text": _SYSTEM}], None,
+                          [{"role": "user", "content": prompt}], 900, usage)
+    try:
+        wa._record_llm_usage(model, usage, "wa_group_intel")
+    except Exception:
+        pass
+    text = "".join(getattr(b, "text", "") for b in resp.content
+                   if getattr(b, "type", "") == "text")
+    m = re.search(r"\{[\s\S]*\}", text)
+    if not m:
+        return {}
+    try:
+        data = json.loads(m.group(0))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _fmt_time(iso: str) -> str:
+    try:
+        return datetime.fromisoformat(iso).astimezone(_IST).strftime("%a %d %b %H:%M")
+    except Exception:
+        return ""
+
+
+def extract_group(conn, group_id: str) -> dict:
+    """Process the unprocessed messages of one group. Returns counts."""
+    cutoff = (_now() - timedelta(hours=STALE_UNPROCESSED_HOURS)).isoformat()
+    # very old backlog is just marked, not analysed (a restart must not replay a day)
+    conn.execute("UPDATE wa_group_log SET processed=1 WHERE group_id=? AND processed=0 "
+                 "AND created_at<?", (group_id, cutoff))
+    rows = conn.execute(
+        "SELECT id, group_name, sender_name, text, created_at FROM wa_group_log "
+        "WHERE group_id=? AND processed=0 ORDER BY id LIMIT ?", (group_id, MAX_BATCH)).fetchall()
+    if not rows:
+        return {"new": 0}
+    ids = [r[0] for r in rows]
+    group_name = rows[-1][1] or ""
+    new_lines = [f"{_fmt_time(r[4])} {r[2]}: {r[3]}" for r in rows]
+    # nothing worth a model call (a few 'ok's and emojis) -- but a short "done"
+    # can close an open promise, so only skip when nothing is open
+    has_open = conn.execute("SELECT 1 FROM group_commitments WHERE group_id=? AND status='open' "
+                            "LIMIT 1", (group_id,)).fetchone()
+    if sum(len(r[3]) for r in rows) < 25 and not has_open:
+        conn.execute(f"UPDATE wa_group_log SET processed=1 WHERE id IN ({','.join('?'*len(ids))})", ids)
+        return {"new": 0, "skipped": "trivial"}
+
+    ctx = conn.execute(
+        "SELECT sender_name, text, created_at FROM wa_group_log WHERE group_id=? AND processed=1 "
+        "ORDER BY id DESC LIMIT ?", (group_id, CONTEXT_LINES)).fetchall()
+    ctx_lines = [f"{_fmt_time(r[2])} {r[0]}: {r[1]}" for r in reversed(ctx)]
+    open_rows = conn.execute(
+        "SELECT id, owner_name, action, due_date FROM group_commitments "
+        "WHERE group_id=? AND status='open' ORDER BY id DESC LIMIT 40", (group_id,)).fetchall()
+    roster = _roster()
+    names = ", ".join(e.get("name", "") for e in roster)
+    open_txt = "\n".join(f"#{r[0]} {r[1]}: {r[2]}" + (f" (due {r[3]})" if r[3] else "")
+                         for r in open_rows) or "(none)"
+    now_ist = datetime.now(_IST)
+    prompt = (f"Today is {now_ist.strftime('%A %Y-%m-%d')}, time {now_ist.strftime('%H:%M')} IST.\n"
+              f"Team members: {names}\n\nOpen commitments:\n{open_txt}\n\n"
+              f"Earlier messages (context only, do not extract from these):\n"
+              f"{chr(10).join(ctx_lines) or '(none)'}\n\n"
+              f"NEW messages to analyse:\n{chr(10).join(new_lines)}")
+    data = _llm_json(prompt)
+    if data is None:       # budget exhausted: leave them for the next pass
+        return {"new": 0, "skipped": "budget"}
+
+    texts = [r[3] for r in rows]
+    open_ids = {r[0] for r in open_rows}
+    now_iso = _now().isoformat()
+    counts = {"new": 0, "done": 0, "dropped": 0, "moved": 0, "rejected": 0}
+    # who said the quoted line -> source time
+    def _src_ts(q):
+        nq = _norm(q)
+        for r in rows:
+            if nq and nq in _norm(r[3]):
+                return r[4]
+        return rows[-1][4]
+
+    for it in (data.get("new") or [])[:10]:
+        if not isinstance(it, dict):
+            continue
+        action = re.sub(r"\s+", " ", str(it.get("action") or "")).strip()[:200]
+        quote = str(it.get("quote") or "")
+        if not action or not _grounded(quote, texts):
+            counts["rejected"] += 1
+            continue
+        oname, oid = _owner(it.get("owner"), roster)
+        # skip a duplicate of something already open for the same owner
+        dup = any(_overlap(action, r[2]) >= 0.7 and (r[1] or "") == oname for r in open_rows)
+        if dup:
+            continue
+        conn.execute(
+            "INSERT INTO group_commitments (group_id, group_name, owner_name, owner_id, action, "
+            "due_date, quote, source_ts, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (group_id, group_name, oname, oid, action, _valid_date(it.get("due")) or None,
+             quote[:300], _src_ts(quote), "open", now_iso, now_iso))
+        counts["new"] += 1
+
+    for key, status in (("done", "done"), ("dropped", "dropped")):
+        for it in (data.get(key) or [])[:10]:
+            if not isinstance(it, dict):
+                continue
+            try:
+                cid = int(it.get("id"))
+            except Exception:
+                continue
+            if cid not in open_ids or not _grounded(str(it.get("quote") or ""), texts):
+                counts["rejected"] += 1
+                continue
+            conn.execute("UPDATE group_commitments SET status=?, evidence=?, updated_at=? "
+                         "WHERE id=? AND status='open'",
+                         (status, ("said in group: " + str(it.get("quote"))[:200]), now_iso, cid))
+            counts[key] += 1
+
+    for it in (data.get("moved") or [])[:10]:
+        if not isinstance(it, dict):
+            continue
+        try:
+            cid = int(it.get("id"))
+        except Exception:
+            continue
+        nd = _valid_date(it.get("due"))
+        if cid in open_ids and nd and _grounded(str(it.get("quote") or ""), texts):
+            conn.execute("UPDATE group_commitments SET due_date=?, nudge_count=0, updated_at=? "
+                         "WHERE id=? AND status='open'", (nd, now_iso, cid))
+            counts["moved"] += 1
+
+    conn.execute(f"UPDATE wa_group_log SET processed=1 WHERE id IN ({','.join('?'*len(ids))})", ids)
+    return counts
+
+
+def extract_pending() -> dict:
+    """One pass over every allow-listed group with unprocessed messages."""
+    out = {}
+    conn = get_connection()
+    try:
+        ensure_schema(conn)
+        groups = [r[0] for r in conn.execute(
+            "SELECT DISTINCT group_id FROM wa_group_log WHERE processed=0").fetchall()]
+        for gid in groups:
+            try:
+                with conn:
+                    out[gid] = extract_group(conn, gid)
+            except Exception:
+                logger.exception("group_intel: extraction failed for %s", gid)
+                out[gid] = {"error": "failed"}
+    finally:
+        conn.close()
+    return out
+
+
+# ── evidence + follow-up items ───────────────────────────────────────────────
+
+def _standup_evidence(owner_id: str, action: str, since_date: str) -> str:
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT title, date FROM standup_tasks WHERE user_id=? AND date>=? "
+            "AND status IN ('done','completed','need_for_approval')", (owner_id, since_date)).fetchall()
+        conn.close()
+    except Exception:
+        return ""
+    for title, date in rows:
+        if _overlap(action, title) >= 0.5:
+            return f"ticked done in the standup ({title}, {date})"
+    return ""
+
+
+def _notion_evidence(action: str, owner_name: str, cache: dict) -> str:
+    try:
+        import notion_store
+        if not notion_store.is_configured():
+            return ""
+        if "tasks" not in cache:
+            cache["tasks"] = notion_store.list_tasks() or []
+        for t in cache["tasks"]:
+            st = str(t.get("status") or "").strip().lower().replace("_", " ")
+            if st not in _CLOSED_STATUS:
+                continue
+            if _overlap(action, t.get("title") or "") >= 0.6:
+                return f"Notion shows '{t.get('title')}' as {t.get('status')}"
+    except Exception:
+        logger.debug("group_intel: notion evidence failed", exc_info=True)
+    return ""
+
+
+def nudge_ready(c: dict, now: datetime | None = None) -> bool:
+    """Is this open commitment due for an 'is it done?' check right now?"""
+    now = now or datetime.now(_IST)
+    if c["nudge_count"] >= MAX_NUDGES:
+        return False
+    today = now.strftime("%Y-%m-%d")
+    due = c.get("due_date") or ""
+    if due:
+        if due < today:
+            return True
+        if due == today:
+            return (now.hour, now.minute) >= (END_OF_DAY_HOUR, END_OF_DAY_MIN)
+        return False
+    try:
+        made = datetime.fromisoformat(c["created_at"]).astimezone(_IST).strftime("%Y-%m-%d")
+    except Exception:
+        made = today
+    if made < today:
+        return True
+    return now.hour >= NO_DUE_SAME_DAY_HOUR
+
+
+def commitment_items(user_id: str, name: str, today: str, now: datetime | None = None,
+                     cache: dict | None = None, check_evidence: bool = True) -> list:
+    """followups.py hook: this person's open group promises that are due a
+    check. Resolves silently (and marks done) when real evidence exists."""
+    cache = cache if cache is not None else {}
+    out = []
+    try:
+        conn = get_connection()
+        ensure_schema(conn)
+        conn.row_factory = None
+        cols = ["id", "group_name", "owner_name", "owner_id", "action", "due_date", "quote",
+                "source_ts", "status", "nudge_count", "created_at"]
+        rows = [dict(zip(cols, r)) for r in conn.execute(
+            f"SELECT {','.join(cols)} FROM group_commitments WHERE status='open' AND owner_id=?",
+            (user_id,)).fetchall()]
+        conn.close()
+    except Exception:
+        logger.debug("group_intel: items query failed", exc_info=True)
+        return []
+    for c in rows:
+        if not nudge_ready(c, now):
+            continue
+        if check_evidence:
+            since = (c["created_at"] or "")[:10] or today
+            ev = (_standup_evidence(user_id, c["action"], since)
+                  or _notion_evidence(c["action"], name, cache))
+            if ev:
+                mark(c["id"], "done", ev)
+                continue
+        when = _fmt_time(c["source_ts"] or "")
+        due = f", due {c['due_date']}" if c["due_date"] else ""
+        out.append({
+            "kind": "group_commitment",
+            "ref": f"gc:{c['id']}",
+            "days": 0,
+            "text": (f"in the group chat{(' at ' + when) if when else ''} they said "
+                     f"\"{(c['quote'] or c['action'])[:160]}\" ({c['action']}{due}); "
+                     "nothing in the chat, the standup or Notion shows it is done. "
+                     "Ask whether it got done or what is holding it up."),
+        })
+    return out
+
+
+def mark(cid: int, status: str, evidence: str = "") -> bool:
+    conn = get_connection()
+    try:
+        ensure_schema(conn)
+        with conn:
+            cur = conn.execute(
+                "UPDATE group_commitments SET status=?, evidence=?, updated_at=? "
+                "WHERE id=? AND status='open'", (status, evidence[:300], _now().isoformat(), cid))
+        return bool(cur.rowcount)
+    finally:
+        conn.close()
+
+
+def note_nudged(ref: str) -> None:
+    m = re.match(r"gc:(\d+)$", str(ref or ""))
+    if not m:
+        return
+    conn = get_connection()
+    try:
+        with conn:
+            conn.execute("UPDATE group_commitments SET nudge_count=nudge_count+1, last_nudged_at=? "
+                         "WHERE id=?", (_now().isoformat(), int(m.group(1))))
+    finally:
+        conn.close()
+
+
+# ── reading (agent tool + inspection) ────────────────────────────────────────
+
+def list_commitments(person: str = "", status: str = "open", limit: int = 30) -> list:
+    conn = get_connection()
+    try:
+        ensure_schema(conn)
+        sql = ("SELECT id, owner_name, action, due_date, status, quote, source_ts, evidence "
+               "FROM group_commitments WHERE 1=1")
+        params: list = []
+        if status in ("open", "done", "dropped"):
+            sql += " AND status=?"
+            params.append(status)
+        if person:
+            sql += " AND LOWER(owner_name) LIKE ?"
+            params.append(f"%{person.lower()}%")
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        cols = ["id", "owner", "action", "due", "status", "quote", "said_at", "evidence"]
+        return [dict(zip(cols, r)) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+
+def format_commitments(rows: list) -> str:
+    if not rows:
+        return "No tracked group commitments match that."
+    lines = []
+    for r in rows:
+        bit = f"#{r['id']} {r['owner']}: {r['action']}"
+        if r.get("due"):
+            bit += f" (due {r['due']})"
+        if r.get("status") != "open":
+            bit += f" [{r['status']}" + (f": {r['evidence']}" if r.get("evidence") else "") + "]"
+        lines.append(bit)
+    return "\n".join(lines)

@@ -576,6 +576,7 @@ _DATE_WORD = re.compile(
 _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "remind_me", "send_group_message",
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
+    "resolve_group_commitment",
     "create_task", "set_task_meta", "set_attendance", "review_task",
     "place_announcement_call", "set_leave", "clear_leave",
     "set_standing_rule", "remove_standing_rule",
@@ -1551,6 +1552,41 @@ _EMPLOYEE_TOOLS = [
             },
         },
     },
+    {
+        "name": "get_group_commitments",
+        "description": "What people promised in the team group chat, tracked "
+                       "automatically: who said they'd do what, by when, and "
+                       "whether it's still open. Use for 'what did people "
+                       "commit to', 'what's still pending from the group', "
+                       "'did Nupur say she'd do X', 'what's open from today'. "
+                       "Each line starts with #id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "person": {"type": "string",
+                           "description": "Optional name to filter by."},
+                "status": {"type": "string",
+                           "description": "open (default), done, dropped or all."},
+            },
+        },
+    },
+    {
+        "name": "resolve_group_commitment",
+        "description": "Close a tracked group promise when someone tells you "
+                       "it's finished or cancelled ('the story is posted', "
+                       "'forget the logo, client dropped it'). Pass its #id "
+                       "from get_group_commitments, or some words from it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "which": {"type": "string",
+                          "description": "The #id number, or words from the promise."},
+                "status": {"type": "string",
+                           "description": "done (default) or dropped."},
+            },
+            "required": ["which"],
+        },
+    },
     # Anthropic-hosted web search — Claude runs the query server-side and
     # gets cited results. Same tool spec the chat stream endpoint uses.
     # max_uses capped at 2 (was 4) -- each search is billed separately from
@@ -2419,6 +2455,41 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 return "(couldn't read the group chat just now)"
             return got or "Nothing in the group chat matches that in that time window."
 
+        if name == "get_group_commitments" and kind == "employee":
+            try:
+                import group_intel
+                st = str((tool_input or {}).get("status") or "open").lower()
+                rows = group_intel.list_commitments(
+                    str((tool_input or {}).get("person") or "").strip(),
+                    st if st in ("open", "done", "dropped") else "all")
+                return group_intel.format_commitments(rows)
+            except Exception:
+                logger.exception("whatsapp_agent: get_group_commitments failed")
+                return "(couldn't read the tracked group promises just now)"
+
+        if name == "resolve_group_commitment" and kind == "employee":
+            try:
+                import group_intel
+                which = str((tool_input or {}).get("which") or "").strip()
+                status = "dropped" if str((tool_input or {}).get("status") or "").lower().startswith("drop") else "done"
+                m = re.search(r"\d+", which)
+                cid = int(m.group(0)) if m and len(re.sub(r"\D", "", which)) == len(which.strip("# ")) else None
+                if cid is None:
+                    best = None
+                    for r in group_intel.list_commitments("", "open", 60):
+                        sc = group_intel._overlap(which, r["action"])
+                        if sc >= 0.5 and (best is None or sc > best[0]):
+                            best = (sc, r)
+                    cid = best[1]["id"] if best else None
+                if cid is None:
+                    return f"Couldn't find an open group promise matching '{which[:60]}'."
+                if group_intel.mark(cid, status, f"closed by {identity.get('name', '?')} on WhatsApp"):
+                    return f"Marked group promise #{cid} {status}."
+                return f"Group promise #{cid} was already closed."
+            except Exception:
+                logger.exception("whatsapp_agent: resolve_group_commitment failed")
+                return "(couldn't update that group promise just now)"
+
         if name == "get_attendance" and kind == "employee":
             try:
                 conn = get_connection()
@@ -2796,7 +2867,9 @@ def compose_followup(employee: dict, items: list) -> str:
                     "Mention every item below and nothing else; do not invent "
                     "any task, date, name or number that isn't in the list. "
                     "No greeting boilerplate, no offer to help, no questions "
-                    "back. Two or three short lines total. "
+                    "back, EXCEPT an item that says to ask whether something "
+                    "got done: ask that one plainly. Two or three short lines "
+                    "total. "
                     "You have NO tools in this turn and nothing to look up: "
                     "everything you need is in the list. Never write tool "
                     "calls, XML tags, or narration like 'let me check' or "
@@ -2952,6 +3025,11 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
+            "Promises made in the group are tracked automatically "
+            "(get_group_commitments). If someone tells you one of THEIR "
+            "promises is finished or cancelled, close it with "
+            "resolve_group_commitment. When you chase someone about one, they "
+            "may answer in DM: done -> close it; blocked -> note it.\n"
             "You keep the team group chat in memory: in the group you are "
             "given the latest messages, and read_group_chat searches the last "
             "30 days (works from a DM too). For 'what did X say / what was "

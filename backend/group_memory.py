@@ -36,7 +36,8 @@ def _ensure_table(conn) -> None:
         sender_name  TEXT,
         text         TEXT NOT NULL,
         wa_id        TEXT,
-        created_at   TEXT NOT NULL
+        created_at   TEXT NOT NULL,
+        processed    INTEGER NOT NULL DEFAULT 0
     )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_group_log_g ON wa_group_log (group_id, id)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_group_log_u "

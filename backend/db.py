@@ -628,6 +628,29 @@ def init_db():
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_group_log_g ON wa_group_log (group_id, id)")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_group_log_u ON wa_group_log (group_id, wa_id)")
+        try:
+            conn.execute("ALTER TABLE wa_group_log ADD COLUMN processed INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
+        # Promises tracked from group chat (group_intel.py)
+        conn.execute("""CREATE TABLE IF NOT EXISTS group_commitments (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id      TEXT NOT NULL,
+            group_name    TEXT,
+            owner_name    TEXT,
+            owner_id      TEXT,
+            action        TEXT NOT NULL,
+            due_date      TEXT,
+            quote         TEXT,
+            source_ts     TEXT,
+            status        TEXT NOT NULL DEFAULT 'open',
+            evidence      TEXT,
+            nudge_count   INTEGER NOT NULL DEFAULT 0,
+            last_nudged_at TEXT,
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gc_status ON group_commitments (status, owner_id)")
 
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.

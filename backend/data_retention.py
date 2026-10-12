@@ -370,5 +370,7 @@ def run_retention_sweep(*, dry_run: bool = False) -> dict:
         _prune_sheet_edit_log(dry_run=dry_run),
         _prune_orphaned_sheet_edit_log(dry_run=dry_run),
         _prune_simple("wa_group_log", "created_at", dry_run=dry_run, days=30),
+        _prune_simple("group_commitments", "updated_at", dry_run=dry_run, days=90,
+                      extra_where="status != 'open'"),
     ]
     return {"dry_run": dry_run, "results": results}

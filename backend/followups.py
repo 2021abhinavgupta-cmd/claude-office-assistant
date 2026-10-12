@@ -160,6 +160,14 @@ def mark_sent(user_id: str, items: list) -> None:
         logger.exception("followups: mark_sent failed")
     finally:
         conn.close()
+    # after the log connection is closed (two writers on one SQLite file)
+    for it in items:
+        if it.get("kind") == "group_commitment":
+            try:
+                import group_intel
+                group_intel.note_nudged(it.get("ref", ""))
+            except Exception:
+                logger.debug("followups: note_nudged failed", exc_info=True)
 
 
 def prune_log(days: int = 30) -> int:
@@ -285,6 +293,10 @@ def _due_rules(user_id: str, now: datetime) -> list:
     } for r in due]
 
 
+# Notion task list is read at most once per sweep for commitment evidence.
+_EVIDENCE_CACHE: dict = {}
+
+
 def loose_ends_for(employee: dict, *, today: str | None = None,
                    now: datetime | None = None,
                    names_by_id: dict | None = None) -> list:
@@ -300,6 +312,13 @@ def loose_ends_for(employee: dict, *, today: str | None = None,
         return []
     items = []
     items += _due_rules(uid, now)
+    try:
+        # promises made in the team group chat that nothing shows were kept
+        import group_intel
+        items += group_intel.commitment_items(uid, name, today, now,
+                                              cache=_EVIDENCE_CACHE)
+    except Exception:
+        logger.debug("followups: group commitments unavailable", exc_info=True)
     items += _stale_standup_tasks(uid, today)
     items += _stalled_delegations(uid, name, today, names_by_id)
     # Longest-stalled first: if the per-person cap trims the list, the worst
@@ -335,6 +354,7 @@ def sweep(*, dry_run: bool = False) -> dict:
     if not in_working_window(now):
         return {"skipped": "outside working window",
                 "weekday": now.weekday(), "hour": now.hour, "sent": 0}
+    _EVIDENCE_CACHE.clear()
 
     today = now.strftime("%Y-%m-%d")
     employees = _eligible_employees()
