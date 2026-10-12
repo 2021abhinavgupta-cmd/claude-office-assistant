@@ -1171,6 +1171,20 @@ def companion_ask_test():
     return jsonify({"reply": reply, "seconds": round(time.time() - t0, 1), **seen})
 
 
+@companion_bp.route("/api/companion/group-summary-debug", methods=["GET"])
+def companion_group_summary_debug():
+    """Run the group summary once and show the model's raw points and which the
+    checker accepted/rejected (token-gated). ?q=what was discussed in the group today"""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import group_digest
+    import whatsapp_agent as wa
+    q = (request.args.get("q") or "what was discussed in the group today").strip()
+    group_digest.LAST.clear()
+    out = group_digest.build(q, wa._group_allowlist(), llm=wa._digest_llm, llm_smart=wa._digest_llm_smart)
+    return jsonify({"reply": out, "attempt": group_digest.LAST})
+
+
 @companion_bp.route("/api/companion/mgmt-view", methods=["GET"])
 def companion_mgmt_view():
     """Preview a management answer: ?view=at_risk|blocked|needs_vg|completed_week|

@@ -267,6 +267,9 @@ def _point_ok(text: str, ids: list, rows) -> bool:
     return _words_ok(text, hay) and quotes_ok(text, hay)
 
 
+LAST: dict = {}   # last summary attempt (raw model points + verdicts), for the debug route
+
+
 def _summary(rows, label: str, notes: list, llm) -> str | None:
     if llm is None or not rows:
         return None
@@ -275,6 +278,9 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
                          for i, r in enumerate(use))
     try:
         raw = llm(_SUM_SYSTEM, numbered[:24000])
+        LAST.clear()
+        LAST["raw"] = (raw or "")[:4000]
+        LAST["verdicts"] = []
         m = re.search(r"\{[\s\S]*\}", raw or "")
         points = json.loads(m.group(0)).get("points") if m else None
     except Exception:
@@ -290,7 +296,9 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
         except Exception:
             bad += 1
             continue
-        if ids and _point_ok(text, ids, use):
+        ok = bool(ids) and _point_ok(text, ids, use)
+        LAST.setdefault("verdicts", []).append({"ok": ok, "text": text, "ids": ids})
+        if ok:
             good.append((ids[0], text))
         else:
             bad += 1
