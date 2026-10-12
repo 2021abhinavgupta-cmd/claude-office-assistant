@@ -135,17 +135,40 @@ def _decisions(emp: dict, rows: list) -> list:
     return out
 
 
-def _my_tasks(emp: dict, rows: list, today) -> dict:
-    """Notion tasks assigned to this person + their standup, from data already loaded."""
+_TASKS: dict = {"at": 0.0, "data": []}
+
+
+def _all_tasks() -> list:
+    """Every Notion task (including ones under no client), cached for a minute so a
+    batch of dashboards reads Notion once."""
+    import time
+    import notion_store
+    if _TASKS["data"] and time.time() - _TASKS["at"] < 60:
+        return _TASKS["data"]
+    try:
+        data = notion_store.list_tasks() if notion_store.is_configured() else []
+    except Exception:
+        data = []
+    if data:
+        _TASKS["data"], _TASKS["at"] = data, time.time()
+    return data
+
+
+def _my_tasks(emp: dict, today) -> dict:
+    """Notion tasks assigned to this person (any client, same rule as 'who is overloaded')
+    plus their standup."""
+    import client_card as cc
+    import mgmt_views
     first = _first(emp.get("name", "")).lower()
     iso = today.isoformat()
     cut = (today - timedelta(days=OVERDUE_DAYS)).isoformat()
     wk_end = (today + timedelta(days=7)).isoformat()
     mine = []
-    for g in rows:
-        for t in g["open"]:
-            if first and first in str(t.get("assigned_to") or "").lower():
-                mine.append((g["name"], t))
+    for t in _all_tasks():
+        if cc._st(t) in cc._CLOSED or cc._st(t) in cc._APPROVAL:
+            continue
+        if first and first in mgmt_views._owners(t):
+            mine.append((t.get("client_name") or "No client", t))
     over = [(c, t) for c, t in mine if cut <= str(t.get("due_date") or "")[:10] < iso]
     due = [(c, t) for c, t in mine if str(t.get("due_date") or "")[:10] == iso]
     soon = [(c, t) for c, t in mine if iso < str(t.get("due_date") or "")[:10] <= wk_end]
@@ -220,8 +243,7 @@ def build(emp: dict, now: datetime | None = None) -> str:
 
     # everyone who does hands-on work (members, DMs, and Abhinav) gets their own work
     if role in ("member", "dm") or emp.get("id") == "emp003":
-        import mgmt_views as mv
-        t = _my_tasks(emp, mv._all_clients(), today)
+        t = _my_tasks(emp, today)
         lines += ["", "Your work today",
                   f"🔴 {len(t['over'])} overdue (last {OVERDUE_DAYS} days)",
                   f"🟡 {len(t['due'])} due today",
