@@ -174,23 +174,38 @@ def _my_tasks(emp: dict, today) -> dict:
     soon = [(c, t) for c, t in mine if iso < str(t.get("due_date") or "")[:10] <= wk_end]
     done = pending = 0
     blockers = []
+    urgent, risk, fine = [], [], []
     try:
         conn = get_connection()
         try:
-            for st, bl, title in conn.execute(
-                    "SELECT status, blocker, title FROM standup_tasks WHERE user_id=? AND date=? "
-                    "AND status NOT IN ('deleted','delegated')", (emp.get("id"), iso)).fetchall():
+            for st, bl, title, cf, dd in conn.execute(
+                    "SELECT status, blocker, title, carried_from, due_date FROM standup_tasks "
+                    "WHERE user_id=? AND date=? AND status NOT IN ('deleted','delegated')",
+                    (emp.get("id"), iso)).fetchall():
                 if st == "done":
                     done += 1
+                    continue
+                pending += 1
+                if (bl or "").strip():
+                    blockers.append(f"{title}: {bl.strip()}")
+                late = 0   # days this task has been hanging: rolled over from an earlier day, or past its due date
+                for d in (cf, dd):
+                    try:
+                        late = max(late, (today - datetime.strptime(str(d)[:10], "%Y-%m-%d").date()).days)
+                    except Exception:
+                        pass
+                if late >= 2:
+                    urgent.append((late, title))
+                elif late == 1:
+                    risk.append((late, title))
                 else:
-                    pending += 1
-                    if (bl or "").strip():
-                        blockers.append(f"{title}: {bl.strip()}")
+                    fine.append((late, title))
         finally:
             conn.close()
     except Exception:
         logger.debug("morning_dash: standup read failed", exc_info=True)
-    return {"over": over, "due": due, "soon": soon, "done": done, "pending": pending, "blockers": blockers}
+    return {"over": over, "due": due, "soon": soon, "done": done, "pending": pending, "blockers": blockers,
+            "urgent": sorted(urgent, reverse=True), "risk": risk, "fine": fine}
 
 
 def _list(items: list, n: int = 4) -> list:
@@ -244,15 +259,21 @@ def build(emp: dict, now: datetime | None = None) -> str:
     # everyone who does hands-on work (members, DMs, and Abhinav) gets their own work
     if role in ("member", "dm") or emp.get("id") == "emp003":
         t = _my_tasks(emp, today)
-        lines += ["", "Your work today",
-                  f"🔴 {len(t['over'])} overdue (last {OVERDUE_DAYS} days)",
-                  f"🟡 {len(t['due'])} due today",
-                  f"🟢 {len(t['soon'])} due in the next 7 days",
-                  f"  Standup: {t['pending']} to do, {t['done']} done"]
-        top = [_title(x) for x in t["due"]] + [_title(x) for x in t["over"]]
-        if top:
-            lines.append("  Start with:")
-            lines += _list(top, 4)
+        n = t["pending"]
+        lines += ["", "Your standup today",
+                  f"  {n} to do, {t['done']} done",
+                  f"🔴 {len(t['urgent'])} urgent (hanging more than a day)",
+                  f"🟡 {len(t['risk'])} at risk (rolled over from yesterday)",
+                  f"🟢 {len(t['fine'])} on track"]
+        if t["urgent"]:
+            lines.append("  Urgent:")
+            lines += _list([f"{ti} ({d} days)" for d, ti in t["urgent"]], 5)
+        if t["risk"]:
+            lines.append("  At risk:")
+            lines += _list([ti for _, ti in t["risk"]], 4)
+        if t["over"] or t["due"]:
+            lines += ["", f"On the board: {len(t['due'])} due today, {len(t['over'])} overdue (last {OVERDUE_DAYS} days)"]
+            lines += _list([_title(x) for x in t["due"]] + [_title(x) for x in t["over"]], 4)
         if role == "member" and t["blockers"]:
             lines += ["", "Blocked"] + _list(t["blockers"], 3)
 
