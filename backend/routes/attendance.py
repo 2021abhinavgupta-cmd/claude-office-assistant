@@ -572,7 +572,7 @@ def _overtime_hours(hrs):
 _INACTIVE_STATUSES = {"inactive", "disabled", "left", "removed", "archived", "former"}
 
 
-def _hours_and_day_type(checkin, checkout, is_today, is_approved_leave=False):
+def _hours_and_day_type(checkin, checkout, is_today, is_approved_leave=False, is_holiday=False):
     """(hours:float|None, label:str) for one (checkin_time, checkout_time)
     pair, both plain 'HH:MM:SS' IST or falsy. No midnight-rollover handling
     needed -- both are already clamped inside the same work-day window by
@@ -583,6 +583,10 @@ def _hours_and_day_type(checkin, checkout, is_today, is_approved_leave=False):
     from the attendance-% denominator (see `considered` below, unchanged
     on purpose: it only ever sums the plain "Leave" bucket)."""
     if not checkin:
+        # A public holiday on the office calendar is a day off for everyone:
+        # not a Leave, not an absence, and it stays out of Attendance %.
+        if is_holiday:
+            return None, "Holiday"
         return None, ("Leave (Approved)" if is_approved_leave else "Leave")
     if not checkout:
         return None, ("In Progress" if is_today else "Incomplete")
@@ -681,6 +685,26 @@ def attendance_export_sheets():
         "SELECT user_id, start_date, end_date FROM employee_leave WHERE status='approved'"
     )
     approved_leave_rows = cursor.fetchall()
+    # HR's office calendar: public holidays + WFH / in-person office days.
+    # {date: {"holiday": title|None, "modes": [labels]}} for weekday lookups.
+    cal_by_day = {}
+    cursor.execute("SELECT kind, title, start_date, end_date FROM office_calendar "
+                   "WHERE kind IN ('holiday','wfh','office')")
+    for k_, t_, sd_, ed_ in cursor.fetchall():
+        try:
+            d_ = _date.fromisoformat(sd_)
+            e_ = _date.fromisoformat(ed_)
+        except ValueError:
+            continue
+        while d_ <= e_:
+            slot = cal_by_day.setdefault(d_.isoformat(), {"holiday": None, "modes": []})
+            if k_ == "holiday":
+                slot["holiday"] = (t_ or "").strip() or "Holiday"
+            else:
+                lab = "Work from home" if k_ == "wfh" else "In-person office"
+                if lab not in slot["modes"]:
+                    slot["modes"].append(lab)
+            d_ += _timedelta(days=1)
     # Comp-off ("+1 leave for every 24h overtime", leave management system,
     # gotcha #126) earned per calendar month -- same IST-shifted bucketing
     # leave_store.get_balance() itself uses for this table (comp_off_ledger.
@@ -699,6 +723,14 @@ def attendance_export_sheets():
             continue
         comp_off_by_user_month[c_key] = comp_off_by_user_month.get(c_key, 0.0) + (c_days or 0.0)
     conn.close()
+
+    def _is_holiday(dstr):
+        return bool((cal_by_day.get(dstr) or {}).get("holiday"))
+
+    def _work_mode(dstr):
+        slot = cal_by_day.get(dstr) or {}
+        bits = ([f"Holiday: {slot['holiday']}"] if slot.get("holiday") else []) + list(slot.get("modes") or [])
+        return " / ".join(bits)
 
     def _is_approved_leave_day(uid, dstr):
         return any(u == uid and sd <= dstr <= ed for u, sd, ed in approved_leave_rows)
@@ -744,6 +776,7 @@ def attendance_export_sheets():
     DATE_FMT = "DD/MM/YYYY"
     TIME_FMT = "HH:MM"
     DAY_TYPE_FILLS = {
+        "Holiday": PatternFill("solid", fgColor="DBEAFE"),
         "Full Day": PatternFill("solid", fgColor="D1FAE5"),
         "Half Day": PatternFill("solid", fgColor="FEF3C7"),
         "Leave": PatternFill("solid", fgColor="FEE2E2"),
@@ -785,14 +818,15 @@ def attendance_export_sheets():
         return f"https://www.google.com/maps?q={lat},{lng}" if lat is not None and lng is not None else None
 
     style_header(ws_all, ["Date", "In", "Out", "Employee", "Tasks Completed",
-                          "Tasks Carried Forward", "Day Type", "Location In", "Location Out"])
+                          "Tasks Carried Forward", "Day Type", "Location In", "Location Out", "Work Mode"])
     for d, uid, cin, cout, cin_lat, cin_lng, cout_lat, cout_lng in rows:
         completed, carried = task_counts.get((uid, d), (0, 0))
         _, day_type = _hours_and_day_type(cin, cout, d == today,
-                                          is_approved_leave=_is_approved_leave_day(uid, d))
+                                          is_approved_leave=_is_approved_leave_day(uid, d),
+                                          is_holiday=_is_holiday(d))
         cin_obj, cout_obj = _parse_time_obj(cin), _parse_time_obj(cout)
         ws_all.append([_date.fromisoformat(d), cin_obj, cout_obj, format_user(uid),
-                       completed, carried, day_type, "", ""])
+                       completed, carried, day_type, "", "", _work_mode(d)])
         r = ws_all.max_row
         ws_all.cell(row=r, column=1).number_format = DATE_FMT
         if cin_obj is not None:
@@ -812,10 +846,10 @@ def attendance_export_sheets():
             c = ws_all.cell(row=r, column=9, value="View")
             c.hyperlink = out_link
             c.font = Font(color="2563EB", underline="single")
-        border_row(ws_all, r, 9)
+        border_row(ws_all, r, 10)
     if ws_all.max_row > 1:
-        ws_all.auto_filter.ref = f"A1:I{ws_all.max_row}"
-    set_widths(ws_all, [12, 10, 10, 18, 14, 18, 12, 12, 12])
+        ws_all.auto_filter.ref = f"A1:J{ws_all.max_row}"
+    set_widths(ws_all, [12, 10, 10, 18, 14, 18, 12, 12, 12, 26])
 
     # ── Per-employee sheets: each starts from its own real start date
     # (joined_date override, else that employee's own earliest
@@ -855,9 +889,10 @@ def attendance_export_sheets():
         ])
         ws.cell(row=2, column=1, value=meta).font = META_FONT
         style_header(ws, ["Date", "Day", "In", "Out", "Hours Worked", "Overtime Hours",
-                          "Day Type", "Tasks Completed", "Tasks Carried Forward"], row=4)
+                          "Day Type", "Tasks Completed", "Tasks Carried Forward", "Work Mode"], row=4)
 
-        counts = {"Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0, "In Progress": 0}
+        counts = {"Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0, "In Progress": 0,
+                  "Holiday": 0, "WFH": 0}
         total_hours = 0.0
         total_overtime = 0.0
         credit_total = 0.0
@@ -872,12 +907,13 @@ def attendance_export_sheets():
                 cin, cout = by_user_date.get((uid, dstr), (None, None))
                 hrs, day_type = _hours_and_day_type(
                     cin, cout, dstr == today,
-                    is_approved_leave=_is_approved_leave_day(uid, dstr))
+                    is_approved_leave=_is_approved_leave_day(uid, dstr),
+                    is_holiday=_is_holiday(dstr))
                 overtime = _overtime_hours(hrs)
                 completed, carried = task_counts.get((uid, dstr), (0, 0))
                 cin_obj, cout_obj = _parse_time_obj(cin), _parse_time_obj(cout)
                 ws.append([d, d.strftime("%A"), cin_obj, cout_obj,
-                          _hm(hrs), _hm(overtime), day_type, completed, carried])
+                          _hm(hrs), _hm(overtime), day_type, completed, carried, _work_mode(dstr)])
                 r = ws.max_row
                 ws.cell(row=r, column=1).number_format = DATE_FMT
                 if cin_obj is not None:
@@ -891,8 +927,11 @@ def attendance_export_sheets():
                 fill = DAY_TYPE_FILLS.get(day_type)
                 if fill:
                     ws.cell(row=r, column=7).fill = fill
-                border_row(ws, r, 9)
+                border_row(ws, r, 10)
                 counts[day_type] = counts.get(day_type, 0) + 1
+                is_wfh = "Work from home" in ((cal_by_day.get(dstr) or {}).get("modes") or [])
+                if is_wfh:
+                    counts["WFH"] += 1
                 credit_total += _attendance_credit(day_type)
                 if hrs is not None:
                     total_hours += hrs
@@ -902,7 +941,10 @@ def attendance_export_sheets():
                 mrow = months.setdefault(mkey, {
                     "Full Day": 0, "Half Day": 0, "Leave": 0, "Incomplete": 0,
                     "In Progress": 0, "hours": 0.0, "overtime": 0.0, "credit": 0.0,
+                    "Holiday": 0, "WFH": 0,
                 })
+                if is_wfh:
+                    mrow["WFH"] += 1
                 mrow[day_type] = mrow.get(day_type, 0) + 1
                 mrow["credit"] += _attendance_credit(day_type)
                 if hrs is not None:
@@ -912,8 +954,8 @@ def attendance_export_sheets():
             d += _timedelta(days=1)
         data_end_row = ws.max_row
         if data_end_row >= 5:
-            ws.auto_filter.ref = f"A4:I{data_end_row}"
-        set_widths(ws, [12, 12, 10, 10, 14, 14, 12, 14, 18])
+            ws.auto_filter.ref = f"A4:J{data_end_row}"
+        set_widths(ws, [12, 12, 10, 10, 14, 14, 12, 14, 18, 26])
 
         considered = counts["Full Day"] + counts["Half Day"] + counts["Leave"] + counts["Incomplete"]
         pct = (credit_total / considered) if considered else None
@@ -933,7 +975,7 @@ def attendance_export_sheets():
         # the "worked extra +1" the export is meant to surface.
         style_header_cells(ws, ["Month", "Full Days", "Half Days", "Leaves", "Incomplete",
                                 "Working Days", "Total Hours", "Overtime Hours", "Attendance %",
-                                "Approved Leaves", "Comp-Off Earned"], month_header_row)
+                                "Approved Leaves", "Comp-Off Earned", "Holidays", "WFH Days"], month_header_row)
         mrow_idx = month_header_row
         comp_off_total = 0.0
         for (yr, mo), m in months.items():
@@ -958,7 +1000,9 @@ def attendance_export_sheets():
             ws.cell(row=mrow_idx, column=10, value=m.get("Leave (Approved)", 0))
             comp_off_cell = ws.cell(row=mrow_idx, column=11, value=round(m_comp_off, 1))
             comp_off_cell.number_format = "0.0"
-            border_row(ws, mrow_idx, 11)
+            ws.cell(row=mrow_idx, column=12, value=m.get("Holiday", 0))
+            ws.cell(row=mrow_idx, column=13, value=m.get("WFH", 0))
+            border_row(ws, mrow_idx, 13)
         # A bold "Total (All Time)" row underneath every month, using the
         # same aggregate counts the old single Summary block reported.
         total_row = mrow_idx + 1
@@ -967,6 +1011,7 @@ def attendance_export_sheets():
             counts["Incomplete"], considered, _hm(total_hours), _hm(total_overtime),
             pct if pct is not None else "N/A",
             counts.get("Leave (Approved)", 0), round(comp_off_total, 1),
+            counts.get("Holiday", 0), counts.get("WFH", 0),
         ]
         for col, val in enumerate(total_cells, start=1):
             c = ws.cell(row=total_row, column=col, value=val)
@@ -976,7 +1021,7 @@ def attendance_export_sheets():
         if pct is not None:
             ws.cell(row=total_row, column=9).number_format = "0.0%"
         ws.cell(row=total_row, column=11).number_format = "0.0"
-        border_row(ws, total_row, 11)
+        border_row(ws, total_row, 13)
         ws.column_dimensions["J"].width = max(ws.column_dimensions["J"].width or 0, 16)
         ws.column_dimensions["K"].width = max(ws.column_dimensions["K"].width or 0, 16)
 
@@ -1007,6 +1052,9 @@ def attendance_export_sheets():
                f"{_FULL_DAY_HOURS:g} hours (but checked in)  |  Leave = no check-in that weekday  |  "
                "Leave (Approved) = no check-in, covered by an HR-approved leave request "
                "(does not count against Attendance %)  |  "
+               "Holiday = public holiday set on the office calendar (no check-in needed, not counted "
+               "in working days or Attendance %)  |  "
+               "Work Mode column = what HR set that day: work from home / in-person office / holiday  |  "
                "Incomplete = checked in but no checkout was logged  |  "
                "In Progress = still checked in today, not final yet  |  "
                f"Overtime = hours worked beyond {_FULL_DAY_HOURS:g} on a day"),
