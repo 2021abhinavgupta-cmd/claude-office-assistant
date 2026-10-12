@@ -145,11 +145,14 @@ def _owners(t: dict) -> list:
 
 
 def overloaded() -> str:
+    """Load = standup tasks pending today + board tasks due today..+7 days.
+    Recently overdue work (last 14 days) is counted separately as "behind" so a
+    pile of stale items doesn't make everyone look equally overloaded."""
     import client_card as cc
     import notion_store
     today = _today()
     roster = _roster()
-    load = {e["id"]: {"name": e["name"], "stand": 0, "board": 0} for e in roster}
+    load = {e["id"]: {"name": e["name"], "stand": 0, "soon": 0, "late": 0} for e in roster}
     try:
         conn = get_connection()
         try:
@@ -162,6 +165,7 @@ def overloaded() -> str:
             conn.close()
     except Exception:
         logger.exception("mgmt_views: standup load failed")
+    iso = today.isoformat()
     lo = (today - timedelta(days=cc.OVERDUE_DAYS)).isoformat()
     hi = (today + timedelta(days=7)).isoformat()
     try:
@@ -173,26 +177,30 @@ def overloaded() -> str:
         if cc._st(t) in cc._CLOSED or cc._st(t) in cc._APPROVAL:
             continue
         d = cc._due(t)
-        if not d or not (lo <= d <= hi):
+        if not d:
+            continue
+        key = "soon" if iso <= d <= hi else "late" if lo <= d < iso else ""
+        if not key:
             continue
         for o in _owners(t):
             if o in by_first:
-                load[by_first[o]]["board"] += 1
-    ranked = sorted(((v["stand"] + v["board"], v) for v in load.values() if v["stand"] + v["board"] > 0),
-                    key=lambda x: -x[0])
-    if not ranked:
+                load[by_first[o]][key] += 1
+    rows = [(v["stand"] + v["soon"], v) for v in load.values() if v["stand"] + v["soon"] + v["late"] > 0]
+    if not rows:
         return "Nobody has any open work on the board or their standup right now."
-    avg = sum(s for s, _ in ranked) / len(ranked)
+    rows.sort(key=lambda x: (-x[0], -x[1]["late"]))
+    avg = sum(s for s, _ in rows) / len(rows)
     cut = max(8, 1.5 * avg)
-    over = [(s, v) for s, v in ranked if s >= cut]
-    lines = []
-    if over:
-        lines.append("Overloaded: " + ", ".join(f"{v['name']} ({s})" for s, v in over) + ".")
-    else:
-        lines.append("Nobody is overloaded right now.")
-    lines.append("Open work (standup today + board tasks due in the next 7 days or the last 14):")
-    for s, v in ranked[:8]:
-        lines.append(f"- {v['name']}: {s} ({v['stand']} on standup, {v['board']} on the board)")
+    over = [(s, v) for s, v in rows if s >= cut]
+    lines = [("Overloaded: " + ", ".join(f"{v['name']} ({s})" for s, v in over) + ".") if over
+             else "Nobody is overloaded right now."]
+    behind = sorted((v for _, v in rows if v["late"] >= 5), key=lambda v: -v["late"])
+    if behind:
+        lines.append("Most behind: " + ", ".join(f"{v['name']} ({v['late']} overdue)" for v in behind[:3]) + ".")
+    lines.append("Open work = standup today + board tasks due in the next 7 days:")
+    for s, v in rows[:8]:
+        lines.append(f"- {v['name']}: {s} ({v['stand']} on standup, {v['soon']} due soon"
+                     + (f", {v['late']} overdue" if v["late"] else "") + ")")
     return "\n".join(lines)
 
 
