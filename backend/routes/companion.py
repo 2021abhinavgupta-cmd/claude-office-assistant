@@ -1116,6 +1116,61 @@ def companion_rhythm_run():
     return jsonify(ops_rhythm.run_tick(force_kind=kind, only_ids=ids))
 
 
+@companion_bp.route("/api/companion/ask-test", methods=["GET"])
+def companion_ask_test():
+    """Run one question through the real WhatsApp agent as an employee (default
+    emp003) and return the reply plus which model answered. Nothing is sent to
+    WhatsApp and the person's saved chat context is restored afterwards.
+    ?q=...&user_id=emp003"""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import time
+    import whatsapp_agent as wa
+    uid = request.args.get("user_id", "emp003")
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"error": "pass ?q="}), 400
+    number = ""
+    try:
+        number = next((e.get("whatsapp", "") for e in utils._load_employees().get("employees", [])
+                       if e.get("id") == uid), "")
+    except Exception:
+        pass
+    if not number:
+        return jsonify({"error": "that employee has no WhatsApp number"}), 400
+    saved = None
+    conn = get_connection()
+    try:
+        saved = conn.execute("SELECT messages, updated_at FROM whatsapp_agent_context WHERE sender=?",
+                             (number,)).fetchone()
+    finally:
+        conn.close()
+    seen = {}
+    orig = wa._llm_create
+    def spy(model, system, tools, messages, max_tokens, usage, smart=False):
+        seen["smart"], seen["tier"], seen["max_tokens"] = smart, model.get("tier"), max_tokens
+        return orig(model, system, tools, messages, max_tokens, usage, smart=smart)
+    wa._llm_create = spy
+    t0 = time.time()
+    try:
+        reply = wa.handle_message(number, q)
+    finally:
+        wa._llm_create = orig
+        conn = get_connection()
+        try:
+            with conn:
+                if saved:
+                    conn.execute("UPDATE whatsapp_agent_context SET messages=?, updated_at=? WHERE sender=?",
+                                 (saved[0], saved[1], number))
+                else:
+                    conn.execute("DELETE FROM whatsapp_agent_context WHERE sender=?", (number,))
+        finally:
+            conn.close()
+    if isinstance(reply, dict):
+        reply = reply.get("reply", "")
+    return jsonify({"reply": reply, "seconds": round(time.time() - t0, 1), **seen})
+
+
 @companion_bp.route("/api/companion/mgmt-view", methods=["GET"])
 def companion_mgmt_view():
     """Preview a management answer: ?view=at_risk|blocked|needs_vg|completed_week|

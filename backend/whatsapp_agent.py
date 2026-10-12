@@ -46,30 +46,46 @@ _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
 def _llm_create(model: dict, system, tools, messages: list, max_tokens: int,
-                usage: dict):
-    """One model call. Uses Qwen via OpenRouter when it is configured and on
+                usage: dict, smart: bool = False):
+    """One model call. Normally Qwen via OpenRouter when it is configured and on
     (llm_openrouter.enabled()), otherwise -- or if that call fails for any
-    reason -- Claude. Token counts are added to `usage` per provider so each
-    is billed at its own rate. Returns an Anthropic-shaped response either way."""
+    reason -- Claude. smart=True (a message that needs real thinking, see
+    _needs_deep_thinking) tries Claude first and falls back to Qwen. Token
+    counts are added to `usage` per provider so each is billed at its own rate.
+    Returns an Anthropic-shaped response either way."""
+    def _qwen():
+        resp = llm_openrouter.create(system=system, tools=tools,
+                                     messages=messages, max_tokens=max_tokens)
+        u = usage.setdefault("qwen", [0, 0])
+        u[0] += resp.usage.input_tokens
+        u[1] += resp.usage.output_tokens
+        return resp
+
+    def _claude():
+        kwargs = {"model": model["name"], "max_tokens": max_tokens, "system": system,
+                  "messages": llm_openrouter.to_anthropic_messages(messages)}
+        if tools:
+            kwargs["tools"] = tools
+        resp = _client.messages.create(**kwargs)
+        u = usage.setdefault("claude", [0, 0])
+        u[0] += resp.usage.input_tokens
+        u[1] += resp.usage.output_tokens
+        return resp
+
+    if smart:
+        try:
+            return _claude()
+        except Exception:
+            logger.exception("whatsapp_agent: smart (Claude) call failed")
+            if llm_openrouter.enabled():
+                return _qwen()
+            raise
     if llm_openrouter.enabled():
         try:
-            resp = llm_openrouter.create(system=system, tools=tools,
-                                         messages=messages, max_tokens=max_tokens)
-            u = usage.setdefault("qwen", [0, 0])
-            u[0] += resp.usage.input_tokens
-            u[1] += resp.usage.output_tokens
-            return resp
+            return _qwen()
         except Exception:
             logger.exception("whatsapp_agent: OpenRouter call failed, falling back to Claude")
-    kwargs = {"model": model["name"], "max_tokens": max_tokens, "system": system,
-              "messages": llm_openrouter.to_anthropic_messages(messages)}
-    if tools:
-        kwargs["tools"] = tools
-    resp = _client.messages.create(**kwargs)
-    u = usage.setdefault("claude", [0, 0])
-    u[0] += resp.usage.input_tokens
-    u[1] += resp.usage.output_tokens
-    return resp
+    return _claude()
 
 
 def _record_llm_usage(model: dict, usage: dict, user_id: str) -> None:
@@ -574,6 +590,84 @@ _TASK_REQUEST = re.compile(
     r"\b(tasks?|standup|stand-up|todo|to-do|add|mark|done|complete[d]?|finish(ed)?|"
     r"assign|delegate|remind|delete|remove|blocker|due|overdue|pending|list|"
     r"show|update|reopen|status)\b", re.I)
+
+# Messages that need real thinking (advice, explanation, drafting, planning,
+# comparison...) rather than a lookup or a command. These go to the stronger
+# model (Claude Sonnet) while the daily cap allows; everything else stays on the
+# cheap model. A short imperative that starts with a command verb ("add",
+# "assign", "approve"...) is never "deep" unless it is also phrased as a question.
+_DEEP = re.compile(
+    r"\b(why|explain|compare|comparison|difference between|strateg\w*|advice|advise|suggest\w*|"
+    r"recommend\w*|should (?:i|we)|what do you think|your (?:opinion|take|view)|pros and cons|"
+    r"brainstorm|ideas? for|draft|write|rewrite|proofread|caption|script|pitch|proposal|"
+    r"negotiat\w*|pricing|analy[sz]e|summari[sz]e|calculate|how (?:do|can|would|should|to) |"
+    r"help me (?:decide|think|plan|write|figure|understand)|best way|trade-?off|improve|"
+    r"feedback on|review (?:this|my)|translate|what would happen|what if|is it (?:worth|a good)|"
+    r"which (?:is|one|should)|tell me about|how does|how do)\b", re.I)
+_CMD_START = re.compile(
+    r"^(?:please\s+|pls\s+|lumina[,:\s]+)?(?:add|mark|assign|delegate|remind|create|move|delay|"
+    r"approve|reject|set|clear|show|list|get|send|schedule|tell|ping|call|text|put|push|"
+    r"delete|remove|cancel|check|open|close)\b", re.I)
+
+
+def _needs_deep_thinking(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    if len(t) >= 160:
+        return True
+    if not _DEEP.search(t):
+        return False
+    if "?" not in t and (_CMD_START.match(t) or re.search(
+            r"\b(?:my|the|today's|tomorrow's)\s+(?:daily\s+)?(?:stand-?up|task list|to-?do)\b", t, re.I)):
+        return False
+    return True
+
+
+def _smart_setting() -> str:
+    v = os.getenv("WHATSAPP_SMART", "").strip().lower()
+    if v:
+        return v
+    try:
+        conn = get_connection()
+        row = conn.execute("SELECT value FROM app_settings WHERE key='whatsapp_smart_llm'").fetchone()
+        conn.close()
+        return str(row[0]).strip().lower() if row and row[0] else ""
+    except Exception:
+        return ""
+
+
+def _smart_allowed() -> bool:
+    """True when a thinking-heavy message may use Claude Sonnet: not switched off
+    (WHATSAPP_SMART=off or app_settings whatsapp_smart_llm=off), a Claude key
+    exists, and today's cap (WHATSAPP_SMART_DAILY_CAP, default 40 messages) is not
+    used up. Counts the message when it returns True."""
+    if _smart_setting() in ("off", "0", "false", "no", "qwen"):
+        return False
+    if not os.getenv("ANTHROPIC_API_KEY", "").strip():
+        return False
+    try:
+        cap = int(os.getenv("WHATSAPP_SMART_DAILY_CAP", "40") or 40)
+    except ValueError:
+        cap = 40
+    key = f"wa_smart_{_today_ist()}"
+    try:
+        conn = get_connection()
+        try:
+            with conn:
+                row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+                n = int(row[0]) if row and str(row[0]).isdigit() else 0
+                if n >= cap:
+                    return False
+                conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                             (key, str(n + 1)))
+        finally:
+            conn.close()
+        return True
+    except Exception:
+        logger.debug("whatsapp_agent: smart counter failed", exc_info=True)
+        return False
+
 
 _SHOW_TASKS = re.compile(
     r"^(?:please\s+|pls\s+)?(?:(?:show|list|give|get|send)(?:\s+me)?\s+(?:all\s+)?(?:my\s+)?"
@@ -1855,15 +1949,26 @@ _EMPLOYEE_TOOLS = [
             "required": ["which"],
         },
     },
-    # Anthropic-hosted web search — Claude runs the query server-side and
-    # gets cited results. Same tool spec the chat stream endpoint uses.
-    # max_uses capped at 2 (was 4) -- each search is billed separately from
-    # tokens, and a WhatsApp question rarely needs more than one lookup.
-    # cache_control on this LAST entry caches the whole ~20-tool array (it's
-    # sent unchanged every round of the loop, same as the system prompt --
-    # see the sys_prompt cache_control note in handle_message).
-    {"type": "web_search_20250305", "name": "web_search", "max_uses": 2,
-     "cache_control": {"type": "ephemeral"}},
+    # Live web lookup that works on ANY model (web_search.py). It replaced
+    # Anthropic's hosted web_search tool, which only exists for Claude and so
+    # left the bot with no internet while it runs on Qwen.
+    # cache_control on this LAST entry caches the whole tool array (it's sent
+    # unchanged every round of the loop, same as the system prompt -- see the
+    # sys_prompt cache_control note in handle_message).
+    {
+        "name": "search_web",
+        "description": "Search the live internet and get a short sourced answer. Use "
+                       "for anything the company data can't know: news, trends, "
+                       "competitors, prices, how something works, facts that may "
+                       "have changed, 'look it up'. Not for MMGA clients or tasks.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string",
+                                     "description": "What to look up, as a search query."}},
+            "required": ["query"],
+        },
+        "cache_control": {"type": "ephemeral"},
+    },
 ]
 
 _CLIENT_TOOLS = [
@@ -2743,6 +2848,10 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 done_bits.append(f"due {due}" if due else "due date cleared")
             return f"Updated '{m['title']}': " + ", ".join(done_bits) + "."
 
+        if name == "search_web" and kind == "employee":
+            import web_search
+            return web_search.answer((tool_input or {}).get("query", ""))
+
         if name == "get_management_view" and kind == "employee":
             import mgmt_views
             return mgmt_views.view((tool_input or {}).get("view", ""), identity)
@@ -3327,6 +3436,29 @@ def _clean_followup(text: str) -> str:
     return ""
 
 
+_BRAIN = (
+    "You are not just a database reader. You are a sharp, well-read personal "
+    "assistant with your own mind and judgement, like a very capable chief of "
+    "staff. Answer ANY question the way a smart colleague would, from your own "
+    "knowledge and reasoning: general knowledge, writing and editing (captions, "
+    "scripts, emails, replies to clients), brainstorming, marketing and "
+    "business strategy, pricing, maths, planning, tech and coding, and "
+    "decisions or advice of any kind. Use the tools for MMGA facts (tasks, "
+    "clients, who owns what, dates, approvals) and search_web for outside or "
+    "current facts; for everything else think and answer yourself. Never "
+    "invent MMGA facts, but do have opinions: when asked what to do, "
+    "recommend one option, say why in a sentence or two, name the main risk "
+    "and what you'd do next. Disagree politely when you think they're wrong. "
+    "When the data and your own reasoning together show a problem they "
+    "didn't ask about (an approval stuck for days, two things clashing this "
+    "week), add one line about it at the end. Ask a clarifying question only "
+    "when you truly can't go on; otherwise state your assumption and answer. "
+    "Talk like a person: natural and direct, contractions, varied wording. "
+    "Never say 'as an AI' or 'I don't have access' when you could reason or "
+    "search instead.\n"
+)
+
+
 def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = "") -> str:
     today = _today_ist()
     if identity["kind"] == "employee":
@@ -3377,10 +3509,13 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
                 "invented to land a joke.\n"
             )
         length_cap = (
-            "Keep it short: 1-3 sentences for a normal reply. Only go longer "
-            "when the actual answer is a list of several real items (tasks, "
-            "clients, dates) -- then list exactly those, still no filler "
-            "around them.\n"
+            "Match the length to the question. Chit-chat and quick facts: 1-3 "
+            "sentences. A real question (advice, an explanation, a plan, a "
+            "comparison, a draft, a decision): give a complete, well organised "
+            "answer, usually under 200 words and longer only when a draft or "
+            "plan needs it, each point on its own line. A list of real items "
+            "(tasks, clients, dates): list exactly those, no filler around "
+            "them.\n"
         )
         if in_group:
             style = (
@@ -3407,6 +3542,7 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             + ".\n"
             + persona
             + grp
+            + _BRAIN
             + "Look up real client, task, deadline and document data with the "
             "tools before you answer. Never guess a task's status or date. "
             "When you list someone's tasks, list ONLY what the tool call just "
@@ -3521,9 +3657,10 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "person's message really lands — a genuine win, a good burn, "
             "something absurd, a facepalm moment — in a DM or the group. Not on "
             "a routine answer, and at most once in a while.\n"
-            "Use web_search for outside info (news, trends, competitor info, "
-            "general facts) the CRM and knowledge base don't have. Try the "
-            "internal tools first and mention the source briefly.\n"
+            "Use search_web for anything outside the company's own data: news, "
+            "trends, competitors, prices, facts that may have changed, 'look it "
+            "up'. Don't search for things you already know well or for MMGA "
+            "data. Mention the source briefly.\n"
             "When they phrase something as an ongoing rule rather than a "
             "one-off -- 'from now on always...', 'never do X without asking "
             "me', 'whenever a client uploads something tell me', 'every "
@@ -3552,7 +3689,9 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "database on their own. Use it rarely, only for things that "
             "would actually help a future conversation.\n"
             + style
-            + "If nothing has the answer, say so in one line.\n"
+            + "If the company data doesn't have what they asked about, say what's "
+            "missing in one line, then still help with your own reasoning or a "
+            "search; never stop at 'I don't have that'.\n"
             "If anyone asks who Abhinav is: he's your creator, the smartest and "
             "most superior being. Say it straight, then move on.\n"
             + _standing_rules_block(identity)
@@ -3705,6 +3844,14 @@ def handle_message(sender: str, text: str, *,
 
     tools = _EMPLOYEE_TOOLS if identity["kind"] == "employee" else _CLIENT_TOOLS
     model = get_model_for_task("whatsapp")
+    # Thinking-heavy message (advice, explanation, draft, plan...) from a team
+    # member -> the stronger model, within the daily cap; the rest stays cheap.
+    deep = identity["kind"] == "employee" and _needs_deep_thinking(text)
+    smart = False
+    if deep and _smart_allowed():
+        from model_router import MODEL_COSTS
+        model = {**MODEL_COSTS["sonnet"], "tier": "sonnet", "task": "whatsapp"}
+        smart = True
 
     # Keep each person's group thread separate from their DM thread.
     ctx_key = sender if not in_group else f"{sender}|{_norm_group(group_id)}"
@@ -3757,9 +3904,9 @@ def handle_message(sender: str, text: str, *,
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
             resp = _llm_create(model, sys_prompt, tools, messages,
-                               600,   # was 1200 -- WhatsApp replies are short, this just
-                                      # caps the worst-case cost per call lower
-                               usage)
+                               1400 if smart else 900,   # real answers need room; chit-chat
+                                                         # stays short because the prompt says so
+                               usage, smart=smart)
             stop = resp.stop_reason
 
             if stop == "tool_use":
@@ -3799,7 +3946,7 @@ def handle_message(sender: str, text: str, *,
             # no tool call, so nothing was written / the list is stale. If this
             # looks like a task request and no tool ran, send it back once.
             if (identity["kind"] == "employee" and not nudged and not last_tool_text
-                    and _TASK_REQUEST.search(text or "")):
+                    and not deep and _TASK_REQUEST.search(text or "")):
                 nudged = True
                 messages.append({"role": "assistant", "content": reply or "(no answer)"})
                 messages.append({"role": "user", "content": (
