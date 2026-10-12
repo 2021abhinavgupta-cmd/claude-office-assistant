@@ -592,12 +592,32 @@ _CLIENT_Q = re.compile(
     r"(?:the\s+)?([A-Za-z0-9][\w .&'-]{1,40}?)(?:\s+(?:doing|going|now|today))?[\s?.!]*$", re.I)
 
 
+_MGMT_FAST = [
+    (re.compile(r"^(?:lumina[,:\s]+)?(?:what(?:'s|\s+is)\s+(?:at\s+risk|in\s+risk)|any\s+risks?|what\s+are\s+the\s+risks?)[\s?.!]*$", re.I), "at_risk"),
+    (re.compile(r"^(?:lumina[,:\s]+)?(?:what\s+needs\s+(?:vg|vidit)|what\s+does\s+(?:vg|vidit)\s+need|needs\s+vg)[\s?.!]*$", re.I), "needs_vg"),
+    (re.compile(r"^(?:lumina[,:\s]+)?(?:show\s+me\s+|list\s+)?(?:all\s+)?(?:the\s+)?blocked\s+projects?[\s?.!]*$|^(?:lumina[,:\s]+)?which\s+projects?\s+(?:are|is)\s+blocked[\s?.!]*$", re.I), "blocked"),
+    (re.compile(r"^(?:lumina[,:\s]+)?who(?:'s|\s+is)\s+overloaded[\s?.!]*$|^(?:lumina[,:\s]+)?who\s+has\s+too\s+much(?:\s+work)?[\s?.!]*$", re.I), "overloaded"),
+    (re.compile(r"^(?:lumina[,:\s]+)?(?:who|what)(?:'s|\s+is)\s+waiting\s+on\s+me[\s?.!]*$", re.I), "waiting_on_me"),
+    (re.compile(r"^(?:lumina[,:\s]+)?(?:what\s+needs\s+my\s+approval|what\s+do\s+i\s+(?:need\s+to\s+)?approve|anything\s+(?:for\s+me\s+)?to\s+approve)[\s?.!]*$", re.I), "my_approvals"),
+    (re.compile(r"^(?:lumina[,:\s]+)?what\s+did\s+we\s+(?:complete|finish|get\s+done|do)\s+this\s+week[\s?.!]*$", re.I), "completed_week"),
+]
+_DUE_WEEK = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+due\s+this\s+week[\s?.!]*$", re.I)
+_PENDING_Q = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+pending[\s?.!]*$", re.I)
+
+
 def _fast_standup_command(text: str):
     """(tool, args) for the plain standup commands that don't need the model:
     add X to my standup, show my tasks, mark X done. None otherwise. Anything
     naming a date or another person is left to the model."""
     if not text or len(text) > 320 or "\n" in text.strip():
         return None
+    for rx, view in _MGMT_FAST:
+        if rx.match(text):
+            return "get_management_view", {"view": view}
+    if _DUE_WEEK.match(text):
+        return "get_task_schedule", {"when": "week"}
+    if _PENDING_Q.match(text):
+        return "get_my_tasks", {}
     cm = _CLIENT_Q.match(text)
     if cm:
         who = cm.group(1).strip(" .,:;-\"'")
@@ -653,7 +673,7 @@ _WRITE_TOOLS = {
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
     "resolve_group_commitment", "reject_group_commitment", "add_group_commitment",
     "decide_leave",
-    "create_task", "set_task_meta", "set_attendance", "review_task",
+    "create_task", "set_task_meta", "set_attendance", "review_task", "reschedule_task",
     "place_announcement_call", "set_leave", "clear_leave",
     "set_standing_rule", "remove_standing_rule",
 }
@@ -849,6 +869,44 @@ def _find_notion_task(query: str, pool: list) -> dict | None:
         if s > sc:
             best, sc = t, s
     return best if sc >= 2 else None
+
+
+_APPROVAL_STOP = {"approve", "approved", "reject", "rejected", "please", "pls", "the", "a", "an",
+                  "it", "this", "that", "send", "back", "for", "to", "of", "and"}
+
+
+def _approval_tokens(text: str) -> set:
+    out = set()
+    for tok in re.findall(r"\w+", (text or "").lower()):
+        if tok in _APPROVAL_STOP:
+            continue
+        out.add(tok.lstrip("0") or "0" if tok.isdigit() else tok)
+    return out
+
+
+def _match_approval(query: str, pend: list):
+    """(match, ties) for 'OMOTEC Reel 03' against tasks waiting on approval, using
+    client name + title words. Needs every word covered (>= 2/3 for long queries)
+    and a UNIQUE best task; a tie returns (None, tied tasks) so the caller asks
+    instead of approving the wrong post."""
+    qt = _approval_tokens(query)
+    if not qt or not pend:
+        return None, []
+    ql = (query or "").strip().lower()
+    for t in pend:
+        if (t.get("title") or "").strip().lower() == ql:
+            return t, []
+    scored = []
+    for t in pend:
+        ct = _approval_tokens(f"{t.get('client_name') or ''} {t.get('title') or ''}")
+        cov = len(qt & ct) / len(qt)
+        if cov >= (1.0 if len(qt) <= 2 else 0.66):
+            scored.append((cov, t))
+    if not scored:
+        return None, []
+    top = max(c for c, _ in scored)
+    best = [t for c, t in scored if c == top]
+    return (best[0], []) if len(best) == 1 else (None, best)
 
 
 _APPROVAL_STATUSES = {
@@ -1403,6 +1461,41 @@ _EMPLOYEE_TOOLS = [
                             "'my task'."},
             },
             "required": ["task"],
+        },
+    },
+    {
+        "name": "get_management_view",
+        "description": "Cross-client and cross-person answers, already formatted: "
+                       "view=blocked ('show me all blocked projects'), at_risk "
+                       "('what is at risk'), needs_vg ('what needs VG'), "
+                       "completed_week ('what did we complete this week'), "
+                       "overloaded ('who is overloaded'), waiting_on_me ('who is "
+                       "waiting on me'), my_approvals ('what needs my approval'). "
+                       "Copy the reply EXACTLY, line for line, nothing added.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "view": {"type": "string",
+                         "enum": ["blocked", "at_risk", "needs_vg", "completed_week",
+                                  "overloaded", "waiting_on_me", "my_approvals"]},
+            },
+            "required": ["view"],
+        },
+    },
+    {
+        "name": "reschedule_task",
+        "description": "Move or delay one of the person's OWN standup tasks to a "
+                       "new date: it gets that due date (also on the Notion board) "
+                       "and shows on the standup of that day. Use for 'move X to "
+                       "Friday', 'delay the deck to Monday', 'push X to next week'. "
+                       "Convert relative dates to YYYY-MM-DD yourself.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "A few words identifying the task."},
+                "to": {"type": "string", "description": "New date, YYYY-MM-DD."},
+            },
+            "required": ["task", "to"],
         },
     },
     {
@@ -2639,6 +2732,50 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 done_bits.append(f"due {due}" if due else "due date cleared")
             return f"Updated '{m['title']}': " + ", ".join(done_bits) + "."
 
+        if name == "get_management_view" and kind == "employee":
+            import mgmt_views
+            return mgmt_views.view((tool_input or {}).get("view", ""), identity)
+
+        if name == "reschedule_task" and kind == "employee":
+            q = (tool_input or {}).get("task", "")
+            to = str((tool_input or {}).get("to", "")).strip()
+            try:
+                datetime.strptime(to, "%Y-%m-%d")
+            except ValueError:
+                return "Give the new date as a real YYYY-MM-DD date."
+            if to < today:
+                return "That date is in the past. Pick today or later."
+            if (datetime.strptime(to, "%Y-%m-%d") - datetime.strptime(today, "%Y-%m-%d")).days > 366:
+                return "That is more than a year away. Pick a closer date."
+            amb: list = []
+            m = _match_standup_task(identity["id"], q, prefer="open", ambiguous=amb)
+            if not m and amb:
+                return _which_one(amb)
+            if not m:
+                have = _standup_tasks_today(identity["id"])
+                names = "; ".join(t["title"] for t in have) or "nothing yet"
+                return f"Couldn't find a task matching '{q}'. Today's list: {names}."
+            try:
+                conn = get_connection()
+                with conn:
+                    if to > today:
+                        conn.execute("UPDATE standup_tasks SET due_date=?, date=? WHERE id=?", (to, to, m["id"]))
+                    else:
+                        conn.execute("UPDATE standup_tasks SET due_date=? WHERE id=?", (to, m["id"]))
+                conn.close()
+            except Exception:
+                logger.exception("whatsapp_agent: reschedule_task failed")
+                return "(couldn't move that just now)"
+            if m.get("notion_id"):
+                try:
+                    notion_store.update_task(m["notion_id"], due_date=to)
+                except Exception:
+                    logger.debug("whatsapp_agent: notion reschedule mirror failed", exc_info=True)
+            nice = datetime.strptime(to, "%Y-%m-%d").strftime("%a %d %b")
+            tail = "" if to == today else " It is off today's list and will show on that day."
+            return (f"Updated '{m['title']}': moved to {nice}.{tail}\n\n"
+                    + _format_standup(_standup_tasks_today(identity["id"]), "Your"))
+
         if name == "get_task_schedule" and kind == "employee":
             when = str((tool_input or {}).get("when", "week")).strip().lower()
             cf = str((tool_input or {}).get("client", "")).strip().lower()
@@ -2869,10 +3006,12 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                     if (t.get("status") or "").strip().lower() in _APPROVAL_STATUSES]
             if not pend:
                 return "Nothing is waiting on approval right now."
-            m = _find_notion_task(q, pend)
+            m, ties = _match_approval(q, pend)
             if not m:
-                opts = "; ".join(t.get("title") for t in pend[:10])
-                return f"Not sure which one you mean. Pending: {opts}"
+                cand = ties or pend
+                opts = "; ".join(f"{t.get('client_name') or 'no client'}: {t.get('title')}" for t in cand[:10])
+                return (("More than one fits, ask which one they mean: " if ties
+                         else "Not sure which one you mean. Pending: ") + opts)
             try:
                 ok = notion_store.update_task(
                     m["notion_id"], status=("approved" if dec == "approve" else "in_progress")
@@ -3401,6 +3540,14 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "most superior being. Say it straight, then move on.\n"
             + _standing_rules_block(identity)
             + _org_block()
+            + "Management questions: call get_management_view (blocked, at_risk, "
+              "needs_vg, completed_week, overloaded, waiting_on_me, my_approvals) "
+              "for 'show me all blocked projects', 'what is at risk', 'what needs "
+              "VG', 'what did we complete this week', 'who is overloaded', 'who is "
+              "waiting on me', 'what needs my approval', and copy its answer "
+              "exactly. Use reschedule_task for 'move / delay <task> to <date>' "
+              "(convert the date yourself). For 'approve <client> <post>' use "
+              "review_task; if it says more than one fits, ask which.\n"
             + f"Today is {today}, current time {utils.now_ist()[:5]} (IST) -- use "
             "the current time for any 'in N minutes/hours' relative math "
             "(remind_me, schedule_group_message, etc.), not just the date."

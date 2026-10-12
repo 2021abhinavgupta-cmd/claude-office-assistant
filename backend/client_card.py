@@ -136,6 +136,11 @@ def _blockers(tasks: list, today: date) -> list:
 def gather(client_name: str) -> dict | None:
     """All the numbers for one client (also used by ops_rhythm). None if unknown."""
     c = _client_row(client_name)
+    return gather_row(c) if c else None
+
+
+def gather_row(c: dict) -> dict | None:
+    """Same as gather() for an already-resolved Notion client dict."""
     if not c:
         return None
     import org_profile

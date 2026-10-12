@@ -1116,6 +1116,24 @@ def companion_rhythm_run():
     return jsonify(ops_rhythm.run_tick(force_kind=kind, only_ids=ids))
 
 
+@companion_bp.route("/api/companion/mgmt-view", methods=["GET"])
+def companion_mgmt_view():
+    """Preview a management answer: ?view=at_risk|blocked|needs_vg|completed_week|
+    overloaded|waiting_on_me|my_approvals&user_id=emp003 (user_id = whose point of view)."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import mgmt_views
+    uid = request.args.get("user_id", "emp003")
+    name = ""
+    try:
+        name = next((e.get("name", "") for e in utils._load_employees().get("employees", [])
+                     if e.get("id") == uid), "")
+    except Exception:
+        pass
+    return jsonify({"text": mgmt_views.view(request.args.get("view", ""),
+                                            {"kind": "employee", "id": uid, "name": name})})
+
+
 @companion_bp.route("/api/companion/client-card", methods=["GET"])
 def companion_client_card():
     """Preview the status card: ?client=Mellow"""
