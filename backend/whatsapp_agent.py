@@ -705,6 +705,9 @@ _MGMT_FAST = [
     (re.compile(r"^(?:lumina[,:\s]+)?what\s+did\s+we\s+(?:complete|finish|get\s+done|do)\s+this\s+week[\s?.!]*$", re.I), "completed_week"),
 ]
 _DUE_WEEK = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+due\s+this\s+week[\s?.!]*$", re.I)
+_DASH_Q = re.compile(
+    r"^(?:lumina[,:\s]+)?(?:show\s+|give\s+)?(?:me\s+)?(?:my\s+)?(?:dashboard|morning brief|day brief|"
+    r"what(?:'s|\s+is)\s+my\s+day|what\s+do\s+i\s+have\s+today)[\s?.!]*$", re.I)
 _PENDING_Q = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+pending[\s?.!]*$", re.I)
 
 
@@ -744,6 +747,8 @@ def _fast_standup_command(text: str):
     for rx, view in _MGMT_FAST:
         if rx.match(text):
             return "get_management_view", {"view": view}
+    if _DASH_Q.match(text):
+        return "get_my_dashboard", {}
     if _DUE_WEEK.match(text):
         return "get_task_schedule", {"when": "week"}
     if _PENDING_Q.match(text):
@@ -1601,6 +1606,15 @@ _EMPLOYEE_TOOLS = [
             },
             "required": ["task"],
         },
+    },
+    {
+        "name": "get_my_dashboard",
+        "description": "The person's own morning dashboard, built for their role "
+                       "(leaders: client health, decisions, deadlines, blocked; DMs: "
+                       "their clients plus their work; everyone else: their own work). "
+                       "Use for 'my dashboard', 'what's my day', 'morning brief', "
+                       "'what do I have today'. Copy the reply EXACTLY.",
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "get_management_view",
@@ -2891,6 +2905,14 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
         if name == "search_web" and kind == "employee":
             import web_search
             return web_search.answer((tool_input or {}).get("query", ""))
+
+        if name == "get_my_dashboard" and kind == "employee":
+            import morning_dash
+            try:
+                return morning_dash.build(identity)
+            except Exception:
+                logger.exception("whatsapp_agent: dashboard failed")
+                return "(couldn't build your dashboard just now)"
 
         if name == "get_management_view" and kind == "employee":
             import mgmt_views

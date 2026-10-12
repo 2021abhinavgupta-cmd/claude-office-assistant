@@ -1185,6 +1185,30 @@ def companion_group_summary_debug():
     return jsonify({"reply": out, "attempt": group_digest.LAST})
 
 
+@companion_bp.route("/api/companion/morning-dash", methods=["GET"])
+def companion_morning_dash():
+    """Preview one person's dashboard (nothing sent): ?user_id=emp001"""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import morning_dash
+    import week_digest
+    uid = request.args.get("user_id", "emp003")
+    emp = (week_digest._people(only_ids=[uid]) or [None])[0]
+    if not emp:
+        return jsonify({"error": "unknown or inactive employee"}), 404
+    return jsonify({"text": morning_dash.build(emp)})
+
+
+@companion_bp.route("/api/companion/morning-dash/run", methods=["POST"])
+def companion_morning_dash_run():
+    """Force-send dashboards to the given ids only: ?to=emp003,emp001"""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import morning_dash
+    ids = [x.strip() for x in (request.args.get("to") or "").split(",") if x.strip()]
+    return jsonify(morning_dash.run_daily(force=True, only_ids=ids))
+
+
 @companion_bp.route("/api/companion/mgmt-view", methods=["GET"])
 def companion_mgmt_view():
     """Preview a management answer: ?view=at_risk|blocked|needs_vg|completed_week|

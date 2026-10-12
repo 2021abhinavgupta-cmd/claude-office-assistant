@@ -374,11 +374,12 @@ def _run_rhythm():
 
 
 def _run_pa_brief():
-    """Personal morning brief for the boss (pa_brief.py). Runs every 10 min;
-    run_daily() itself keeps it to one send per weekday, 09:00-11:00 IST."""
+    """Role-based morning dashboard for every employee (morning_dash.py; replaced the
+    boss-only pa_brief send). Runs every 10 min; run_daily() keeps it to one send per
+    person per weekday, 09:00-11:00 IST."""
     try:
-        import pa_brief
-        result = pa_brief.run_daily()
+        import morning_dash
+        result = morning_dash.run_daily()
         if result.get("sent"):
             logger.info("pa_brief: %s", result)
     except Exception:
