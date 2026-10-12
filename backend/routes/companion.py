@@ -898,26 +898,29 @@ def companion_eod_summary():
     else:
         group_text = ""
 
-    # full per-person breakdown for the leads: every task today, marked
-    # done / not done, plus a raise-or-holiday jab for a 5+ day.
-    lead_blocks = []
-    for r, s in with_tasks:
-        blk = [f"*{r['name']}* — {s['done']}/{s['total']} done"]
-        if s["done_titles"]:
-            blk.append("  Done:")
-            blk += [f"    • {t}" for t in s["done_titles"][:15]]
-        if s["pending"]:
-            blk.append("  Not done:")
-            blk += [f"    • {t}" for t in s["pending"][:15]]
-        if s["done"] > 5:
-            line = _RAISE_LINES[(sum(ord(c) for c in r["name"] + today))
-                                % len(_RAISE_LINES)]
-            blk.append(line.format(n=s["done"]))
-        lead_blocks.append("\n".join(blk))
-    if no_standup:
-        lead_blocks.append("No standup submitted: " + ", ".join(no_standup))
-    if lead_blocks:
-        leads_text = "*EOD check* — everyone's tasks for today:\n\n" + "\n\n".join(lead_blocks)
+    # the leads' 7:30 DM uses the same layout as the 5 PM group post (header, then each
+    # person with ✅ done / ❌ not done lines), plus a raise-or-holiday jab for a 5+ day.
+    if with_tasks:
+        tick, cross = "✅", "❌"
+        ll = [f"*EOD check: {done_total}/{task_total} tasks done today* across the team."]
+        for r, s in with_tasks:
+            ll.append("")
+            ll.append(f"*{r['name']}* ({s['done']}/{s['total']})")
+            for t in s["done_titles"][:15]:
+                ll.append(f"{tick} {t} - done")
+            if len(s["done_titles"]) > 15:
+                ll.append(f"+{len(s['done_titles']) - 15} more done")
+            for t in s["pending"][:15]:
+                ll.append(f"{cross} {t} - not done")
+            if len(s["pending"]) > 15:
+                ll.append(f"+{len(s['pending']) - 15} more not done")
+            if s["done"] > 5:
+                ll.append(_RAISE_LINES[(sum(ord(ch) for ch in r["name"] + today)) % len(_RAISE_LINES)]
+                          .format(n=s["done"]).strip())
+        if no_standup:
+            ll.append("")
+            ll.append("No standup yet: " + ", ".join(no_standup))
+        leads_text = "\n".join(ll)
     else:
         leads_text = "EOD check: no standup tasks logged today."
 
