@@ -1078,8 +1078,12 @@ def _humanize(reply: str, *, bullets: bool = False) -> str:
     used to -- _format_standup() now numbers each task 1-based specifically
     so 'mark 4 as done' has something real to refer back to, and this used
     to silently strip that numbering back out again in every DM."""
+    # The stronger model writes markdown. WhatsApp's own bold is *single*
+    # asterisks; **double** shows up as literal asterisks, and # headings as #.
+    reply = re.sub(r"\*\*(.+?)\*\*", r"*\1*", reply or "", flags=re.S)
     lines = []
-    for ln in (reply or "").split("\n"):
+    for ln in reply.split("\n"):
+        ln = re.sub(r"^(\s*)#{1,6}\s+", r"\1", ln)
         if not bullets:
             ln = re.sub(r"^(\s*)[-*•‣▪]\s+", r"\1", ln)
         lines.append(ln)
