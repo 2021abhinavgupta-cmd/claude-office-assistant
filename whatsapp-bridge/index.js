@@ -602,6 +602,26 @@ setInterval(() => flushObserved().catch(() => {}), 10000);
 
 const MEDIA_MAX = { audio: 4 * 1024 * 1024, image: 5 * 1024 * 1024 };
 
+// WhatsApp voice notes are ogg/opus, which not every speech model accepts.
+// If ffmpeg is on this machine (it is, for voice calling), convert to a small
+// mono mp3 first; if not, send the original and let the server try it.
+function toMp3(buf) {
+  return new Promise((resolve) => {
+    const base = path.join(process.env.TEMP || process.env.TMPDIR || "/tmp",
+      `lumina_vn_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+    const inp = `${base}.ogg`, outp = `${base}.mp3`;
+    const cleanup = () => { for (const f of [inp, outp]) { try { fs.unlinkSync(f); } catch { /* ignore */ } } };
+    try { fs.writeFileSync(inp, buf); } catch { return resolve(null); }
+    execFile("ffmpeg", ["-y", "-loglevel", "error", "-i", inp, "-ac", "1", "-ar", "16000", "-b:a", "32k", outp],
+      { timeout: 30000 }, (err) => {
+        let out = null;
+        if (!err) { try { out = fs.readFileSync(outp); } catch { /* ignore */ } }
+        cleanup();
+        resolve(out);
+      });
+  });
+}
+
 async function observeGroupMedia(sock, msg, jid) {
   const am = msg.message?.audioMessage;
   const im = msg.message?.imageMessage;
@@ -616,12 +636,17 @@ async function observeGroupMedia(sock, msg, jid) {
   if (!pj && rp.endsWith("@lid")) {
     try { pj = (await sock.signalRepository?.lidMapping?.getPNForLID?.(rp)) || ""; } catch { /* n/a */ }
   }
+  let sendBuf = buf, sendMime = info?.mimetype || "";
+  if (kind === "audio") {
+    const mp3 = await toMp3(buf);
+    if (mp3 && mp3.length) { sendBuf = mp3; sendMime = "audio/mpeg"; }
+  }
   const res = await fetch(`${LUMINA_URL}/whatsapp/bridge`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
     body: JSON.stringify({
       observe_media: true, group_id: jid, group_name: _groupNames.get(jid) || "",
-      kind, mime: info?.mimetype || "", data_b64: buf.toString("base64"),
+      kind, mime: sendMime, data_b64: sendBuf.toString("base64"),
       caption: im?.caption || "", from: bareJid(pj || rp), name: msg.pushName || "",
       ts: Date.now(), id: msg.key.id,
     }),

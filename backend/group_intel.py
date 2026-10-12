@@ -35,6 +35,8 @@ _IST = timezone(timedelta(hours=5, minutes=30))
 MAX_BATCH = 60            # new messages handled per group per pass
 CONTEXT_LINES = 12        # older messages shown for context only
 MAX_NUDGES = 3            # stop chasing one item after this many nudges
+MAX_FAILS = 3
+_FAILS: dict = {}         # group_id -> consecutive failed passes (in memory)
 STALE_UNPROCESSED_HOURS = 24
 END_OF_DAY_HOUR, END_OF_DAY_MIN = 16, 30     # due-today items surface from here
 NO_DUE_SAME_DAY_HOUR = 17                    # undated promise made today
@@ -194,7 +196,15 @@ _SYSTEM = (
     "Never guess an owner: use team if unclear. Resolve 'today', 'tomorrow', "
     "'Friday' to a real date from today's date; leave due empty if no time was "
     "given. Mark an open commitment done only if a message clearly says it is "
-    "finished (posted, sent, shared, done). Empty lists are the normal answer."
+    "finished (posted, sent, shared, done). Empty lists are the normal answer.\n"
+    "The chat is English, Hindi and Hinglish mixed. Examples:\n"
+    "- 'kal tak bhej dunga' / 'main kar deti hu' / 'ho jayega aaj' = a commitment "
+    "by the speaker.\n"
+    "- 'ho gaya' / 'post kar diya' / 'bhej diya' / 'done' = completed, if it "
+    "clearly refers to an open commitment.\n"
+    "- 'Nupur, deck bhej do' followed by Nupur: 'ok' / 'haan' = a commitment by Nupur.\n"
+    "- 'dekhte hain' / 'try karunga' / 'shayad' = too vague, NOT a commitment.\n"
+    "- 'rehne do' / 'cancel' / 'client ne mana kar diya' = the open item is dropped."
 )
 
 
@@ -311,7 +321,20 @@ def extract_group(conn, group_id: str) -> dict:
               f"Earlier messages (context only, do not extract from these):\n"
               f"{chr(10).join(ctx_lines) or '(none)'}\n\n"
               f"NEW messages to analyse:\n{chr(10).join(new_lines)}")
-    data = _llm_json(prompt)
+    try:
+        data = _llm_json(prompt)
+    except Exception:
+        # A batch that keeps failing must not be retried (and billed) forever:
+        # after MAX_FAILS passes it is marked processed and skipped.
+        _FAILS[group_id] = _FAILS.get(group_id, 0) + 1
+        logger.exception("group_intel: model call failed for %s (%s/%s)",
+                         group_id, _FAILS[group_id], MAX_FAILS)
+        if _FAILS[group_id] >= MAX_FAILS:
+            _FAILS[group_id] = 0
+            conn.execute(f"UPDATE wa_group_log SET processed=1 WHERE id IN ({','.join('?'*len(ids))})", ids)
+            return {"new": 0, "skipped": "gave up after repeated failures"}
+        return {"new": 0, "skipped": "model error, will retry"}
+    _FAILS.pop(group_id, None)
     if data is None:       # budget exhausted: leave them for the next pass
         return {"new": 0, "skipped": "budget"}
 
@@ -545,6 +568,30 @@ def note_nudged(ref: str) -> None:
 
 
 # ── reading (agent tool + inspection) ────────────────────────────────────────
+
+def stats() -> dict:
+    """Is it actually reading? Counts for the inspection endpoint."""
+    conn = get_connection()
+    try:
+        ensure_schema(conn)
+        one = lambda q: (conn.execute(q).fetchone() or [0])[0]
+        since = (_now() - timedelta(hours=24)).isoformat()
+        by_status = {r[0]: r[1] for r in conn.execute(
+            "SELECT status, COUNT(*) FROM group_commitments GROUP BY status").fetchall()}
+        last = conn.execute("SELECT created_at FROM wa_group_log ORDER BY id DESC LIMIT 1").fetchone()
+        return {
+            "messages_total": one("SELECT COUNT(*) FROM wa_group_log"),
+            "messages_last_24h": (conn.execute("SELECT COUNT(*) FROM wa_group_log WHERE created_at>=?", (since,)).fetchone() or [0])[0],
+            "messages_waiting_to_be_read": one("SELECT COUNT(*) FROM wa_group_log WHERE processed=0"),
+            "last_message_at": last[0] if last else None,
+            "commitments": by_status,
+            "facts": one("SELECT COUNT(*) FROM group_facts"),
+            "corrections_learned": one("SELECT COUNT(*) FROM group_feedback"),
+            "extraction_model": "claude" if _use_claude() else "qwen/default",
+        }
+    finally:
+        conn.close()
+
 
 def list_commitments(person: str = "", status: str = "open", limit: int = 30) -> list:
     conn = get_connection()

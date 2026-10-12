@@ -1572,7 +1572,8 @@ def companion_group_commitments():
         import group_intel
         rows = group_intel.list_commitments(request.args.get("person", ""),
                                             request.args.get("status", "open"), 100)
-        return jsonify({"count": len(rows), "commitments": rows})
+        return jsonify({"count": len(rows), "commitments": rows,
+                        "status": group_intel.stats()})
     except Exception:
         logger.exception("companion group-commitments failed")
         return jsonify({"error": "failed"}), 500

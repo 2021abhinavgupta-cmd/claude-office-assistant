@@ -565,6 +565,40 @@ _TASK_REQUEST = re.compile(
     r"assign|delegate|remind|delete|remove|blocker|due|overdue|pending|list|"
     r"show|update|reopen|status)\b", re.I)
 
+_SHOW_TASKS = re.compile(
+    r"^(?:please\s+|pls\s+)?(?:(?:show|list|give|get|send)(?:\s+me)?\s+(?:all\s+)?(?:my\s+)?"
+    r"|what(?:'s|\s+is|\s+are)\s+(?:all\s+)?(?:my\s+)?|my\s+)"
+    r"(?:daily\s+)?(?:tasks?|stand-?up|to-?do(?:s|\s+list)?)(?:\s+(?:now|today|list|again))?[\s.!?]*$",
+    re.I)
+_MARK_DONE = re.compile(
+    r"^(?:please\s+|pls\s+)?(?:(?:mark|tick|set)\s+(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished)"
+    r"|(?:i\s+)?(?:have\s+|just\s+)?(?:finished|completed|done with)\s+(.+?)"
+    r"|(.+?)\s+is\s+(?:done|completed|finished))[\s.!]*$", re.I)
+
+
+def _fast_standup_command(text: str):
+    """(tool, args) for the plain standup commands that don't need the model:
+    add X to my standup, show my tasks, mark X done. None otherwise. Anything
+    naming a date or another person is left to the model."""
+    if not text or len(text) > 320 or "\n" in text.strip():
+        return None
+    m = _ADD_STANDUP.match(text)
+    if m:
+        task = m.group(1).strip(" .,:;-\"'")
+        if task and not _DATE_WORD.search(task) and len(task) <= 300:
+            return "add_standup_task", {"task": task}
+        return None
+    if _SHOW_TASKS.match(text):
+        return "get_my_tasks", {}
+    m = _MARK_DONE.match(text)
+    if m:
+        task = next((g for g in m.groups() if g), "").strip(" .,:;-\"'")
+        if (task and len(task) >= 3 and not _DATE_WORD.search(task)
+                and not re.search(r"\b(task|tasks|all|everything)\b$", task, re.I)):
+            return "update_standup_task", {"task": task, "status": "done"}
+    return None
+
+
 def _find_group_commitment(which: str):
     """#id, a bare number, or words from an open group promise -> its id."""
     import group_intel
@@ -3414,19 +3448,20 @@ def handle_message(sender: str, text: str, *,
                 return "Cancelled, nothing was sent."
             # anything else -> treat as a fresh message (pending already cleared)
 
-    # Plain "add X to my daily standup": no judgement needed, so do it directly.
-    # Cheaper models kept answering it with a list or a made-up "Added".
+    # Plain standup commands need no judgement, so do them directly: exact,
+    # instant, free. Cheaper models kept answering these with a list or a
+    # made-up "Added".
     if identity["kind"] == "employee":
-        m = _ADD_STANDUP.match((text or "").strip())
-        if m:
-            task = m.group(1).strip(" .,:;-\"'")
-            if task and not _DATE_WORD.search(task) and len(task) <= 300:
-                out = _run_tool("add_standup_task", {"task": task}, identity,
-                                in_group=in_group, turn={"sticker": None})
-                if _norm(out).startswith(_SUCCESS_PREFIXES):
-                    _audit("group:" + _norm_group(group_id) if in_group else "dm",
-                           identity, "add_standup_task", out)
-                return out
+        fast = _fast_standup_command((text or "").strip())
+        if fast:
+            tool_name, tool_args = fast
+            out = _run_tool(tool_name, tool_args, identity,
+                            in_group=in_group, turn={"sticker": None})
+            if (tool_name in _WRITE_TOOLS
+                    and _norm(out).startswith(_SUCCESS_PREFIXES)):
+                _audit("group:" + _norm_group(group_id) if in_group else "dm",
+                       identity, tool_name, out)
+            return out
 
     budget = check_budget_available()
     if not budget["allowed"]:
