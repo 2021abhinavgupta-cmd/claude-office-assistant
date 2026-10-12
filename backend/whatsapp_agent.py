@@ -2951,6 +2951,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             except Exception:
                 tasks = []
             wk_end = (datetime.strptime(today, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
+            od_from = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=14)).strftime("%Y-%m-%d")
 
             def _keep(t):
                 if (t.get("status") or "").strip().lower().replace(" ", "_") in _CLOSED_STATUSES:
@@ -2958,11 +2959,13 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 due = str(t.get("due_date") or "")[:10]
                 if not re.match(r"^\d{4}-\d{2}-\d{2}$", due):
                     return False
-                if when == "overdue" and not (due < today):
+                # overdue = the last 14 days only (older unfinished items are old backlog,
+                # never listed); "this week" = today through +7, not everything ever late
+                if when == "overdue" and not (od_from <= due < today):
                     return False
                 if when in ("today", "day") and due != today:
                     return False
-                if when not in ("overdue", "today", "day") and due > wk_end:
+                if when not in ("overdue", "today", "day") and not (today <= due <= wk_end):
                     return False
                 if cf and cf not in (t.get("client_name") or "").lower():
                     return False
@@ -2981,7 +2984,17 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                     f"{t.get('assigned_to') or 'unassigned'} | due {t.get('due_date')}{od}"
                 )
             head = {"overdue": "Overdue", "today": "Due today", "day": "Due today"}.get(when, "This week")
-            return f"{head} ({len(hits)}):\n" + "\n".join(lines)
+            out = f"{head} ({len(hits)}):\n" + "\n".join(lines)
+            if len(hits) > 25:
+                out += f"\n(+{len(hits) - 25} more)"
+            if when not in ("overdue",):
+                late = [t for t in tasks if (t.get("status") or "").strip().lower().replace(" ", "_") not in _CLOSED_STATUSES
+                        and od_from <= str(t.get("due_date") or "")[:10] < today
+                        and (not cf or cf in (t.get("client_name") or "").lower())
+                        and (not pf or pf in (t.get("assigned_to") or "").lower())]
+                if late:
+                    out += f"\nAlso overdue (last 14 days): {len(late)}. Ask 'what is overdue' to see them."
+            return out
 
         if name == "read_group_chat" and kind == "employee":
             try:
