@@ -612,10 +612,17 @@ _CMD_START = re.compile(
     r"delete|remove|cancel|check|open|close)\b", re.I)
 
 
+_GROUP_Q = re.compile(
+    r"\b(?:discuss\w*|talked about|said in the group|in the group|group chat|"
+    r"what (?:was|did|were) .{0,40}(?:said|decided|mentioned)|summari[sz]e the group)\b", re.I)
+
+
 def _needs_deep_thinking(text: str) -> bool:
     t = (text or "").strip()
     if not t:
         return False
+    if _GROUP_Q.search(t):   # reading a long chat log faithfully needs the stronger model
+        return True
     if len(t) >= 160:
         return True
     if not _DEEP.search(t):
@@ -3580,7 +3587,11 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "You keep the team group chat in memory: in the group you are "
             "given the latest messages, and read_group_chat searches the last "
             "30 days (works from a DM too). For 'what did X say / what was "
-            "decided / summarise the group', use it, never guess.\n"
+            "decided / summarise the group', use it, never guess. Report ONLY "
+            "what is literally in the tool result: never invent a quote, a "
+            "speaker or a topic; if the chat is mostly links, jokes or test "
+            "messages, say that plainly. Cover every real topic in the log "
+            "(links shared, plans, work items), not just the loudest one.\n"
             "When you show any standup list, copy the tool's numbered list "
             "exactly, keeping the ✅ (done) and ❌ (not done) marks on every "
             "line, never reword the titles. After add_standup_task or "
