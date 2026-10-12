@@ -123,6 +123,22 @@ def _select(where: str, params: tuple, limit: int):
     return rows
 
 
+def first_seen(gids) -> str | None:
+    """created_at of the earliest recorded message of these groups."""
+    gids = [g for g in (_digits(x) for x in (gids or [])) if g]
+    if not gids:
+        return None
+    conn = get_connection()
+    try:
+        _ensure_table(conn)
+        row = conn.execute(
+            f"SELECT MIN(created_at) FROM wa_group_log WHERE group_id IN ({','.join('?' * len(gids))})",
+            tuple(gids)).fetchone()
+        return row[0] if row and row[0] else None
+    finally:
+        conn.close()
+
+
 def _cutoff(hours: float) -> str:
     return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 

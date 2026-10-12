@@ -708,6 +708,24 @@ _DUE_WEEK = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+due\s+this\s+week
 _PENDING_Q = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+pending[\s?.!]*$", re.I)
 
 
+def _digest_llm(system: str, user: str) -> str:
+    """One cheap, deterministic model call used only to GROUP numbered chat
+    messages into topics (group_digest). Returns raw text."""
+    budget = check_budget_available()
+    if not budget.get("allowed"):
+        return ""
+    model = get_model_for_task("whatsapp")
+    usage: dict = {}
+    resp = _llm_create(model, [{"type": "text", "text": system}], None,
+                       [{"role": "user", "content": user}], 900, usage)
+    try:
+        _record_llm_usage(model, usage, "wa_group_digest")
+    except Exception:
+        pass
+    return "".join(getattr(b, "text", "") for b in resp.content
+                   if getattr(b, "type", "") == "text")
+
+
 def _fast_standup_command(text: str):
     """(tool, args) for the plain standup commands that don't need the model:
     add X to my standup, show my tasks, mark X done. None otherwise. Anything
@@ -2966,6 +2984,8 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             except Exception:
                 logger.exception("whatsapp_agent: read_group_chat failed")
                 return "(couldn't read the group chat just now)"
+            if got and isinstance(turn, dict):
+                turn["group_log"] = turn.get("group_log", "") + "\n" + got
             return got or "Nothing in the group chat matches that in that time window."
 
         if name == "get_group_commitments" and kind == "employee":
@@ -3844,6 +3864,17 @@ def handle_message(sender: str, text: str, *,
     # instant, free. Cheaper models kept answering these with a list or a
     # made-up "Added".
     if identity["kind"] == "employee":
+        # "what was discussed in the group": built in code from the stored
+        # messages, never free-written by a model (it invented quotes once).
+        try:
+            import group_digest
+            gids = {group_id} if (in_group and group_id) else _group_allowlist()
+            gd = group_digest.try_answer((text or "").strip(), gids, llm=_digest_llm)
+        except Exception:
+            logger.exception("whatsapp_agent: group digest failed")
+            gd = None
+        if gd:
+            return gd
         fast = _fast_standup_command((text or "").strip())
         if fast:
             tool_name, tool_args = fast
@@ -3987,6 +4018,20 @@ def handle_message(sender: str, text: str, *,
         # find a task matching 'Y'", etc.) is far better than a generic
         # non-answer that hides whether the action actually happened.
         reply = last_tool_text or "Sorry, I couldn't put together an answer for that one."
+
+    # Hallucination guard: if the reply quotes the group chat, every quoted
+    # passage must really be in what the tool returned; otherwise show the
+    # real messages instead of the model's version.
+    if turn.get("group_log") and reply:
+        try:
+            import group_digest
+            if not group_digest.quotes_ok(reply, turn["group_log"]):
+                logger.warning("whatsapp_agent: reply quoted text not in the group log; replaced")
+                gids = {group_id} if (in_group and group_id) else _group_allowlist()
+                reply = ("I couldn't verify my own summary, so here are the real messages:\n\n"
+                         + group_digest.build(text or "", gids, llm=None))
+        except Exception:
+            logger.exception("whatsapp_agent: quote guard failed")
 
     # Zero-extra-cost memory extraction: the model can end a reply with
     # <REMEMBER>fact</REMEMBER> when it notices something durable worth
