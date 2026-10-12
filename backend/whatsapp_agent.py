@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
-_BEST_DEFAULT = "claude-opus-5-5,claude-sonnet-5-5,claude-sonnet-4-6"
+_BEST_DEFAULT = "claude-sonnet-4-6"   # the earlier Claude model; WHATSAPP_BEST_MODELS can list more
 _BEST_START = 0   # index of the first model in the chain that has worked so far
 
 
@@ -3982,7 +3982,7 @@ def handle_message(sender: str, text: str, *,
     # member -> the stronger model, within the daily cap; the rest stays cheap.
     deep = identity["kind"] == "employee" and _needs_deep_thinking(text)
     smart = False
-    if _smart_allowed():   # best model for everything now (cost is no object); clients included
+    if deep and _smart_allowed():   # thinking-heavy messages -> Sonnet; everything else stays on Qwen
         from model_router import MODEL_COSTS
         model = {**MODEL_COSTS["sonnet"], "tier": "sonnet", "task": "whatsapp"}
         smart = True

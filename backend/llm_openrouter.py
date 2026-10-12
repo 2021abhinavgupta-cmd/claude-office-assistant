@@ -32,7 +32,12 @@ from db import get_connection
 logger = logging.getLogger(__name__)
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "qwen/qwen3.8-27b"
+DEFAULT_MODEL = "qwen/qwen3-max"
+# Best Qwen first; the next one is used if a model is unavailable or errors. The first that
+# works is remembered for this process. OPENROUTER_MODELS overrides; OPENROUTER_MODEL (if set)
+# is only tried LAST.
+DEFAULT_CHAIN = "qwen/qwen3-max,qwen/qwen3.6-plus,qwen/qwen3.8-27b"
+_START = 0
 TIMEOUT = 60
 
 
@@ -42,8 +47,17 @@ class Block(SimpleNamespace):
     and convert it to a plain dict."""
 
 
+def chain() -> list:
+    names = [n.strip() for n in (os.getenv("OPENROUTER_MODELS", "").strip() or DEFAULT_CHAIN).split(",") if n.strip()]
+    single = os.getenv("OPENROUTER_MODEL", "").strip()
+    if single and single not in names:
+        names.append(single)
+    return names
+
+
 def model_name() -> str:
-    return os.getenv("OPENROUTER_MODEL", "").strip() or DEFAULT_MODEL
+    names = chain()
+    return names[min(_START, len(names) - 1)] if names else DEFAULT_MODEL
 
 
 def _setting() -> str:
@@ -187,12 +201,29 @@ def _parse_response(data: dict):
     )
 
 
-def create(*, system, tools, messages: list, max_tokens: int = 600):
-    """One chat-completion call. Raises on any failure (callers fall back)."""
+def create(*, system, tools, messages: list, max_tokens: int = 600, model: str | None = None):
+    """One chat-completion call. Raises on any failure (callers fall back). Walks the
+    Qwen chain (best first) unless `model` pins one."""
+    global _START
+    names = [model] if model else chain()
+    last_err = None
+    for i in range(0 if model else min(_START, len(names) - 1), len(names)):
+        try:
+            resp = _create_one(names[i], system, tools, messages, max_tokens)
+            if not model:
+                _START = i
+            return resp
+        except Exception as e:
+            last_err = e
+            logger.warning("openrouter: %s failed: %s", names[i], str(e)[:200])
+    raise last_err
+
+
+def _create_one(model_slug, system, tools, messages, max_tokens):
     payload = {
-        "model": model_name(),
+        "model": model_slug,
         "messages": _messages_to_openai(system, messages,
-                                        cache=supports_cache_control()),
+                                        cache=supports_cache_control(model_slug)),
         "max_tokens": max_tokens,
         "temperature": 0.3,
         "reasoning": {"enabled": False},   # no hidden thinking tokens on a chat reply

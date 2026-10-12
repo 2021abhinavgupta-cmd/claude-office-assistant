@@ -50,9 +50,9 @@ MODEL_COSTS = {
         # $0.045 in / $2.30 out per 1M = qwen/qwen3.8-27b (cheapest host, Wafer, as
         # listed Oct 2026; other hosts cost more). If OPENROUTER_MODEL is changed
         # (e.g. qwen/qwen3.6-plus is ~$0.325 in), set these two to match.
-        "input":  float(os.getenv("OPENROUTER_PRICE_IN", "0.045")),
-        "output": float(os.getenv("OPENROUTER_PRICE_OUT", "2.30")),
-        "name":   os.getenv("OPENROUTER_MODEL", "qwen/qwen3.8-27b"),
+        "input":  float(os.getenv("OPENROUTER_PRICE_IN", "1.20")),    # qwen3-max (estimate)
+        "output": float(os.getenv("OPENROUTER_PRICE_OUT", "6.00")),
+        "name":   os.getenv("OPENROUTER_MODEL", "qwen/qwen3-max"),
     },
 }
 

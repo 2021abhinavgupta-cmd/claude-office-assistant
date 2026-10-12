@@ -234,9 +234,7 @@ def _use_claude() -> bool:
             v = str(row[0]).strip().lower() if row and row[0] else ""
         except Exception:
             v = ""
-    if v in ("qwen", "off"):
-        return False
-    return bool(os.getenv("ANTHROPIC_API_KEY", "").strip()) or v == "claude"
+    return v == "claude"
 
 
 def _feedback_examples() -> str:

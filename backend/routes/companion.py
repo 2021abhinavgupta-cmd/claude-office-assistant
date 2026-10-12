@@ -1083,6 +1083,7 @@ def companion_llm_status():
         "setting": lo._setting() or "(default)",
         "using": "qwen" if lo.enabled() else "claude",
         "qwen_model": lo.model_name(),
+        "qwen_chain": lo.chain(),
         "prompt_caching": lo.supports_cache_control(),
     }
     if request.args.get("test") in ("1", "true"):
@@ -1095,7 +1096,7 @@ def companion_llm_status():
                 r = lo.create(system="You are a test. Use the tool when asked.",
                               tools=tool,
                               messages=[{"role": "user", "content": "What time is it? Use the tool."}],
-                              max_tokens=100)
+                              max_tokens=100, model=(request.args.get("model") or None))
                 out["test"] = "ok"
                 out["tool_call_made"] = any(b.type == "tool_use" for b in r.content)
                 out["tokens"] = {"in": r.usage.input_tokens, "out": r.usage.output_tokens}
