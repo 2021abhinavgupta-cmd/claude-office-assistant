@@ -144,7 +144,7 @@ def recent_text(group_id: str, limit: int = 40, hours: float = 48, max_chars: in
 
 
 def search_text(query: str = "", hours: float = 168, group_ids: set | None = None,
-                limit: int = 40, max_chars: int = 4000) -> str:
+                limit: int = 0, max_chars: int = 0) -> str:
     """Messages matching `query` (every word must appear) across the given
     allow-listed groups, or everything in the window when query is blank."""
     gids = [g for g in (_digits(x) for x in (group_ids or [])) if g]
@@ -152,17 +152,33 @@ def search_text(query: str = "", hours: float = 168, group_ids: set | None = Non
         return ""
     where = f"group_id IN ({','.join('?' * len(gids))}) AND created_at>=?"
     params = tuple(gids) + (_cutoff(hours),)
-    for w in [w for w in re.split(r"\s+", (query or "").strip()) if w][:6]:
+    words = [w for w in re.split(r"\s+", (query or "").strip()) if w][:6]
+    for w in words:
         where += " AND LOWER(text) LIKE ?"
         params += (f"%{w.lower()}%",)
+    # A summary (no query) must see the WHOLE window, even 100+ messages a day;
+    # a keyword search only needs the matching ones.
+    if not limit:
+        limit = 80 if words else 800
+    if not max_chars:
+        max_chars = 6000 if words else 22000
+    cap = 400 if words else 240   # per-message cap so long pastes don't crowd out the day
     try:
         rows = _select(where, params, limit)
     except Exception:
         logger.debug("group_memory: search failed", exc_info=True)
         return ""
+    for r in rows:
+        if len(r["text"]) > cap:
+            r["text"] = r["text"][:cap].rstrip() + "..."
     lines = _fmt(rows, with_group=len(gids) > 1)
+    dropped = 0
     while lines and sum(len(l) + 1 for l in lines) > max_chars:
         lines.pop(0)
+        dropped += 1
+    if dropped and lines:
+        lines.insert(0, f"(older: {dropped} earlier message(s) in this window not shown; "
+                        "ask for a shorter time range to see them)")
     return "\n".join(lines)
 
 

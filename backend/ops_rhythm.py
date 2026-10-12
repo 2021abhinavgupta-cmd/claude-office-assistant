@@ -32,7 +32,8 @@ VG_NAME = "Vidit"
 _WINDOWS = {
     "planning": ((0,), "10:00", "11:00"),
     "reminder": ((0,), "15:00", "15:45"),
-    "approvals": ((0, 1, 2, 3, 4), "17:30", "18:00"),
+    # "approvals" (Mon-Fri 17:30 review) switched off 2026-10-12 at the user's request;
+    # run_kind("approvals") still exists, add the line back to re-enable.
 }
 
 

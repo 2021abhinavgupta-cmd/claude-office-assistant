@@ -1209,14 +1209,15 @@ def job_login_nudge(cfg: dict) -> None:
             continue
         name = p.get("name") or "there"
         nc, ns = p.get("needs_checkin"), p.get("needs_standup")
+        link = cfg["url"].rstrip("/") + "/checkin.html"
         if nc and ns:
             what = ("you're not checked in on Lumina yet and your standup for "
                     "today is still empty")
-            fix = ("Reply here with 'checking in' and what you're working on — "
-                   "I'll do both.")
+            fix = (f"Check in with one tap (it takes your location): {link}\n"
+                   "Then reply here with what you're working on and I'll add it to your standup.")
         elif nc:
             what = "you're not checked in on Lumina yet"
-            fix = "Reply 'checking in' here and I'll do it for you."
+            fix = f"Check in with one tap (it takes your location): {link}"
         else:
             what = "your standup for today is still empty"
             fix = ("Reply here with what you're working on and I'll drop it "

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Check in</title>
+<style>
+body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:#0f1115;color:#e8eaed;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:#181b22;border:1px solid #2a2f3a;border-radius:14px;padding:32px 28px;width:min(92vw,380px);text-align:center}
+h1{font-size:20px;margin:0 0 6px}p{color:#9aa3b2;font-size:14px;line-height:1.5;margin:8px 0}
+button{margin-top:16px;background:#f97316;color:#fff;border:0;border-radius:10px;padding:13px 22px;font-size:16px;font-weight:600;cursor:pointer;width:100%}
+button[disabled]{opacity:.6}.ok{color:#4ade80}.err{color:#f87171}
+</style></head><body>
+<div class="card">
+  <h1 id="title">Checking you in...</h1>
+  <p id="msg">Allow location when your phone asks.</p>
+  <button id="retry" style="display:none">Try again</button>
+</div>
+<script src="auth.js"></script>
+<script>
+const out = new URLSearchParams(location.search).get('a') === 'out';
+const API = location.origin;
+async function go() {
+  const t = document.getElementById('title'), m = document.getElementById('msg'), b = document.getElementById('retry');
+  b.style.display = 'none';
+  t.textContent = out ? 'Checking you out...' : 'Checking you in...';
+  m.className = ''; m.textContent = 'Allow location when your phone asks.';
+  const u = JSON.parse(localStorage.getItem('agency_portal_user') || '{}');
+  if (!u.user_id) { m.textContent = 'Signing in...'; return setTimeout(go, 800); }
+  const loc = await (window.getAttendanceLocation ? window.getAttendanceLocation(12000) : Promise.resolve(null));
+  try {
+    const r = await fetch(API + '/api/attendance/' + (out ? 'checkout' : 'checkin'), {
+      method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(Object.assign({user_id: u.user_id}, loc || {}))
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    t.textContent = (out ? 'Checked out, ' : 'Checked in, ') + (u.name || '');
+    t.className = 'ok';
+    m.textContent = loc ? 'Location recorded. You can close this tab.' : 'Done, but location was not shared. You can close this tab.';
+    if (!out) m.textContent += ' Now add today\'s tasks to your standup.';
+  } catch (e) {
+    t.textContent = 'Could not check in'; t.className = 'err';
+    m.textContent = String(e.message || e); b.style.display = 'block';
+  }
+}
+document.getElementById('retry').onclick = go;
+go();
+</script></body></html>
