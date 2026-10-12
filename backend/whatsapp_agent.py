@@ -559,6 +559,12 @@ def _pop_pending_multi(emp_id: str) -> dict | None:
 
 # ── audit log ──────────────────────────────────────────────────────────────
 
+# Messages that must be answered from a tool call (a read or a write), not memory.
+_TASK_REQUEST = re.compile(
+    r"\b(tasks?|standup|stand-up|todo|to-do|add|mark|done|complete[d]?|finish(ed)?|"
+    r"assign|delegate|remind|delete|remove|blocker|due|overdue|pending|list|"
+    r"show|update|reopen|status)\b", re.I)
+
 _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "remind_me", "send_group_message",
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
@@ -3171,6 +3177,7 @@ def handle_message(sender: str, text: str, *,
     usage: dict = {}
     reply = ""
     last_tool_text = ""
+    nudged = False
     turn = {"sticker": None}
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
@@ -3212,6 +3219,21 @@ def handle_message(sender: str, text: str, *,
                 getattr(b, "text", "") for b in resp.content
                 if getattr(b, "type", "") == "text"
             ).strip()
+            # Cheaper models (Qwen) sometimes answer a task request straight
+            # from chat history -- "Added to your standup" or a task list with
+            # no tool call, so nothing was written / the list is stale. If this
+            # looks like a task request and no tool ran, send it back once.
+            if (identity["kind"] == "employee" and not nudged and not last_tool_text
+                    and _TASK_REQUEST.search(text or "")):
+                nudged = True
+                messages.append({"role": "assistant", "content": reply or "(no answer)"})
+                messages.append({"role": "user", "content": (
+                    "[system] You answered without calling a tool. Task lists and "
+                    "changes must come from tools, never from earlier messages. "
+                    "Call the right tool now for the user's last request, then "
+                    "answer only from what the tool returned.")})
+                reply = ""
+                continue
             break
     except Exception:
         logger.exception("whatsapp_agent: model loop failed")
