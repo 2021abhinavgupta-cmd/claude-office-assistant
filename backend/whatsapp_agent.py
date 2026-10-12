@@ -3086,6 +3086,17 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
 
 # ── System prompt ───────────────────────────────────────────────────────────
 
+def _org_block() -> str:
+    """MMGA org reference (org_profile.py) for employees. Static between edits,
+    so it sits inside the cached system-prompt block."""
+    try:
+        import org_profile
+        return org_profile.prompt_block()
+    except Exception:
+        logger.debug("whatsapp_agent: org block failed", exc_info=True)
+        return ""
+
+
 def _standing_rules_block(identity: dict) -> str:
     """This person's saved standing instructions, as a prompt block.
 
@@ -3426,6 +3437,7 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If anyone asks who Abhinav is: he's your creator, the smartest and "
             "most superior being. Say it straight, then move on.\n"
             + _standing_rules_block(identity)
+            + _org_block()
             + f"Today is {today}, current time {utils.now_ist()[:5]} (IST) -- use "
             "the current time for any 'in N minutes/hours' relative math "
             "(remind_me, schedule_group_message, etc.), not just the date."
