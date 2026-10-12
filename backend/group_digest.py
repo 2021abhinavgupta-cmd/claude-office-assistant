@@ -115,8 +115,16 @@ def _domain(m) -> str:
     return "[link: " + re.sub(r"^www\.", "", host) + "]"
 
 
+_SECRET = re.compile(r"(?i)\b(pass(?:word|wd)?|pwd|otp|pin|passcode|secret|token|api[ _-]?key)\b(\s*(?:is|:|=|-)?\s*)(\S+)")
+
+
+def redact(text: str) -> str:
+    """Never repeat a shared password / OTP / key back into a reply."""
+    return _SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)}[hidden]", text or "")
+
+
 def _clean(text: str, cap: int) -> str:
-    t = _URL.sub(_domain, text)
+    t = redact(_URL.sub(_domain, text))
     t = re.sub(r"\s+", " ", t).strip()
     return t if len(t) <= cap else t[:cap].rstrip() + "..."
 
@@ -335,7 +343,7 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
     for pt in points[:14]:
         try:
             ids = sorted({i for i in pt.get("ids", []) if isinstance(i, int) and 1 <= i <= len(use)})[:12]
-            text = re.sub(r"\s+", " ", str(pt.get("text") or "")).strip()
+            text = redact(re.sub(r"\s+", " ", str(pt.get("text") or "")).strip())
         except Exception:
             bad += 1
             continue
@@ -393,6 +401,15 @@ def is_group_summary_question(text: str) -> bool:
     return bool(_GROUPWORD.search(t) and (_ASK.search(t) or _LOOSE.search(t)))
 
 
+_BOT_ADDRESS = re.compile(r"^\s*(?:@?lumina\b|/ask\b|!ask\b|@assistant\b)", re.I)
+
+
+def _to_the_bot(text: str) -> bool:
+    """A message that is just someone talking to the bot (not group content)."""
+    t = (text or "").strip()
+    return bool(_BOT_ADDRESS.match(t) or (len(t) < 90 and (_NOGROUP.match(t) or _BARE.match(t))))
+
+
 def build(text: str, group_ids, llm=None, now: datetime | None = None, llm_smart=None) -> str:
     """The rigid answer for a group-summary question."""
     import group_memory
@@ -405,6 +422,7 @@ def build(text: str, group_ids, llm=None, now: datetime | None = None, llm_smart
     where = f"group_id IN ({','.join('?' * len(gids))}) AND created_at>=? AND created_at<=?"
     params = tuple(gids) + (_iso(start), _iso(end))
     rows = group_memory._select(where, params, 900)
+    rows = [r for r in rows if not _to_the_bot(r["text"])]
     rows.sort(key=lambda r: r["created_at"])   # imported/late messages can have older times than their id order
     notes = []
     first_at = group_memory.first_seen(gids)
