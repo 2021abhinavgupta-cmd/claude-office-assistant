@@ -1531,6 +1531,26 @@ _EMPLOYEE_TOOLS = [
             },
         },
     },
+    {
+        "name": "read_group_chat",
+        "description": "Read what was said in the team WhatsApp group (the "
+                       "assistant keeps the last 30 days). Use for 'what did X "
+                       "say about Y', 'what was decided on the Zoho thing', "
+                       "'summarise the group today', 'did anyone mention the "
+                       "deadline'. `query` narrows to messages containing those "
+                       "words; leave it out to get everything in the window. "
+                       "Summarise the result, don't paste it back.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string",
+                          "description": "Optional words that must appear."},
+                "hours": {"type": "number",
+                          "description": "How far back, in hours. Default 48 "
+                                         "(use 168 for 'this week')."},
+            },
+        },
+    },
     # Anthropic-hosted web search — Claude runs the query server-side and
     # gets cited results. Same tool spec the chat stream endpoint uses.
     # max_uses capped at 2 (was 4) -- each search is billed separately from
@@ -2387,6 +2407,18 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
             head = {"overdue": "Overdue", "today": "Due today", "day": "Due today"}.get(when, "This week")
             return f"{head} ({len(hits)}):\n" + "\n".join(lines)
 
+        if name == "read_group_chat" and kind == "employee":
+            try:
+                import group_memory
+                hours = min(max(float((tool_input or {}).get("hours") or 48), 1), 24 * 30)
+                got = group_memory.search_text(
+                    str((tool_input or {}).get("query") or ""), hours=hours,
+                    group_ids=_group_allowlist())
+            except Exception:
+                logger.exception("whatsapp_agent: read_group_chat failed")
+                return "(couldn't read the group chat just now)"
+            return got or "Nothing in the group chat matches that in that time window."
+
         if name == "get_attendance" and kind == "employee":
             try:
                 conn = get_connection()
@@ -2920,6 +2952,10 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
+            "You keep the team group chat in memory: in the group you are "
+            "given the latest messages, and read_group_chat searches the last "
+            "30 days (works from a DM too). For 'what did X say / what was "
+            "decided / summarise the group', use it, never guess.\n"
             "When you show any standup list, copy the tool's numbered list "
             "exactly, keeping the ✅ (done) and ❌ (not done) marks on every "
             "line, never reword the titles. After add_standup_task or "
@@ -3206,6 +3242,19 @@ def handle_message(sender: str, text: str, *,
             mem_ctx = ""
         if mem_ctx:
             sys_prompt.append({"type": "text", "text": mem_ctx})
+        # In a group, give the model what was just said there (stored by
+        # group_memory, no AI cost) so it follows the conversation.
+        if in_group:
+            try:
+                import group_memory
+                gtxt = group_memory.recent_text(group_id or "", limit=40, hours=48)
+            except Exception:
+                gtxt = ""
+            if gtxt:
+                sys_prompt.append({"type": "text", "text": (
+                    "Recent messages in this group chat, oldest first. Use them "
+                    "to follow the conversation and answer questions about what "
+                    "was said. Do not quote them back unless asked:\n" + gtxt)})
 
     usage: dict = {}
     reply = ""

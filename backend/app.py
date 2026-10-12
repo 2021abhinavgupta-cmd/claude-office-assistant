@@ -3685,6 +3685,19 @@ def whatsapp_bridge():
     group_id = str(data.get("group_id") or "").strip() or None
     group_name = str(data.get("group_name") or "").strip() or None
 
+    # Group memory: the bridge batches what it saw in a group. Stored only for
+    # allow-listed (staff-only) groups, no AI call, no reply.
+    if data.get("observe"):
+        stored = 0
+        try:
+            if group_id and whatsapp_agent._group_allowed(group_id):
+                import group_memory
+                stored = group_memory.record(group_id, group_name or "",
+                                             data.get("messages") or [])
+        except Exception:
+            logger.exception("WhatsApp bridge: group observe failed")
+        return jsonify({"stored": stored})
+
     # Burst reaction: the bridge saw a lively spell in an allow-listed group and
     # wants a mood word for a reaction sticker (or nothing). No agent, no reply,
     # no text/from field on this call.

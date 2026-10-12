@@ -615,6 +615,20 @@ def init_db():
             created_at  TEXT NOT NULL
         )""")
 
+        # Messages from allow-listed staff WhatsApp groups (group_memory.py).
+        conn.execute("""CREATE TABLE IF NOT EXISTS wa_group_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id     TEXT NOT NULL,
+            group_name   TEXT,
+            sender       TEXT,
+            sender_name  TEXT,
+            text         TEXT NOT NULL,
+            wa_id        TEXT,
+            created_at   TEXT NOT NULL
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_group_log_g ON wa_group_log (group_id, id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_group_log_u ON wa_group_log (group_id, wa_id)")
+
         # Project Knowledge Base search index (FTS5)
         # Stores chunked text for fast, System-Projects-like retrieval.
         try:

@@ -549,6 +549,57 @@ async function groupName(sock, jid) {
   return name;
 }
 
+// ── group memory ──────────────────────────────────────────────────────────
+// Every text message from an allow-listed (staff-only) group is batched and sent
+// to Lumina, which stores it (no AI call) so the assistant can follow the chat.
+// The bridge asks Lumina which groups are allowed, so nothing from other groups
+// ever leaves this machine.
+let _obsAllow = new Set();
+let _obsAllowAt = 0;
+const _obsQueue = new Map();   // groupJid -> { name, msgs: [] }
+
+async function refreshObserveAllow() {
+  if (Date.now() - _obsAllowAt < 5 * 60000) return;
+  _obsAllowAt = Date.now();
+  try {
+    const res = await fetch(`${LUMINA_URL}/api/whatsapp/groups`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return;
+    const d = await res.json();
+    _obsAllow = new Set((d.effective || []).map((x) => String(x).replace(/\D/g, "")));
+  } catch { /* keep the previous list */ }
+}
+
+function observeGroupMessage(jid, groupNm, from, pushName, text, id) {
+  if (!text || !_obsAllow.has(jid.replace(/\D/g, ""))) return;
+  let q = _obsQueue.get(jid);
+  if (!q) { q = { name: groupNm || "", msgs: [] }; _obsQueue.set(jid, q); }
+  q.msgs.push({ from, name: pushName || "", text: text.slice(0, 1000), ts: Date.now(), id: id || "" });
+  if (q.msgs.length >= 25) flushObserved().catch(() => {});
+}
+
+async function flushObserved() {
+  for (const [jid, q] of Array.from(_obsQueue.entries())) {
+    if (!q.msgs.length) continue;
+    const batch = q.msgs.splice(0, q.msgs.length);
+    try {
+      const res = await fetch(`${LUMINA_URL}/whatsapp/bridge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+        body: JSON.stringify({ observe: true, group_id: jid, group_name: q.name, messages: batch }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) throw new Error(`Lumina ${res.status}`);
+    } catch (e) {
+      log(`group observe flush failed: ${e.message}`);
+      if (q.msgs.length < 200) q.msgs.unshift(...batch);   // retry next tick, bounded
+    }
+  }
+}
+setInterval(() => flushObserved().catch(() => {}), 10000);
+
 async function askLumina(from, text, groupId, groupNm) {
   const body = { from, text };
   if (groupId) {
@@ -706,6 +757,17 @@ async function start() {
           // observe every message in the group for burst detection
           pushGroupMsg(jid, msg.pushName || bareJid(msg.key.participant || "") || "someone", rawText);
           maybeReactToBurst(sock, jid, groupNm).catch(() => {});
+
+          // remember it (allow-listed groups only): resolve who sent it first
+          await refreshObserveAllow();
+          if (_obsAllow.has(jid.replace(/\D/g, ""))) {
+            const rp = msg.key.participant || "";
+            let pj = msg.key.participantPn || "";
+            if (!pj && rp.endsWith("@lid")) {
+              try { pj = (await sock.signalRepository?.lidMapping?.getPNForLID?.(rp)) || ""; } catch { /* n/a */ }
+            }
+            observeGroupMessage(jid, groupNm, bareJid(pj || rp), msg.pushName || "", rawText, msg.key.id);
+          }
 
           const q = groupQuery(rawText, addressed);
           if (!q) continue;
