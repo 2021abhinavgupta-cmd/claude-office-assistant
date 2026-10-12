@@ -36,6 +36,12 @@ _ASK = re.compile(
     r"(?:said|talk\w*|happen\w*|going on|mention\w*|decid\w*|up)|"
     r"catch me up|i missed|talked about|said)\b", re.I)
 _GROUPWORD = re.compile(r"\b(?:group|wizards|team chat)\b", re.I)
+_LOOSE = re.compile(r"\b(?:things?|tell me|update|updates|news|pressing|important|urgent|priority|"
+                    r"happening|anything|missed|catch|going on|latest|new)\b", re.I)
+_PRESSING = re.compile(r"\b(?:pressing|important|urgent|priority|priorities|needs? attention|"
+                       r"anything i should know|what did i miss)\b", re.I)
+_NOGROUP = re.compile(r"^(?:lumina[,:\s]+)?(?:what did i miss|catch me up|anything (?:important|new|pressing)"
+                      r"(?: (?:today|in the chat))?)[\s?.!]*$", re.I)
 _URL = re.compile(r"https?://\S+", re.I)
 
 
@@ -374,7 +380,11 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
 # ---------- public -------------------------------------------------------
 def is_group_summary_question(text: str) -> bool:
     t = (text or "").strip()
-    return bool(t and len(t) < 220 and _GROUPWORD.search(t) and _ASK.search(t))
+    if not t or len(t) >= 220:
+        return False
+    if _NOGROUP.match(t):
+        return True
+    return bool(_GROUPWORD.search(t) and (_ASK.search(t) or _LOOSE.search(t)))
 
 
 def build(text: str, group_ids, llm=None, now: datetime | None = None, llm_smart=None) -> str:
@@ -422,7 +432,18 @@ def try_answer(text: str, group_ids, llm=None, llm_smart=None) -> str | None:
     if not is_group_summary_question(text):
         return None
     try:
-        return build(text, group_ids, llm, llm_smart=llm_smart)
+        out = build(text, group_ids, llm, llm_smart=llm_smart)
+        if _PRESSING.search(text or ""):
+            # "what is pressing / important": the tracked open asks and promises first
+            try:
+                import group_intel
+                rows = group_intel.list_commitments("", "open", 12)
+                if rows:
+                    out = ("*Open in the group (promises and asks not yet done):*\n"
+                           + group_intel.format_commitments(rows) + "\n\n" + out)
+            except Exception:
+                logger.debug("group_digest: open items failed", exc_info=True)
+        return out
     except Exception:
         logger.exception("group_digest: failed, falling back to the model")
         return None

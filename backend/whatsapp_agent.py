@@ -233,7 +233,25 @@ def _group_allowed(group_id: str) -> bool:
 
 # ── Per-sender conversation context ──────────────────────────────────────────
 
+def _one_time_context_reset() -> None:
+    """2026-10-12: saved chat memories contained made-up group summaries the model kept
+    copying. Wipe them once (this is only the bot's short-term chat memory)."""
+    try:
+        conn = get_connection()
+        try:
+            with conn:
+                got = conn.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES "
+                                   "('ctx_reset_20261012', '1')").rowcount
+                if got:
+                    conn.execute("DELETE FROM whatsapp_agent_context")
+        finally:
+            conn.close()
+    except Exception:
+        logger.debug("whatsapp_agent: context reset skipped", exc_info=True)
+
+
 def _load_context(sender: str) -> list:
+    _one_time_context_reset()
     try:
         conn = get_connection()
         cur = conn.cursor()
@@ -3651,7 +3669,8 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "You keep the team group chat in memory: in the group you are "
             "given the latest messages, and read_group_chat searches the last "
             "30 days (works from a DM too). For 'what did X say / what was "
-            "decided / summarise the group', use it, never guess. Report ONLY "
+            "decided / summarise the group', use it, never guess. Never reuse an earlier answer "
+            "about the group: call read_group_chat again every time. Report ONLY "
             "what is literally in the tool result: never invent a quote, a "
             "speaker or a topic; if the chat is mostly links, jokes or test "
             "messages, say that plainly. Cover every real topic in the log "
@@ -4100,9 +4119,12 @@ def handle_message(sender: str, text: str, *,
     reply = _humanize(reply, bullets=in_group)
 
     # Persist plain-text turns for follow-up continuity
+    # An answer built from the group chat is not remembered word for word: later turns
+    # must re-read the chat instead of copying (and compounding) an old summary.
+    kept = "(I showed the group chat; I re-read it fresh each time.)" if turn.get("group_log") else reply
     _save_context(ctx_key, history + [
         {"role": "user", "content": text},
-        {"role": "assistant", "content": reply},
+        {"role": "assistant", "content": kept},
     ])
 
     _record_llm_usage(model, usage, f"wa_{ctx_key}")
