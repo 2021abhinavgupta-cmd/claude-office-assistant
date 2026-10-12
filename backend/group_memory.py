@@ -58,6 +58,62 @@ def _employee_names() -> dict:
     return out
 
 
+def _aliases() -> dict:
+    """digits (a phone's last 10, or a WhatsApp LID) -> display name, for @mentions."""
+    out = dict(_employee_names())
+    try:
+        import json
+        conn = get_connection()
+        row = conn.execute("SELECT value FROM app_settings WHERE key='wa_lid_alias'").fetchone()
+        conn.close()
+        for k, v in (json.loads(row[0]) if row and row[0] else {}).items():
+            out[str(k)] = str(v)
+    except Exception:
+        pass
+    return out
+
+
+def resolve_mentions(text: str, aliases: dict | None = None) -> str:
+    """'@71884968308912' -> '@Charulata' when we know who that number/LID is."""
+    if "@" not in (text or ""):
+        return text
+    al = aliases if aliases is not None else _aliases()
+
+    def sub(m):
+        d = m.group(1)
+        nm = al.get(d) or al.get(d[-10:])
+        return f"@{nm}" if nm else m.group(0)
+    return re.sub(r"@(\d{8,16})\b", sub, text)
+
+
+def set_alias(digits: str, name: str) -> int:
+    """Remember who a LID is and rewrite the messages already stored. Returns rows changed."""
+    import json
+    d = re.sub(r"\D", "", digits or "")
+    if not d or not name.strip():
+        return 0
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT value FROM app_settings WHERE key='wa_lid_alias'").fetchone()
+        cur = json.loads(row[0]) if row and row[0] else {}
+        cur[d] = name.strip()
+        with conn:
+            conn.execute("INSERT INTO app_settings (key, value) VALUES ('wa_lid_alias', ?) "
+                         "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(cur),))
+        _ensure_table(conn)
+        n = 0
+        with conn:
+            for rid, txt in conn.execute("SELECT id, text FROM wa_group_log WHERE text LIKE ?",
+                                         (f"%@{d}%",)).fetchall():
+                new = resolve_mentions(txt, {d: name.strip()})
+                if new != txt:
+                    conn.execute("UPDATE wa_group_log SET text=? WHERE id=?", (new, rid))
+                    n += 1
+        return n
+    finally:
+        conn.close()
+
+
 def record(group_id: str, group_name: str, messages: list) -> int:
     """Store a batch. Returns how many rows were inserted. The caller must have
     already checked the group is allow-listed."""
@@ -65,6 +121,7 @@ def record(group_id: str, group_name: str, messages: list) -> int:
     if not gid or not messages:
         return 0
     names = _employee_names()
+    aliases = _aliases()
     n = 0
     conn = get_connection()
     try:
@@ -73,7 +130,7 @@ def record(group_id: str, group_name: str, messages: list) -> int:
             for m in messages:
                 if not isinstance(m, dict):
                     continue
-                text = re.sub(r"\s+", " ", str(m.get("text") or "")).strip()[:_MAX_TEXT]
+                text = resolve_mentions(re.sub(r"\s+", " ", str(m.get("text") or "")).strip()[:_MAX_TEXT], aliases)
                 if not text:
                     continue
                 phone = _digits(m.get("from"))

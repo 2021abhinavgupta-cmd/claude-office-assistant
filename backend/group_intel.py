@@ -75,6 +75,11 @@ def ensure_schema(conn) -> None:
         updated_at    TEXT NOT NULL
     )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gc_status ON group_commitments (status, owner_id)")
+    for col in ("requester_name", "requester_id"):   # who directed the work (an "ask"); empty for self-promises
+        try:
+            conn.execute(f"ALTER TABLE group_commitments ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
     # decisions and client preferences ("client approved the blue logo", "Mellow
     # wants captions in Hinglish") -- the assistant's memory of what was settled
     conn.execute("""CREATE TABLE IF NOT EXISTS group_facts (
@@ -184,8 +189,15 @@ _SYSTEM = (
     "\"done\":[{\"id\":<open commitment id>,\"quote\":\"exact words showing it is "
     "done\"}],\"dropped\":[{\"id\":<id>,\"quote\":\"exact words cancelling it\"}],"
     "\"moved\":[{\"id\":<id>,\"due\":\"YYYY-MM-DD\",\"quote\":\"...\"}],"
+    "\"asks\":[{\"from\":\"who is asking, exact team name\",\"to\":\"the person called out, "
+    "exact team name\",\"action\":\"short imperative phrase\",\"due\":\"YYYY-MM-DD or empty\","
+    "\"quote\":\"exact words\"}],"
     "\"facts\":[{\"kind\":\"decision or preference\",\"client\":\"client name or empty\","
     "\"text\":\"one short sentence\",\"quote\":\"exact words\"}]}.\n"
+    "asks: a message where someone tags or names a teammate and tells them to do "
+    "something ('@Charu all collab with stempedia', 'Abhinav press on twinkle to accept "
+    "it'). The speaker is 'from', the person called out is 'to'. Mentions appear as "
+    "@Name. A self-promise ('I'll message twinkle') goes in new, not asks.\n"
     "facts: a decision is something settled ('client approved the blue logo', "
     "'posting moved to Friday'); a preference is how a client or the team likes "
     "things done ('Mellow wants captions in Hinglish'). Only clear, lasting ones.\n"
@@ -370,6 +382,29 @@ def extract_group(conn, group_id: str) -> dict:
              quote[:300], _src_ts(quote), "open", now_iso, now_iso))
         counts["new"] += 1
 
+    counts["asks"] = 0
+    for it in (data.get("asks") or [])[:10]:
+        if not isinstance(it, dict):
+            continue
+        action = re.sub(r"\s+", " ", str(it.get("action") or "")).strip()[:200]
+        quote = str(it.get("quote") or "")
+        if not action or not _grounded(quote, texts):
+            counts["rejected"] += 1
+            continue
+        oname, oid = _owner(it.get("to"), roster)
+        if not oid:        # an ask is only tracked when the person called out is a real teammate
+            continue
+        rname, rid = _owner(it.get("from"), roster)
+        if any(_overlap(action, r[2]) >= 0.7 and (r[1] or "") == oname for r in open_rows):
+            continue
+        conn.execute(
+            "INSERT INTO group_commitments (group_id, group_name, owner_name, owner_id, action, "
+            "due_date, quote, source_ts, status, created_at, updated_at, requester_name, requester_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (group_id, group_name, oname, oid, action, _valid_date(it.get("due")) or None,
+             quote[:300], _src_ts(quote), "open", now_iso, now_iso, rname if rid else "", rid or ""))
+        counts["asks"] += 1
+
     for key, status in (("done", "done"), ("dropped", "dropped")):
         for it in (data.get(key) or [])[:10]:
             if not isinstance(it, dict):
@@ -539,6 +574,88 @@ def commitment_items(user_id: str, name: str, today: str, now: datetime | None =
                      "Ask whether it got done or what is holding it up."),
         })
     return out
+
+
+def open_asks(requester_id: str, check_evidence: bool = True) -> list:
+    """Open asks this person made in the group (work they directed at someone else).
+    Quietly closes the ones that real evidence shows are done."""
+    out = []
+    try:
+        conn = get_connection()
+        ensure_schema(conn)
+        conn.row_factory = None
+        cols = ["id", "owner_name", "owner_id", "action", "due_date", "source_ts", "created_at"]
+        rows = [dict(zip(cols, r)) for r in conn.execute(
+            f"SELECT {','.join(cols)} FROM group_commitments WHERE status='open' AND requester_id=? "
+            "ORDER BY id", (requester_id,)).fetchall()]
+        conn.close()
+    except Exception:
+        return []
+    cache: dict = {}
+    for c in rows:
+        if check_evidence:
+            since = (c["created_at"] or "")[:10]
+            ev = (_standup_evidence(c["owner_id"], c["action"], since)
+                  or _notion_evidence(c["action"], c["owner_name"] or "", cache))
+            if ev:
+                mark(c["id"], "done", ev)
+                continue
+        out.append(c)
+    return out
+
+
+def asks_digest_text(requester_id: str) -> str:
+    rows = open_asks(requester_id)
+    if not rows:
+        return ""
+    lines = ["Asks you made in the group that are still open:"]
+    for c in rows[:12]:
+        due = f", due {c['due_date']}" if c["due_date"] else ""
+        lines.append(f"- {c['owner_name']}: {c['action']} ({_fmt_time(c['source_ts'] or '')}{due}) [#{c['id']}]")
+    if len(rows) > 12:
+        lines.append(f"...and {len(rows) - 12} more")
+    lines.append("Nothing in the chat, standup or Notion shows these as done. Reply \"close #<number>\" "
+                 "to close one, or ask me what is holding any of them up.")
+    return "\n".join(lines)
+
+
+def run_asks_digest(now: datetime | None = None, force_ids: list | None = None) -> dict:
+    """Once per weekday 17:00-18:30 IST: tell each person who directed work in the group
+    (default Vidit and Kshitij, setting asks_digest_ids) which of those asks look unfinished."""
+    now = now or datetime.now(_IST)
+    day = now.strftime("%Y-%m-%d")
+    if not force_ids and (now.weekday() >= 5 or not ((17, 0) <= (now.hour, now.minute) < (18, 30))):
+        return {"skipped": "outside window"}
+    import wa_outbox
+    import week_digest
+    ids = list(force_ids or [])
+    if not ids:
+        try:
+            conn = get_connection()
+            row = conn.execute("SELECT value FROM app_settings WHERE key='asks_digest_ids'").fetchone()
+            conn.close()
+            ids = [x for x in re.split(r"[\s,]+", str(row[0]) if row and row[0] else "emp001,emp004") if x]
+        except Exception:
+            ids = ["emp001", "emp004"]
+    sent = 0
+    for emp in week_digest._people(only_ids=ids):
+        uid = emp.get("id")
+        if not str(emp.get("whatsapp") or "").strip():
+            continue
+        if not force_ids:
+            conn = get_connection()
+            try:
+                with conn:
+                    got = conn.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, '1')",
+                                       (f"asks_digest_{day}_{uid}",)).rowcount
+            finally:
+                conn.close()
+            if not got:
+                continue
+        text = asks_digest_text(uid)
+        if text and wa_outbox.enqueue(wa_outbox.wa_jid(emp["whatsapp"]), text):
+            sent += 1
+    return {"sent": sent}
 
 
 def mark(cid: int, status: str, evidence: str = "") -> bool:

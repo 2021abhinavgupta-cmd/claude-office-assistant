@@ -225,7 +225,9 @@ _SUM_SYSTEM = (
     "stated in the messages you cite. Never guess a purpose, mood or meaning (no 'probably', "
     "'likely', 'seems'). A message that is only a link: say who shared a link and its site, "
     "nothing more. Do not put quotes around anything. Name only people who sent the cited "
-    "messages or are named inside them. Skip noise like '.' or 'ok'. Hinglish: give the meaning "
+    "messages or are named inside them. A message that tags or calls out a named person with a "
+    "request (shown as @Name) is IMPORTANT: always make it its own point: who asked whom to do what. "
+    "Skip noise like '.' or 'ok'. Hinglish: give the meaning "
     "faithfully in English. Cover EVERY substantive message: plans, requests, assignments (which person "
     "got which role), decisions, links shared, collaborations and follow-ups. Skip only pure noise. "
     "If nothing real was discussed, return fewer points.")

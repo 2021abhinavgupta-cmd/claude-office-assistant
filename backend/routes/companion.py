@@ -1209,6 +1209,17 @@ def companion_morning_dash_run():
     return jsonify(morning_dash.run_daily(force=True, only_ids=ids))
 
 
+@companion_bp.route("/api/companion/lid-alias", methods=["POST"])
+def companion_lid_alias():
+    """Tell the bot who an @mention number is: ?digits=71884968308912&name=Charulata
+    (rewrites messages already stored). Token-gated."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import group_memory
+    n = group_memory.set_alias(request.args.get("digits", ""), request.args.get("name", ""))
+    return jsonify({"rewritten": n})
+
+
 @companion_bp.route("/api/companion/mgmt-view", methods=["GET"])
 def companion_mgmt_view():
     """Preview a management answer: ?view=at_risk|blocked|needs_vg|completed_week|

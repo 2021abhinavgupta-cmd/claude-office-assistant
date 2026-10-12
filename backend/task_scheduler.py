@@ -386,6 +386,17 @@ def _run_pa_brief():
         logger.exception("pa_brief failed")
 
 
+def _run_asks_digest():
+    """17:00-18:30 IST weekday digest to whoever directed work in the group (group_intel)."""
+    try:
+        import group_intel
+        res = group_intel.run_asks_digest()
+        if res.get("sent"):
+            logger.info("asks digest: %s", res)
+    except Exception:
+        logger.exception("asks digest failed")
+
+
 def _run_followup_sweep():
     """Wraps followups.sweep() for the interval job below.
 
@@ -464,6 +475,8 @@ def init_scheduler(app):
         # when there are new messages in an allow-listed group.
         scheduler.add_job(_run_group_intel, "interval", minutes=8,
                           id="group_intel", replace_existing=True)
+        scheduler.add_job(_run_asks_digest, "interval", minutes=10,
+                          id="asks_digest", replace_existing=True)
         scheduler.add_job(_run_pa_brief, "interval", minutes=10,
                           id="pa_brief", replace_existing=True)
         # Data retention -- prunes old rows from tables that have no other

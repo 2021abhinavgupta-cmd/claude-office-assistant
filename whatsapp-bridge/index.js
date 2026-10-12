@@ -606,6 +606,25 @@ async function refreshObserveAllow() {
   } catch { /* keep the previous list */ }
 }
 
+// '@<lid>' in a group message -> '@<phone>' when WhatsApp's LID map knows the number,
+// so the server can turn it into the person's name.
+async function resolveMentionText(sock, msg, text) {
+  try {
+    if (!text || !text.includes("@")) return text;
+    let ctx = null;
+    for (const v of Object.values(msg.message || {})) { if (v && v.contextInfo) { ctx = v.contextInfo; break; } }
+    const ids = Array.isArray(ctx?.mentionedJid) ? ctx.mentionedJid : [];
+    let out = text;
+    for (const j of ids) {
+      const lidDigits = bareJid(j);
+      let pn = j.endsWith("@lid") ? ((await sock.signalRepository?.lidMapping?.getPNForLID?.(j)) || "") : j;
+      const phone = bareJid(pn);
+      if (phone && phone !== lidDigits) out = out.split("@" + lidDigits).join("@" + phone);
+    }
+    return out;
+  } catch { return text; }
+}
+
 function observeGroupMessage(jid, groupNm, from, pushName, text, id) {
   if (!text || !_obsAllow.has(jid.replace(/\D/g, ""))) return;
   let q = _obsQueue.get(jid);
@@ -867,9 +886,10 @@ async function start() {
             if (!pj && rp.endsWith("@lid")) {
               try { pj = (await sock.signalRepository?.lidMapping?.getPNForLID?.(rp)) || ""; } catch { /* n/a */ }
             }
-            observeGroupMessage(jid, groupNm, bareJid(pj || rp), msg.pushName || "", rawText, msg.key.id);
+            const obsText = await resolveMentionText(sock, msg, rawText);
+            observeGroupMessage(jid, groupNm, bareJid(pj || rp), msg.pushName || "", obsText, msg.key.id);
             archive({ dir: "in", chat: "group", group_id: bareJid(jid), group: groupNm || "", from: bareJid(pj || rp),
-                      name: msg.pushName || "", id: msg.key.id, text: rawText });
+                      name: msg.pushName || "", id: msg.key.id, text: obsText });
           }
 
           const q = groupQuery(rawText, addressed);
