@@ -87,7 +87,10 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--txt); m
 const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "http://localhost:5000" : location.origin;
 const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
 if (!user.user_id) window.location.href = "login.html";
-if (user.user_id !== "emp009") window.location.href = "leave.html";
+// HR and the founders edit; Abhinav can view only; everyone else goes back to Calendar
+const CAN_EDIT = ["emp009", "emp001", "emp004"].includes(user.user_id);
+const VIEW_ONLY = user.user_id === "emp003";
+if (!CAN_EDIT && !VIEW_ONLY) window.location.href = "leave.html";
 
 const KINDS = {
   holiday: {label:"Public holiday", color:"#4cc38a", style:"fill", defTitle:""},
@@ -124,10 +127,15 @@ const cal = GCal.create({
       start:x.start_date, end:x.end_date, style:KINDS[x.kind].style, color:KINDS[x.kind].color, raw:x,
     }));
   },
-  onDayClick: d => openModal(null, d),
-  onEventClick: ev => openModal(ev.raw),
-  onCreate: d => openModal(null, d),
+  onDayClick: d => { if (CAN_EDIT) openModal(null, d); },
+  onEventClick: ev => {
+    if (CAN_EDIT) { openModal(ev.raw); return; }
+    const r = ev.raw || {};
+    toast(`${r.title || KINDS[r.kind].label} (${KINDS[r.kind].label}) ${r.start_date}${r.end_date && r.end_date !== r.start_date ? " to " + r.end_date : ""}`);
+  },
+  onCreate: CAN_EDIT ? (d => openModal(null, d)) : undefined,
 });
+if (VIEW_ONLY) toast("View only: HR and the founders edit this calendar");
 
 let editingId = null, kind = "holiday";
 

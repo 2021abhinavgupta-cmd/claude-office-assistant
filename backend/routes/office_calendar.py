@@ -23,7 +23,7 @@ from datetime import date as _date
 from flask import Blueprint, jsonify, request
 
 from db import get_connection
-from routes.leave import _require_hr, _require_session
+from routes.leave import _require_approver as _require_hr, _require_session  # HR + founders edit
 
 office_calendar_bp = Blueprint("office_calendar", __name__)
 

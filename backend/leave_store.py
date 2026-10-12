@@ -40,6 +40,8 @@ _LEAVE_DEDUCTION = {"full": 1.0, "half": 0.5}
 # founders decide it. The first decision wins; a later one is told who decided.
 HR_ID = "emp009"
 APPROVER_IDS = ("emp009", "emp001", "emp004")
+# Can SEE pending requests and the office calendar, never decide or edit (Abhinav).
+VIEWER_IDS = ("emp003",)
 MAX_SPAN_DAYS = 60            # one request can cover at most this many calendar days
 MAX_PAST_DAYS = 60            # backdating limit
 MAX_AHEAD_DAYS = 366

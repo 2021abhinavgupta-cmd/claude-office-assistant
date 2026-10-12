@@ -2151,9 +2151,10 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
         if name == "get_pending_leave" and kind == "employee":
             import leave_store
             import mailer
-            if identity["id"] not in leave_store.APPROVER_IDS:
-                return "Only Noorish, Vidit and Kshitij can see leave requests waiting for a decision."
-            rows = leave_store.list_pending(identity["id"])
+            viewer = identity["id"] in leave_store.VIEWER_IDS
+            if identity["id"] not in leave_store.APPROVER_IDS and not viewer:
+                return "Only Noorish, Vidit, Kshitij and Abhinav can see leave requests waiting for a decision."
+            rows = leave_store.list_pending(None if viewer else identity["id"])
             if not rows:
                 return "No leave requests waiting for you."
             lines = []
@@ -2161,7 +2162,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 span = r["start_date"] if r["start_date"] == r["end_date"] else f"{r['start_date']} to {r['end_date']}"
                 lines.append(f"#{r['id']} {mailer.name_for(r['user_id'])}: {span} ({r['leave_type']})"
                              + (f", {r['reason']}" if r.get("reason") else ""))
-            return "\n".join(lines)
+            return "\n".join(lines) + ("\n(view only, the approvers decide)" if viewer else "")
 
         if name == "decide_leave" and kind == "employee":
             import leave_store

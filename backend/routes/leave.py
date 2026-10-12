@@ -169,10 +169,16 @@ def _decide(leave_id: int, uid: str, action: str, reason: str = ""):
 
 @leave_bp.route("/api/leave/pending", methods=["GET"])
 def leave_pending():
-    uid, err = _require_approver()
-    if err:
-        return err
-    return jsonify({"pending": leave_store.list_pending(uid)})
+    """Approvers see what they can decide; view-only people (VIEWER_IDS) see
+    every pending request but `can_decide` is false."""
+    uid = _session_user_id()
+    if not uid:
+        return jsonify({"error": "login required"}), 401
+    if uid in leave_store.APPROVER_IDS:
+        return jsonify({"pending": leave_store.list_pending(uid), "can_decide": True})
+    if uid in leave_store.VIEWER_IDS:
+        return jsonify({"pending": leave_store.list_pending(), "can_decide": False})
+    return jsonify({"error": "approvers only"}), 403
 
 
 @leave_bp.route("/api/leave/<int:leave_id>/approve", methods=["POST"])

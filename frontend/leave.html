@@ -107,6 +107,7 @@ const UID = user.user_id;
 if (!UID) window.location.href = "login.html";
 // HR and the founders can approve (never their own request; the server enforces it)
 const IS_HR = ["emp009", "emp001", "emp004"].includes(UID);
+const IS_VIEWER = UID === "emp003";   // sees pending requests + the office calendar, can't decide
 
 function toast(m,t="ok"){
   const e=document.getElementById("toast");
@@ -116,7 +117,7 @@ function toast(m,t="ok"){
 }
 
 let pickedDate = null;
-if (IS_HR) document.getElementById("oc-link").style.display = "";
+if (IS_HR || IS_VIEWER) document.getElementById("oc-link").style.display = "";
 
 const LAYERS = {
   holiday: {label:"Public holidays",   color:"#4cc38a"},
@@ -238,7 +239,7 @@ async function convertOvertime(){
 }
 
 async function loadPending(){
-  if (!IS_HR) return;
+  if (!IS_HR && !IS_VIEWER) return;
   document.getElementById("hr-panel").style.display = "block";
   try{
     const r = await fetch(`${API}/api/leave/pending?user_id=${encodeURIComponent(UID)}`);
@@ -255,9 +256,9 @@ async function loadPending(){
       return `
       <div class="pending-row">
         <span>${who}${filedBy} — ${esc(p.start_date)}${p.start_date!==p.end_date?" to "+esc(p.end_date):""} (${esc(p.leave_type)})${p.reason?" — "+esc(p.reason):""}</span>
-        <span class="pending-actions">
+        <span class="pending-actions">${IS_HR ? `
           <button class="btn-approve" onclick="decide(${p.id},'approve')">Approve</button>
-          <button class="btn-reject" onclick="decide(${p.id},'reject')">Reject</button>
+          <button class="btn-reject" onclick="decide(${p.id},'reject')">Reject</button>` : '<span style="color:var(--muted);font-size:.75rem;">view only</span>'}
         </span>
       </div>
     `;
