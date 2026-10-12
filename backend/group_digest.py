@@ -19,6 +19,7 @@ this module's verbatim digest.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import re
@@ -225,7 +226,9 @@ _SUM_SYSTEM = (
     "'likely', 'seems'). A message that is only a link: say who shared a link and its site, "
     "nothing more. Do not put quotes around anything. Name only people who sent the cited "
     "messages or are named inside them. Skip noise like '.' or 'ok'. Hinglish: give the meaning "
-    "faithfully in English. If nothing real was discussed, return fewer points.")
+    "faithfully in English. Cover EVERY substantive message: plans, requests, assignments (which person "
+    "got which role), decisions, links shared, collaborations and follow-ups. Skip only pure noise. "
+    "If nothing real was discussed, return fewer points.")
 
 
 _FUNC = set("""shared said says asked announced posted sent wrote mentioned confirmed picked chose chosen
@@ -260,7 +263,8 @@ def _point_ok(text: str, ids: list, rows) -> bool:
     for w in re.findall(r"[A-Za-z][A-Za-z0-9']+", text):
         if w[0].isupper() and w.lower() not in _CAPS_OK and len(w) > 2:
             if w.lower() not in hay and _squash(w) not in hay_sq:
-                return False
+                if not difflib.get_close_matches(w.lower(), re.findall(r"[a-z0-9']+", hay), n=1, cutoff=0.75):
+                    return False
     for n in re.findall(r"\d+", text):
         if n not in hay:
             return False
@@ -280,7 +284,7 @@ def _verify(cand, use, llm) -> dict:
                          f"{_clean(use[i - 1]['text'], 400)}" for i in ids)
         blocks.append(f"CLAIM {n}: {text}\nMESSAGES:\n{msgs}")
     system = ("You are a strict fact checker. For each CLAIM decide if the MESSAGES under it "
-              "directly support EVERY detail of the claim (who, what, when, numbers). A claim "
+              "directly support EVERY detail of the claim (who, what, when, numbers). Ignore spelling differences in names. A claim "
               "that adds a purpose, motive, feeling or detail not in the messages is NOT supported. "
               'Reply ONLY with JSON: {"results":[{"n":1,"supported":true}]}.')
     try:
@@ -344,13 +348,25 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
         logger.warning("group_digest: summary rejected (%d ok, %d bad)", len(good), bad)
         return None
     good.sort()
+    accepted_ids = set()
+    for n, (ids, text) in enumerate(cand, 1):
+        hay = " ".join(f"{use[i - 1]['sender_name']} {use[i - 1]['text']}" for i in ids).lower()
+        if (verdict.get(n) if verdict else _words_ok(text, hay)):
+            accepted_ids.update(ids)
+    # Nothing may go missing: every substantive message not covered by an accepted point
+    # is listed word for word under the summary.
+    rest = [r for i, r in enumerate(use, 1) if i not in accepted_ids and len(_clean(r["text"], 400)) >= 6]
     head = (f"*Group summary, {label}*: {len(rows)} messages, "
             f"{_hm(rows[0]['created_at'])} to {_hm(rows[-1]['created_at'])}\n")
     body = "\n".join(f"- {t} ({_hm(use[i - 1]['created_at'])})" for i, t in good)
-    foot = "\n".join(notes + ["Every point above was checked against the real messages. "
-                              "Say \"exact messages from the group\" for the chat word for word."])
+    if rest:
+        shown = rest[-14:]
+        body += ("\n\n*Also in the chat (exact words):*\n" + "\n".join(_line(r, 150, False) for r in shown)
+                 + (f"\n(+{len(rest) - len(shown)} earlier ones; ask for the exact messages)" if len(rest) > len(shown) else ""))
+    foot = "\n".join(notes + ["The points were checked against the real messages; the lines under "
+                              "\"Also in the chat\" are exactly what was said."])
     out = f"{head}\n{body}\n\n{foot}"
-    return out if len(out) <= MAX_REPLY else None
+    return out if len(out) <= MAX_REPLY else out[:MAX_REPLY - 3] + "..."
 
 
 # ---------- public -------------------------------------------------------
