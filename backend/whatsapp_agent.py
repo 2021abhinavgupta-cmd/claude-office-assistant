@@ -29,8 +29,18 @@ from datetime import datetime, timedelta, timezone
 
 import anthropic
 
-from model_router import get_model_for_task, calculate_cost
-from budget_tracker import check_budget_available, record_usage
+from model_router import get_model_for_task, calculate_cost, MODEL_COSTS
+
+MODEL_COSTS_SONNET = MODEL_COSTS["sonnet"]
+from budget_tracker import check_budget_available as _real_check_budget, record_usage
+
+
+def check_budget_available() -> dict:
+    """The WhatsApp assistant ignores the monthly spend limit (owner's call, 2026-10-12:
+    quality over cost). Set WHATSAPP_ENFORCE_BUDGET=1 to enforce it again."""
+    if os.getenv("WHATSAPP_ENFORCE_BUDGET", "").strip().lower() in ("1", "true", "yes", "on"):
+        return _real_check_budget()
+    return {"allowed": True}
 from db import get_connection
 import notion_store
 import kb_retriever
@@ -43,6 +53,10 @@ import llm_openrouter
 logger = logging.getLogger(__name__)
 
 _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+
+_BEST_DEFAULT = "claude-opus-5-5,claude-sonnet-5-5,claude-sonnet-4-6"
+_BEST_START = 0   # index of the first model in the chain that has worked so far
 
 
 def _llm_create(model: dict, system, tools, messages: list, max_tokens: int,
@@ -61,8 +75,8 @@ def _llm_create(model: dict, system, tools, messages: list, max_tokens: int,
         u[1] += resp.usage.output_tokens
         return resp
 
-    def _claude():
-        kwargs = {"model": model["name"], "max_tokens": max_tokens, "system": system,
+    def _claude(name=None):
+        kwargs = {"model": name or model["name"], "max_tokens": max_tokens, "system": system,
                   "messages": llm_openrouter.to_anthropic_messages(messages)}
         if tools:
             kwargs["tools"] = tools
@@ -73,13 +87,21 @@ def _llm_create(model: dict, system, tools, messages: list, max_tokens: int,
         return resp
 
     if smart:
-        try:
-            return _claude()
-        except Exception:
-            logger.exception("whatsapp_agent: smart (Claude) call failed")
-            if llm_openrouter.enabled():
-                return _qwen()
-            raise
+        # Best model first; if this account has no access to it (or it errors) try the next
+        # one down, then Qwen. The first one that works is remembered for this process.
+        global _BEST_START
+        names = [n.strip() for n in os.getenv("WHATSAPP_BEST_MODELS", _BEST_DEFAULT).split(",") if n.strip()]
+        for i in range(min(_BEST_START, len(names) - 1) if names else 0, len(names)):
+            try:
+                resp = _claude(names[i])
+                model["name"], model["tier"] = names[i], "sonnet"   # bill/log what really answered
+                _BEST_START = i
+                return resp
+            except Exception:
+                logger.exception("whatsapp_agent: best-model call failed (%s)", names[i])
+        if llm_openrouter.enabled():
+            return _qwen()
+        return _claude()
     if llm_openrouter.enabled():
         try:
             return _qwen()
@@ -112,7 +134,7 @@ def _record_llm_usage(model: dict, usage: dict, user_id: str) -> None:
 # modestly. Durable facts about a person live in smart_memory instead of here.
 _CONTEXT_TTL_HOURS = 24 * 7
 _CONTEXT_MAX_TURNS = 10         # user/assistant pairs kept between messages
-_MAX_TOOL_ROUNDS = 6           # hard cap on the tool-use loop (pause_turn can eat rounds) --
+_MAX_TOOL_ROUNDS = 12          # hard cap on the tool-use loop (pause_turn can eat rounds) --
                                 # was 10; each round is a full separate API call, so this is
                                 # the biggest real cost lever on a multi-tool query
 
@@ -674,9 +696,9 @@ def _smart_allowed() -> bool:
     if not os.getenv("ANTHROPIC_API_KEY", "").strip():
         return False
     try:
-        cap = int(os.getenv("WHATSAPP_SMART_DAILY_CAP", "40") or 40)
+        cap = int(os.getenv("WHATSAPP_SMART_DAILY_CAP", "0") or 0)   # 0 = no cap
     except ValueError:
-        cap = 40
+        cap = 0
     key = f"wa_smart_{_today_ist()}"
     try:
         conn = get_connection()
@@ -684,7 +706,7 @@ def _smart_allowed() -> bool:
             with conn:
                 row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
                 n = int(row[0]) if row and str(row[0]).isdigit() else 0
-                if n >= cap:
+                if cap and n >= cap:
                     return False
                 conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
                              (key, str(n + 1)))
@@ -3960,7 +3982,7 @@ def handle_message(sender: str, text: str, *,
     # member -> the stronger model, within the daily cap; the rest stays cheap.
     deep = identity["kind"] == "employee" and _needs_deep_thinking(text)
     smart = False
-    if deep and _smart_allowed():
+    if _smart_allowed():   # best model for everything now (cost is no object); clients included
         from model_router import MODEL_COSTS
         model = {**MODEL_COSTS["sonnet"], "tier": "sonnet", "task": "whatsapp"}
         smart = True
@@ -3999,7 +4021,7 @@ def handle_message(sender: str, text: str, *,
         if in_group:
             try:
                 import group_memory
-                gtxt = group_memory.recent_text(group_id or "", limit=40, hours=48)
+                gtxt = group_memory.recent_text(group_id or "", limit=80, hours=48, max_chars=6000)
             except Exception:
                 gtxt = ""
             if gtxt:
@@ -4016,7 +4038,7 @@ def handle_message(sender: str, text: str, *,
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
             resp = _llm_create(model, sys_prompt, tools, messages,
-                               1400 if smart else 900,   # real answers need room; chit-chat
+                               2500 if smart else 900,   # real answers need room; chit-chat
                                                          # stays short because the prompt says so
                                usage, smart=smart)
             stop = resp.stop_reason

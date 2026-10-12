@@ -234,7 +234,9 @@ def _use_claude() -> bool:
             v = str(row[0]).strip().lower() if row and row[0] else ""
         except Exception:
             v = ""
-    return v == "claude"
+    if v in ("qwen", "off"):
+        return False
+    return bool(os.getenv("ANTHROPIC_API_KEY", "").strip()) or v == "claude"
 
 
 def _feedback_examples() -> str:
@@ -263,11 +265,9 @@ def _llm_json(prompt: str) -> dict | None:
     usage: dict = {}
     system = _SYSTEM + _feedback_examples()
     if _use_claude():
-        r = wa._client.messages.create(
-            model=model["name"], max_tokens=900, system=system,
-            messages=[{"role": "user", "content": prompt}])
-        usage["claude"] = [r.usage.input_tokens, r.usage.output_tokens]
-        resp = r
+        model = {**wa.MODEL_COSTS_SONNET, "tier": "sonnet", "task": "whatsapp"}
+        resp = wa._llm_create(model, [{"type": "text", "text": system}], None,
+                              [{"role": "user", "content": prompt}], 1500, usage, smart=True)
     else:
         resp = wa._llm_create(model, [{"type": "text", "text": system}], None,
                               [{"role": "user", "content": prompt}], 900, usage)

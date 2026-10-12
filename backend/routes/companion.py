@@ -1151,8 +1151,11 @@ def companion_ask_test():
     seen = {}
     orig = wa._llm_create
     def spy(model, system, tools, messages, max_tokens, usage, smart=False):
-        seen["smart"], seen["tier"], seen["max_tokens"] = smart, model.get("tier"), max_tokens
-        return orig(model, system, tools, messages, max_tokens, usage, smart=smart)
+        seen["smart"], seen["max_tokens"] = smart, max_tokens
+        try:
+            return orig(model, system, tools, messages, max_tokens, usage, smart=smart)
+        finally:
+            seen["tier"], seen["model"] = model.get("tier"), model.get("name")   # what really answered
     wa._llm_create = spy
     t0 = time.time()
     try:
