@@ -318,8 +318,30 @@ def _esc(s: str) -> str:
 
 # ── weekly send ─────────────────────────────────────────────────────────
 def _ist_now() -> datetime:
-    from utils import now_ist, today_ist
-    return datetime.strptime(f"{today_ist()} {now_ist()}", "%Y-%m-%d %H:%M:%S")
+    try:
+        from utils import now_ist, today_ist
+        return datetime.strptime(f"{today_ist()} {now_ist()}", "%Y-%m-%d %H:%M:%S")
+    except Exception:  # never lose a calendar alert over a clock helper
+        from utils import IST
+        return datetime.now(IST).replace(tzinfo=None, microsecond=0)
+
+
+def _drop_pending_in_week(monday: date) -> None:
+    """The digest already shows the current calendar, so a held change that falls
+    inside that week would only repeat it -- drop those."""
+    import json
+    lo, hi = monday.isoformat(), (monday + timedelta(days=6)).isoformat()
+    conn = get_connection()
+    try:
+        with conn:
+            for eid, bj, aj in conn.execute("SELECT entry_id, before_json, after_json FROM cal_change_pending").fetchall():
+                for js in (bj, aj):
+                    ev = json.loads(js) if js else None
+                    if ev and ev["start_date"] <= hi and ev["end_date"] >= lo:
+                        conn.execute("DELETE FROM cal_change_pending WHERE entry_id=?", (eid,))
+                        break
+    finally:
+        conn.close()
 
 
 def run_weekly(now: datetime | None = None, force: bool = False,
@@ -327,6 +349,7 @@ def run_weekly(now: datetime | None = None, force: bool = False,
     """Send the coming week's schedule. Scheduler calls it every 10 min; it only
     acts on Sunday 21:00-23:00 IST and only once per week. force=True skips the
     window/once-only guard (used for previews, optionally to only_ids)."""
+    claim_key = ""
     try:
         now = now or _ist_now()
         if not force and not (now.weekday() == 6 and 21 <= now.hour < 23):
@@ -335,14 +358,16 @@ def run_weekly(now: datetime | None = None, force: bool = False,
                   else now.date() + timedelta(days=7 - now.weekday()))
         if not force:
             conn = get_connection()
+            claim_key = f"week_digest_sent_{monday}"
             try:
                 with conn:
                     claimed = conn.execute(
                         "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
-                        (f"week_digest_sent_{monday}", now.isoformat())).rowcount
+                        (claim_key, now.isoformat())).rowcount
             finally:
                 conn.close()
             if not claimed:
+                claim_key = ""
                 return {"sent": False, "reason": "already sent"}
         people = _people(only_ids)
         wk_tok = store_image(render_week_png(monday))
@@ -371,9 +396,18 @@ def run_weekly(now: datetime | None = None, force: bool = False,
         except Exception:
             logger.exception("week_digest: WhatsApp enqueue failed")
         logger.info(f"week_digest: {monday} -> {emailed} email(s), {whatsapped} WhatsApp(s)")
+        _drop_pending_in_week(monday)
         return {"sent": True, "week": monday.isoformat(), "emailed": emailed, "whatsapped": whatsapped}
     except Exception:
         logger.exception("week_digest: run_weekly failed")
+        if claim_key:  # release the once-a-week claim so the next 10-min tick retries
+            try:
+                c = get_connection()
+                with c:
+                    c.execute("DELETE FROM app_settings WHERE key=?", (claim_key,))
+                c.close()
+            except Exception:
+                pass
         return {"sent": False, "reason": "error"}
 
 

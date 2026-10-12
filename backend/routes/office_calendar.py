@@ -205,9 +205,11 @@ def oc_update(event_id: int):
     if f["kind"] == "event" and f["notify"] and changed and _is_future(f):
         _announce(f, "updated")
         out["announced"] = True
-    elif f["kind"] != "event" and before["kind"] != "event" and (
-            changed or before["kind"] != f["kind"]):
-        _notify_change(event_id, before, f, uid)
+    elif f["kind"] != "event":
+        # An event turned into a WFH/office/holiday day counts as a new entry.
+        was = before if before["kind"] != "event" else None
+        if was is None or changed or before["kind"] != f["kind"]:
+            _notify_change(event_id, was, f, uid)
     return jsonify(out)
 
 
