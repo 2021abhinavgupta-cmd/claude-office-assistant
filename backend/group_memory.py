@@ -18,7 +18,7 @@ from db import get_connection
 
 logger = logging.getLogger(__name__)
 
-RETENTION_DAYS = 30
+RETENTION_DAYS = 7   # Railway keeps only a short working copy; the full archive is on the laptop
 _MAX_TEXT = 1000
 _IST = timezone(timedelta(hours=5, minutes=30))
 

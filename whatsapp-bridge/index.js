@@ -510,6 +510,30 @@ function startSendServer() {
 // Baileys redelivers messages on reconnect — remember the last N ids so a
 // redelivery doesn't trigger a second reply.
 const seen = new Set();
+
+// ---- permanent local archive (this laptop only, never Railway) ----------
+// Every message the bot reads (allow-listed groups + DMs to the bot) and every
+// reply it sends is appended to archive/YYYY-MM-DD.jsonl (IST day); voice
+// notes and images of allow-listed groups are saved under archive/media/.
+const ARCHIVE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "archive");
+function istDay(ms) { return new Date(ms + 330 * 60000).toISOString().slice(0, 10); }
+function archive(rec) {
+  try {
+    const ts = Date.now();
+    fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
+    fs.appendFileSync(path.join(ARCHIVE_DIR, `${istDay(ts)}.jsonl`),
+      JSON.stringify({ ts, at: new Date(ts + 330 * 60000).toISOString().replace("Z", "+05:30"), ...rec }) + "\n");
+  } catch (e) { /* the archive must never break messaging */ }
+}
+function archiveMedia(id, ext, buf) {
+  try {
+    const dir = path.join(ARCHIVE_DIR, "media");
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `${istDay(Date.now())}_${String(id || Date.now()).replace(/[^\w-]/g, "")}.${ext}`;
+    fs.writeFileSync(path.join(dir, name), buf);
+    return name;
+  } catch { return ""; }
+}
 function alreadyHandled(id) {
   if (!id) return false;
   if (seen.has(id)) return true;
@@ -646,6 +670,9 @@ async function observeGroupMedia(sock, msg, jid) {
   if (!pj && rp.endsWith("@lid")) {
     try { pj = (await sock.signalRepository?.lidMapping?.getPNForLID?.(rp)) || ""; } catch { /* n/a */ }
   }
+  const file = archiveMedia(msg.key.id, kind === "audio" ? "ogg" : ((info?.mimetype || "").split("/")[1] || "jpg").split(";")[0], buf);
+  archive({ dir: "in", chat: "group", group_id: bareJid(jid), group: _groupNames.get(jid) || "", from: bareJid(pj || rp),
+            name: msg.pushName || "", id: msg.key.id, type: kind, caption: im?.caption || "", file });
   let sendBuf = buf, sendMime = info?.mimetype || "";
   if (kind === "audio") {
     const mp3 = await toMp3(buf);
@@ -841,6 +868,8 @@ async function start() {
               try { pj = (await sock.signalRepository?.lidMapping?.getPNForLID?.(rp)) || ""; } catch { /* n/a */ }
             }
             observeGroupMessage(jid, groupNm, bareJid(pj || rp), msg.pushName || "", rawText, msg.key.id);
+            archive({ dir: "in", chat: "group", group_id: bareJid(jid), group: groupNm || "", from: bareJid(pj || rp),
+                      name: msg.pushName || "", id: msg.key.id, text: rawText });
           }
 
           const q = groupQuery(rawText, addressed);
@@ -869,7 +898,10 @@ async function start() {
 
         if (isGroup)
           log(`grp ${bareJid(jid)}${groupNm ? ` (${groupNm})` : ""} <- ${from}: ${text.slice(0, 80)}`);
-        else log(`in  ${from}: ${text.slice(0, 80)}`);
+        else {
+          log(`in  ${from}: ${text.slice(0, 80)}`);
+          archive({ dir: "in", chat: "dm", from, name: msg.pushName || "", id: msg.key.id, text: rawText });
+        }
 
         await sock.readMessages([msg.key]).catch(() => {});
         await sock.sendPresenceUpdate("composing", jid).catch(() => {});
@@ -912,6 +944,8 @@ async function start() {
           await sock.sendMessage(jid, { text: reply });
           if (isGroup) activeGroups.add(jid);   // burst detection may run here now
           log(`out ${from}: ${reply.slice(0, 80)}`);
+          archive({ dir: "out", chat: isGroup ? "group" : "dm", group_id: isGroup ? bareJid(jid) : undefined,
+                    group: isGroup ? groupNm || "" : undefined, to: isGroup ? undefined : from, text: reply });
           // a sticker the agent explicitly asked for, or (DM only) random flair
           let sp = null;
           if (data?.sticker) sp = pickSticker(data.sticker);
