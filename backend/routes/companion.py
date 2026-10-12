@@ -590,8 +590,14 @@ def companion_whatsapp_outbox():
         with conn:
             conn.execute(
                 "UPDATE whatsapp_outbox SET status='expired' "
-                "WHERE status='pending' AND send_after IS NULL AND created_at < ?",
+                "WHERE status='pending' AND send_after IS NULL AND image_token IS NULL AND created_at < ?",
                 (utc_cutoff,),
+            )
+            # Picture messages (weekly digest) stay useful for a few days.
+            conn.execute(
+                "UPDATE whatsapp_outbox SET status='expired' "
+                "WHERE status='pending' AND image_token IS NOT NULL AND created_at < ?",
+                ((datetime.utcnow() - timedelta(hours=72)).isoformat(),),
             )
             conn.execute(
                 "UPDATE whatsapp_outbox SET status='expired' "

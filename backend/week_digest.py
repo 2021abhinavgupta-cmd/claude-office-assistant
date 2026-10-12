@@ -23,6 +23,7 @@ import calendar
 import io
 import logging
 import os
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 
@@ -82,12 +83,59 @@ def entries_by_day(start: date, end: date) -> dict:
     return out
 
 
+def _wa_safe(s: str) -> str:
+    """Drop the characters WhatsApp reads as bold/italic/strike/code markers."""
+    return re.sub(r"[*_~`]", "", s or "").strip()
+
+
 def label(e: dict) -> str:
     """Short human label for one entry ('Work from home', '3:00 PM Townhall')."""
     k = e["kind"]
+    title = _wa_safe(e["title"])
     if k == "event":
-        return (f"{_fmt_time(e['start_time'])} " if e["start_time"] else "") + (e["title"] or "Event")
-    return e["title"] or KIND.get(k, ("", k, ""))[1]
+        return (f"{_fmt_time(e['start_time'])} " if e["start_time"] else "") + (title or "Event")
+    return title or KIND.get(k, ("", k, ""))[1]
+
+
+def _img_label(e: dict) -> str:
+    """label() for the pictures: the bundled fonts can't draw Devanagari and
+    other scripts (they'd show as boxes), so such titles fall back to the kind
+    name there. The text message and email still carry the real title."""
+    txt = label(e)
+    if any(ord(c) > 0x24F and not 0x2000 <= ord(c) <= 0x206F for c in txt):
+        t = _fmt_time(e["start_time"]) + " " if e["kind"] == "event" and e["start_time"] else ""
+        return t + KIND.get(e["kind"], ("", e["kind"], ""))[1]
+    return txt
+
+
+def leave_by_day(start: date, end: date) -> dict:
+    """{'YYYY-MM-DD': ['Nupur', 'Happy (half)']} for approved leave on weekdays
+    of active employees. Names only -- never the reason."""
+    out: dict = {}
+    try:
+        names = {e.get("id"): (e.get("name") or "").split()[0] for e in _people() if e.get("name")}
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT user_id, start_date, end_date, leave_type FROM employee_leave "
+                "WHERE status='approved' AND start_date <= ? AND end_date >= ?",
+                (end.isoformat(), start.isoformat())).fetchall()
+        finally:
+            conn.close()
+        for uid, sd, ed, lt in rows:
+            if uid not in names:
+                continue
+            d = max(date.fromisoformat(sd), start)
+            while d <= min(date.fromisoformat(ed), end):
+                if d.weekday() < 5:
+                    out.setdefault(d.isoformat(), []).append(
+                        names[uid] + (" (half)" if lt == "half" else ""))
+                d += timedelta(days=1)
+        for v in out.values():
+            v.sort()
+    except Exception:
+        logger.exception("week_digest: leave lookup failed")
+    return out
 
 
 def _day_line(entries: list, weekend: bool = False) -> str:
@@ -106,6 +154,7 @@ def _span(monday: date) -> str:
 # ── text ────────────────────────────────────────────────────────────────
 def week_text(monday: date, bold: str = "*") -> str:
     days = entries_by_day(monday, monday + timedelta(days=6))
+    leave = leave_by_day(monday, monday + timedelta(days=6))
     lines = [f"📅 {bold}Week ahead: {_span(monday)}{bold}", ""]
     for i in range(7):
         d = monday + timedelta(days=i)
@@ -113,6 +162,8 @@ def week_text(monday: date, bold: str = "*") -> str:
         if i >= 5 and not ents:
             continue
         lines.append(f"{bold}{d.strftime('%a %d %b')}{bold}  {_day_line(ents, i >= 5)}")
+        if leave.get(d.isoformat()):
+            lines.append(f"      🌴 On leave: {', '.join(leave[d.isoformat()])}")
     legend = "  ".join(f"{v[0]} {v[1]}" for v in KIND.values())
     lines += ["", legend]
     return "\n".join(lines)
@@ -163,6 +214,7 @@ def _png(img) -> bytes:
 def render_week_png(monday: date) -> bytes:
     from PIL import Image, ImageDraw
     days = entries_by_day(monday, monday + timedelta(days=6))
+    leave = leave_by_day(monday, monday + timedelta(days=6))
     W, head, row = 1100, 120, 96
     img = Image.new("RGB", (W, head + 7 * row + 30), "#ffffff")
     d = ImageDraw.Draw(img)
@@ -186,16 +238,20 @@ def render_week_png(monday: date) -> bytes:
         d.text((36, y + 34), dd.strftime("%a"), font=f_day, fill="#111827", anchor="lm")
         d.text((36, y + 66), dd.strftime("%d %b"), font=f_num, fill="#6b7280", anchor="lm")
         ents = days[dd.isoformat()]
+        lv = leave.get(dd.isoformat())
+        top = y + (14 if lv else row // 2 - 17)
         if not ents:
-            d.text((190, y + row // 2), "Weekend" if weekend else "Normal working day",
+            d.text((190, top + 17), "Weekend" if weekend else "Normal working day",
                    font=f_dim, fill="#9ca3af", anchor="lm")
-            continue
         cx = 190
         for e in ents:
             if cx > W - 120:
                 break
-            cx = _chip(d, cx, y + row // 2 - 17, label(e), KIND[e["kind"]][2], f_chip,
+            cx = _chip(d, cx, top, _img_label(e), KIND[e["kind"]][2], f_chip,
                        W - 36 - cx, h=34, pad=14)
+        if lv:
+            d.text((190, y + row - 22), _fit(d, "On leave: " + ", ".join(lv), _font(20), W - 230),
+                   font=_font(20), fill="#b45309", anchor="lm")
     return _png(img)
 
 
@@ -233,7 +289,7 @@ def render_month_png(monday: date) -> bytes:
                     d.text((x0 + 10, y0 + 38 + n * 28 + 12), f"+{len(ents) - 2} more",
                            font=f_chip, fill="#6b7280", anchor="lm")
                     break
-                _chip(d, x0 + 6, y0 + 38 + n * 28, label(e), KIND[e["kind"]][2], f_chip,
+                _chip(d, x0 + 6, y0 + 38 + n * 28, _img_label(e), KIND[e["kind"]][2], f_chip,
                       cw - 12, fill=in_month, pad=6, h=24)
     return _png(img)
 
@@ -245,7 +301,7 @@ def store_image(png: bytes) -> str:
     try:
         with conn:
             conn.execute("DELETE FROM wa_images WHERE created_at < ?",
-                         ((datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),))
+                         ((datetime.now(timezone.utc) - timedelta(days=14)).isoformat(),))
             conn.execute("INSERT INTO wa_images (token, png, created_at) VALUES (?, ?, ?)",
                          (token, png, datetime.now(timezone.utc).isoformat()))
     finally:
@@ -276,6 +332,7 @@ def _people(only_ids: list | None = None, exclude_id: str = "") -> list:
 # ── email ───────────────────────────────────────────────────────────────
 def _email_html(monday: date, week_url: str, month_url: str) -> str:
     days = entries_by_day(monday, monday + timedelta(days=6))
+    leave = leave_by_day(monday, monday + timedelta(days=6))
     rows = []
     for i in range(7):
         dd = monday + timedelta(days=i)
@@ -289,6 +346,9 @@ def _email_html(monday: date, week_url: str, month_url: str) -> str:
                 f'{KIND[e["kind"]][0]} {_esc(label(e))}</span>' for e in ents)
         else:
             pills = f'<span style="color:#9ca3af">{"Weekend" if i >= 5 else "Normal working day"}</span>'
+        if leave.get(dd.isoformat()):
+            pills += ('<div style="color:#b45309;font-size:13px;margin-top:4px">🌴 On leave: '
+                      + _esc(", ".join(leave[dd.isoformat()])) + '</div>')
         rows.append(
             f'<tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f3;width:110px;'
             f'font-weight:600;color:#111827">{dd.strftime("%a %d %b")}</td>'
@@ -411,9 +471,11 @@ def run_weekly(now: datetime | None = None, force: bool = False,
         return {"sent": False, "reason": "error"}
 
 
-# ── mid-week change alert (held 60 min, merged per entry) ───────────────
-CHANGE_HOLD_MIN = 60
+# ── mid-week change alert (held 60 min, merged per entry, sent as one) ───
+CHANGE_HOLD_MIN = 60        # quiet time after the LAST edit before anything is sent
+CHANGE_MAX_HOLD_MIN = 180   # ...but never hold a change longer than this in total
 _SNAP = ("kind", "title", "start_date", "end_date")
+_TS = "%Y-%m-%d %H:%M:%S"
 
 
 def _snap(ev):
@@ -422,28 +484,40 @@ def _snap(ev):
 
 def queue_change(entry_id: int, before: dict | None, after: dict | None,
                  editor_id: str = "") -> None:
-    """Hold a holiday/WFH/office change for CHANGE_HOLD_MIN minutes. Further
-    edits to the same entry inside the window are merged (the original 'before'
-    is kept, the latest 'after' wins, the timer restarts) so a mistaken change
-    that is quickly corrected sends one message about the final state, or none
-    if it ends up as it was."""
+    """Hold a holiday/WFH/office change. Further edits to the same entry are
+    merged (original 'before' kept, latest 'after' wins) so a mistaken change
+    that is corrected sends one message about the final state, or none if it
+    ends up as it was. Every queued change slides the timer of ALL held changes
+    (so a sitting of many edits goes out as one message), capped at
+    CHANGE_MAX_HOLD_MIN after each entry's first edit so constant editing can't
+    delay an alert forever."""
     import json
     try:
-        due = (_ist_now() + timedelta(minutes=CHANGE_HOLD_MIN)).strftime("%Y-%m-%d %H:%M:%S")
+        now = _ist_now()
         conn = get_connection()
         try:
             with conn:
-                row = conn.execute("SELECT before_json FROM cal_change_pending WHERE entry_id=?",
+                row = conn.execute("SELECT before_json, first_at FROM cal_change_pending WHERE entry_id=?",
                                    (entry_id,)).fetchone()
                 b = json.loads(row[0]) if row and row[0] else (None if row else _snap(before))
                 a = _snap(after)
                 if (b is None and a is None) or (b is not None and a is not None and b == a):
                     conn.execute("DELETE FROM cal_change_pending WHERE entry_id=?", (entry_id,))
                     return
+                first = (row[1] if row and row[1] else now.strftime(_TS))
                 conn.execute(
-                    "INSERT OR REPLACE INTO cal_change_pending (entry_id, before_json, after_json, editor_id, due_at) "
-                    "VALUES (?,?,?,?,?)",
-                    (entry_id, json.dumps(b) if b else None, json.dumps(a) if a else None, editor_id, due))
+                    "INSERT OR REPLACE INTO cal_change_pending "
+                    "(entry_id, before_json, after_json, editor_id, due_at, first_at) VALUES (?,?,?,?,?,?)",
+                    (entry_id, json.dumps(b) if b else None, json.dumps(a) if a else None,
+                     editor_id, now.strftime(_TS), first))
+                for eid, fa in conn.execute("SELECT entry_id, first_at FROM cal_change_pending").fetchall():
+                    try:
+                        cap = datetime.strptime(fa, _TS) + timedelta(minutes=CHANGE_MAX_HOLD_MIN)
+                    except Exception:
+                        cap = now + timedelta(minutes=CHANGE_MAX_HOLD_MIN)
+                    due = min(now + timedelta(minutes=CHANGE_HOLD_MIN), cap)
+                    conn.execute("UPDATE cal_change_pending SET due_at=? WHERE entry_id=?",
+                                 (due.strftime(_TS), eid))
         finally:
             conn.close()
     except Exception:
@@ -451,7 +525,9 @@ def queue_change(entry_id: int, before: dict | None, after: dict | None,
 
 
 def flush_changes(now: datetime | None = None) -> int:
-    """Send every held change whose 60 minutes are up. Returns how many sent."""
+    """Send the held changes whose time is up -- one message per person however
+    many changes there are. A removal that exactly matches an addition (the
+    entry was deleted and re-created) cancels out. Returns changes announced."""
     import json
     try:
         now = now or _ist_now()
@@ -459,21 +535,75 @@ def flush_changes(now: datetime | None = None) -> int:
         try:
             rows = conn.execute(
                 "SELECT entry_id, before_json, after_json, editor_id FROM cal_change_pending "
-                "WHERE due_at <= ?", (now.strftime("%Y-%m-%d %H:%M:%S"),)).fetchall()
+                "WHERE due_at <= ?", (now.strftime(_TS),)).fetchall()
             with conn:
                 for r in rows:  # claim first so an overlapping sweep can't double-send
                     conn.execute("DELETE FROM cal_change_pending WHERE entry_id=?", (r[0],))
         finally:
             conn.close()
-        for _id, bj, aj, ed in rows:
-            b, a = (json.loads(bj) if bj else None), (json.loads(aj) if aj else None)
-            action = "added" if b is None else "removed" if a is None else "updated"
-            notify_change(b, a, action, ed or "")
-        return len(rows)
+        items = [(json.loads(bj) if bj else None, json.loads(aj) if aj else None, ed or "")
+                 for _id, bj, aj, ed in rows]
+        # delete + re-create of the same thing = no change
+        for rem in [i for i in items if i[1] is None]:
+            for add in [i for i in items if i[0] is None]:
+                if rem in items and add in items and rem[0] == add[1]:
+                    items.remove(rem)
+                    items.remove(add)
+                    break
+        if not items:
+            return 0
+        if len(items) == 1:
+            b, a, ed = items[0]
+            notify_change(b, a, "added" if b is None else "removed" if a is None else "updated", ed)
+        else:
+            notify_batch(items)
+        return len(items)
     except Exception:
         logger.exception("week_digest: flush_changes failed")
         return 0
 
+
+def notify_batch(items: list) -> int:
+    """One WhatsApp per person listing several calendar changes. items: [(before, after, editor_id)]."""
+    try:
+        from utils import today_ist
+        today = today_ist()
+        lines = []
+        editors = set()
+        for b, a, ed in items:
+            ev = a or b or {}
+            if ev.get("kind") not in ("holiday", "wfh", "office") or (ev.get("end_date") or "") < today:
+                continue
+            verb = "added" if b is None else "removed" if a is None else "updated"
+            lines.append(f"{_desc(ev)} {verb} — {_when(ev)}")
+            if ed:
+                editors.add(ed)
+        if not lines:
+            return 0
+        shown = lines[:15]
+        if len(lines) > 15:
+            shown.append(f"…and {len(lines) - 15} more")
+        who = ""
+        if len(editors) == 1:
+            try:
+                import mailer
+                who = mailer.name_for(next(iter(editors)))
+            except Exception:
+                pass
+        text = "\n".join(["🔔 *Calendar updates*", ""] + shown
+                         + ["", "Open the Calendar in Lumina for the full picture."]
+                         + ([f"_Updated by {who}_"] if who else []))
+        import wa_outbox
+        n = 0
+        for e in _people(exclude_id=next(iter(editors)) if len(editors) == 1 else ""):
+            jid = wa_outbox.wa_jid(e.get("whatsapp", ""))
+            if jid and wa_outbox.enqueue(jid, text):
+                n += 1
+        logger.info(f"week_digest: batch of {len(lines)} change(s) -> {n} WhatsApp(s)")
+        return n
+    except Exception:
+        logger.exception("week_digest: notify_batch failed")
+        return 0
 
 def _when(ev: dict) -> str:
     def f(s):

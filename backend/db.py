@@ -586,8 +586,13 @@ def init_db():
             before_json TEXT,
             after_json  TEXT,
             editor_id   TEXT,
-            due_at      TEXT NOT NULL
+            due_at      TEXT NOT NULL,
+            first_at    TEXT
         )""")
+        try:
+            conn.execute("ALTER TABLE cal_change_pending ADD COLUMN first_at TEXT")
+        except Exception:
+            pass
 
         # Generated calendar pictures (week_digest.py). The token is the only
         # secret: the email <img> and the laptop's WhatsApp sender fetch
