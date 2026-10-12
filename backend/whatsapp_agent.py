@@ -565,6 +565,14 @@ _TASK_REQUEST = re.compile(
     r"assign|delegate|remind|delete|remove|blocker|due|overdue|pending|list|"
     r"show|update|reopen|status)\b", re.I)
 
+_ADD_STANDUP = re.compile(
+    r"^(?:please\s+|pls\s+)?(?:add|put)\s+(.+?)\s+(?:to|in|into|on)\s+"
+    r"(?:my\s+|the\s+)?(?:daily\s+)?(?:stand-?up|standup list)\b[\s.!]*$", re.I | re.S)
+# anything mentioning a date or another person is left to the model
+_DATE_WORD = re.compile(
+    r"\b(tomorrow|today|yesterday|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next week|assign)\b", re.I)
+
 _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "remind_me", "send_group_message",
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
@@ -3136,6 +3144,20 @@ def handle_message(sender: str, text: str, *,
                        "never mind", "don't", "dont"):
                 return "Cancelled, nothing was sent."
             # anything else -> treat as a fresh message (pending already cleared)
+
+    # Plain "add X to my daily standup": no judgement needed, so do it directly.
+    # Cheaper models kept answering it with a list or a made-up "Added".
+    if identity["kind"] == "employee":
+        m = _ADD_STANDUP.match((text or "").strip())
+        if m:
+            task = m.group(1).strip(" .,:;-\"'")
+            if task and not _DATE_WORD.search(task) and len(task) <= 300:
+                out = _run_tool("add_standup_task", {"task": task}, identity,
+                                in_group=in_group, turn={"sticker": None})
+                if _norm(out).startswith(_SUCCESS_PREFIXES):
+                    _audit("group:" + _norm_group(group_id) if in_group else "dm",
+                           identity, "add_standup_task", out)
+                return out
 
     budget = check_budget_available()
     if not budget["allowed"]:
