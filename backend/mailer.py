@@ -81,7 +81,7 @@ def name_for(user_id: str) -> str:
 
 
 def _send_brevo(to: list[str], subject: str, body: str, reply_to: str = "",
-                from_name: str = "", cc: list[str] | None = None) -> bool:
+                from_name: str = "", cc: list[str] | None = None, html: str = "") -> bool:
     """One API call per recipient, so people never see each other's
     addresses and "reply all" can't spray the whole company."""
     import requests
@@ -92,6 +92,8 @@ def _send_brevo(to: list[str], subject: str, body: str, reply_to: str = "",
     for addr in to:
         payload = {"sender": {"name": name, "email": sender},
                    "to": [{"email": addr}], "subject": subject, "textContent": body}
+        if html:
+            payload["htmlContent"] = html
         if reply_to:
             payload["replyTo"] = {"email": reply_to}
         if cc:
@@ -114,9 +116,9 @@ def _send_brevo(to: list[str], subject: str, body: str, reply_to: str = "",
 
 
 def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
-              from_name: str = "", cc: list[str] | None = None) -> bool:
+              from_name: str = "", cc: list[str] | None = None, html: str = "") -> bool:
     if provider() == "brevo":
-        return _send_brevo(to, subject, body, reply_to, from_name, cc)
+        return _send_brevo(to, subject, body, reply_to, from_name, cc, html)
     host = os.getenv("SMTP_HOST", "")
     port = int(os.getenv("SMTP_PORT", "587") or 587)
     user = os.getenv("SMTP_USER", "")
@@ -131,6 +133,8 @@ def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
     if cc:
         msg["Cc"] = ", ".join(cc)
     msg.set_content(body)
+    if html:
+        msg.add_alternative(html, subtype="html")
     try:
         if port == 465:
             with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
@@ -151,7 +155,7 @@ def _send_now(to: list[str], subject: str, body: str, reply_to: str = "",
 
 
 def send(to, subject: str, body: str, reply_to: str = "", from_name: str = "",
-         wait: bool = False, cc=None) -> bool:
+         wait: bool = False, cc=None, html: str = "") -> bool:
     """Send an email. Returns False (and logs) when no transport is configured.
     By default sends on a background thread so a slow mail server never
     delays the HTTP request; wait=True sends inline and returns the result."""
@@ -163,8 +167,8 @@ def send(to, subject: str, body: str, reply_to: str = "", from_name: str = "",
         return False
     cc = [c for c in ([cc] if isinstance(cc, str) else list(cc or [])) if c]
     if wait:
-        return _send_now(to, subject, body, reply_to, from_name, cc)
-    threading.Thread(target=_send_now, args=(to, subject, body, reply_to, from_name, cc),
+        return _send_now(to, subject, body, reply_to, from_name, cc, html)
+    threading.Thread(target=_send_now, args=(to, subject, body, reply_to, from_name, cc, html),
                      daemon=True).start()
     return True
 

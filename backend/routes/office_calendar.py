@@ -97,6 +97,32 @@ def _announce(ev: dict, action: str) -> None:
         logging.getLogger(__name__).exception("office calendar: announce failed")
 
 
+def _notify_change(entry_id: int, before, after, uid: str) -> None:
+    """Holiday / WFH / office-day change -> held 60 min, then WhatsApp to everyone."""
+    try:
+        import week_digest
+        week_digest.queue_change(entry_id, before, after, uid)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("office calendar: change alert failed")
+
+
+@office_calendar_bp.route("/api/public/cal-image/<token>.png", methods=["GET"])
+def cal_image(token: str):
+    """Calendar pictures for the weekly email / WhatsApp. No login: the random
+    token in the URL is the only secret."""
+    from flask import Response
+    conn = get_connection()
+    try:
+        r = conn.execute("SELECT png FROM wa_images WHERE token=?", (token,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return jsonify({"error": "not found"}), 404
+    return Response(bytes(r[0]), mimetype="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 def _is_future(ev: dict) -> bool:
     from utils import today_ist
     return (ev.get("end_date") or ev.get("start_date") or "") >= today_ist()
@@ -145,6 +171,8 @@ def oc_create():
     if f["kind"] == "event" and f["notify"] and _is_future(f):
         _announce(f, "new")
         out["announced"] = True
+    elif f["kind"] != "event":
+        _notify_change(new_id, None, f, uid)
     return jsonify(out)
 
 
@@ -177,6 +205,9 @@ def oc_update(event_id: int):
     if f["kind"] == "event" and f["notify"] and changed and _is_future(f):
         _announce(f, "updated")
         out["announced"] = True
+    elif f["kind"] != "event" and before["kind"] != "event" and (
+            changed or before["kind"] != f["kind"]):
+        _notify_change(event_id, before, f, uid)
     return jsonify(out)
 
 
@@ -196,4 +227,6 @@ def oc_delete(event_id: int):
         conn.close()
     if before["kind"] == "event" and before["notify"] and _is_future(before):
         _announce(before, "cancelled")
+    elif before["kind"] != "event":
+        _notify_change(event_id, before, None, uid)
     return jsonify({"success": True})

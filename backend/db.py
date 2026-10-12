@@ -572,11 +572,31 @@ def init_db():
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_wa_outbox_status ON whatsapp_outbox (status, id)")
         for _col in ("attempts INTEGER DEFAULT 0", "wa_message_id TEXT",
-                     "send_after TEXT"):  # NULL = deliver on next poll; else an IST "YYYY-MM-DD HH:MM[:SS]" not-before time
+                     "send_after TEXT",  # NULL = deliver on next poll; else an IST "YYYY-MM-DD HH:MM[:SS]" not-before time
+                     "image_token TEXT"):  # set = send the wa_images PNG with `body` as its caption
             try:
                 conn.execute(f"ALTER TABLE whatsapp_outbox ADD COLUMN {_col}")
             except Exception:
                 pass
+
+        # Holiday/WFH/office changes held for 60 min before alerting, merged per
+        # calendar entry so a fix-up edit sends one message, not two (week_digest.py).
+        conn.execute("""CREATE TABLE IF NOT EXISTS cal_change_pending (
+            entry_id    INTEGER PRIMARY KEY,
+            before_json TEXT,
+            after_json  TEXT,
+            editor_id   TEXT,
+            due_at      TEXT NOT NULL
+        )""")
+
+        # Generated calendar pictures (week_digest.py). The token is the only
+        # secret: the email <img> and the laptop's WhatsApp sender fetch
+        # /api/public/cal-image/<token>.png without a login.
+        conn.execute("""CREATE TABLE IF NOT EXISTS wa_images (
+            token      TEXT PRIMARY KEY,
+            png        BLOB NOT NULL,
+            created_at TEXT NOT NULL
+        )""")
 
         # One-way WhatsApp announcement calls (wa_outbox.py::enqueue_call,
         # scripts/laptop_agent.py::job_voice_calls, whatsapp-bridge/voice.js).

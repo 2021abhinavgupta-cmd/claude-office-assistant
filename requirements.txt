@@ -28,3 +28,4 @@ google-auth>=2.29.0
 # CPU static embeddings, ~30MB model cached to the persistent volume.
 model2vec>=0.3.0
 numpy>=1.24
+Pillow>=10.1

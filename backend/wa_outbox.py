@@ -30,7 +30,8 @@ def wa_jid(raw: str) -> str:
     return f"{d}@s.whatsapp.net" if d else ""
 
 
-def enqueue(to_jid: str, text: str, send_after: str | None = None) -> bool:
+def enqueue(to_jid: str, text: str, send_after: str | None = None,
+            image_token: str | None = None) -> bool:
     """Queue one proactive message (DM JID or '<id>@g.us' group JID).
 
     send_after: optional IST "YYYY-MM-DD HH:MM[:SS]" -- the message sits in
@@ -43,8 +44,10 @@ def enqueue(to_jid: str, text: str, send_after: str | None = None) -> bool:
         conn = get_connection()
         with conn:
             conn.execute(
-                "INSERT INTO whatsapp_outbox (to_number, body, created_at, send_after) VALUES (?, ?, ?, ?)",
-                (to_jid, str(text)[:1500], datetime.now(timezone.utc).isoformat(), send_after or None),
+                "INSERT INTO whatsapp_outbox (to_number, body, created_at, send_after, image_token) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (to_jid, str(text)[:1500], datetime.now(timezone.utc).isoformat(), send_after or None,
+                 image_token or None),
             )
         conn.close()
         return True

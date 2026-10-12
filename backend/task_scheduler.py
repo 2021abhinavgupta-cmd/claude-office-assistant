@@ -348,6 +348,19 @@ def _run_group_intel():
         logger.exception("group_intel pass failed")
 
 
+def _run_week_digest():
+    """Sunday-night office schedule (week_digest.py). Runs every 10 min;
+    run_weekly() itself only acts Sunday 21:00-23:00 IST, once per week."""
+    try:
+        import week_digest
+        week_digest.flush_changes()  # held calendar-change alerts whose 60 min are up
+        result = week_digest.run_weekly()
+        if result.get("sent"):
+            logger.info("week_digest: %s", result)
+    except Exception:
+        logger.exception("week digest failed")
+
+
 def _run_pa_brief():
     """Personal morning brief for the boss (pa_brief.py). Runs every 10 min;
     run_daily() itself keeps it to one send per weekday, 09:00-11:00 IST."""
@@ -455,6 +468,8 @@ def init_scheduler(app):
         # job; the sweep reads the IST clock itself, so container TZ is moot.
         scheduler.add_job(_run_event_reminders, "interval", minutes=5,
                           id="office_event_reminders", replace_existing=True)
+        scheduler.add_job(_run_week_digest, "interval", minutes=10,
+                          id="week_digest", replace_existing=True)
         scheduler.start()
         logger.info(" Task delay scheduler started (runs daily at 08:00).")
 

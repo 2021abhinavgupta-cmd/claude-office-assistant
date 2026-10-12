@@ -356,12 +356,12 @@ function startSendServer() {
       let body = "";
       req.on("data", (c) => {
         body += c;
-        if (body.length > 65536) req.destroy();
+        if (body.length > 6 * 1024 * 1024) req.destroy();  // room for a base64 picture
       });
       req.on("end", async () => {
         try {
-          const { to, text, mentionAll } = JSON.parse(body || "{}");
-          if (!to || !text) {
+          const { to, text, mentionAll, imageB64 } = JSON.parse(body || "{}");
+          if (!to || (!text && !imageB64)) {
             res.writeHead(400);
             res.end('{"error":"to and text required"}');
             return;
@@ -406,10 +406,20 @@ function startSendServer() {
               log(`mentionAll: couldn't resolve group members (${e.message}) -- sending untagged`);
             }
           }
-          const sent = await currentSock.sendMessage(
-            String(to),
-            mentions ? { text: outText, mentions } : { text: outText }
-          );
+          let sent;
+          if (imageB64) {
+            // Picture with the text as its caption (WhatsApp caps captions
+            // near 1024 chars; a longer text goes as a separate message).
+            const image = Buffer.from(String(imageB64), "base64");
+            const cap = outText.length <= 1000 ? outText : "";
+            sent = await currentSock.sendMessage(String(to), cap ? { image, caption: cap } : { image });
+            if (!cap && outText) await currentSock.sendMessage(String(to), { text: outText });
+          } else {
+            sent = await currentSock.sendMessage(
+              String(to),
+              mentions ? { text: outText, mentions } : { text: outText }
+            );
+          }
           const waId = sent?.key?.id || null;
           log(`push -> ${to}: ${String(text).slice(0, 80)}`);
           res.writeHead(200, { "Content-Type": "application/json" });

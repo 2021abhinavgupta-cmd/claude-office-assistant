@@ -599,7 +599,7 @@ def companion_whatsapp_outbox():
                 (ist_cutoff,),
             )
         rows = conn.execute(
-            "SELECT id, to_number, body FROM whatsapp_outbox "
+            "SELECT id, to_number, body, image_token FROM whatsapp_outbox "
             "WHERE status='pending' AND (send_after IS NULL OR send_after <= ?) "
             "ORDER BY id LIMIT 50",
             (now_ist_str,),
@@ -608,7 +608,10 @@ def companion_whatsapp_outbox():
     except Exception:
         logger.exception("companion whatsapp-outbox failed")
         return jsonify({"error": "failed"}), 500
-    return jsonify({"messages": [{"id": r[0], "to": r[1], "text": r[2]} for r in rows]})
+    return jsonify({"messages": [
+        {"id": r[0], "to": r[1], "text": r[2],
+         **({"image_url": f"/api/public/cal-image/{r[3]}.png"} if r[3] else {})}
+        for r in rows]})
 
 
 _OUTBOX_MAX_ATTEMPTS = 3
@@ -1088,6 +1091,24 @@ def companion_llm_status():
                 out["test"] = "failed"
                 out["error"] = str(e)[:400]
     return jsonify(out)
+
+
+@companion_bp.route("/api/companion/week-digest", methods=["GET", "POST"])
+def companion_week_digest():
+    """GET: preview the coming week's text (sends nothing). POST ?to=emp003,emp001
+    force-sends the Sunday digest to just those people (testing); without `to`
+    it is refused so it can't be used to blast the whole company by accident."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import week_digest
+    if request.method == "GET":
+        mon = datetime.now(utils.IST).date()
+        mon = mon + timedelta(days=7 - mon.weekday())
+        return jsonify({"week": mon.isoformat(), "text": week_digest.week_text(mon)})
+    ids = [x.strip() for x in (request.args.get("to") or "").split(",") if x.strip()]
+    if not ids:
+        return jsonify({"error": "pass ?to=emp003,... (test sends only)"}), 400
+    return jsonify(week_digest.run_weekly(force=True, only_ids=ids))
 
 
 @companion_bp.route("/api/companion/email-status", methods=["GET"])

@@ -747,7 +747,19 @@ def job_wa_outbox(cfg: dict) -> None:
         to, text, mid = m.get("to"), m.get("text"), m.get("id")
         if not (to and text and mid):
             continue
-        ok, wid = _bridge_send_msg(cfg, to, text)
+        img_b64 = ""
+        if m.get("image_url"):
+            try:
+                ir = requests.get(f"{cfg['url']}{m['image_url']}", timeout=30)
+                if ir.ok and ir.content:
+                    import base64
+                    img_b64 = base64.b64encode(ir.content).decode()
+            except Exception as e:
+                _log(f"wa-outbox image fetch error: {e}")
+            if not img_b64:
+                failed.append(mid)  # retry later rather than send the caption alone
+                continue
+        ok, wid = _bridge_send_msg(cfg, to, text, image_b64=img_b64)
         if ok:
             sent.append({"id": mid, "wa_id": wid})
         else:
@@ -1079,18 +1091,23 @@ INTERVAL_JOBS = [
 
 # ── job 8: noon attendance roll-call to the team WhatsApp group ───────────
 
-def _bridge_send_msg(cfg: dict, to: str, text: str, mention_all: bool = False):
+def _bridge_send_msg(cfg: dict, to: str, text: str, mention_all: bool = False,
+                     image_b64: str = ""):
     """POST to the local Baileys bridge /send. Returns (ok, wa_message_id|None).
     mention_all: bridge tags every member of `to` (must be a group jid) with a
-    leading line of @-mentions before the message text."""
+    leading line of @-mentions before the message text.
+    image_b64: send this PNG with `text` as its caption."""
     tok = _bridge_token(cfg)
     if not tok:
         _log("bridge send: no token")
         return False, None
     try:
+        payload = {"to": to, "text": text, "mentionAll": mention_all}
+        if image_b64:
+            payload["imageB64"] = image_b64
         r = requests.post(
             f"http://127.0.0.1:{cfg['bridge_http_port']}/send",
-            json={"to": to, "text": text, "mentionAll": mention_all},
+            json=payload,
             headers={"Authorization": f"Bearer {tok}"}, timeout=30,
         )
         if r.ok:
