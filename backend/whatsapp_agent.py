@@ -565,6 +565,20 @@ _TASK_REQUEST = re.compile(
     r"assign|delegate|remind|delete|remove|blocker|due|overdue|pending|list|"
     r"show|update|reopen|status)\b", re.I)
 
+def _find_group_commitment(which: str):
+    """#id, a bare number, or words from an open group promise -> its id."""
+    import group_intel
+    w = str(which or "").strip()
+    if re.fullmatch(r"#?\d+", w):
+        return int(w.lstrip("#"))
+    best = None
+    for r in group_intel.list_commitments("", "open", 80):
+        sc = group_intel._overlap(w, r["action"])
+        if sc >= 0.5 and (best is None or sc > best[0]):
+            best = (sc, r["id"])
+    return best[1] if best else None
+
+
 _ADD_STANDUP = re.compile(
     r"^(?:please\s+|pls\s+)?(?:add|put)\s+(.+?)\s+(?:to|in|into|on)\s+"
     r"(?:my\s+|the\s+)?(?:daily\s+)?(?:stand-?up|standup list)\b[\s.!]*$", re.I | re.S)
@@ -576,7 +590,7 @@ _DATE_WORD = re.compile(
 _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "remind_me", "send_group_message",
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
-    "resolve_group_commitment",
+    "resolve_group_commitment", "reject_group_commitment", "add_group_commitment",
     "create_task", "set_task_meta", "set_attendance", "review_task",
     "place_announcement_call", "set_leave", "clear_leave",
     "set_standing_rule", "remove_standing_rule",
@@ -1571,6 +1585,74 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "recall_group_facts",
+        "description": "Decisions and client preferences the assistant picked "
+                       "up from the team group chat. Use for 'what did we "
+                       "decide with Mellow', 'how does <client> like captions', "
+                       "'what was agreed about the Diwali campaign'. Filter by "
+                       "client and/or words.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client": {"type": "string", "description": "Optional client name."},
+                "query": {"type": "string", "description": "Optional words."},
+            },
+        },
+    },
+    {
+        "name": "reject_group_commitment",
+        "description": "The user says a tracked group promise was wrong or "
+                       "never a real task ('that wasn't a task', 'ignore "
+                       "that one', 'she was joking'). Closes it AND teaches the "
+                       "tracker not to repeat that kind of mistake. Pass the "
+                       "#id (from get_group_commitments) or words from it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "which": {"type": "string"},
+                "why": {"type": "string", "description": "Optional short reason."},
+            },
+            "required": ["which"],
+        },
+    },
+    {
+        "name": "add_group_commitment",
+        "description": "Track a promise the assistant missed ('Nupur also said "
+                       "she'd send the deck Friday'). The assistant will then "
+                       "check on it like any other.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "owner": {"type": "string", "description": "Who will do it."},
+                "action": {"type": "string"},
+                "due": {"type": "string",
+                        "description": "Optional real date YYYY-MM-DD."},
+            },
+            "required": ["owner", "action"],
+        },
+    },
+    {
+        "name": "get_calendar",
+        "description": "The user's Google Calendar (meetings, shoots, calls) "
+                       "for today or the next few days. Use for 'what's on "
+                       "today', 'am I free at 3', 'what meetings this week'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days": {"type": "number",
+                         "description": "How many days ahead, default 1 (today)."},
+            },
+        },
+    },
+    {
+        "name": "get_my_brief",
+        "description": "The full personal brief right now: calendar, group "
+                       "promises due, decisions, posts going live, approvals "
+                       "waiting, who has no standup. Use for 'brief me', "
+                       "'what do I need to know', 'what's my day look like'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "resolve_group_commitment",
         "description": "Close a tracked group promise when someone tells you "
                        "it's finished or cancelled ('the story is posted', "
@@ -2467,6 +2549,62 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 logger.exception("whatsapp_agent: get_group_commitments failed")
                 return "(couldn't read the tracked group promises just now)"
 
+        if name == "recall_group_facts" and kind == "employee":
+            try:
+                import group_intel
+                return group_intel.search_facts(str((tool_input or {}).get("query") or ""),
+                                                str((tool_input or {}).get("client") or ""))
+            except Exception:
+                logger.exception("whatsapp_agent: recall_group_facts failed")
+                return "(couldn't read the group decisions just now)"
+
+        if name == "reject_group_commitment" and kind == "employee":
+            try:
+                import group_intel
+                cid = _find_group_commitment(str((tool_input or {}).get("which") or ""))
+                if cid is None:
+                    return "Couldn't find an open group promise matching that."
+                if group_intel.reject_commitment(cid, str((tool_input or {}).get("why") or "")):
+                    return f"Marked group promise #{cid} as wrong, and I'll avoid that kind of mistake."
+                return f"Group promise #{cid} was already closed."
+            except Exception:
+                logger.exception("whatsapp_agent: reject_group_commitment failed")
+                return "(couldn't update that just now)"
+
+        if name == "add_group_commitment" and kind == "employee":
+            try:
+                import group_intel
+                action = re.sub(r"\s+", " ", str((tool_input or {}).get("action") or "")).strip()
+                if not action:
+                    return "(no action text, ask what the promise was)"
+                cid = group_intel.add_commitment(str((tool_input or {}).get("owner") or ""),
+                                                 action, str((tool_input or {}).get("due") or ""))
+                return f"Added group promise #{cid}: {action[:120]}. I'll check on it."
+            except Exception:
+                logger.exception("whatsapp_agent: add_group_commitment failed")
+                return "(couldn't add that just now)"
+
+        if name == "get_calendar" and kind == "employee":
+            try:
+                import gcal
+                if not gcal.configured():
+                    return ("Calendar isn't connected yet. Share the Google Calendar with "
+                            "the Lumina service account and add its id in settings.")
+                days = min(max(float((tool_input or {}).get("days") or 1), 1), 14)
+                txt = gcal.format_events(gcal.upcoming(days=days))
+                return txt or "Nothing on the calendar in that time."
+            except Exception:
+                logger.exception("whatsapp_agent: get_calendar failed")
+                return "(couldn't read the calendar just now)"
+
+        if name == "get_my_brief" and kind == "employee":
+            try:
+                import pa_brief
+                return pa_brief.build_brief(identity)
+            except Exception:
+                logger.exception("whatsapp_agent: get_my_brief failed")
+                return "(couldn't put the brief together just now)"
+
         if name == "resolve_group_commitment" and kind == "employee":
             try:
                 import group_intel
@@ -3025,6 +3163,12 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
+            "You are their personal assistant. Be proactive and specific: use "
+            "get_my_brief for 'brief me / what's my day', get_calendar for "
+            "meetings, recall_group_facts for 'what did we decide / how does "
+            "<client> like it'. If they correct something you tracked ('that "
+            "wasn't a task', 'you missed that X said...'), use "
+            "reject_group_commitment / add_group_commitment so you learn.\n"
             "Promises made in the group are tracked automatically "
             "(get_group_commitments). If someone tells you one of THEIR "
             "promises is finished or cancelled, close it with "

@@ -3698,6 +3698,32 @@ def whatsapp_bridge():
             logger.exception("WhatsApp bridge: group observe failed")
         return jsonify({"stored": stored})
 
+    # Group media: a voice note or image from an allow-listed group, turned into
+    # a text line and stored like a message (so promises in voice notes count).
+    if data.get("observe_media"):
+        stored = 0
+        try:
+            if group_id and whatsapp_agent._group_allowed(group_id):
+                import base64, group_memory, media_ai
+                raw = base64.b64decode(data.get("data_b64") or "")
+                kind = str(data.get("kind") or "")
+                if kind == "audio":
+                    t = media_ai.transcribe_audio(raw, str(data.get("mime") or ""))
+                    line = f"[voice note] {t}" if t else ""
+                elif kind == "image":
+                    t = media_ai.describe_image(raw, str(data.get("mime") or ""),
+                                                str(data.get("caption") or ""))
+                    line = f"[image] {t}" if t else ""
+                else:
+                    line = ""
+                if line:
+                    stored = group_memory.record(group_id, group_name or "", [{
+                        "from": data.get("from"), "name": data.get("name"),
+                        "text": line, "ts": data.get("ts"), "id": data.get("id")}])
+        except Exception:
+            logger.exception("WhatsApp bridge: group media failed")
+        return jsonify({"stored": stored})
+
     # Burst reaction: the bridge saw a lively spell in an allow-listed group and
     # wants a mood word for a reaction sticker (or nothing). No agent, no reply,
     # no text/from field on this call.

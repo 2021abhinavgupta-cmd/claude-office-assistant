@@ -348,6 +348,18 @@ def _run_group_intel():
         logger.exception("group_intel pass failed")
 
 
+def _run_pa_brief():
+    """Personal morning brief for the boss (pa_brief.py). Runs every 10 min;
+    run_daily() itself keeps it to one send per weekday, 09:00-11:00 IST."""
+    try:
+        import pa_brief
+        result = pa_brief.run_daily()
+        if result.get("sent"):
+            logger.info("pa_brief: %s", result)
+    except Exception:
+        logger.exception("pa_brief failed")
+
+
 def _run_followup_sweep():
     """Wraps followups.sweep() for the interval job below.
 
@@ -426,6 +438,8 @@ def init_scheduler(app):
         # when there are new messages in an allow-listed group.
         scheduler.add_job(_run_group_intel, "interval", minutes=8,
                           id="group_intel", replace_existing=True)
+        scheduler.add_job(_run_pa_brief, "interval", minutes=10,
+                          id="pa_brief", replace_existing=True)
         # Data retention -- prunes old rows from tables that have no other
         # cleanup (usage_logs, wa_action_log, wa_call_outbox). Daily is
         # plenty; this isn't reacting to anything time-sensitive.

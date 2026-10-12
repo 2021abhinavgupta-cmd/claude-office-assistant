@@ -1591,6 +1591,42 @@ def companion_group_intel_run():
         return jsonify({"error": "failed"}), 500
 
 
+@companion_bp.route("/api/companion/pa-brief", methods=["GET"])
+def companion_pa_brief():
+    """Preview the boss's morning brief (?user_id=emp003) without sending it."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import pa_brief
+        import utils
+        uid = request.args.get("user_id", "emp003")
+        emp = next((e for e in utils._load_employees().get("employees", []) if e.get("id") == uid), {"id": uid, "name": uid})
+        parts = pa_brief.gather()
+        return jsonify({"facts": pa_brief.facts_text(parts),
+                        "brief": pa_brief.build_brief(emp) if request.args.get("write") == "1" else None})
+    except Exception:
+        logger.exception("companion pa-brief failed")
+        return jsonify({"error": "failed"}), 500
+
+
+@companion_bp.route("/api/companion/calendar-status", methods=["GET"])
+def companion_calendar_status():
+    """Is Google Calendar connected? ?test=1 fetches today's events."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        import gcal
+        import google_sheets_store as gs
+        out = {"configured": gcal.configured(), "calendar_ids": gcal.calendar_ids(),
+               "share_calendars_with": gs.service_account_email()}
+        if request.args.get("test") == "1":
+            out["today"] = gcal.format_events(gcal.upcoming(days=1))
+        return jsonify(out)
+    except Exception:
+        logger.exception("companion calendar-status failed")
+        return jsonify({"error": "failed"}), 500
+
+
 # ── data retention (backend/data_retention.py) ─────────────────────────────
 
 @companion_bp.route("/api/companion/retention", methods=["GET"])

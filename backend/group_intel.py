@@ -73,6 +73,26 @@ def ensure_schema(conn) -> None:
         updated_at    TEXT NOT NULL
     )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gc_status ON group_commitments (status, owner_id)")
+    # decisions and client preferences ("client approved the blue logo", "Mellow
+    # wants captions in Hinglish") -- the assistant's memory of what was settled
+    conn.execute("""CREATE TABLE IF NOT EXISTS group_facts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id    TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        client      TEXT,
+        text        TEXT NOT NULL,
+        quote       TEXT,
+        source_ts   TEXT,
+        created_at  TEXT NOT NULL
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gf_client ON group_facts (client)")
+    # mistakes the boss corrected ("that wasn't a promise") -- fed back as examples
+    conn.execute("""CREATE TABLE IF NOT EXISTS group_feedback (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        example    TEXT NOT NULL,
+        note       TEXT,
+        created_at TEXT NOT NULL
+    )""")
     try:
         conn.execute("ALTER TABLE wa_group_log ADD COLUMN processed INTEGER NOT NULL DEFAULT 0")
     except Exception:
@@ -161,7 +181,14 @@ _SYSTEM = (
     "\"quote\":\"the exact words from one message\"}],"
     "\"done\":[{\"id\":<open commitment id>,\"quote\":\"exact words showing it is "
     "done\"}],\"dropped\":[{\"id\":<id>,\"quote\":\"exact words cancelling it\"}],"
-    "\"moved\":[{\"id\":<id>,\"due\":\"YYYY-MM-DD\",\"quote\":\"...\"}]}.\n"
+    "\"moved\":[{\"id\":<id>,\"due\":\"YYYY-MM-DD\",\"quote\":\"...\"}],"
+    "\"facts\":[{\"kind\":\"decision or preference\",\"client\":\"client name or empty\","
+    "\"text\":\"one short sentence\",\"quote\":\"exact words\"}]}.\n"
+    "facts: a decision is something settled ('client approved the blue logo', "
+    "'posting moved to Friday'); a preference is how a client or the team likes "
+    "things done ('Mellow wants captions in Hinglish'). Only clear, lasting ones.\n"
+    "Lines tagged [voice note] or [image] are transcripts/descriptions of media; "
+    "treat them like normal messages.\n"
     "Rules: every item needs a quote copied EXACTLY from a message. The owner is "
     "the person who will do the work (if someone says 'I will', that speaker). "
     "Never guess an owner: use team if unclear. Resolve 'today', 'tomorrow', "
@@ -171,6 +198,40 @@ _SYSTEM = (
 )
 
 
+def _use_claude() -> bool:
+    """GROUP_INTEL_LLM=claude (env or app_settings 'group_intel_llm') runs just
+    this extraction step on Claude Haiku instead of Qwen -- more accurate at
+    judging what counts as a promise, a few cents a day more."""
+    import os
+    v = os.getenv("GROUP_INTEL_LLM", "").strip().lower()
+    if not v:
+        try:
+            conn = get_connection()
+            row = conn.execute("SELECT value FROM app_settings WHERE key='group_intel_llm'").fetchone()
+            conn.close()
+            v = str(row[0]).strip().lower() if row and row[0] else ""
+        except Exception:
+            v = ""
+    return v == "claude"
+
+
+def _feedback_examples() -> str:
+    """Recent mistakes the boss corrected, appended to the instructions so the
+    extractor stops repeating them."""
+    try:
+        conn = get_connection()
+        ensure_schema(conn)
+        rows = conn.execute("SELECT example, note FROM group_feedback ORDER BY id DESC LIMIT 8").fetchall()
+        conn.close()
+    except Exception:
+        return ""
+    if not rows:
+        return ""
+    lines = [f"- \"{r[0][:140]}\"" + (f" ({r[1][:80]})" if r[1] else "") for r in rows]
+    return ("\nLEARNED FROM CORRECTIONS -- messages like these were NOT commitments, "
+            "do not extract them:\n" + "\n".join(lines))
+
+
 def _llm_json(prompt: str) -> dict | None:
     import whatsapp_agent as wa
     budget = wa.check_budget_available()
@@ -178,8 +239,16 @@ def _llm_json(prompt: str) -> dict | None:
         return None
     model = wa.get_model_for_task("whatsapp")
     usage: dict = {}
-    resp = wa._llm_create(model, [{"type": "text", "text": _SYSTEM}], None,
-                          [{"role": "user", "content": prompt}], 900, usage)
+    system = _SYSTEM + _feedback_examples()
+    if _use_claude():
+        r = wa._client.messages.create(
+            model=model["name"], max_tokens=900, system=system,
+            messages=[{"role": "user", "content": prompt}])
+        usage["claude"] = [r.usage.input_tokens, r.usage.output_tokens]
+        resp = r
+    else:
+        resp = wa._llm_create(model, [{"type": "text", "text": system}], None,
+                              [{"role": "user", "content": prompt}], 900, usage)
     try:
         wa._record_llm_usage(model, usage, "wa_group_intel")
     except Exception:
@@ -306,6 +375,24 @@ def extract_group(conn, group_id: str) -> dict:
             conn.execute("UPDATE group_commitments SET due_date=?, nudge_count=0, updated_at=? "
                          "WHERE id=? AND status='open'", (nd, now_iso, cid))
             counts["moved"] += 1
+
+    counts["facts"] = 0
+    for it in (data.get("facts") or [])[:8]:
+        if not isinstance(it, dict):
+            continue
+        ftext = re.sub(r"\s+", " ", str(it.get("text") or "")).strip()[:240]
+        quote = str(it.get("quote") or "")
+        kind = "preference" if str(it.get("kind") or "").lower().startswith("pref") else "decision"
+        if not ftext or not _grounded(quote, texts):
+            continue
+        client = re.sub(r"\s+", " ", str(it.get("client") or "")).strip()[:80]
+        if conn.execute("SELECT 1 FROM group_facts WHERE group_id=? AND LOWER(text)=LOWER(?)",
+                        (group_id, ftext)).fetchone():
+            continue
+        conn.execute("INSERT INTO group_facts (group_id, kind, client, text, quote, source_ts, created_at) "
+                     "VALUES (?,?,?,?,?,?,?)",
+                     (group_id, kind, client, ftext, quote[:300], _src_ts(quote), now_iso))
+        counts["facts"] += 1
 
     conn.execute(f"UPDATE wa_group_log SET processed=1 WHERE id IN ({','.join('?'*len(ids))})", ids)
     return counts
@@ -476,6 +563,70 @@ def list_commitments(person: str = "", status: str = "open", limit: int = 30) ->
         params.append(limit)
         cols = ["id", "owner", "action", "due", "status", "quote", "said_at", "evidence"]
         return [dict(zip(cols, r)) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+
+def search_facts(query: str = "", client: str = "", limit: int = 25) -> str:
+    """Decisions / client preferences the assistant picked up, newest first."""
+    conn = get_connection()
+    try:
+        ensure_schema(conn)
+        sql = "SELECT kind, client, text, source_ts, created_at FROM group_facts WHERE 1=1"
+        params: list = []
+        if client:
+            sql += " AND LOWER(client) LIKE ?"
+            params.append(f"%{client.lower()}%")
+        for w in [w for w in re.split(r"\s+", (query or "").strip()) if len(w) > 2][:6]:
+            sql += " AND (LOWER(text) LIKE ? OR LOWER(COALESCE(client,'')) LIKE ?)"
+            params += [f"%{w.lower()}%", f"%{w.lower()}%"]
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        return "Nothing recorded about that from the group chat yet."
+    return "\n".join(
+        f"{_fmt_time(r[3] or r[4])} [{r[0]}{(', ' + r[1]) if r[1] else ''}] {r[2]}" for r in rows)
+
+
+def reject_commitment(cid: int, note: str = "") -> bool:
+    """The boss says a tracked item was wrong: close it and remember the
+    mistake so the extractor learns."""
+    conn = get_connection()
+    try:
+        ensure_schema(conn)
+        row = conn.execute("SELECT quote, action FROM group_commitments WHERE id=? AND status='open'",
+                           (cid,)).fetchone()
+        if not row:
+            return False
+        with conn:
+            conn.execute("UPDATE group_commitments SET status='dropped', evidence=?, updated_at=? WHERE id=?",
+                         ("marked wrong: " + (note or "not a real commitment")[:200], _now().isoformat(), cid))
+            conn.execute("INSERT INTO group_feedback (example, note, created_at) VALUES (?,?,?)",
+                         ((row[0] or row[1] or "")[:300], note[:200], _now().isoformat()))
+        return True
+    finally:
+        conn.close()
+
+
+def add_commitment(owner: str, action: str, due: str = "", group_id: str = "") -> int:
+    """A promise the extractor missed, added by hand."""
+    roster = _roster()
+    oname, oid = _owner(owner, roster)
+    conn = get_connection()
+    try:
+        ensure_schema(conn)
+        gid = group_id or (conn.execute("SELECT group_id FROM wa_group_log ORDER BY id DESC LIMIT 1").fetchone() or [""])[0]
+        now_iso = _now().isoformat()
+        with conn:
+            cur = conn.execute(
+                "INSERT INTO group_commitments (group_id, owner_name, owner_id, action, due_date, quote, "
+                "source_ts, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (gid or "", oname, oid, action[:200], _valid_date(due) or None, "(added by hand)",
+                 now_iso, "open", now_iso, now_iso))
+        return cur.lastrowid
     finally:
         conn.close()
 

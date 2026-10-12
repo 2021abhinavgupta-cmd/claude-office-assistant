@@ -600,6 +600,36 @@ async function flushObserved() {
 }
 setInterval(() => flushObserved().catch(() => {}), 10000);
 
+const MEDIA_MAX = { audio: 4 * 1024 * 1024, image: 5 * 1024 * 1024 };
+
+async function observeGroupMedia(sock, msg, jid) {
+  const am = msg.message?.audioMessage;
+  const im = msg.message?.imageMessage;
+  const kind = am ? "audio" : "image";
+  const info = am || im;
+  const size = Number(info?.fileLength || 0);
+  if (size > MEDIA_MAX[kind]) return;
+  const buf = await downloadMediaMessage(msg, "buffer", {}, { reuploadRequest: sock.updateMediaMessage });
+  if (!buf || buf.length > MEDIA_MAX[kind]) return;
+  const rp = msg.key.participant || "";
+  let pj = msg.key.participantPn || "";
+  if (!pj && rp.endsWith("@lid")) {
+    try { pj = (await sock.signalRepository?.lidMapping?.getPNForLID?.(rp)) || ""; } catch { /* n/a */ }
+  }
+  const res = await fetch(`${LUMINA_URL}/whatsapp/bridge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+    body: JSON.stringify({
+      observe_media: true, group_id: jid, group_name: _groupNames.get(jid) || "",
+      kind, mime: info?.mimetype || "", data_b64: buf.toString("base64"),
+      caption: im?.caption || "", from: bareJid(pj || rp), name: msg.pushName || "",
+      ts: Date.now(), id: msg.key.id,
+    }),
+    signal: AbortSignal.timeout(90000),
+  });
+  if (!res.ok) throw new Error(`Lumina ${res.status}`);
+}
+
 async function askLumina(from, text, groupId, groupNm) {
   const body = { from, text };
   if (groupId) {
@@ -724,6 +754,15 @@ async function start() {
             await sock.sendMessage(jid, { text: "Couldn't save that one, try again." }).catch(() => {});
           }
           continue;
+        }
+        // voice notes / images in an allow-listed group: send to Lumina to be
+        // turned into text (stored as group memory; never replied to)
+        if (isGroup && (msg.message?.audioMessage || msg.message?.imageMessage)) {
+          await refreshObserveAllow();
+          if (_obsAllow.has(jid.replace(/\D/g, ""))) {
+            observeGroupMedia(sock, msg, jid).catch((e) => log(`media observe failed: ${e.message}`));
+          }
+          if (!rawText) continue;      // an image caption still flows on as text
         }
         if (!rawText) continue;
 
