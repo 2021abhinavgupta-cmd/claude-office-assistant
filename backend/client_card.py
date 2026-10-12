@@ -23,8 +23,8 @@ week, plan the week after):
   Production     next week's posts that are not ready yet (still Need to Start /
                  In Progress / Paused / blank); ready = Scheduled/Approved/Posted/
                  Final/Need for approval
-  Overdue        unfinished and due within the last 14 days; anything older is shown
-                 separately as "Old backlog" and does not set Needs VG
+  Overdue        unfinished and due within the last 14 days; anything older is ignored
+                 entirely (not shown, does not set Needs VG)
   Client feedback open  portal feedback on the client's still-open tasks that
                  asks for changes or has a comment, not an approval
   SMM: Active    the client has social posts within 14 days back or 30 days ahead
@@ -224,6 +224,4 @@ def card(client_name: str) -> str:
     lines.append("Blocker: " + ("; ".join(g["blockers"][:2]) if g["blockers"] else "None"))
     lines.append(f"DM: {_dm_text(proj)}")
     lines.append(f"Needs VG: {_needs_vg(g)}")
-    if g["backlog"]:
-        lines.append(f"Old backlog: {len(g['backlog'])} unfinished, due more than {OVERDUE_DAYS} days ago")
     return "\n".join(lines)
