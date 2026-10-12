@@ -1,4 +1,4 @@
-"""
+﻿"""
 group_digest.py -- rigid, verifiable answers about what was said in the group.
 
 A language model summarising a chat log will, sooner or later, put words in
@@ -31,7 +31,7 @@ MAX_REPLY = 3800          # WhatsApp is happy to ~4000
 VERBATIM_MAX_MSGS = 45    # above this (or too long) -> topic view
 
 _ASK = re.compile(
-    r"\b(?:discuss\w*|summari[sz]e|summary|recap|what (?:was|were|did|have|has|is) .{0,30}"
+    r"\b(?:exact messages|full chat|discuss\w*|summari[sz]e|summary|recap|what (?:was|were|did|have|has|is) .{0,30}"
     r"(?:said|talk\w*|happen\w*|going on|mention\w*|decid\w*|up)|"
     r"catch me up|i missed|talked about|said)\b", re.I)
 _GROUPWORD = re.compile(r"\b(?:group|wizards|team chat)\b", re.I)
@@ -205,13 +205,115 @@ def _topic_view(rows, label: str, notes: list, llm) -> str | None:
     return out if len(out) <= MAX_REPLY else out[:MAX_REPLY - 3] + "..."
 
 
+# ---------- checked summary ---------------------------------------------
+_EXACT = re.compile(r"\b(?:exact|verbatim|word for word|full chat|every message|all (?:the )?messages|"
+                    r"show (?:me )?(?:the )?(?:chat|messages)|raw)\b", re.I)
+_HEDGE = re.compile(r"\b(?:probably|likely|seems?|maybe|might|sounds? like|possibly|apparently|"
+                    r"presumably|perhaps|i think|appears? to)\b", re.I)
+_CAPS_OK = {"the", "a", "an", "in", "on", "at", "and", "he", "she", "they", "it", "i", "monday", "tuesday",
+            "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march",
+            "april", "may", "june", "july", "august", "september", "october", "november", "december",
+            "everyone", "group", "team", "link", "drive", "meet", "google", "whatsapp", "also", "then",
+            "later", "after", "before", "one", "two", "three", "his", "her", "their", "tomorrow", "today"}
+
+_SUM_SYSTEM = (
+    "You summarise a team WhatsApp group chat for the boss. The messages are numbered "
+    "as: number|time|speaker|text. Return ONLY JSON: "
+    '{"points":[{"text":"one short plain sentence","ids":[message numbers that prove it]}]}. '
+    "Rules: 4 to 9 points in time order, grouped by real topic. Every fact in a point must be "
+    "stated in the messages you cite. Never guess a purpose, mood or meaning (no 'probably', "
+    "'likely', 'seems'). A message that is only a link: say who shared a link and its site, "
+    "nothing more. Do not put quotes around anything. Name only people who sent the cited "
+    "messages or are named inside them. Skip noise like '.' or 'ok'. Hinglish: give the meaning "
+    "faithfully in English. If nothing real was discussed, return fewer points.")
+
+
+_FUNC = set("""shared said says asked announced posted sent wrote mentioned confirmed picked chose chosen
+planned told wants wanted need needs needed bring brought requested suggested replied agreed joined about
+around again after before during while where which their there these those would could should other others
+everyone someone message messages chat group team character characters list lists version versions first
+second third final tomorrow today tonight morning evening afternoon event tagging tagged people member
+members file files video photo image link links site started asking saying people being have has had will
+been were with from into over also then later each both more most some many another among between group's
+selected reacted responded liked loved shared""".split())
+
+
+def _words_ok(text: str, hay: str) -> bool:
+    """Every content word of the point must come from the cited messages (5-letter stem
+    match) or be an everyday connective/verb -- stops a made-up topic slipping through."""
+    for w in re.findall(r"[A-Za-z][A-Za-z']+", text):
+        wl = w.lower().strip("'")
+        if len(wl) < 5 or wl in _FUNC or wl in _CAPS_OK:
+            continue
+        stem = wl[:5]
+        if stem not in hay and _squash(wl) not in _squash(hay):
+            return False
+    return True
+
+
+def _point_ok(text: str, ids: list, rows) -> bool:
+    if not text or len(text) > 300 or _HEDGE.search(text):
+        return False
+    cited = [rows[i - 1] for i in ids]
+    hay = " ".join(f"{r['sender_name']} {r['text']}" for r in cited).lower()
+    hay_sq = _squash(hay)
+    for w in re.findall(r"[A-Za-z][A-Za-z0-9']+", text):
+        if w[0].isupper() and w.lower() not in _CAPS_OK and len(w) > 2:
+            if w.lower() not in hay and _squash(w) not in hay_sq:
+                return False
+    for n in re.findall(r"\d+", text):
+        if n not in hay:
+            return False
+    return _words_ok(text, hay) and quotes_ok(text, hay)
+
+
+def _summary(rows, label: str, notes: list, llm) -> str | None:
+    if llm is None or not rows:
+        return None
+    use = rows[-300:]
+    numbered = "\n".join(f"{i + 1}|{_hm(r['created_at'])}|{r['sender_name']}|{_clean(r['text'], 220)}"
+                         for i, r in enumerate(use))
+    try:
+        raw = llm(_SUM_SYSTEM, numbered[:24000])
+        m = re.search(r"\{[\s\S]*\}", raw or "")
+        points = json.loads(m.group(0)).get("points") if m else None
+    except Exception:
+        logger.debug("group_digest: summary call failed", exc_info=True)
+        return None
+    if not isinstance(points, list) or not points:
+        return None
+    good, bad = [], 0
+    for pt in points[:14]:
+        try:
+            ids = sorted({i for i in pt.get("ids", []) if isinstance(i, int) and 1 <= i <= len(use)})[:12]
+            text = re.sub(r"\s+", " ", str(pt.get("text") or "")).strip()
+        except Exception:
+            bad += 1
+            continue
+        if ids and _point_ok(text, ids, use):
+            good.append((ids[0], text))
+        else:
+            bad += 1
+    if len(good) < 1 or bad > len(good):
+        logger.warning("group_digest: summary rejected (%d ok, %d bad)", len(good), bad)
+        return None
+    good.sort()
+    head = (f"*Group summary, {label}*: {len(rows)} messages, "
+            f"{_hm(rows[0]['created_at'])} to {_hm(rows[-1]['created_at'])}\n")
+    body = "\n".join(f"- {t} ({_hm(use[i - 1]['created_at'])})" for i, t in good)
+    foot = "\n".join(notes + ["Every point above was checked against the real messages. "
+                              "Say \"exact messages from the group\" for the chat word for word."])
+    out = f"{head}\n{body}\n\n{foot}"
+    return out if len(out) <= MAX_REPLY else None
+
+
 # ---------- public -------------------------------------------------------
 def is_group_summary_question(text: str) -> bool:
     t = (text or "").strip()
     return bool(t and len(t) < 220 and _GROUPWORD.search(t) and _ASK.search(t))
 
 
-def build(text: str, group_ids, llm=None, now: datetime | None = None) -> str:
+def build(text: str, group_ids, llm=None, now: datetime | None = None, llm_smart=None) -> str:
     """The rigid answer for a group-summary question."""
     import group_memory
     gids = [g for g in (group_memory._digits(x) for x in (group_ids or [])) if g]
@@ -239,7 +341,9 @@ def build(text: str, group_ids, llm=None, now: datetime | None = None) -> str:
     if not rows:
         return "\n".join([f"No messages found in the group chat for {label}."] + notes)
     out = None
-    if len(rows) <= VERBATIM_MAX_MSGS:
+    if not _EXACT.search(text or ""):
+        out = _summary(rows, label, notes, llm_smart or llm)
+    if out is None and len(rows) <= VERBATIM_MAX_MSGS:
         out = _verbatim(rows, label, notes)
     if out is None:
         out = _topic_view(rows, label, notes, llm)
@@ -250,11 +354,11 @@ def build(text: str, group_ids, llm=None, now: datetime | None = None) -> str:
     return out
 
 
-def try_answer(text: str, group_ids, llm=None) -> str | None:
+def try_answer(text: str, group_ids, llm=None, llm_smart=None) -> str | None:
     if not is_group_summary_question(text):
         return None
     try:
-        return build(text, group_ids, llm)
+        return build(text, group_ids, llm, llm_smart=llm_smart)
     except Exception:
         logger.exception("group_digest: failed, falling back to the model")
         return None

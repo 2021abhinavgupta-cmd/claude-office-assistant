@@ -708,16 +708,25 @@ _DUE_WEEK = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+due\s+this\s+week
 _PENDING_Q = re.compile(r"^(?:lumina[,:\s]+)?what(?:'s|\s+is)\s+pending[\s?.!]*$", re.I)
 
 
-def _digest_llm(system: str, user: str) -> str:
+def _digest_llm_smart(system: str, user: str) -> str:
+    """Summary writer: the stronger model when the daily smart cap allows,
+    else the cheap one. Output is verified by group_digest either way."""
+    if _smart_allowed():
+        from model_router import MODEL_COSTS
+        return _digest_llm(system, user, {**MODEL_COSTS["sonnet"], "tier": "sonnet", "task": "whatsapp"}, True)
+    return _digest_llm(system, user)
+
+
+def _digest_llm(system: str, user: str, model=None, smart: bool = False) -> str:
     """One cheap, deterministic model call used only to GROUP numbered chat
     messages into topics (group_digest). Returns raw text."""
     budget = check_budget_available()
     if not budget.get("allowed"):
         return ""
-    model = get_model_for_task("whatsapp")
+    model = model or get_model_for_task("whatsapp")
     usage: dict = {}
     resp = _llm_create(model, [{"type": "text", "text": system}], None,
-                       [{"role": "user", "content": user}], 900, usage)
+                       [{"role": "user", "content": user}], 1200 if smart else 900, usage, smart=smart)
     try:
         _record_llm_usage(model, usage, "wa_group_digest")
     except Exception:
@@ -3869,7 +3878,8 @@ def handle_message(sender: str, text: str, *,
         try:
             import group_digest
             gids = {group_id} if (in_group and group_id) else _group_allowlist()
-            gd = group_digest.try_answer((text or "").strip(), gids, llm=_digest_llm)
+            gd = group_digest.try_answer((text or "").strip(), gids, llm=_digest_llm,
+                                         llm_smart=_digest_llm_smart)
         except Exception:
             logger.exception("whatsapp_agent: group digest failed")
             gd = None
