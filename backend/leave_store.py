@@ -35,6 +35,100 @@ OT_CONVERSION_HOURS = 24.0
 VALID_LEAVE_TYPES = {"full", "half"}
 _LEAVE_DEDUCTION = {"full": 1.0, "half": 0.5}
 
+# Who can decide a leave request: HR plus the two founders (Vidit, Kshitij).
+# Anyone can never decide their OWN request, so when HR applies for leave the
+# founders decide it. The first decision wins; a later one is told who decided.
+HR_ID = "emp009"
+APPROVER_IDS = ("emp009", "emp001", "emp004")
+MAX_SPAN_DAYS = 60            # one request can cover at most this many calendar days
+MAX_PAST_DAYS = 60            # backdating limit
+MAX_AHEAD_DAYS = 366
+
+
+def approvers_for(applicant_id: str) -> list:
+    """The people who may decide `applicant_id`'s request (never themselves)."""
+    return [a for a in APPROVER_IDS if a != applicant_id]
+
+
+def is_approver_for(decider_id: str, applicant_id: str) -> bool:
+    return decider_id in approvers_for(applicant_id)
+
+
+def _holiday_dates(start_date: str, end_date: str) -> set:
+    """Public-holiday dates (HR's office calendar, kind 'holiday') inside the
+    window. Best effort: an unreadable calendar just means none."""
+    out: set = set()
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT start_date, end_date FROM office_calendar WHERE kind='holiday' "
+            "AND NOT (end_date < ? OR start_date > ?)", (start_date, end_date)).fetchall()
+        conn.close()
+        for s, e in rows:
+            d, last = _date.fromisoformat(s[:10]), _date.fromisoformat(e[:10])
+            while d <= last:
+                out.add(d.isoformat())
+                d += timedelta(days=1)
+    except Exception:
+        pass
+    return out
+
+
+def working_days(start_date: str, end_date: str, leave_type: str = "full",
+                 holidays: set | None = None) -> float:
+    """Days a window actually costs: weekdays only, public holidays free."""
+    try:
+        sd, ed = _date.fromisoformat(start_date[:10]), _date.fromisoformat(end_date[:10])
+    except Exception:
+        return 0.0
+    if ed < sd:
+        sd, ed = ed, sd
+    if holidays is None:
+        holidays = _holiday_dates(sd.isoformat(), ed.isoformat())
+    per_day = _LEAVE_DEDUCTION.get(leave_type, 1.0)
+    total, d = 0.0, sd
+    while d <= ed:
+        if d.weekday() < 5 and d.isoformat() not in holidays:
+            total += per_day
+        d += timedelta(days=1)
+    return total
+
+
+def _validate_window(start_date: str, end_date: str, leave_type: str) -> float:
+    """Reject nonsense dates before anything is stored. Returns the working
+    days the window costs."""
+    try:
+        sd, ed = _date.fromisoformat(start_date[:10]), _date.fromisoformat(end_date[:10])
+    except Exception:
+        raise ValueError("those dates aren't valid")
+    today = _date.fromisoformat(today_ist())
+    if (ed - sd).days + 1 > MAX_SPAN_DAYS:
+        raise ValueError(f"one request can cover at most {MAX_SPAN_DAYS} days, split it up")
+    if sd < today - timedelta(days=MAX_PAST_DAYS):
+        raise ValueError(f"that is more than {MAX_PAST_DAYS} days in the past")
+    if ed > today + timedelta(days=MAX_AHEAD_DAYS):
+        raise ValueError("that is more than a year ahead")
+    days = working_days(start_date, end_date, leave_type)
+    if days <= 0:
+        raise ValueError("those dates are only weekend or public holiday, no leave is needed")
+    return days
+
+
+def _shortfall(user_id: str, days: float) -> float:
+    """How many of the requested days go beyond the balance still free
+    (remaining minus what other pending requests already claim). >0 means the
+    approver is being asked to grant unpaid days."""
+    try:
+        free = get_balance(user_id)["remaining"]
+        conn = get_connection()
+        rows = conn.execute("SELECT start_date, end_date, leave_type FROM employee_leave "
+                            "WHERE user_id=? AND status='pending'", (user_id,)).fetchall()
+        conn.close()
+        free -= sum(working_days(r[0], r[1], r[2]) for r in rows)
+        return round(max(0.0, days - free), 2)
+    except Exception:
+        return 0.0
+
 _DDL = """CREATE TABLE IF NOT EXISTS employee_leave (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     TEXT NOT NULL,
@@ -158,6 +252,8 @@ def set_leave(user_id: str, start_date: str, end_date: str,
         status = "pending"
     if leave_type not in VALID_LEAVE_TYPES:
         leave_type = "full"
+    days = _validate_window(start_date, end_date, leave_type)
+    short = _shortfall(user_id, days)
     conn = get_connection()
     try:
         _ensure(conn)
@@ -179,7 +275,8 @@ def set_leave(user_id: str, start_date: str, end_date: str,
             )
         row = {"id": cur.lastrowid, "user_id": user_id,
                "start_date": start_date, "end_date": end_date,
-               "reason": reason or "", "status": status, "leave_type": leave_type}
+               "reason": reason or "", "status": status, "leave_type": leave_type,
+               "days": days, "shortfall": short}
     finally:
         conn.close()
     _email_hr(row)
@@ -304,6 +401,8 @@ def apply_leave(user_id: str, start_date: str, end_date: str,
         raise ValueError(f"leave_type must be one of {sorted(VALID_LEAVE_TYPES)}")
     if end_date < start_date:
         start_date, end_date = end_date, start_date
+    days = _validate_window(start_date, end_date, leave_type)
+    short = _shortfall(user_id, days)
     conn = get_connection()
     try:
         _ensure(conn)
@@ -321,51 +420,104 @@ def apply_leave(user_id: str, start_date: str, end_date: str,
             )
         row = {"id": cur.lastrowid, "user_id": user_id, "start_date": start_date,
                "end_date": end_date, "leave_type": leave_type,
-               "reason": reason or "", "status": "pending"}
+               "reason": reason or "", "status": "pending",
+               "days": days, "shortfall": short}
     finally:
         conn.close()
     _email_hr(row, email_subject, email_body)
     return row
 
 
+# ── one-click decision links (emailed / WhatsApped to each approver) ─────
+
+def _secret() -> bytes:
+    return (os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "dev-secret").encode()
+
+
+def action_token(leave_id: int, approver_id: str, action: str) -> str:
+    """HMAC for one (request, approver, action). The link carries who is
+    deciding, so no login is needed and nobody can act as someone else."""
+    import hashlib
+    import hmac
+    msg = f"{int(leave_id)}:{approver_id}:{action}".encode()
+    return hmac.new(_secret(), msg, hashlib.sha256).hexdigest()[:32]
+
+
+def verify_action_token(leave_id: int, approver_id: str, action: str, token: str) -> bool:
+    import hmac
+    return bool(token) and hmac.compare_digest(action_token(leave_id, approver_id, action), str(token))
+
+
+def action_url(leave_id: int, approver_id: str, action: str) -> str:
+    base = (os.getenv("PUBLIC_BASE_URL") or "https://lumina.mmga.agency").rstrip("/")
+    return (f"{base}/api/leave/act?id={int(leave_id)}&by={approver_id}&a={action}"
+            f"&t={action_token(leave_id, approver_id, action)}")
+
+
+def get_request(leave_id: int) -> dict | None:
+    conn = get_connection()
+    try:
+        _ensure(conn)
+        r = conn.execute(
+            "SELECT id, user_id, start_date, end_date, leave_type, reason, status, approved_by, "
+            "approved_at FROM employee_leave WHERE id=?", (leave_id,)).fetchone()
+        if not r:
+            return None
+        return {"id": r[0], "user_id": r[1], "start_date": r[2], "end_date": r[3],
+                "leave_type": r[4], "reason": r[5], "status": r[6],
+                "decided_by": r[7], "decided_at": r[8]}
+    finally:
+        conn.close()
+
+
 def _email_hr(row: dict, subject: str = "", message: str = "") -> None:
-    """Fire-and-forget email to HR for a new pending request. Never raises."""
+    """Tell every approver (HR + founders, never the applicant) about a new
+    pending request, by email and WhatsApp, each with their own one-click
+    approve / reject links. Fire-and-forget, never raises."""
     if row.get("status") != "pending":
         return
     try:
         import mailer
         mailer.notify_leave_request(row, subject, message)
     except Exception:
-        logger.exception("leave_store: HR email failed")
+        logger.exception("leave_store: approver email failed")
     _whatsapp_hr(row, subject, message)
 
 
 def _whatsapp_hr(row: dict, subject: str = "", message: str = "") -> None:
-    """WhatsApp DM to HR (Noorish) for a new pending request. Best-effort,
-    never raises. Delivered by the laptop's outbox poller."""
+    """WhatsApp DM to each approver for a new pending request, with approve /
+    reject links. Best-effort, never raises. Delivered by the laptop's outbox
+    poller."""
     try:
         import mailer
         import wa_outbox
         from utils import _load_employees
-        wa = next((e.get("whatsapp", "") for e in _load_employees().get("employees", [])
-                   if e.get("id") == mailer.HR_USER_ID), "")
-        jid = wa_outbox.wa_jid(wa)
-        if not jid:
-            logger.info("leave_store: HR has no WhatsApp number, skipping")
-            return
+        emps = {e.get("id"): e for e in _load_employees().get("employees", [])}
         who = mailer.name_for(row.get("user_id", ""))
         sd, ed = row.get("start_date", ""), row.get("end_date", "")
         when = sd if sd == ed else f"{sd} to {ed}"
         kind = "half day" if row.get("leave_type") == "half" else "full day"
         reason = (row.get("reason") or "").strip()
-        text = f"*Leave request* from {who}\n{kind.capitalize()}: {when}"
-        if reason:
-            text += f"\nReason: {reason}"
-        base = (os.getenv("PUBLIC_BASE_URL") or "https://lumina.mmga.agency").rstrip("/")
-        text += f"\n\nApprove or reject: {base}/leave.html"
-        wa_outbox.enqueue(jid, text)
+        for aid in approvers_for(row.get("user_id", "")):
+            e = emps.get(aid) or {}
+            if str(e.get("status", "active")).lower() in {"inactive", "disabled", "left", "removed", "archived", "former"}:
+                continue
+            jid = wa_outbox.wa_jid(e.get("whatsapp", ""))
+            if not jid:
+                continue
+            text = f"*Leave request* from {who}\n{kind.capitalize()}: {when}"
+            if row.get("days"):
+                text += f" ({row['days']:g} working day{'s' if row['days'] != 1 else ''})"
+            if reason:
+                text += f"\nReason: {reason}"
+            if row.get("shortfall"):
+                text += f"\nNote: {row['shortfall']:g} of these days are beyond their leave balance (unpaid)."
+            text += (f"\n\nApprove: {action_url(row['id'], aid, 'approve')}"
+                     f"\nReject: {action_url(row['id'], aid, 'reject')}"
+                     f"\nOr reply here, e.g. \"approve {who.split()[0]}'s leave\".")
+            wa_outbox.enqueue(jid, text)
     except Exception:
-        logger.exception("leave_store: HR WhatsApp failed")
+        logger.exception("leave_store: approver WhatsApp failed")
 
 
 def _row_for_notice(conn, leave_id: int) -> dict | None:
@@ -419,6 +571,9 @@ def approve_leave(leave_id: int, approved_by: str) -> bool:
             "SELECT user_id, start_date, end_date FROM employee_leave "
             "WHERE id=? AND status='pending'", (leave_id,),
         ).fetchone()
+        if row and not is_approver_for(approved_by, row[0]):
+            raise PermissionError("you can't decide this request"
+                                  + (" (it's your own)" if approved_by == row[0] else ""))
         if row and _overlapping_status(conn, row[0], row[1], row[2],
                                        statuses=("approved",), exclude_id=leave_id):
             raise ValueError("overlaps a leave window already approved for this person")
@@ -434,6 +589,7 @@ def approve_leave(leave_id: int, approved_by: str) -> bool:
         conn.close()
     if decided:
         _notify_applicant(decided, "approved", approved_by)
+        _notify_other_approvers(decided, leave_id, "approved", approved_by)
     return done
 
 
@@ -441,6 +597,11 @@ def reject_leave(leave_id: int, approved_by: str, reason: str = "") -> bool:
     conn = get_connection()
     try:
         _ensure(conn)
+        row = conn.execute("SELECT user_id FROM employee_leave WHERE id=? AND status='pending'",
+                           (leave_id,)).fetchone()
+        if row and not is_approver_for(approved_by, row[0]):
+            raise PermissionError("you can't decide this request"
+                                  + (" (it's your own)" if approved_by == row[0] else ""))
         with conn:
             cur = conn.execute(
                 "UPDATE employee_leave SET status='rejected', approved_by=?, "
@@ -453,7 +614,78 @@ def reject_leave(leave_id: int, approved_by: str, reason: str = "") -> bool:
         conn.close()
     if decided:
         _notify_applicant(decided, "rejected", approved_by, reason)
+        _notify_other_approvers(decided, leave_id, "rejected", approved_by)
     return done
+
+
+def _notify_other_approvers(row: dict, leave_id: int, decision: str, decided_by: str,
+                            what: str = "") -> None:
+    """The approvers who did NOT decide are told who did, so two people never
+    both think it is still theirs to handle. Best-effort, never raises."""
+    try:
+        import mailer
+        import wa_outbox
+        from utils import _load_employees
+        emps = {e.get("id"): e for e in _load_employees().get("employees", [])}
+        who = mailer.name_for(row.get("user_id", ""))
+        by = mailer.name_for(decided_by)
+        sd, ed = row.get("start_date", ""), row.get("end_date", "")
+        when = sd if sd == ed else f"{sd} to {ed}"
+        verb = what or decision
+        text = f"{who}'s leave for {when} was {verb} by {by}."
+        for aid in approvers_for(row.get("user_id", "")):
+            if aid == decided_by:
+                continue
+            e = emps.get(aid) or {}
+            jid = wa_outbox.wa_jid(e.get("whatsapp", ""))
+            if jid:
+                wa_outbox.enqueue(jid, text)
+    except Exception:
+        logger.exception("leave_store: other-approver notice failed")
+
+
+def cancel_approved(leave_id: int, by_user: str) -> tuple:
+    """Cancel an already-APPROVED leave. The owner may do it only while it has
+    not started (the balance is refunded); an approver may do it until it is
+    over. The row is kept as 'cancelled' (never deleted) so the trail stays.
+    Returns (ok, reason-if-not)."""
+    conn = get_connection()
+    try:
+        _ensure(conn)
+        r = conn.execute("SELECT user_id, start_date, end_date, leave_type FROM employee_leave "
+                         "WHERE id=? AND status='approved'", (leave_id,)).fetchone()
+        if not r:
+            return False, "no approved leave with that id"
+        owner, sd, ed, lt = r
+        today = today_ist()
+        if by_user == owner:
+            if sd <= today:
+                return False, "that leave has already started, ask an approver to cancel it"
+        elif not is_approver_for(by_user, owner):
+            return False, "only the person or an approver can cancel this"
+        elif ed < today:
+            return False, "that leave is already over"
+        with conn:
+            conn.execute("UPDATE employee_leave SET status='cancelled' WHERE id=? AND status='approved'",
+                         (leave_id,))
+        row = {"user_id": owner, "start_date": sd, "end_date": ed, "leave_type": lt}
+    finally:
+        conn.close()
+    try:
+        _notify_other_approvers(row, leave_id, "cancelled", by_user, what="cancelled")
+        if by_user != owner:
+            import mailer
+            import wa_outbox
+            from utils import _load_employees
+            wa = next((e.get("whatsapp", "") for e in _load_employees().get("employees", [])
+                       if e.get("id") == owner), "")
+            jid = wa_outbox.wa_jid(wa)
+            if jid:
+                when = sd if sd == ed else f"{sd} to {ed}"
+                wa_outbox.enqueue(jid, f"Your approved leave for {when} was cancelled by {mailer.name_for(by_user)}.")
+    except Exception:
+        logger.exception("leave_store: cancel notice failed")
+    return True, ""
 
 
 def cancel_leave(leave_id: int, user_id: str) -> bool:
@@ -473,7 +705,9 @@ def cancel_leave(leave_id: int, user_id: str) -> bool:
         conn.close()
 
 
-def list_pending() -> list[dict]:
+def list_pending(viewer_id: str | None = None) -> list[dict]:
+    """Pending requests. With `viewer_id`, only those that person may decide
+    (never their own)."""
     conn = get_connection()
     try:
         _ensure(conn)
@@ -485,15 +719,36 @@ def list_pending() -> list[dict]:
             {"id": r[0], "user_id": r[1], "start_date": r[2], "end_date": r[3],
              "leave_type": r[4], "reason": r[5], "created_by": r[6], "created_at": r[7]}
             for r in rows
+            if viewer_id is None or is_approver_for(viewer_id, r[1])
         ]
     finally:
         conn.close()
 
 
+def on_leave_or_pending_ids(date_str: str) -> set[str]:
+    """Approved leave OR a still-pending request covering the day. Used ONLY to
+    stop the login nudges from pestering someone who has already asked for the
+    day off while approval is slow; it never exempts the standup lock or
+    counts toward anything."""
+    ids = set(on_leave_ids(date_str))
+    conn = get_connection()
+    try:
+        _ensure(conn)
+        rows = conn.execute(
+            "SELECT DISTINCT user_id FROM employee_leave WHERE status='pending' "
+            "AND start_date <= ? AND end_date >= ?", (date_str, date_str)).fetchall()
+        ids |= {r[0] for r in rows}
+    except Exception:
+        logger.exception("leave_store.on_leave_or_pending_ids failed")
+    finally:
+        conn.close()
+    return ids
+
+
 # ── balance (computed live, never stored) ───────────────────────────────
 
 def _deduction_in_year(start_date: str, end_date: str, leave_type: str,
-                       year: int) -> float:
+                       year: int, holidays: set | None = None) -> float:
     """How many days a single [start_date, end_date] leave window consumes
     from `year`'s pool.
 
@@ -519,8 +774,9 @@ def _deduction_in_year(start_date: str, end_date: str, leave_type: str,
     per_day = _LEAVE_DEDUCTION.get(leave_type, 1.0)
     total = 0.0
     d = sd
+    holidays = holidays or set()
     while d <= ed:
-        if d.weekday() < 5:
+        if d.weekday() < 5 and d.isoformat() not in holidays:
             total += per_day
         d += timedelta(days=1)
     return total
@@ -541,7 +797,8 @@ def get_balance(user_id: str, year: int | None = None) -> dict:
             "AND NOT (end_date < ? OR start_date > ?)",
             (user_id, y_start, y_end),
         ).fetchall()
-        used = sum(_deduction_in_year(r[0], r[1], r[2], year) for r in rows)
+        hol = _holiday_dates(y_start, y_end)   # public holidays cost no leave
+        used = sum(_deduction_in_year(r[0], r[1], r[2], year, hol) for r in rows)
 
         try:
             comp_rows = conn.execute(

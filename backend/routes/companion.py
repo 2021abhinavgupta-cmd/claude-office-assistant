@@ -506,7 +506,8 @@ def companion_not_logged_in():
 
     try:
         import leave_store
-        on_leave = leave_store.on_leave_ids(today)
+        # a pending request also stops the nudges (approval can be slow)
+        on_leave = leave_store.on_leave_or_pending_ids(today)
     except Exception:
         logger.exception("not-logged-in: leave lookup failed")
         on_leave = set()

@@ -387,6 +387,10 @@ def _standup_tasks_today(user_id: str) -> list:
         return []
 
 
+def _first(name: str) -> str:
+    return str(name or "").strip().split(" ")[0]
+
+
 def _active_employees() -> list:
     """[{id, name, whatsapp}] for every active employee — the internal roster."""
     out = []
@@ -625,6 +629,7 @@ _WRITE_TOOLS = {
     "assign_task", "delegate_my_task", "remind_teammate", "remind_me", "send_group_message",
     "schedule_group_message", "message_multiple", "add_standup_task", "update_standup_task",
     "resolve_group_commitment", "reject_group_commitment", "add_group_commitment",
+    "decide_leave",
     "create_task", "set_task_meta", "set_attendance", "review_task",
     "place_announcement_call", "set_leave", "clear_leave",
     "set_standing_rule", "remove_standing_rule",
@@ -1619,6 +1624,31 @@ _EMPLOYEE_TOOLS = [
         },
     },
     {
+        "name": "get_pending_leave",
+        "description": "Leave requests waiting for the user's decision. Only "
+                       "Noorish, Vidit and Kshitij can use this. Use for 'any "
+                       "leave requests?', 'who applied for leave'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "decide_leave",
+        "description": "Approve or reject a pending leave request. Only "
+                       "Noorish, Vidit and Kshitij; nobody can decide their "
+                       "own. Use for 'approve Nupur's leave', 'reject #4, we "
+                       "have a shoot'. `which` = the #id or the person's name. "
+                       "The first decision counts; if someone already decided, "
+                       "say who.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "which": {"type": "string", "description": "#id or person's name."},
+                "decision": {"type": "string", "description": "approve or reject."},
+                "reason": {"type": "string", "description": "Optional, for a rejection."},
+            },
+            "required": ["decision"],
+        },
+    },
+    {
         "name": "recall_group_facts",
         "description": "Decisions and client preferences the assistant picked "
                        "up from the team group chat. Use for 'what did we "
@@ -2098,16 +2128,82 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 row = leave_store.set_leave(
                     tid, sd, ed, reason=str(ti.get("reason", ""))[:200],
                     created_by=identity["id"], leave_type=leave_type)
+            except ValueError as e:
+                return f"Couldn't request that leave: {e}."
             except Exception:
                 logger.exception("whatsapp_agent: set_leave failed")
                 return "(couldn't save that leave just now)"
             span = (row["start_date"] if row["start_date"] == row["end_date"]
                     else f"{row['start_date']} to {row['end_date']}")
             whose = "you" if tid == identity["id"] else tname
-            return (f"Sent {whose} leave for {span} to Noorish for approval. "
-                    f"{'You' if tid == identity['id'] else tname} "
-                    f"will stay locked out of standup and keep getting login "
-                    f"nudges until it's approved.")
+            names = " and ".join(_first(n) for n in
+                                 [e["name"] for e in _active_employees()
+                                  if e["id"] in leave_store.approvers_for(tid)]) or "the approvers"
+            out = (f"Sent {whose} leave for {span} to {names} for approval, "
+                   f"the first decision counts. "
+                   f"{'You' if tid == identity['id'] else tname} "
+                   f"will stay locked out of standup until it's approved.")
+            if row.get("shortfall"):
+                out += (f" Heads up: {row['shortfall']:g} of those days are beyond the "
+                        f"leave balance, so they would be unpaid.")
+            return out
+
+        if name == "get_pending_leave" and kind == "employee":
+            import leave_store
+            import mailer
+            if identity["id"] not in leave_store.APPROVER_IDS:
+                return "Only Noorish, Vidit and Kshitij can see leave requests waiting for a decision."
+            rows = leave_store.list_pending(identity["id"])
+            if not rows:
+                return "No leave requests waiting for you."
+            lines = []
+            for r in rows:
+                span = r["start_date"] if r["start_date"] == r["end_date"] else f"{r['start_date']} to {r['end_date']}"
+                lines.append(f"#{r['id']} {mailer.name_for(r['user_id'])}: {span} ({r['leave_type']})"
+                             + (f", {r['reason']}" if r.get("reason") else ""))
+            return "\n".join(lines)
+
+        if name == "decide_leave" and kind == "employee":
+            import leave_store
+            import mailer
+            ti = tool_input or {}
+            decision = str(ti.get("decision") or "").strip().lower()
+            if decision not in ("approve", "reject"):
+                return "(decision has to be approve or reject)"
+            if identity["id"] not in leave_store.APPROVER_IDS:
+                return "Only Noorish, Vidit and Kshitij can approve or reject leave."
+            which = str(ti.get("which") or "").strip()
+            rows = leave_store.list_pending(identity["id"])
+            pick = None
+            if re.fullmatch(r"#?\d+", which):
+                pick = next((r for r in rows if r["id"] == int(which.lstrip("#"))), None)
+            else:
+                hits = [r for r in rows if which.lower() and which.lower() in mailer.name_for(r["user_id"]).lower()]
+                if len(hits) > 1:
+                    return "More than one request fits: " + "; ".join(
+                        f"#{r['id']} {mailer.name_for(r['user_id'])} {r['start_date']}" for r in hits) + ". Which one?"
+                pick = hits[0] if hits else (rows[0] if len(rows) == 1 and not which else None)
+            if not pick:
+                own = [r for r in leave_store.list_pending() if r["user_id"] == identity["id"]]
+                if own and (not which or re.fullmatch(r"#?\d+", which) and int(which.lstrip("#")) in [r["id"] for r in own]):
+                    return "You can't decide your own leave request, one of the other approvers will."
+                return "Couldn't find a pending request for you to decide matching that."
+            try:
+                if decision == "approve":
+                    ok = leave_store.approve_leave(pick["id"], identity["id"])
+                else:
+                    ok = leave_store.reject_leave(pick["id"], identity["id"],
+                                                  reason=str(ti.get("reason") or "")[:300])
+            except PermissionError as e:
+                return f"Not allowed: {e}."
+            except ValueError as e:
+                return f"Couldn't do that: {e}."
+            if not ok:
+                cur = leave_store.get_request(pick["id"])
+                by = mailer.name_for(cur["decided_by"]) if cur and cur.get("decided_by") else "someone"
+                return f"Leave #{pick['id']} was already {cur['status'] if cur else 'decided'} by {by}."
+            return (f"Marked leave #{pick['id']} {'approved' if decision == 'approve' else 'rejected'} "
+                    f"for {mailer.name_for(pick['user_id'])}. They've been told.")
 
         if name == "clear_leave" and kind == "employee":
             try:

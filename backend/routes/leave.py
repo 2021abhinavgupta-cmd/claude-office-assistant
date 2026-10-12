@@ -111,13 +111,17 @@ def leave_apply():
 
 @leave_bp.route("/api/leave/<int:leave_id>/cancel", methods=["POST"])
 def leave_cancel(leave_id: int):
+    """Cancel your own pending request; or an APPROVED leave (the owner before
+    it starts, an approver until it ends)."""
     uid, err = _require_session()
     if err:
         return err
-    ok = leave_store.cancel_leave(leave_id, uid)
-    if not ok:
-        return jsonify({"error": "nothing pending to cancel for this id/user"}), 404
-    return jsonify({"success": True})
+    if leave_store.cancel_leave(leave_id, uid):
+        return jsonify({"success": True})
+    ok, why = leave_store.cancel_approved(leave_id, uid)
+    if ok:
+        return jsonify({"success": True, "was": "approved"})
+    return jsonify({"error": why or "nothing to cancel for this id/user"}), 404
 
 
 @leave_bp.route("/api/leave/convert-ot", methods=["POST"])
@@ -132,32 +136,115 @@ def leave_convert_ot():
     return jsonify(leave_store.convert_overtime_now(uid))
 
 
+def _require_approver() -> tuple[str, tuple | None]:
+    """HR or a founder (leave_store.APPROVER_IDS), by real session."""
+    uid = _session_user_id()
+    if not uid:
+        return "", (jsonify({"error": "login required"}), 401)
+    if uid not in leave_store.APPROVER_IDS:
+        return "", (jsonify({"error": "approvers only"}), 403)
+    return uid, None
+
+
+def _decide(leave_id: int, uid: str, action: str, reason: str = ""):
+    """Shared by the signed-in routes. Returns (json-able dict, status)."""
+    try:
+        if action == "approve":
+            ok = leave_store.approve_leave(leave_id, uid)
+        else:
+            ok = leave_store.reject_leave(leave_id, uid, reason=reason)
+    except PermissionError as e:
+        return {"error": str(e)}, 403
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    if ok:
+        return {"success": True}, 200
+    cur = leave_store.get_request(leave_id)
+    if cur and cur["status"] != "pending":
+        import mailer
+        by = mailer.name_for(cur["decided_by"]) if cur.get("decided_by") else "someone"
+        return {"error": f"already {cur['status']}" + (f" by {by}" if cur["status"] in ("approved", "rejected") else "")}, 409
+    return {"error": "no pending request with that id"}, 404
+
+
 @leave_bp.route("/api/leave/pending", methods=["GET"])
 def leave_pending():
-    uid, err = _require_hr()
+    uid, err = _require_approver()
     if err:
         return err
-    return jsonify({"pending": leave_store.list_pending()})
+    return jsonify({"pending": leave_store.list_pending(uid)})
 
 
 @leave_bp.route("/api/leave/<int:leave_id>/approve", methods=["POST"])
 def leave_approve(leave_id: int):
-    uid, err = _require_hr()
+    uid, err = _require_approver()
     if err:
         return err
-    ok = leave_store.approve_leave(leave_id, uid)
-    if not ok:
-        return jsonify({"error": "no pending request with that id"}), 404
-    return jsonify({"success": True})
+    body, code = _decide(leave_id, uid, "approve")
+    return jsonify(body), code
 
 
 @leave_bp.route("/api/leave/<int:leave_id>/reject", methods=["POST"])
 def leave_reject(leave_id: int):
-    uid, err = _require_hr()
+    uid, err = _require_approver()
     if err:
         return err
     body = request.get_json(silent=True) or {}
-    ok = leave_store.reject_leave(leave_id, uid, reason=str(body.get("reason") or "")[:300])
-    if not ok:
-        return jsonify({"error": "no pending request with that id"}), 404
-    return jsonify({"success": True})
+    out, code = _decide(leave_id, uid, "reject", str(body.get("reason") or "")[:300])
+    return jsonify(out), code
+
+
+# ── one-click decision from an email / WhatsApp link (no login) ──────────
+# GET only shows a confirm page (mail scanners pre-fetch links, a GET must not
+# decide anything); the button POSTs. The signed link says who is deciding.
+
+def _page(title: str, inner: str, code: int = 200):
+    from flask import Response
+    html = ("<!doctype html><html><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>{title}</title><style>body{{font-family:system-ui,sans-serif;max-width:460px;"
+            "margin:48px auto;padding:0 16px;color:#1a1a1a}}button{padding:10px 20px;border:0;"
+            "border-radius:8px;font-size:15px;cursor:pointer;color:#fff}.a{background:#16a34a}"
+            ".r{background:#dc2626}input,textarea{width:100%;padding:8px;margin:8px 0;box-sizing:border-box}"
+            f"</style></head><body>{inner}</body></html>")
+    return Response(html, status=code, mimetype="text/html")
+
+
+@leave_bp.route("/api/leave/act", methods=["GET", "POST"])
+def leave_act():
+    import html as _h
+    import mailer
+    src = request.form if request.method == "POST" else request.args
+    try:
+        leave_id = int(src.get("id", ""))
+    except ValueError:
+        return _page("Leave", "<h3>Invalid link</h3>", 400)
+    by, action, token = src.get("by", ""), src.get("a", ""), src.get("t", "")
+    if action not in ("approve", "reject") or not leave_store.verify_action_token(leave_id, by, action, token):
+        return _page("Leave", "<h3>This link isn't valid.</h3><p>Open Lumina to decide it.</p>", 403)
+    cur = leave_store.get_request(leave_id)
+    if not cur:
+        return _page("Leave", "<h3>Request not found.</h3>", 404)
+    who = _h.escape(mailer.name_for(cur["user_id"]))
+    sd, ed = cur["start_date"], cur["end_date"]
+    when = _h.escape(sd if sd == ed else f"{sd} to {ed}")
+    kind = "half day" if cur["leave_type"] == "half" else "full day"
+    if cur["status"] != "pending":
+        dec = _h.escape(mailer.name_for(cur["decided_by"])) if cur.get("decided_by") else ""
+        return _page("Leave", f"<h3>Already {_h.escape(cur['status'])}</h3><p>{who}, {when}"
+                              + (f" was decided by {dec}." if dec and cur["status"] in ("approved", "rejected") else ".") + "</p>")
+    verb = "Approve" if action == "approve" else "Reject"
+    if request.method == "GET":
+        reason_box = ("<label>Reason (optional, they are told)</label><textarea name='reason' rows='2'></textarea>"
+                      if action == "reject" else "")
+        return _page("Leave", (
+            f"<h3>{verb} leave?</h3><p><b>{who}</b><br>{when} ({kind})<br>"
+            f"{_h.escape(cur['reason'] or '')}</p>"
+            "<form method='post'>"
+            f"<input type='hidden' name='id' value='{leave_id}'><input type='hidden' name='by' value='{_h.escape(by)}'>"
+            f"<input type='hidden' name='a' value='{action}'><input type='hidden' name='t' value='{_h.escape(token)}'>"
+            f"{reason_box}<button class='{'a' if action == 'approve' else 'r'}'>{verb}</button></form>"))
+    out, code = _decide(leave_id, by, action, str(src.get("reason") or "")[:300])
+    if code == 200:
+        return _page("Leave", f"<h3>Done</h3><p>{who}'s leave for {when} was {'approved' if action == 'approve' else 'rejected'}. They have been told.</p>")
+    return _page("Leave", f"<h3>Not done</h3><p>{_h.escape(out.get('error', 'error'))}</p>", code)

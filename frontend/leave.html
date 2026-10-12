@@ -105,7 +105,8 @@ const API = location.hostname==="localhost"||location.hostname==="127.0.0.1" ? "
 const user = JSON.parse(localStorage.getItem("agency_portal_user")||"{}");
 const UID = user.user_id;
 if (!UID) window.location.href = "login.html";
-const IS_HR = UID === "emp009";
+// HR and the founders can approve (never their own request; the server enforces it)
+const IS_HR = ["emp009", "emp001", "emp004"].includes(UID);
 
 function toast(m,t="ok"){
   const e=document.getElementById("toast");
@@ -184,7 +185,7 @@ const cal = GCal.create({
       toast(`Your leave request for ${ev.start} was rejected. Check WhatsApp/email for the reason, or apply again.`);
     } else if (ev.source === "leave"){
       if (ev.pending) openCancelConfirm(ev.leave.leave_id, ev.start);
-      else showApprovedInfo(ev.start);
+      else showApprovedInfo(ev.start, ev.leave && ev.leave.leave_id);
     } else if (ev.source === "event" && ev.raw){
       const r = ev.raw, t = r.start_time ? (r.end_time ? `${fmt12(r.start_time)} – ${fmt12(r.end_time)}` : fmt12(r.start_time)) : "";
       toast(`${r.title}${t ? " — " + t : ""}`);
@@ -295,8 +296,23 @@ async function decide(id, action){
   }catch(e){ toast("Network error","err"); }
 }
 
-function showApprovedInfo(dstr){
-  toast(`${dstr} is already an approved leave day. Ask Noorish (HR) if it needs to change.`);
+async function showApprovedInfo(dstr, leaveId){
+  const today = new Date().toISOString().slice(0,10);
+  if (leaveId && dstr > today){
+    // your own approved leave that has not started yet can be cancelled
+    if (!confirm(`Cancel your approved leave for ${dstr}? Your balance is refunded and the approvers are told.`)) return;
+    try{
+      const r = await fetch(`${API}/api/leave/${leaveId}/cancel`, {
+        method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({user_id: UID}),
+      });
+      const d = await r.json();
+      if (!r.ok){ toast(d.error || "Couldn't cancel", "err"); return; }
+      toast("Leave cancelled");
+      await loadBalance(); await renderCalendar();
+    }catch(e){ toast("Network error","err"); }
+    return;
+  }
+  toast(`${dstr} is an approved leave day. Ask an approver (Noorish, Vidit or Kshitij) if it needs to change.`);
 }
 
 let subjectTouched = false, bodyTouched = false;
@@ -330,7 +346,7 @@ function openApplyModal(dstr){
   subjectTouched = bodyTouched = false;
   document.getElementById("apply-modal-date").textContent = "Apply for leave";
   document.getElementById("apply-from").textContent = `${empName(UID) || UID} <${myMail()}>`;
-  document.getElementById("apply-to").textContent = `${HR_NAME} <${HR_MAIL}>`;
+  document.getElementById("apply-to").textContent = `${HR_NAME} <${HR_MAIL}>, cc Vidit, Kshitij`;
   document.getElementById("apply-reason").value = "";
   document.getElementById("apply-type").value = "full";
   document.getElementById("apply-start").value = dstr;

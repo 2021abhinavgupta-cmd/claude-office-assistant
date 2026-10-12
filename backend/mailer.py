@@ -199,30 +199,39 @@ def notify_leave_request(row: dict, subject: str = "", message: str = "") -> boo
     own subject/message in the Apply box, that exact text is what HR receives
     (plus a one-line approve link); otherwise a standard summary is used."""
     try:
+        import leave_store
         uid = row.get("user_id", "")
         who = name_for(uid)
         applicant = email_for(uid)
-        hr = email_for(HR_USER_ID)
         sd, ed = row.get("start_date", ""), row.get("end_date", "")
         when = sd if sd == ed else f"{sd} to {ed}"
         kind = "Half day" if row.get("leave_type") == "half" else "Full day"
         reason = (row.get("reason") or "").strip() or "(none given)"
         base = (os.getenv("PUBLIC_BASE_URL") or "https://lumina.mmga.agency").rstrip("/")
-        body = (
-            f"{who} has applied for leave.\n\n"
-            f"Dates:  {when}\n"
-            f"Type:   {kind}\n"
-            f"Reason: {reason}\n\n"
-            f"Approve or reject it here: {base}/leave.html\n\n"
-            f"Reply to this email to reach {who} directly."
-        )
-        if (message or "").strip():
-            body = (f"{message.strip()}\n\n"
-                    f"-- \nApprove or reject: {base}/leave.html\n"
-                    f"Reply to this email to reach {who} directly.")
         subj = (subject or "").strip() or f"Leave request: {who} ({when})"
-        cc = [a for a in (email_for(u) for u in LEAVE_CC_USER_IDS) if a and a != applicant]
-        return send(hr, subj, body, reply_to=applicant, from_name=f"{who} via Lumina", cc=cc)
+        approvers = leave_store.approvers_for(uid)
+        names = ", ".join(name_for(a) for a in approvers)
+        ok = False
+        for aid in approvers:
+            to = email_for(aid)
+            if not to or to == applicant:
+                continue
+            note = ""
+            if row.get("shortfall"):
+                note = (f"\nNote: {row['shortfall']:g} of these days are beyond their leave "
+                        "balance, so they would be unpaid.\n")
+            links = (f"\nApprove: {leave_store.action_url(row['id'], aid, 'approve')}\n"
+                     f"Reject:  {leave_store.action_url(row['id'], aid, 'reject')}\n"
+                     f"(or open {base}/leave.html). Sent to {names}; the first decision counts.\n")
+            if (message or "").strip():
+                body = (f"{message.strip()}\n{note}\n-- {links}"
+                        f"Reply to this email to reach {who} directly.")
+            else:
+                body = (f"{who} has applied for leave.\n\n"
+                        f"Dates:  {when}\nType:   {kind}\nReason: {reason}\n{note}{links}\n"
+                        f"Reply to this email to reach {who} directly.")
+            ok = send(to, subj, body, reply_to=applicant, from_name=f"{who} via Lumina") or ok
+        return ok
     except Exception:
         logger.exception("mailer: notify_leave_request failed")
         return False
