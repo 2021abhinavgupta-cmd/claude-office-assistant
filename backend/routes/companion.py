@@ -601,7 +601,10 @@ def companion_whatsapp_outbox():
         rows = conn.execute(
             "SELECT id, to_number, body, image_token FROM whatsapp_outbox "
             "WHERE status='pending' AND (send_after IS NULL OR send_after <= ?) "
-            "ORDER BY id LIMIT 50",
+            # Picture rows wait until the laptop says it can send pictures
+            # (?images=1); an older laptop would send the caption without it.
+            + ("" if request.args.get("images") == "1" else "AND image_token IS NULL ")
+            + "ORDER BY id LIMIT 50",
             (now_ist_str,),
         ).fetchall()
         conn.close()

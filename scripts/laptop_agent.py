@@ -732,7 +732,7 @@ def job_wa_outbox(cfg: dict) -> None:
     if not tok:
         return
     try:
-        r = requests.get(f"{cfg['url']}/api/companion/whatsapp-outbox",
+        r = requests.get(f"{cfg['url']}/api/companion/whatsapp-outbox?images=1",
                          headers={"Authorization": f"Bearer {tok}"}, timeout=30)
         if not r.ok:
             return
