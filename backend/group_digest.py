@@ -42,6 +42,12 @@ _PRESSING = re.compile(r"\b(?:pressing|important|urgent|priority|priorities|need
                        r"anything i should know|what did i miss)\b", re.I)
 _NOGROUP = re.compile(r"^(?:lumina[,:\s]+)?(?:what did i miss|catch me up|anything (?:important|new|pressing)"
                       r"(?: (?:today|in the chat))?)[\s?.!]*$", re.I)
+# a bare "summary" / "give me a summary" / "summarise" means the group chat (the day's own
+# overview is "my dashboard")
+_BARE = re.compile(r"^(?:hi\s+|hey\s+|bro\s+)?(?:lumina[,:\s]+)?(?:please\s+)?(?:give me |show me |tell me |send me |get me |do )?"
+                   r"(?:a |the |me a |me the )?(?:quick |short |full |today'?s |todays )?"
+                   r"(?:summary|summari[sz]e|summari[sz]ation|recap|sum ?up)(?: (?:of )?(?:today|the day|everything|it|this|chat|the chat|the messages))?"
+                   r"(?: (?:please|pls|now|bro))?[\s?.!]*$", re.I)
 _URL = re.compile(r"https?://\S+", re.I)
 
 
@@ -382,7 +388,7 @@ def is_group_summary_question(text: str) -> bool:
     t = (text or "").strip()
     if not t or len(t) >= 220:
         return False
-    if _NOGROUP.match(t):
+    if _NOGROUP.match(t) or _BARE.match(t):
         return True
     return bool(_GROUPWORD.search(t) and (_ASK.search(t) or _LOOSE.search(t)))
 
@@ -433,6 +439,8 @@ def try_answer(text: str, group_ids, llm=None, llm_smart=None) -> str | None:
         return None
     try:
         out = build(text, group_ids, llm, llm_smart=llm_smart)
+        if _BARE.match((text or "").strip()):
+            out += "\n\n(For your own tasks and meetings, say \"my dashboard\".)"
         if _PRESSING.search(text or ""):
             # "what is pressing / important": the tracked open asks and promises first
             try:
