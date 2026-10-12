@@ -52,7 +52,7 @@ MODEL_COSTS = {
         # (e.g. qwen/qwen3.6-plus is ~$0.325 in), set these two to match.
         "input":  float(os.getenv("OPENROUTER_PRICE_IN", "1.20")),    # qwen3-max (estimate)
         "output": float(os.getenv("OPENROUTER_PRICE_OUT", "6.00")),
-        "name":   os.getenv("OPENROUTER_MODEL", "qwen/qwen3-max"),
+        "name":   os.getenv("OPENROUTER_MODEL", "qwen/qwen3.8-max-0902"),
     },
 }
 

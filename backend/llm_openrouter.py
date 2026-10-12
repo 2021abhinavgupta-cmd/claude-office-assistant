@@ -32,11 +32,11 @@ from db import get_connection
 logger = logging.getLogger(__name__)
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "qwen/qwen3-max"
+DEFAULT_MODEL = "qwen/qwen3.8-max-0902"
 # Best Qwen first; the next one is used if a model is unavailable or errors. The first that
 # works is remembered for this process. OPENROUTER_MODELS overrides; OPENROUTER_MODEL (if set)
 # is only tried LAST.
-DEFAULT_CHAIN = "qwen/qwen3-max,qwen/qwen3.6-plus,qwen/qwen3.8-27b"
+DEFAULT_CHAIN = "qwen/qwen3.8-max-0902,qwen/qwen3.6-plus,qwen/qwen3.8-27b"
 _START = 0
 TIMEOUT = 60
 
@@ -111,7 +111,7 @@ def _get(b, k, default=""):
 # Models OpenRouter documents as honouring explicit `cache_control` (Alibaba-hosted
 # Qwen). Anything else would get the marker ignored at best, so it is only sent to
 # these. Extend with OPENROUTER_CACHE_MODELS="slug,slug" if OpenRouter adds more.
-_CACHE_MODELS = {"qwen/qwen3-max", "qwen/qwen-plus", "qwen/qwen3.6-plus",
+_CACHE_MODELS = {"qwen/qwen3-max", "qwen/qwen3.8-max-0902", "qwen/qwen-plus", "qwen/qwen3.6-plus",
                  "qwen/qwen3-coder-plus", "qwen/qwen3-coder-flash"}
 
 
