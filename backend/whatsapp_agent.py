@@ -651,7 +651,7 @@ def _format_standup(tasks: list, who: str) -> str:
     lines = []
     for i, t in enumerate(tasks, 1):
         is_done = str(t["status"]).lower() in done_words
-        prefix = "done: " if is_done else ""
+        prefix = "✅ " if is_done else "❌ "   # same marks as the 5 PM group post
         tail = ""
         if t.get("carried_from"):
             tail += f" (carried over from {t['carried_from']})"
@@ -1153,8 +1153,8 @@ _EMPLOYEE_TOOLS = [
     {
         "name": "get_teammate_tasks",
         "description": "Another team member's live daily-standup task list for "
-                       "today, WITH each item's real status -- shows 'done: ' "
-                       "on anything they've actually marked finished. Use this "
+                       "today, WITH each item's real status -- marks "
+                       "finished items ✅ and open ones ❌. Use this "
                        "for 'what is Nupur working on', 'what are Kshitij's "
                        "tasks', 'is Happy doing anything today', 'has Happy "
                        "done his tasks', 'what has X finished today' -- ANY "
@@ -1728,8 +1728,14 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 except Exception:
                     logger.debug("whatsapp_agent: notion status mirror failed",
                                  exc_info=True)
-            return (f"Marked done: {m['title']}" if new_status == "done"
+            head = (f"Marked done: {m['title']}" if new_status == "done"
                     else f"Reopened: {m['title']}")
+            try:
+                head += "\n\n" + _format_standup(
+                    _standup_tasks_today(identity["id"]), "Your")
+            except Exception:
+                pass
+            return head
 
         if name == "get_teammate_tasks" and kind == "employee":
             who = (tool_input or {}).get("name", "")
@@ -1810,7 +1816,8 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 conn.close()
                 _auto_checkin(identity["id"])
                 if target_date == today:
-                    return f"Added to today's standup: {task[:120]}"
+                    full = _format_standup(_standup_tasks_today(identity["id"]), "Your")
+                    return f"Added to today's standup: {task[:120]}\n\n{full}"
                 return f"Added to the {target_date} standup: {task[:120]}"
             except Exception:
                 logger.exception("whatsapp_agent: add_standup_task failed")
@@ -2913,6 +2920,10 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
             "If they tell you what they're working on today, add it with "
             "add_standup_task. If they say a task is done or finished, mark it "
             "with update_standup_task. Confirm either in one line.\n"
+            "When you show any standup list, copy the tool's numbered list "
+            "exactly, keeping the ✅ (done) and ❌ (not done) marks on every "
+            "line, never reword the titles. After add_standup_task or "
+            "update_standup_task, show the updated list the same way.\n"
             "add_standup_task and assign_task both take an optional `date` -- "
             "use it whenever they name a future day ('add this to tomorrow's "
             "standup', 'put this on Monday's list', 'for Thursday's standup "
