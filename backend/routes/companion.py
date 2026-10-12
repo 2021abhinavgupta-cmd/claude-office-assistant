@@ -1108,10 +1108,12 @@ def companion_week_digest():
         mon = datetime.now(utils.IST).date()
         mon = mon + timedelta(days=7 - mon.weekday())
         return jsonify({"week": mon.isoformat(), "text": week_digest.week_text(mon)})
-    ids = [x.strip() for x in (request.args.get("to") or "").split(",") if x.strip()]
-    if not ids:
-        return jsonify({"error": "pass ?to=emp003,... (test sends only)"}), 400
-    return jsonify(week_digest.run_weekly(force=True, only_ids=ids))
+    to = (request.args.get("to") or "").strip()
+    ids = [x.strip() for x in to.split(",") if x.strip() and x.strip() != "all"]
+    if not ids and to != "all":
+        return jsonify({"error": "pass ?to=emp003,... or ?to=all"}), 400
+    return jsonify(week_digest.run_weekly(force=True, only_ids=ids or None,
+                                          this_week=request.args.get("week") == "this"))
 
 
 @companion_bp.route("/api/companion/email-status", methods=["GET"])

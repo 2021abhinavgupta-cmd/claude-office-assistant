@@ -323,7 +323,7 @@ def _ist_now() -> datetime:
 
 
 def run_weekly(now: datetime | None = None, force: bool = False,
-               only_ids: list | None = None) -> dict:
+               only_ids: list | None = None, this_week: bool = False) -> dict:
     """Send the coming week's schedule. Scheduler calls it every 10 min; it only
     acts on Sunday 21:00-23:00 IST and only once per week. force=True skips the
     window/once-only guard (used for previews, optionally to only_ids)."""
@@ -331,7 +331,8 @@ def run_weekly(now: datetime | None = None, force: bool = False,
         now = now or _ist_now()
         if not force and not (now.weekday() == 6 and 21 <= now.hour < 23):
             return {"sent": False, "reason": "outside window"}
-        monday = now.date() + timedelta(days=7 - now.weekday())
+        monday = (now.date() - timedelta(days=now.weekday()) if this_week
+                  else now.date() + timedelta(days=7 - now.weekday()))
         if not force:
             conn = get_connection()
             try:
