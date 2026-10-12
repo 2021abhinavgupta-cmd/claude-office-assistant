@@ -115,12 +115,17 @@ def _domain(m) -> str:
     return "[link: " + re.sub(r"^www\.", "", host) + "]"
 
 
-_SECRET = re.compile(r"(?i)\b(pass(?:word|wd)?|pwd|otp|pin|passcode|secret|token|api[ _-]?key)\b(\s*(?:is|:|=|-)?\s*)(\S+)")
+_SECRET = re.compile(r"(?i)\b(pass(?:word|wd|wrd|code)?|pws|pw|psw|pswd|pwd|otp|pin|secret|token|api[ _-]?key)\b(\s*(?:is|:|=|-)?\s*)(\S+)")
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 
 def redact(text: str) -> str:
-    """Never repeat a shared password / OTP / key back into a reply."""
-    return _SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)}[hidden]", text or "")
+    """Never repeat a shared password / OTP / key (or the login it belongs to) in a reply."""
+    t = text or ""
+    if _SECRET.search(t):
+        t = _SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)}[hidden]", t)
+        t = _EMAIL.sub("[email hidden]", t)
+    return t
 
 
 def _clean(text: str, cap: int) -> str:
