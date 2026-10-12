@@ -164,8 +164,6 @@ def week_text(monday: date, bold: str = "*") -> str:
         lines.append(f"{bold}{d.strftime('%a %d %b')}{bold}  {_day_line(ents, i >= 5)}")
         if leave.get(d.isoformat()):
             lines.append(f"      🌴 On leave: {', '.join(leave[d.isoformat()])}")
-    legend = "  ".join(f"{v[0]} {v[1]}" for v in KIND.values())
-    lines += ["", legend]
     return "\n".join(lines)
 
 
