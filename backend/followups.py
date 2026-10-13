@@ -411,10 +411,9 @@ def _fallback_text(employee: dict, items: list) -> str:
     """Deterministic nudge, used when the agent can't compose one (budget
     exhausted, model error). The feature still works with zero LLM spend --
     it just sounds like a cron job instead of an assistant."""
-    lead = f"{employee.get('name', 'Hi')} — a couple of things still hanging:"
-    if len(items) == 1:
-        lead = f"{employee.get('name', 'Hi')} — one thing still hanging:"
-    return lead + "\n" + "\n".join(f"- {_second_person(i['text'])}" for i in items)
+    nm = employee.get("name") or "Hi"
+    lead = f"*{nm}*, a couple of things are still hanging:" if len(items) > 1 else f"*{nm}*, one thing is still hanging:"
+    return lead + "\n\n" + "\n".join(f"{n}. {_second_person(i['text'])}" for n, i in enumerate(items, 1))
 
 
 _THEY = re.compile(r"\bthey\b", re.I)

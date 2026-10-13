@@ -1328,6 +1328,14 @@ def job_weekly_wrap(cfg: dict) -> None:
         _log("weekly-wrap: sent")
 
 
+def _task_lines(titles: list, limit: int = 12) -> str:
+    """One numbered task per line, so a list of open tasks is easy to scan."""
+    rows = [f"{i}. {t}" for i, t in enumerate(titles[:limit], 1)]
+    if len(titles) > limit:
+        rows.append(f"...and {len(titles) - limit} more")
+    return "\n".join(rows)
+
+
 def _quote_tasks(titles: list) -> str:
     """'a', 'a and b', 'a, b and c' -- quoted, max 3 then 'N more'."""
     q = [f'"{t}"' for t in titles[:3]]
@@ -1353,9 +1361,9 @@ def job_eod_heads_up(cfg: dict) -> None:
             continue
         n = p.get("name", "there")
         text = (
-            f"yo {n}, 5 PM summary goes to the group in 5 min and "
-            f"{_quote_tasks(pend)} {'is' if len(pend) == 1 else 'are'} still open on your standup. "
-            "what's the status? tick what's done or tell me here."
+            f"Hey *{n}*, the 5 PM summary goes to the group in 5 minutes.\n\n"
+            f"*Still open on your standup ({len(pend)}):*\n{_task_lines(pend)}\n\n"
+            "Tick what's done on Lumina, or just tell me here."
         )
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
@@ -1391,8 +1399,10 @@ def job_eod_personal(cfg: dict) -> None:
             continue
         n = p.get("name", "there")
         text = (
-            f"hey {n}, {_quote_tasks(pend)} {'is' if len(pend) == 1 else 'are'} still open on today's standup. "
-            "done with any of them? tick them or they roll over to tomorrow."
+            f"Hey *{n}*, here's what's still open from today.\n\n"
+            f"*Open tasks ({len(pend)}):*\n{_task_lines(pend)}\n\n"
+            "Done with any of them? Tick them on Lumina or tell me here, "
+            "otherwise they roll over to tomorrow."
         )
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
@@ -1418,8 +1428,8 @@ def job_attendance_nag(cfg: dict) -> None:
         if not wa:
             continue
         name = p.get("name") or "there"
-        text = (f"Morning *{name}*, it's 10:30 and you're not checked in on Lumina "
-                "yet. Tap check-in when you get a sec, or reply \"checking in\" here "
+        text = (f"Morning *{name}*,\n\nit's 10:30 and you're not checked in on Lumina yet.\n\n"
+                "Tap check-in when you get a sec, or reply \"checking in\" here "
                 "and I'll do it for you.")
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
@@ -1442,7 +1452,7 @@ def job_checkout_nudge(cfg: dict) -> None:
         if not wa:
             continue
         name = p.get("name") or "there"
-        text = (f"Hey *{name}*, it's 11 PM and you haven't checked out on Lumina yet. "
+        text = (f"Hey *{name}*,\n\nit's 11 PM and you haven't checked out on Lumina yet.\n\n"
                 "Please check out, or just reply \"out\" here and I'll do it for you.")
         if _bridge_send(cfg, f"{wa}@s.whatsapp.net", text):
             sent += 1
