@@ -1,4 +1,4 @@
-﻿"""
+"""
 group_digest.py -- rigid, verifiable answers about what was said in the group.
 
 A language model summarising a chat log will, sooner or later, put words in
@@ -245,8 +245,8 @@ _CAPS_OK = {"the", "a", "an", "in", "on", "at", "and", "he", "she", "they", "it"
 _SUM_SYSTEM = (
     "You summarise a team WhatsApp group chat for the boss. The messages are numbered "
     "as: number|time|speaker|text. Return ONLY JSON: "
-    '{"points":[{"text":"one short plain sentence","ids":[message numbers that prove it]}]}. '
-    "Rules: 4 to 9 points in time order, grouped by real topic. Every fact in a point must be "
+    '{"points":[{"topic":"2-3 word topic name","text":"one short plain sentence","ids":[message numbers that prove it],"important":true or false}]}. '
+    "Rules: 4 to 12 points. Give every point a short topic name (2-3 words, e.g. Shoot plan, Stempedia collab, Script, Client asks); points about the same thing MUST use the exact same topic name. Set important=true only for what the boss must act on or know: a request or deadline aimed at a named person, a decision, a client problem or ask, an approval, something blocked or urgent; routine chatter is false. Every fact in a point must be "
     "stated in the messages you cite. Never guess a purpose, mood or meaning (no 'probably', "
     "'likely', 'seems'). A message that is only a link: say who shared a link and its site, "
     "nothing more. Do not put quotes around anything. Name only people who sent the cited "
@@ -306,7 +306,7 @@ def _verify(cand, use, llm) -> dict:
     if not cand or llm is None:
         return {}
     blocks = []
-    for n, (ids, text) in enumerate(cand, 1):
+    for n, (ids, text, _m) in enumerate(cand, 1):
         msgs = "\n".join(f"  [{_hm(use[i - 1]['created_at'])}] {use[i - 1]['sender_name']}: "
                          f"{_clean(use[i - 1]['text'], 400)}" for i in ids)
         blocks.append(f"CLAIM {n}: {text}\nMESSAGES:\n{msgs}")
@@ -346,25 +346,27 @@ def _gen(use, llm):
         try:
             ids = sorted({i for i in pt.get("ids", []) if isinstance(i, int) and 1 <= i <= len(use)})[:12]
             text = redact(re.sub(r"\s+", " ", str(pt.get("text") or "")).strip())
+            topic = redact(re.sub(r"[^\w &/+\-]", "", str(pt.get("topic") or "")).strip())[:30]
+            imp = pt.get("important") is True
         except Exception:
             bad += 1
             continue
         ok = bool(ids) and _point_ok(text, ids, use)
         LAST.setdefault("verdicts", []).append({"ok": ok, "text": text, "ids": ids})
         if ok:
-            cand.append((ids, text))
+            cand.append((ids, text, (topic, imp)))
         else:
             bad += 1
     # Second opinion: a strict fact-checker pass over each surviving point and the exact
     # messages it cites; the conservative word-by-word test only if the checker is unavailable.
     verdict = _verify(cand, use, llm)
     good = []
-    for n, (ids, text) in enumerate(cand, 1):
+    for n, (ids, text, meta) in enumerate(cand, 1):
         hay = " ".join(f"{use[i - 1]['sender_name']} {use[i - 1]['text']}" for i in ids).lower()
         ok = verdict.get(n) if verdict else _words_ok(text, hay)
         LAST.setdefault("verdicts", []).append({"checked": ok, "text": text})
         if ok:
-            good.append((ids, text))
+            good.append((ids, text, meta))
         else:
             bad += 1
     return good, bad
@@ -382,17 +384,27 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
     if first is None or not first[0] or first[1] > len(first[0]):
         logger.warning("group_digest: summary rejected")
         return None
-    pts = [(use[ids[0] - 1]["created_at"], text) for ids, text in first[0]]
-    covered = {i for ids, _ in first[0] for i in ids}
+    pts = [(use[ids[0] - 1]["created_at"], text, meta) for ids, text, meta in first[0]]
+    covered = {i for ids, _, _m in first[0] for i in ids}
     rest = [r for i, r in enumerate(use, 1) if i not in covered and len(_clean(r["text"], 400)) >= 15]
     if len(rest) >= 2:
         second = _gen(rest, llm)
         if second and second[0]:
-            pts += [(rest[ids[0] - 1]["created_at"], text) for ids, text in second[0]]
-    pts.sort()
+            pts += [(rest[ids[0] - 1]["created_at"], text, meta) for ids, text, meta in second[0]]
+    pts.sort(key=lambda p: p[0])
     head = f"*Group summary, {label}* ({len(rows)} messages)\n"
-    body = "\n".join(f"- {t}" for _, t in pts)
-    out = f"{head}\n{body}"
+    imp = [t for _, t, m in pts if m[1]]
+    groups: dict = {}
+    for _, t, (topic, flag) in pts:
+        if flag:
+            continue
+        groups.setdefault(topic or "Other", []).append(t)
+    parts = []
+    if imp:
+        parts.append("*❗ Important*\n" + "\n".join(f"- {t}" for t in imp))
+    for topic, items in groups.items():
+        parts.append(f"*{topic}*\n" + "\n".join(f"- {t}" for t in items))
+    out = head + "\n" + "\n\n".join(parts)
     return out if len(out) <= MAX_REPLY else out[:MAX_REPLY - 3] + "..."
 
 
