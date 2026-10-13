@@ -911,7 +911,7 @@ def calendar_days(user_id: str, year: int, month: int) -> dict:
         hrs = _hours_worked(cin, cout)
         if hrs is None:
             out[dstr] = {"status": "none", "hours": None}
-        elif hrs >= _HALF_DAY_MIN_HOURS:
+        elif hrs >= _FULL_DAY_HOURS:   # 9h = full day, same rule as the Excel export
             out[dstr] = {"status": "full", "hours": hrs}
         else:
             out[dstr] = {"status": "half", "hours": hrs}
