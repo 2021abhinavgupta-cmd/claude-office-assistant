@@ -36,7 +36,7 @@ DEFAULT_MODEL = "qwen/qwen3.8-27b"
 # Best Qwen first; the next one is used if a model is unavailable or errors. The first that
 # works is remembered for this process. OPENROUTER_MODELS overrides; OPENROUTER_MODEL (if set)
 # is only tried LAST.
-DEFAULT_CHAIN = "qwen/qwen3.8-27b"   # owner choice 2026-10-13: Qwen3.8 27B only, no Max
+DEFAULT_CHAIN = "qwen/qwen3.8-27b,qwen/qwen3.6-plus"   # owner 2026-10-13: no Max (too costly); 27B first, 3.6 Plus as backup
 _START = 0
 _MUST_REASON: set = set()   # slugs that answered 'Reasoning is mandatory'
 TIMEOUT = 60
