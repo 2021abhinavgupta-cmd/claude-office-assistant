@@ -1,4 +1,4 @@
-﻿"""OpenRouter (Qwen) adapter for the WhatsApp agent.
+"""OpenRouter (Qwen) adapter for the WhatsApp agent.
 
 The agent's tool loop (whatsapp_agent.handle_message) is written against
 Anthropic's response shape: `resp.content` blocks with `.type` of "text" or
@@ -32,11 +32,11 @@ from db import get_connection
 logger = logging.getLogger(__name__)
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "qwen/qwen3.8-max-0902"
+DEFAULT_MODEL = "qwen/qwen3.8-27b"
 # Best Qwen first; the next one is used if a model is unavailable or errors. The first that
 # works is remembered for this process. OPENROUTER_MODELS overrides; OPENROUTER_MODEL (if set)
 # is only tried LAST.
-DEFAULT_CHAIN = "qwen/qwen3.8-max-0902,qwen/qwen3.6-plus,qwen/qwen3.8-27b"
+DEFAULT_CHAIN = "qwen/qwen3.8-27b"   # owner choice 2026-10-13: Qwen3.8 27B only, no Max
 _START = 0
 _MUST_REASON: set = set()   # slugs that answered 'Reasoning is mandatory'
 TIMEOUT = 60
