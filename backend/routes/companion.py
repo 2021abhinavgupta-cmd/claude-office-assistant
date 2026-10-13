@@ -2008,11 +2008,11 @@ def companion_sheets_pull_all():
 @companion_bp.route("/api/companion/content-calendar-recipients", methods=["GET"])
 def companion_content_calendar_recipients():
     """Employee ids in app_settings 'content_calendar_recipient_ids' (default
-    emp001 -- Vidit), resolved to name + whatsapp. Who gets DM'd the
+    emp001 Vidit + emp007 Charulata), resolved to name + whatsapp. Who gets DM'd the
     tomorrow-live reminder."""
     if not _auth_ok():
         return jsonify({"error": "unauthorized"}), 401
-    ids = ["emp001"]
+    ids = ["emp001", "emp007"]   # Vidit + Charulata (default; a stored setting replaces it)
     try:
         conn = get_connection()
         row = conn.execute(
