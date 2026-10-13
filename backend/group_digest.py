@@ -53,7 +53,7 @@ _URL = re.compile(r"https?://\S+", re.I)
 
 # ---------- window -------------------------------------------------------
 def _window(text: str, now: datetime | None = None):
-    """(start_utc_iso, end_utc_iso, label) in IST terms; default = today."""
+    """(start_utc_iso, end_utc_iso, label) in IST terms; default = last 24 hours."""
     now = now or datetime.now(_IST)
     t = text.lower()
     day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -67,7 +67,7 @@ def _window(text: str, now: datetime | None = None):
     if re.search(r"this week|week so far", t):
         mon = day0 - timedelta(days=day0.weekday())
         return mon, now, "this week"
-    return day0, now, "today"
+    return now - timedelta(hours=24), now, "last 24 hours"   # default: rolling 24h, not since midnight
 
 
 def _iso(dt: datetime) -> str:
