@@ -606,6 +606,19 @@ def delegate_task(task_id):
             (target_user_id, today_str, title, blocker, orig_user_name)
         )
     conn.close()
+    # Tell the person on WhatsApp (queued; the laptop delivers it). Best-effort: never fails the handover.
+    try:
+        if target_user_id != orig_user_id:
+            emp = next((e for e in _load_employees().get("employees", [])
+                        if e.get("id") == target_user_id), None)
+            jid = wa_outbox.wa_jid((emp or {}).get("whatsapp", ""))
+            if jid:
+                first = (target_user_name or "").split(" ")[0] or "there"
+                wa_outbox.enqueue(jid, f"Hi {first}, {orig_user_name} handed you a task on today's standup: "
+                                       f"{title}" + (f"\nBlocker: {blocker}" if blocker else "")
+                                       + "\nIt is on your list now.")
+    except Exception:
+        logger.exception("delegate_task: WhatsApp notify failed")
     return jsonify({"success": True})
 
 
