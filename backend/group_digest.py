@@ -52,22 +52,64 @@ _URL = re.compile(r"https?://\S+", re.I)
 
 
 # ---------- window -------------------------------------------------------
+DAY_START_HOUR = 3   # a "day" in the group runs 3 AM to the next 3 AM (IST)
+
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+
+def _named_day(t: str, now: datetime):
+    """The calendar date the question names ('monday', '12 oct', 'oct 12', '12/10'), or None."""
+    for i, wd in enumerate(_WEEKDAYS):
+        if re.search(rf"\b{wd}\b", t):
+            back = (now.weekday() - i) % 7
+            return now.date() - timedelta(days=back or 7)
+    m = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s*)?(" + "|".join(_MONTHS) + r")[a-z]*\b", t)
+    m2 = re.search(r"\b(" + "|".join(_MONTHS) + r")[a-z]*\s*(\d{1,2})(?:st|nd|rd|th)?\b", t)
+    day = mon = None
+    if m:
+        day, mon = int(m.group(1)), m.group(2)
+    elif m2:
+        day, mon = int(m2.group(2)), m2.group(1)
+    if mon:
+        try:
+            d = datetime(now.year, _MONTHS.index(mon[:3]) + 1, day).date()
+            return d if d <= now.date() else d.replace(year=d.year - 1)
+        except ValueError:
+            return None
+    m = re.search(r"\b(\d{1,2})[/-](\d{1,2})\b", t)
+    if m:
+        try:
+            d = datetime(now.year, int(m.group(2)), int(m.group(1))).date()
+            return d if d <= now.date() else d.replace(year=d.year - 1)
+        except ValueError:
+            return None
+    return None
+
+
 def _window(text: str, now: datetime | None = None):
-    """(start_utc_iso, end_utc_iso, label) in IST terms; default = last 24 hours."""
+    """(start, end, label) in IST. A day runs 3 AM to the next 3 AM. Default = the current
+    day (since the last 3 AM); 'yesterday' or a named day gives that 3 AM-to-3 AM block."""
     now = now or datetime.now(_IST)
     t = text.lower()
-    day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    cur0 = now.replace(hour=DAY_START_HOUR, minute=0, second=0, microsecond=0)
+    if now < cur0:
+        cur0 -= timedelta(days=1)           # before 3 AM still belongs to the previous day
     m = re.search(r"(?:last|past)\s+(\d{1,3})\s*(hour|hr|h|day|d)s?\b", t)
     if m:
         n = int(m.group(1))
         delta = timedelta(hours=n) if m.group(2).startswith("h") else timedelta(days=n)
         return now - delta, now, f"last {n} {'hours' if m.group(2).startswith('h') else 'days'}"
     if "yesterday" in t:
-        return day0 - timedelta(days=1), day0, "yesterday"
+        return cur0 - timedelta(days=1), cur0, "yesterday (3 AM to 3 AM)"
     if re.search(r"this week|week so far", t):
-        mon = day0 - timedelta(days=day0.weekday())
+        mon = cur0 - timedelta(days=cur0.weekday())
         return mon, now, "this week"
-    return now - timedelta(hours=24), now, "last 24 hours"   # default: rolling 24h, not since midnight
+    d = _named_day(t, now)
+    if d and d != cur0.date():
+        s0 = datetime(d.year, d.month, d.day, DAY_START_HOUR, tzinfo=now.tzinfo)
+        return s0, s0 + timedelta(days=1), f"{d.strftime('%a %d %b')} (3 AM to 3 AM)"
+    return cur0, now, "today (since 3 AM)"
 
 
 def _iso(dt: datetime) -> str:
