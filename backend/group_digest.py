@@ -381,7 +381,7 @@ def _summary(rows, label: str, notes: list, llm) -> str | None:
     LAST["verdicts"] = []
     use = rows[-300:]
     first = _gen(use, llm)
-    if first is None or not first[0] or first[1] > len(first[0]):
+    if first is None or not first[0]:
         logger.warning("group_digest: summary rejected")
         return None
     pts = [(use[ids[0] - 1]["created_at"], text, meta) for ids, text, meta in first[0]]
@@ -455,17 +455,15 @@ def build(text: str, group_ids, llm=None, now: datetime | None = None, llm_smart
         label += ", messages naming a client"
     if not rows:
         return "\n".join([f"No messages found in the group chat for {label}."] + notes)
-    out = None
-    if not _EXACT.search(text or ""):
-        out = _summary(rows, label, notes, llm_smart or llm)
-    if out is None and len(rows) <= VERBATIM_MAX_MSGS:
-        out = _verbatim(rows, label, notes)
+    # Owner: only ever a summary, never the raw messages (they can read the chat themselves).
+    out = _summary(rows, label, notes, llm_smart or llm)
+    if out is None and llm is not None and llm is not llm_smart:
+        out = _summary(rows, label, notes, llm)      # second try on the other model
     if out is None:
-        out = _topic_view(rows, label, notes, llm)
-    if out is None:   # model unavailable / bad: the latest messages, honestly labelled
-        tail = rows[-VERBATIM_MAX_MSGS:]
-        out = _verbatim(tail, label + f" (latest {len(tail)} of {len(rows)})", notes) or \
-            "Too many messages to show; ask for a shorter time range."
+        out = _summary(rows, label, notes, llm_smart or llm)   # one more try
+    if out is None:
+        out = (f"*Group summary, {label}* ({len(rows)} messages)\n\n"
+               "I could not put a checked summary together just now. Ask again in a minute.")
     return out
 
 
