@@ -3573,6 +3573,8 @@ _BRAIN = (
     "Talk like a person: natural and direct, contractions, varied wording. "
     "Never say 'as an AI' or 'I don't have access' when you could reason or "
     "search instead.\n"
+    "Lumina also works on Alexa: someone sends 'link my alexa' here to get a "
+    "one-time code, then says 'Alexa, tell Lumina code' and the digits.\n"
     "LAYOUT (WhatsApp): never run several things together in one paragraph. "
     "Two or more items (tasks, clients, dates, options, steps) go one per line, "
     "numbered when order or reference matters, with a short bold *heading* line "
@@ -3855,9 +3857,21 @@ def _system_prompt(identity: dict, *, in_group: bool = False, group_name: str = 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
 
+_ALEXA_LINK = re.compile(r"^\s*(?:please\s+)?(?:link|connect|pair|set ?up)\s+(?:my\s+)?(?:alexa|echo)\b", re.I)
+_ALEXA_UNLINK = re.compile(r"^\s*(?:please\s+)?(?:unlink|disconnect|remove|unpair)\s+(?:my\s+)?(?:alexa|echo)\b", re.I)
+
+_VOICE_NOTE = (
+    "THIS TURN CAME BY VOICE through Alexa and your answer will be READ ALOUD. "
+    "Answer in one to four short spoken sentences. No lists, no emoji, no links, "
+    "no markdown, no asterisks. For more than four items say how many there are "
+    "and name the top three. Say dates and times the way a person says them. "
+    "If something needs a yes/no confirmation, ask them to say yes.")
+
+
 def handle_message(sender: str, text: str, *,
                    group_id: str | None = None,
-                   group_name: str | None = None):
+                   group_name: str | None = None,
+                   channel: str = "whatsapp"):
     """Process one inbound WhatsApp text. Returns the reply string to send
     back, None to stay silent, or {"reply": str, "sticker": str} when the
     agent also wants a sticker sent alongside the text.
@@ -3891,6 +3905,22 @@ def handle_message(sender: str, text: str, *,
             "Hi! This number isn't linked to an MMGA account yet, so I can't "
             "look anything up for you. Please contact the team to get set up."
         )
+
+    # Alexa linking (routes/alexa.py): a one-time code said to the Echo.
+    if identity["kind"] == "employee" and not in_group and channel == "whatsapp":
+        if _ALEXA_UNLINK.match(text):
+            import alexa_link
+            n = alexa_link.unlink_employee(identity["id"])
+            return (f"Unlinked {n} Alexa device(s). Lumina on Alexa won't know you any more."
+                    if n else "No Alexa is linked to you.")
+        if _ALEXA_LINK.match(text):
+            import alexa_link
+            code = alexa_link.new_code(identity["id"])
+            spaced = " ".join(code)
+            return (f"*Your Alexa link code: {code}*\n\n"
+                    f"Valid for {alexa_link.CODE_TTL_MIN} minutes. Say to your Echo:\n"
+                    f"_Alexa, tell Lumina code {spaced}_\n\n"
+                    "After that, ask anything: _Alexa, ask Lumina what's on my standup_.")
 
     # Confirm-before-broadcast: a pending send_group_message /
     # schedule_group_message waiting on a yes/no.
@@ -4022,6 +4052,8 @@ def handle_message(sender: str, text: str, *,
             mem_ctx = ""
         if mem_ctx:
             sys_prompt.append({"type": "text", "text": mem_ctx})
+        if channel == "voice":
+            sys_prompt.append({"type": "text", "text": _VOICE_NOTE})
         # In a group, give the model what was just said there (stored by
         # group_memory, no AI cost) so it follows the conversation.
         if in_group:

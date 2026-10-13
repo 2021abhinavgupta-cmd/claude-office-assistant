@@ -2105,3 +2105,24 @@ def companion_tomorrow_live():
         text = "\n".join(lines)
 
     return jsonify({"date": tomorrow, "count": len(items), "items": items, "text": text})
+
+@companion_bp.route("/api/companion/alexa-status", methods=["GET"])
+def companion_alexa_status():
+    """Alexa skill health: config, last request/error, who is linked."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import alexa_link
+    import alexa_verify
+    from routes import alexa as ax
+    names = {}
+    try:
+        names = {e.get("id"): e.get("name") for e in utils._load_employees().get("employees", [])}
+    except Exception:
+        pass
+    links = alexa_link.links()
+    for l in links:
+        l["name"] = names.get(l["employee_id"], l["employee_id"])
+    return jsonify({"skill_id": ax._skill_id(), "invocation": ax.INVOCATION,
+                    "signature_check": alexa_verify.enabled(),
+                    "crypto_available": alexa_verify.available(),
+                    "last": ax.LAST, "links": links})

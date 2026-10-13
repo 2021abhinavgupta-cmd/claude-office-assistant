@@ -1,0 +1,1440 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "lumina",
+      "intents": [
+        {
+          "name": "LinkIntent",
+          "slots": [
+            {
+              "name": "code",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "code {code}",
+            "my code is {code}",
+            "the code is {code}",
+            "link code {code}",
+            "link {code}",
+            "code is {code}"
+          ]
+        },
+        {
+          "name": "AnswerIntent",
+          "slots": [],
+          "samples": [
+            "for the answer",
+            "the answer",
+            "give me the answer",
+            "what's the answer",
+            "is it ready",
+            "is my answer ready",
+            "answer please",
+            "for my answer",
+            "what did you find",
+            "jawab",
+            "jawab batao"
+          ]
+        },
+        {
+          "name": "Q_what",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "what {q}"
+          ]
+        },
+        {
+          "name": "Q_what_s",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "what's {q}"
+          ]
+        },
+        {
+          "name": "Q_whats",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "whats {q}"
+          ]
+        },
+        {
+          "name": "Q_who",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "who {q}"
+          ]
+        },
+        {
+          "name": "Q_who_s",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "who's {q}"
+          ]
+        },
+        {
+          "name": "Q_how",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "how {q}"
+          ]
+        },
+        {
+          "name": "Q_how_s",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "how's {q}"
+          ]
+        },
+        {
+          "name": "Q_when",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "when {q}"
+          ]
+        },
+        {
+          "name": "Q_where",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "where {q}"
+          ]
+        },
+        {
+          "name": "Q_why",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "why {q}"
+          ]
+        },
+        {
+          "name": "Q_which",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "which {q}"
+          ]
+        },
+        {
+          "name": "Q_is",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "is {q}"
+          ]
+        },
+        {
+          "name": "Q_are",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "are {q}"
+          ]
+        },
+        {
+          "name": "Q_am_i",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "am i {q}"
+          ]
+        },
+        {
+          "name": "Q_do",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "do {q}"
+          ]
+        },
+        {
+          "name": "Q_does",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "does {q}"
+          ]
+        },
+        {
+          "name": "Q_did",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "did {q}"
+          ]
+        },
+        {
+          "name": "Q_can",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "can {q}"
+          ]
+        },
+        {
+          "name": "Q_can_you",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "can you {q}"
+          ]
+        },
+        {
+          "name": "Q_could",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "could {q}"
+          ]
+        },
+        {
+          "name": "Q_should",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "should {q}"
+          ]
+        },
+        {
+          "name": "Q_will",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "will {q}"
+          ]
+        },
+        {
+          "name": "Q_would",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "would {q}"
+          ]
+        },
+        {
+          "name": "Q_have",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "have {q}"
+          ]
+        },
+        {
+          "name": "Q_has",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "has {q}"
+          ]
+        },
+        {
+          "name": "Q_tell_me",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "tell me {q}"
+          ]
+        },
+        {
+          "name": "Q_show_me",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "show me {q}"
+          ]
+        },
+        {
+          "name": "Q_give_me",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "give me {q}"
+          ]
+        },
+        {
+          "name": "Q_get_me",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "get me {q}"
+          ]
+        },
+        {
+          "name": "Q_list",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "list {q}"
+          ]
+        },
+        {
+          "name": "Q_read",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "read {q}"
+          ]
+        },
+        {
+          "name": "Q_check",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "check {q}"
+          ]
+        },
+        {
+          "name": "Q_find",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "find {q}"
+          ]
+        },
+        {
+          "name": "Q_search",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "search {q}"
+          ]
+        },
+        {
+          "name": "Q_look_up",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "look up {q}"
+          ]
+        },
+        {
+          "name": "Q_add",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "add {q}"
+          ]
+        },
+        {
+          "name": "Q_put",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "put {q}"
+          ]
+        },
+        {
+          "name": "Q_create",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "create {q}"
+          ]
+        },
+        {
+          "name": "Q_make",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "make {q}"
+          ]
+        },
+        {
+          "name": "Q_mark",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "mark {q}"
+          ]
+        },
+        {
+          "name": "Q_set",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "set {q}"
+          ]
+        },
+        {
+          "name": "Q_move",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "move {q}"
+          ]
+        },
+        {
+          "name": "Q_delay",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "delay {q}"
+          ]
+        },
+        {
+          "name": "Q_postpone",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "postpone {q}"
+          ]
+        },
+        {
+          "name": "Q_push",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "push {q}"
+          ]
+        },
+        {
+          "name": "Q_reschedule",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "reschedule {q}"
+          ]
+        },
+        {
+          "name": "Q_assign",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "assign {q}"
+          ]
+        },
+        {
+          "name": "Q_hand_over",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "hand over {q}"
+          ]
+        },
+        {
+          "name": "Q_give",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "give {q}"
+          ]
+        },
+        {
+          "name": "Q_remind",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "remind {q}"
+          ]
+        },
+        {
+          "name": "Q_send",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "send {q}"
+          ]
+        },
+        {
+          "name": "Q_post",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "post {q}"
+          ]
+        },
+        {
+          "name": "Q_message",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "message {q}"
+          ]
+        },
+        {
+          "name": "Q_call",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "call {q}"
+          ]
+        },
+        {
+          "name": "Q_approve",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "approve {q}"
+          ]
+        },
+        {
+          "name": "Q_reject",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "reject {q}"
+          ]
+        },
+        {
+          "name": "Q_cancel",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "cancel {q}"
+          ]
+        },
+        {
+          "name": "Q_delete",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "delete {q}"
+          ]
+        },
+        {
+          "name": "Q_remove",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "remove {q}"
+          ]
+        },
+        {
+          "name": "Q_draft",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "draft {q}"
+          ]
+        },
+        {
+          "name": "Q_write",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "write {q}"
+          ]
+        },
+        {
+          "name": "Q_summarise",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "summarise {q}"
+          ]
+        },
+        {
+          "name": "Q_summarize",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "summarize {q}"
+          ]
+        },
+        {
+          "name": "Q_explain",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "explain {q}"
+          ]
+        },
+        {
+          "name": "Q_help_me",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "help me {q}"
+          ]
+        },
+        {
+          "name": "Q_i_need",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "i need {q}"
+          ]
+        },
+        {
+          "name": "Q_i_want",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "i want {q}"
+          ]
+        },
+        {
+          "name": "Q_i_have",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "i have {q}"
+          ]
+        },
+        {
+          "name": "Q_i_finished",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "i finished {q}"
+          ]
+        },
+        {
+          "name": "Q_i_ve",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "i've {q}"
+          ]
+        },
+        {
+          "name": "Q_i_m",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "i'm {q}"
+          ]
+        },
+        {
+          "name": "Q_i_am",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "i am {q}"
+          ]
+        },
+        {
+          "name": "Q_we_need",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "we need {q}"
+          ]
+        },
+        {
+          "name": "Q_please",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "please {q}"
+          ]
+        },
+        {
+          "name": "Q_let_s",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "let's {q}"
+          ]
+        },
+        {
+          "name": "Q_any",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "any {q}"
+          ]
+        },
+        {
+          "name": "Q_anything",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "anything {q}"
+          ]
+        },
+        {
+          "name": "Q_my",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "my {q}"
+          ]
+        },
+        {
+          "name": "Q_our",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "our {q}"
+          ]
+        },
+        {
+          "name": "Q_the",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "the {q}"
+          ]
+        },
+        {
+          "name": "Q_update",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "update {q}"
+          ]
+        },
+        {
+          "name": "Q_plan",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "plan {q}"
+          ]
+        },
+        {
+          "name": "Q_compare",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "compare {q}"
+          ]
+        },
+        {
+          "name": "Q_suggest",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "suggest {q}"
+          ]
+        },
+        {
+          "name": "Q_recommend",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "recommend {q}"
+          ]
+        },
+        {
+          "name": "Q_calculate",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "calculate {q}"
+          ]
+        },
+        {
+          "name": "Q_translate",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "translate {q}"
+          ]
+        },
+        {
+          "name": "Q_convert",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "convert {q}"
+          ]
+        },
+        {
+          "name": "Q_complete",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "complete {q}"
+          ]
+        },
+        {
+          "name": "Q_finish",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "finish {q}"
+          ]
+        },
+        {
+          "name": "Q_done_with",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "done with {q}"
+          ]
+        },
+        {
+          "name": "Q_start",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "start {q}"
+          ]
+        },
+        {
+          "name": "Q_open",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "open {q}"
+          ]
+        },
+        {
+          "name": "Q_how_many",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "how many {q}"
+          ]
+        },
+        {
+          "name": "Q_how_much",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "how much {q}"
+          ]
+        },
+        {
+          "name": "Q_mere",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "mere {q}"
+          ]
+        },
+        {
+          "name": "Q_meri",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "meri {q}"
+          ]
+        },
+        {
+          "name": "Q_mera",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "mera {q}"
+          ]
+        },
+        {
+          "name": "Q_mujhe",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "mujhe {q}"
+          ]
+        },
+        {
+          "name": "Q_kya",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kya {q}"
+          ]
+        },
+        {
+          "name": "Q_kaun",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kaun {q}"
+          ]
+        },
+        {
+          "name": "Q_kab",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kab {q}"
+          ]
+        },
+        {
+          "name": "Q_kitne",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kitne {q}"
+          ]
+        },
+        {
+          "name": "Q_kitna",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kitna {q}"
+          ]
+        },
+        {
+          "name": "Q_kaise",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kaise {q}"
+          ]
+        },
+        {
+          "name": "Q_kahan",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kahan {q}"
+          ]
+        },
+        {
+          "name": "Q_aaj",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "aaj {q}"
+          ]
+        },
+        {
+          "name": "Q_kal",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "kal {q}"
+          ]
+        },
+        {
+          "name": "Q_batao",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "batao {q}"
+          ]
+        },
+        {
+          "name": "Q_bata",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "bata {q}"
+          ]
+        },
+        {
+          "name": "Q_abhi",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "abhi {q}"
+          ]
+        },
+        {
+          "name": "Q_humara",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "humara {q}"
+          ]
+        },
+        {
+          "name": "Q_hamara",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "hamara {q}"
+          ]
+        },
+        {
+          "name": "Q_sab",
+          "slots": [
+            {
+              "name": "q",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "sab {q}"
+          ]
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        }
+      ],
+      "types": []
+    }
+  }
+}

@@ -132,6 +132,8 @@ app.register_blueprint(sheets_sync_bp)
 app.register_blueprint(companion_bp)
 app.register_blueprint(leave_bp)
 app.register_blueprint(office_calendar_bp)
+from routes.alexa import alexa_bp
+app.register_blueprint(alexa_bp)
 
 # ── Run DB Migrations ─────────────────────────────────────────────────────────
 import db
