@@ -37,7 +37,7 @@ alexa_bp = Blueprint("alexa", __name__)
 
 DEFAULT_SKILL_ID = "amzn1.ask.skill.412f64ef-efbb-4137-ae60-d08b9baa9f8e"
 INVOCATION = "lumina"
-WAIT_SECONDS = 6.0        # Alexa gives up at ~8 s; leave room for the round trip
+WAIT_SECONDS = 7.0        # Alexa gives up at ~8 s; leave room for the round trip
 MAX_SKEW_SECONDS = 150    # Amazon's rule for the request timestamp
 SPEECH_MAX = 650          # characters read aloud before "the rest is on WhatsApp"
 LIST_MAX = 5              # list lines read aloud before "and N more"
@@ -365,5 +365,7 @@ def alexa_webhook():
         text = f"{_INTENT_PREFIX[intent]} {heard}".strip()
         if _ANSWER_Q.search(text) and alexa_link.get_pending(emp["id"]):
             return jsonify(_collect(emp))
-        return jsonify(_ask(emp, text, deadline))
+        out = _ask(emp, text, deadline)
+        LAST["took_s"] = round(time.time() - started, 1)
+        return jsonify(out)
     return jsonify(_resp("Sorry, I didn't get that.", reprompt="What do you need?"))

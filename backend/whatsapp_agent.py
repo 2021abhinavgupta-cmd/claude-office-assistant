@@ -4018,7 +4018,8 @@ def handle_message(sender: str, text: str, *,
     model = get_model_for_task("whatsapp")
     # Thinking-heavy message (advice, explanation, draft, plan...) from a team
     # member -> the stronger model, within the daily cap; the rest stays cheap.
-    deep = identity["kind"] == "employee" and _needs_deep_thinking(text)
+    # Voice (Alexa) has an 8 s limit, so it always uses the fast model, never the slow thinker.
+    deep = identity["kind"] == "employee" and channel != "voice" and _needs_deep_thinking(text)
     smart = False
     if deep and _smart_allowed():   # thinking-heavy messages -> Sonnet; everything else stays on Qwen
         from model_router import MODEL_COSTS
@@ -4076,9 +4077,9 @@ def handle_message(sender: str, text: str, *,
     nudged = False
     turn = {"sticker": None}
     try:
-        for _ in range(_MAX_TOOL_ROUNDS):
+        for _ in range(5 if channel == "voice" else _MAX_TOOL_ROUNDS):
             resp = _llm_create(model, sys_prompt, tools, messages,
-                               2500 if smart else 900,   # real answers need room; chit-chat
+                               2500 if smart else (450 if channel == "voice" else 900),   # real answers need room; chit-chat
                                                          # stays short because the prompt says so
                                usage, smart=smart)
             stop = resp.stop_reason
