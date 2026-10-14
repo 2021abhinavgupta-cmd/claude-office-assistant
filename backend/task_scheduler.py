@@ -386,6 +386,19 @@ def _run_pa_brief():
         logger.exception("pa_brief failed")
 
 
+def _run_release_sync():
+    """Announce new entries of config/releases.json (releases.py): a short WhatsApp to every
+    active employee plus the what's-new popup. Idempotent; runs shortly after each deploy and
+    every few minutes after that."""
+    try:
+        import releases
+        res = releases.sync()
+        if res.get("new"):
+            logger.info("release sync: %s", res)
+    except Exception:
+        logger.exception("release sync failed")
+
+
 def _run_asks_digest():
     """17:00-18:30 IST weekday digest to whoever directed work in the group (group_intel)."""
     try:
@@ -477,6 +490,10 @@ def init_scheduler(app):
                           id="group_intel", replace_existing=True)
         scheduler.add_job(_run_asks_digest, "interval", minutes=10,
                           id="asks_digest", replace_existing=True)
+        # What's-new announcements. First run ~1 min after boot (i.e. right after a deploy).
+        scheduler.add_job(_run_release_sync, "interval", minutes=3,
+                          id="release_sync", replace_existing=True,
+                          next_run_time=datetime.now() + timedelta(seconds=60))
         scheduler.add_job(_run_pa_brief, "interval", minutes=10,
                           id="pa_brief", replace_existing=True)
         # Data retention -- prunes old rows from tables that have no other

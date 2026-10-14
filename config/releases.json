@@ -1,0 +1,13 @@
+[
+  {
+    "id": "2026-10-14-smarter-whatsapp-assistant",
+    "date": "2026-10-14",
+    "title": "Smarter WhatsApp assistant",
+    "bullets": [
+      "Group summary now comes split by topic with an Important section on top. Days run 3 AM to 3 AM; ask for yesterday, a weekday or a date like 12 oct.",
+      "When someone hands you a task from the Daily Standup, you now get a WhatsApp message straight away.",
+      "Reminders list your open tasks one per line, so they are easier to read.",
+      "The Calendar counts 9 hours or more as a full day."
+    ]
+  }
+]

@@ -2126,3 +2126,40 @@ def companion_alexa_status():
                     "signature_check": alexa_verify.enabled(),
                     "crypto_available": alexa_verify.available(),
                     "last": ax.LAST, "links": links})
+
+
+@companion_bp.route("/api/companion/releases", methods=["GET"])
+def companion_releases():
+    """What's-new announcements: the file's entries, what has gone out, who has seen it."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import releases
+    return jsonify({"file": [{"id": e["id"], "title": e["title"], "notify": e["notify"]}
+                             for e in releases.load_entries()],
+                    "published": releases.status(),
+                    "recipients": [r["name"] for r in releases.recipients()]})
+
+
+@companion_bp.route("/api/companion/releases/sync", methods=["POST"])
+def companion_releases_sync():
+    """Run the announcer now instead of waiting for the next tick."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import releases
+    return jsonify(releases.sync())
+
+
+@companion_bp.route("/api/companion/releases/test", methods=["POST"])
+def companion_releases_test():
+    """Send ONE entry's WhatsApp to specific people only (?slug=<id>&to=emp003,emp001), nothing
+    is recorded as published. Needs `to`, so it can never reach everyone by accident."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import releases
+    ids = [x for x in re.split(r"[,\s]+", request.args.get("to", "")) if x]
+    if not ids:
+        return jsonify({"error": "to= is required (employee ids)"}), 400
+    entry = next((e for e in releases.load_entries() if e["id"] == request.args.get("slug", "")), None)
+    if not entry:
+        return jsonify({"error": "unknown slug"}), 404
+    return jsonify({"queued": releases.announce(entry, only_ids=ids), "text": releases._whatsapp_text(entry)})

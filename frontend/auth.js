@@ -69,6 +69,14 @@ document.documentElement.style.visibility = 'hidden';
     // Auth passed — reveal the page
     document.documentElement.style.visibility = 'visible';
 
+    // "What's new" popup: shows once per release per person (backend/releases.py).
+    // Loaded as its own script so a problem in it can never affect sign-in.
+    if (__page !== "checkin.html") {
+      const wn = document.createElement("script");
+      wn.src = "whatsnew.js";
+      document.head.appendChild(wn);
+    }
+
     // Presence heartbeat: immediate + every 60s. Real checkout is inferred
     // server-side from staleness of this timestamp (see task_scheduler.py's
     // attendance_presence_sweep job) -- NOT from a pagehide/beforeunload
