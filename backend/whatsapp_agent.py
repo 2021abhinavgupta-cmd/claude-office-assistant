@@ -1576,8 +1576,10 @@ _EMPLOYEE_TOOLS = [
     },
     {
         "name": "get_attendance",
-        "description": "Who has checked in / out today, and who hasn't checked "
-                       "in yet. Use for 'who's in', 'is Nupur working today'.",
+        "description": "Who has checked in / out today (with exact check-in and "
+                       "check-out times) and who hasn't checked in yet. Use for "
+                       "'who's in', 'is Nupur working today', 'what time did X "
+                       "check in'. Quote the times exactly as returned; never guess one.",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
@@ -3181,7 +3183,7 @@ def _run_tool(name: str, tool_input: dict, identity: dict,
                 seen.add(uid)
                 nm = names.get(uid, uid)
                 if ci and co:
-                    out.append(f"{nm} (left {str(co)[:5]})")
+                    out.append(f"{nm} (in {str(ci)[:5]}, left {str(co)[:5]})")
                 elif ci:
                     inn.append(f"{nm} (in {str(ci)[:5]})")
             missing = sorted(n for i, n in names.items() if i not in seen)
