@@ -60,7 +60,7 @@ _BEST_START = 0   # index of the first model in the chain that has worked so far
 
 
 def _llm_create(model: dict, system, tools, messages: list, max_tokens: int,
-                usage: dict, smart: bool = False):
+                usage: dict, smart: bool = False, claude_first: bool = False):
     """One model call. Normally Qwen via OpenRouter when it is configured and on
     (llm_openrouter.enabled()), otherwise -- or if that call fails for any
     reason -- Claude. smart=True (a message that needs real thinking, see
@@ -102,6 +102,14 @@ def _llm_create(model: dict, system, tools, messages: list, max_tokens: int,
         if llm_openrouter.enabled():
             return _qwen()
         return _claude()
+    if claude_first:   # voice: Alexa gives up at 8 s, so use the fastest reliable model
+        try:
+            return _claude()
+        except Exception:
+            logger.exception("whatsapp_agent: Claude call failed (voice)")
+            if llm_openrouter.enabled():
+                return _qwen()
+            raise
     if llm_openrouter.enabled():
         try:
             return _qwen()
@@ -720,8 +728,8 @@ def _smart_allowed() -> bool:
 
 _SHOW_TASKS = re.compile(
     r"^(?:please\s+|pls\s+)?(?:(?:show|list|give|get|send)(?:\s+me)?\s+(?:all\s+)?(?:my\s+)?"
-    r"|what(?:'s|\s+is|\s+are)\s+(?:all\s+)?(?:my\s+)?|my\s+)"
-    r"(?:daily\s+)?(?:tasks?|stand-?up|to-?do(?:s|\s+list)?)(?:\s+(?:now|today|list|again))?[\s.!?]*$",
+    r"|what(?:'s|\s+is|\s+are)\s+(?:all\s+)?(?:(?:on|in)\s+)?(?:my\s+)?|my\s+)"
+    r"(?:daily\s+)?(?:stand-?up\s+tasks?|tasks?|stand-?up|to-?do(?:s|\s+list)?)(?:\s+(?:now|today|list|again))?[\s.!?]*$",
     re.I)
 _MARK_DONE = re.compile(
     r"^(?:please\s+|pls\s+)?(?:(?:mark|tick|set)\s+(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished)"
@@ -4081,7 +4089,7 @@ def handle_message(sender: str, text: str, *,
             resp = _llm_create(model, sys_prompt, tools, messages,
                                2500 if smart else (450 if channel == "voice" else 900),   # real answers need room; chit-chat
                                                          # stays short because the prompt says so
-                               usage, smart=smart)
+                               usage, smart=smart, claude_first=(channel == "voice"))
             stop = resp.stop_reason
 
             if stop == "tool_use":
