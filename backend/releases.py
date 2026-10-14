@@ -77,7 +77,8 @@ def load_entries() -> list:
                 logger.warning("releases: skipping invalid entry %r", slug)
                 continue
             out.append({"id": slug, "title": title[:120], "bullets": [b[:300] for b in bullets[:12]],
-                        "date": str(e.get("date") or "")[:10], "notify": e.get("notify", True) is not False})
+                        "date": str(e.get("date") or "")[:10], "notify": e.get("notify", True) is not False,
+                        "how": str(e.get("how") or "").strip()[:300]})
         except Exception:
             continue
     return out
@@ -87,8 +88,9 @@ def _whatsapp_text(entry: dict) -> str:
     def cut(b: str, n: int = 170) -> str:
         return b if len(b) <= n else b[:n].rsplit(" ", 1)[0].rstrip(",;:") + "..."
     lines = [f"- {cut(b)}" for b in entry["bullets"][:MAX_BULLETS_WA]]
+    how = f"\n\n*How to use it:* {cut(entry['how'], 260)}" if entry.get("how") else ""
     return ("*What's new in Lumina*\n\n"
-            f"*{entry['title']}*\n" + "\n".join(lines) +
+            f"*{entry['title']}*\n" + "\n".join(lines) + how +
             "\n\nOpen Lumina and you'll see the details.")
 
 
@@ -147,7 +149,7 @@ def sync() -> dict:
                 cur = conn.execute(
                     "INSERT OR IGNORE INTO release_log (slug, title, body, published_at, notified) "
                     "VALUES (?,?,?,?,0)",
-                    (e["id"], e["title"], json.dumps({"bullets": e["bullets"], "date": e["date"]}),
+                    (e["id"], e["title"], json.dumps({"bullets": e["bullets"], "date": e["date"], "how": e["how"]}),
                      datetime.now(timezone.utc).isoformat()))
             if not cur.rowcount:
                 continue                       # already published (or another run just claimed it)
@@ -183,6 +185,7 @@ def unseen_for(user_id: str) -> list:
             (cutoff, user_id, MAX_POPUP)).fetchall()
     finally:
         conn.close()
+    hows = {e["id"]: e["how"] for e in load_entries()}
     out = []
     for slug, title, body, pub in rows:
         try:
@@ -190,7 +193,8 @@ def unseen_for(user_id: str) -> list:
         except Exception:
             b = {}
         out.append({"id": slug, "title": title, "date": b.get("date") or pub[:10],
-                    "bullets": b.get("bullets") or []})
+                    "bullets": b.get("bullets") or [],
+                    "how": hows.get(slug) or b.get("how") or ""})
     return out
 
 

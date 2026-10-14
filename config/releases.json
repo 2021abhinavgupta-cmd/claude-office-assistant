@@ -3,6 +3,7 @@
     "id": "2026-10-14-smarter-whatsapp-assistant",
     "date": "2026-10-14",
     "title": "Smarter WhatsApp assistant",
+    "how": "In the team group, write: lumina summary (or: lumina summary yesterday / monday / 12 oct). Add a task to someone from Daily Standup and they get a WhatsApp automatically.",
     "bullets": [
       "Group summary now comes split by topic with an Important section on top. Days run 3 AM to 3 AM; ask for yesterday, a weekday or a date like 12 oct.",
       "When someone hands you a task from the Daily Standup, you now get a WhatsApp message straight away.",

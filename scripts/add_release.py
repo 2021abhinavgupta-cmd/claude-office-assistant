@@ -5,10 +5,10 @@ push. After the deploy, Railway announces it: a short WhatsApp to every active
 employee and a popup in Lumina the next time each person opens it
 (backend/releases.py).
 
-    python scripts/add_release.py "Title" "First point" "Second point" [--silent]
+    python scripts/add_release.py "Title" "First point" "Second point" --how "Open X, then tap Y." [--silent]
 
 Write for the team, not for developers: plain words, what they can now do, 2 to 5
-points, no jargon. --silent = popup only, no WhatsApp.
+points, no jargon. --how = a one or two sentence "how to use it" (where to click or what\nto type), required for every user-visible feature. --silent = popup only, no WhatsApp.
 """
 import io
 import json
@@ -22,7 +22,13 @@ FILE = os.path.join(os.path.dirname(__file__), "..", "config", "releases.json")
 
 def main(argv):
     silent = "--silent" in argv
-    args = [a for a in argv if a != "--silent"]
+    argv = [a for a in argv if a != "--silent"]
+    how = ""
+    if "--how" in argv:
+        i = argv.index("--how")
+        how = argv[i + 1].strip() if i + 1 < len(argv) else ""
+        argv = argv[:i] + argv[i + 2:]
+    args = argv
     if len(args) < 2:
         print(__doc__)
         return 2
@@ -37,6 +43,10 @@ def main(argv):
     if any(e.get("id") == slug for e in data):
         slug += "-2"
     entry = {"id": slug, "date": ist.strftime("%Y-%m-%d"), "title": title, "bullets": bullets}
+    if how:
+        entry["how"] = how
+    else:
+        print("Warning: no --how given; every feature announcement should say how to use it.")
     if silent:
         entry["notify"] = False
     data.append(entry)

@@ -38,6 +38,9 @@
       #whatsnew-box .wn-date{font-size:12px;opacity:.55;margin:2px 0 6px}
       #whatsnew-box ul{margin:6px 0 0;padding-left:18px}
       #whatsnew-box li{margin:5px 0;line-height:1.45;font-size:14px}
+      #whatsnew-box .wn-how{margin-top:10px;padding:9px 11px;border-radius:8px;font-size:13px;line-height:1.45;
+        background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.25)}
+      #whatsnew-box .wn-how b{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;opacity:.75;margin-bottom:3px}
       #whatsnew-box button{margin-top:16px;width:100%;padding:10px 14px;border:0;border-radius:9px;cursor:pointer;
         font-size:14px;font-weight:600;background:var(--acc,var(--accent,#f97316));color:#fff}
     `;
@@ -54,6 +57,7 @@
           <div class="wn-title">${esc(r.title)}</div>
           <div class="wn-date">${esc(fmtDate(r.date))}</div>
           <ul>${(r.bullets || []).map(b => `<li>${esc(b)}</li>`).join("")}</ul>
+          ${r.how ? `<div class="wn-how"><b>How to use it</b>${esc(r.how)}</div>` : ""}
         </div>`).join("")}
       <button type="button" id="whatsnew-ok">Got it</button>
     </div>`;
