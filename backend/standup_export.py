@@ -19,17 +19,23 @@ from datetime import date as _date
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.formatting.rule import FormulaRule
+from openpyxl.formatting.rule import ColorScaleRule, DataBarRule, FormulaRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 _THIN = Side(style="thin", color="D1D5DB")
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
-_HEADER_FILL = PatternFill("solid", fgColor="1F2937")
-_HEADER_FONT = Font(color="FFFFFF", bold=True)
-_TITLE_FONT = Font(bold=True, size=13)
-_META_FONT = Font(italic=True, color="4B5563")
+_HEADER_FILL = PatternFill("solid", fgColor="2F6B45")
+_HEADER_FONT = Font(color="FFFFFF", bold=True, size=10.5)
+_TITLE_FONT = Font(bold=True, size=13, color="1E4D2F")
+_META_FONT = Font(italic=True, color="4B5563", size=9.5)
 _BOLD = Font(bold=True)
+_BANNER_FILL = PatternFill("solid", fgColor="1E4D2F")
+_BANNER_FONT = Font(bold=True, size=16, color="FFFFFF")
+_SUB_FILL = PatternFill("solid", fgColor="E3EFE7")
+_ZEBRA = PatternFill("solid", fgColor="F4F9F5")
+_TOTAL_FILL = PatternFill("solid", fgColor="DCEBE0")
+_CARD_FILL = PatternFill("solid", fgColor="F4F9F5")
 _STATUS_FILL = {
     "Done": PatternFill("solid", fgColor="D1FAE5"),
     "Pending": PatternFill("solid", fgColor="FEF3C7"),
@@ -99,7 +105,8 @@ def _header(ws, headers, row):
     for i, h in enumerate(headers, start=1):
         c = ws.cell(row=row, column=i, value=h)
         c.font, c.fill, c.border = _HEADER_FONT, _HEADER_FILL, _BORDER
-        c.alignment = Alignment(horizontal="center")
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[row].height = 26
 
 
 def _widths(ws, widths):
@@ -120,7 +127,69 @@ def _style_status(ws, row, col, label):
 
 def _wrap(ws, row, cols):
     for c in cols:
-        ws.cell(row=row, column=c).alignment = Alignment(wrap_text=True, vertical="top")
+        ws.cell(row=row, column=c).alignment = Alignment(wrap_text=True, vertical="center")
+
+
+def banner(ws, title, subtitle, ncols, note=""):
+    """Rows 1-2 (and 3 for a note): a dark-green title band, a pale
+    subtitle band, gridlines off -- the sheet's 'letterhead'."""
+    ws.sheet_view.showGridLines = False
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+    c = ws.cell(row=1, column=1, value=title)
+    c.font, c.fill = _BANNER_FONT, _BANNER_FILL
+    c.alignment = Alignment(vertical="center", indent=1)
+    for i in range(2, ncols + 1):
+        ws.cell(row=1, column=i).fill = _BANNER_FILL
+    ws.row_dimensions[1].height = 34
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncols)
+    s = ws.cell(row=2, column=1, value=subtitle)
+    s.font, s.fill = Font(bold=True, color="1E4D2F", size=10.5), _SUB_FILL
+    s.alignment = Alignment(vertical="center", indent=1)
+    for i in range(2, ncols + 1):
+        ws.cell(row=2, column=i).fill = _SUB_FILL
+    ws.row_dimensions[2].height = 22
+    if note:
+        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=ncols)
+        n = ws.cell(row=3, column=1, value=note)
+        n.font = _META_FONT
+        n.alignment = Alignment(wrap_text=True, vertical="center", indent=1)
+        ws.row_dimensions[3].height = 30
+
+
+def zebra(ws, first, last, ncols):
+    """Alternate-row tint, never over a cell that already has its own fill
+    (status chips keep their colour)."""
+    for r in range(first, last + 1):
+        if (r - first) % 2 == 1:
+            for c in range(1, ncols + 1):
+                cell = ws.cell(row=r, column=c)
+                if cell.fill is None or cell.fill.fill_type is None:
+                    cell.fill = _ZEBRA
+
+
+def fit_row(ws, row, texts_widths, line_h=14.5, min_h=20):
+    """Row height that fits the longest wrapped cell: [(text, col_width)]."""
+    lines = 1
+    for text, width in texts_widths:
+        if text:
+            per_line = max(8, int(width * 1.1))
+            n = sum(max(1, -(-len(part) // per_line)) for part in str(text).split("\n"))
+            lines = max(lines, n)
+    ws.row_dimensions[row].height = max(min_h, line_h * lines + 5)
+
+
+def page_setup(ws, header_row=None):
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_margins.left = ws.page_margins.right = 0.4
+    ws.page_margins.top = ws.page_margins.bottom = 0.5
+    ws.print_options.horizontalCentered = True
+    if header_row:
+        ws.print_title_rows = f"{header_row}:{header_row}"
+    ws.oddFooter.center.text = "Lumina  |  Daily Standup  |  Page &P of &N"
 
 
 def lineage_stats(rows):
@@ -210,7 +279,7 @@ def write_tracker(ws, trows, first_row, with_employee=False):
         c = ws.cell(row=first_row, column=i, value=h)
         c.font, c.fill, c.border = _HEADER_FONT, _GREEN, _BORDER
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.row_dimensions[first_row].height = 30
+    ws.row_dimensions[first_row].height = 28
 
     def col(n):  # 1-based tracker column -> letter, shifted if Employee leads
         return get_column_letter(n + off)
@@ -236,12 +305,16 @@ def write_tracker(ws, trows, first_row, with_employee=False):
         if fill:
             ws[f"{col(8)}{r}"].fill = fill
         for n in (5, 6, 7, 8, 9, 10, 11):
-            ws[f"{col(n)}{r}"].alignment = Alignment(horizontal="center", vertical="top")
+            ws[f"{col(n)}{r}"].alignment = Alignment(horizontal="center", vertical="center")
         ws[f"{col(9)}{r}"].font = _BOLD
-        ws[f"{col(4)}{r}"].alignment = Alignment(wrap_text=True, vertical="top")
-        ws[f"{col(12)}{r}"].alignment = Alignment(wrap_text=True, vertical="top")
+        ws[f"{col(4)}{r}"].alignment = Alignment(wrap_text=True, vertical="center")
+        ws[f"{col(12)}{r}"].alignment = Alignment(wrap_text=True, vertical="center")
+        for n in (1, 2, 3):
+            ws[f"{col(n)}{r}"].alignment = Alignment(vertical="center")
         _border(ws, r, len(headers))
+        fit_row(ws, r, [(t["goal"], TRACK_WIDTHS[3]), (t["blocker"], TRACK_WIDTHS[11])])
     last = r
+    zebra(ws, first_row + 1, last, len(headers))
     if last > first_row:
         rng = f"{col(9)}{first_row + 1}:{col(9)}{last}"
         for text, color in (("Late", "C0392B"), ("On Time", "1E8449"), ("Before Time", "1F618D")):
@@ -278,9 +351,14 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
     # ── All ───────────────────────────────────────────────────────────────
     ws = wb.active
     ws.title = "All"
-    ws.sheet_properties.tabColor = "374151"
-    _header(ws, ALL_HEADERS, 1)
-    ws.freeze_panes = "A2"
+    ws.sheet_properties.tabColor = "1E4D2F"
+    first = min((r["date"] for r in rows), default=today)
+    last = max((r["date"] for r in rows), default=today)
+    banner(ws, "Daily Standup  |  All Tasks",
+           f"{first.strftime('%d/%m/%Y')} to {last.strftime('%d/%m/%Y')}   -   one row per task per day "
+           "(a task carried over shows again each day it stays open)", len(ALL_HEADERS))
+    _header(ws, ALL_HEADERS, 4)
+    ws.freeze_panes = "A5"
     for r in sorted(rows, key=lambda x: (x["date"], x["name"].lower()), reverse=True):
         ws.append([r["date"], r["date"].strftime("%A"), r["name"], r["title"], r["status"],
                    r["due"], r["carried_days"] or None, r["blocker"], r["subtasks"],
@@ -291,10 +369,16 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
             ws.cell(row=n, column=6).number_format = _DATE_FMT
         _style_status(ws, n, 5, r["status"])
         _wrap(ws, n, (4, 8))
+        for c in (1, 2, 3, 5, 6, 7, 9, 10, 11, 12, 13):
+            ws.cell(row=n, column=c).alignment = Alignment(
+                horizontal="center" if c in (1, 2, 5, 6, 7, 9, 12) else None, vertical="center")
         _border(ws, n, len(ALL_HEADERS))
-    if ws.max_row > 1:
-        ws.auto_filter.ref = f"A1:{get_column_letter(len(ALL_HEADERS))}{ws.max_row}"
+        fit_row(ws, n, [(r["title"], ALL_WIDTHS[3]), (r["blocker"], ALL_WIDTHS[7])])
+    if ws.max_row > 4:
+        zebra(ws, 5, ws.max_row, len(ALL_HEADERS))
+        ws.auto_filter.ref = f"A4:{get_column_letter(len(ALL_HEADERS))}{ws.max_row}"
     _widths(ws, ALL_WIDTHS)
+    page_setup(ws, 4)
 
     # ── per-person data ───────────────────────────────────────────────────
     by_uid = {}
@@ -312,21 +396,16 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
     # ── Summary ───────────────────────────────────────────────────────────
     wsum = wb.create_sheet(title="Summary", index=1)
     wsum.sheet_properties.tabColor = "D97706"
-    wsum.cell(row=1, column=1, value="Daily Standup Summary").font = _TITLE_FONT
-    first = min((r["date"] for r in rows), default=today)
-    last = max((r["date"] for r in rows), default=today)
-    wsum.cell(row=2, column=1, value=f"{first.strftime('%d/%m/%Y')} to {last.strftime('%d/%m/%Y')}"
-              ).font = _META_FONT
-    wsum.cell(row=3, column=1, value=(
-        "Tasks are counted once each, however many days they were carried over.  "
-        "Completion % = Done / Tasks Added.  Still Open = never marked done.  "
-        "Avg Days to Finish = days from a task first appearing to being done.")
-    ).font = _META_FONT
+    banner(wsum, "Daily Standup  |  Team Summary",
+           f"{first.strftime('%d/%m/%Y')} to {last.strftime('%d/%m/%Y')}", 11,
+           note=("Tasks are counted once each, however many days they were carried over.  "
+                 "Completion % = Done / Tasks Added.  Still Open = never marked done.  "
+                 "Avg Days to Finish = days from a task first appearing to being done."))
     sum_headers = ["Employee", "Active Days", "Tasks Added", "Done", "Still Open", "Blocked",
                    "Completion %", "Avg Days to Finish", "Delegated Out", "Received",
                    "Open Today"]
-    _header(wsum, sum_headers, 5)
-    wsum.freeze_panes = "A6"
+    _header(wsum, sum_headers, 8)
+    wsum.freeze_panes = "A9"
     today_open = {}
     for r in rows:
         if r["date"] == today and r["status"] in ("Pending", "Blocked", "Needs Approval"):
@@ -335,6 +414,7 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
     for r in rows:
         if r["from"]:
             received[r["name"]] = received.get(r["name"], 0) + 1
+    team = {"total": 0, "done": 0, "blocked": 0}
     for uid, name in people:
         mine = by_uid.get(uid, [])
         stats = lineage_stats(mine)
@@ -348,6 +428,9 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
                               if r["lineage"] == key and r["status"] == "Done"]
                 if done_dates:
                     finish_days.append((min(done_dates) - key[2]).days)
+        team["total"] += total
+        team["done"] += done
+        team["blocked"] += blocked
         wsum.append([name, len({r["date"] for r in mine}), total, done, total - done, blocked,
                      _pct(done, total) if total else "N/A",
                      round(sum(finish_days) / len(finish_days), 1) if finish_days else "N/A",
@@ -356,10 +439,50 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
         n = wsum.max_row
         if total:
             wsum.cell(row=n, column=7).number_format = "0.0%"
+        wsum.cell(row=n, column=1).font = _BOLD
+        for c in range(2, len(sum_headers) + 1):
+            wsum.cell(row=n, column=c).alignment = Alignment(horizontal="center", vertical="center")
+        wsum.row_dimensions[n].height = 22
         _border(wsum, n, len(sum_headers))
-    if wsum.max_row >= 6:
-        wsum.auto_filter.ref = f"A5:{get_column_letter(len(sum_headers))}{wsum.max_row}"
-    _widths(wsum, [18, 12, 12, 8, 11, 9, 14, 16, 14, 10, 11])
+    if wsum.max_row >= 9:
+        zebra(wsum, 9, wsum.max_row, len(sum_headers))
+        wsum.auto_filter.ref = f"A8:{get_column_letter(len(sum_headers))}{wsum.max_row}"
+        wsum.conditional_formatting.add(
+            f"G9:G{wsum.max_row}",
+            ColorScaleRule(start_type="num", start_value=0, start_color="F8CBCB",
+                           mid_type="num", mid_value=0.5, mid_color="FFEB9C",
+                           end_type="num", end_value=1, end_color="A9D8B8"))
+        wsum.conditional_formatting.add(
+            f"D9:D{wsum.max_row}",
+            DataBarRule(start_type="num", start_value=0, end_type="max", color="63BE7B"))
+    _widths(wsum, [18, 12, 12, 10, 11, 9, 14, 16, 14, 10, 11])
+    # KPI cards across the top: label row 5, big number row 6
+    pct_all = _pct(team["done"], team["total"])
+    cards = [("TASKS ADDED", team["total"], "0", 1, 2), ("DONE", team["done"], "0", 3, 4),
+             ("STILL OPEN", team["total"] - team["done"], "0", 5, 6),
+             ("COMPLETION", pct_all if pct_all is not None else "N/A", "0%", 7, 8),
+             ("BLOCKED", team["blocked"], "0", 9, 11)]
+    for label, val, fmt, c1, c2 in cards:
+        for r_ in (5, 6):
+            wsum.merge_cells(start_row=r_, start_column=c1, end_row=r_, end_column=c2)
+        lab = wsum.cell(row=5, column=c1, value=label)
+        lab.font = Font(bold=True, size=8.5, color="6B7280")
+        num = wsum.cell(row=6, column=c1, value=val)
+        num.font = Font(bold=True, size=20, color="1E4D2F")
+        num.number_format = fmt
+        for r_ in (5, 6):
+            for c_ in range(c1, c2 + 1):
+                cell = wsum.cell(row=r_, column=c_)
+                cell.fill = _CARD_FILL
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = Border(left=_THIN if c_ == c1 else None,
+                                     right=_THIN if c_ == c2 else None,
+                                     top=_THIN if r_ == 5 else None,
+                                     bottom=_THIN if r_ == 6 else None)
+    wsum.row_dimensions[5].height = 18
+    wsum.row_dimensions[6].height = 36
+    wsum.row_dimensions[7].height = 10
+    page_setup(wsum, 8)
 
     # ── one tracker sheet per person (one row per TASK, like the team's
     # own tracker sheets), then a combined "Collated by HR" sheet ─────────
@@ -376,16 +499,15 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
             n += 1
         used.add(title)
         w = wb.create_sheet(title=title)
-        w.cell(row=1, column=1, value=f"Daily Standup -- {name}").font = _TITLE_FONT
         span = (f"{min(r['date'] for r in mine).strftime('%d/%m/%Y')} to "
                 f"{max(r['date'] for r in mine).strftime('%d/%m/%Y')}") if mine else "no standup tasks in this range"
-        w.cell(row=2, column=1, value=(
-            f"{span}  |  TAT = days allowed (due date - start + 1; edit freely).  "
-            "Time Taken = Finish - Start + 1.  Time Track and Time Taken update by formula.  "
-            "QR is yours to fill.")).font = _META_FONT
+        banner(w, f"Daily Standup  |  {name}", span, len(TRACK_HEADERS), note=(
+            "TAT = days allowed (due date - start + 1; edit freely).  Time Taken = Finish - Start + 1.  "
+            "Time Track and Time Taken update by formula.  Status has a dropdown.  QR is yours to fill."))
         data_end = write_tracker(w, trows, 4)
         w.freeze_panes = "A5"
         w.sheet_properties.tabColor = "2F6B45"
+        page_setup(w, 4)
 
         stats = lineage_stats(mine)
         months = {}
@@ -423,18 +545,20 @@ def build_workbook(raw_rows, emp_map, active_employees, today: _date,
         for c, v in enumerate(["Total (All Time)", tot["new"], tot["done"], tot["open"],
                                tot["blocked"], tpct if tpct is not None else "N/A"], start=1):
             w.cell(row=k, column=c, value=v).font = _BOLD
+            w.cell(row=k, column=c).fill = _TOTAL_FILL
         if tpct is not None:
             w.cell(row=k, column=6).number_format = "0.0%"
         _border(w, k, 6)
 
     wc = wb.create_sheet(title="Collated by HR", index=2)
     wc.sheet_properties.tabColor = "2F6B45"
-    wc.cell(row=1, column=1, value="Collated by HR -- every person's tasks").font = _TITLE_FONT
-    wc.cell(row=2, column=1, value="Same columns as each person's sheet, oldest first; "
-                                   "filter by Employee.").font = _META_FONT
+    banner(wc, "Daily Standup  |  Collated by HR",
+           "Every person's tasks, oldest first - same columns as each person's sheet; filter by Employee.",
+           len(TRACK_HEADERS) + 1)
     all_tracker.sort(key=lambda t: (t["start"], t["name"].lower(), t["goal"].lower()))
     write_tracker(wc, all_tracker, 4, with_employee=True)
     wc.freeze_panes = "B5"
+    page_setup(wc, 4)
 
     buf = io.BytesIO()
     wb.save(buf)
