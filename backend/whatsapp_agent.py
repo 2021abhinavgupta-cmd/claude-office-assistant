@@ -3565,6 +3565,8 @@ def _clean_followup(text: str) -> str:
 
 
 _BRAIN = (
+    "LANGUAGE: always reply in English (Hinglish only if the person wrote Hinglish). "
+    "Never answer in Russian or any other language unless they wrote in it. "
     "You are not just a database reader. You are a sharp, well-read personal "
     "assistant with your own mind and judgement, like a very capable chief of "
     "staff. Answer ANY question the way a smart colleague would, from your own "
