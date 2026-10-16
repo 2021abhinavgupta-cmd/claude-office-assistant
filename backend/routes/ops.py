@@ -2252,6 +2252,57 @@ def export_standup_tasks():
     )
 
 
+@ops_bp.route("/api/export/standup-sheets", methods=["GET"])
+def export_standup_sheets():
+    """Excel workbook of the daily standup, laid out like the attendance
+    export: All / Summary / one sheet per person (see standup_export.py).
+    Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD; default is everything. Real
+    session required (same check as the attendance export)."""
+    from routes.attendance import _verified_admin
+    if not _verified_admin():
+        return "Unauthorized", 403
+    import standup_export
+    from datetime import date as _date
+    d_from = (request.args.get("from") or "").strip()
+    d_to = (request.args.get("to") or "").strip()
+    pat = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    if (d_from and not pat.match(d_from)) or (d_to and not pat.match(d_to)):
+        return jsonify({"error": "from/to must be YYYY-MM-DD"}), 400
+
+    sql = ("SELECT user_id, date, title, status, blocker, carried_from, created_at, "
+           "notion_id, subtasks, delegated_to, delegated_from, due_date FROM standup_tasks "
+           "WHERE COALESCE(status,'') != 'deleted'")
+    params = []
+    if d_from:
+        sql += " AND date >= ?"
+        params.append(d_from)
+    if d_to:
+        sql += " AND date <= ?"
+        params.append(d_to)
+    conn = _su_conn()
+    try:
+        raw = conn.execute(sql + " ORDER BY date, user_id", params).fetchall()
+    finally:
+        conn.close()
+
+    emp_map, active = {}, []
+    inactive = {"inactive", "disabled", "left", "removed", "archived", "former"}
+    try:
+        for e in _load_employees().get("employees", []):
+            emp_map[e["id"]] = e["name"]
+            if str(e.get("status", "active")).strip().lower() not in inactive:
+                active.append(e)
+    except Exception:
+        logger.exception("export_standup_sheets: employee load failed")
+
+    data = standup_export.build_workbook(raw, emp_map, active, _date.fromisoformat(today_ist()))
+    return Response(
+        data,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment;filename=lumina_standup.xlsx"},
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CLAUDE AI ROUTES — Task Intelligence
 # ══════════════════════════════════════════════════════════════════════════════
