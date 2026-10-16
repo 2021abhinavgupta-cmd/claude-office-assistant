@@ -514,9 +514,14 @@ def _whatsapp_hr(row: dict, subject: str = "", message: str = "") -> None:
                 text += f"\nReason: {reason}"
             if row.get("shortfall"):
                 text += f"\nNote: {row['shortfall']:g} of these days are beyond their leave balance (unpaid)."
-            # the one-click links are in the EMAIL only; here it is just the heads-up
-            text += (f"\n\nApprove or reject from the email I sent you, or reply here, "
-                     f"e.g. \"approve {who.split()[0]}'s leave\".")
+            # Same signed one-click links as the email. A GET only opens a confirm
+            # page (link previews/scanners can't decide anything), the button decides.
+            if row.get("id"):
+                text += (f"\n\nApprove: {action_url(row['id'], aid, 'approve')}"
+                         f"\nReject: {action_url(row['id'], aid, 'reject')}"
+                         f"\n\nOr reply here, e.g. \"approve {who.split()[0]}'s leave\".")
+            else:
+                text += f"\n\nReply here, e.g. \"approve {who.split()[0]}'s leave\"."
             wa_outbox.enqueue(jid, text)
     except Exception:
         logger.exception("leave_store: approver WhatsApp failed")
