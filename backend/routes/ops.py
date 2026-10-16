@@ -2295,7 +2295,26 @@ def export_standup_sheets():
     except Exception:
         logger.exception("export_standup_sheets: employee load failed")
 
-    data = standup_export.build_workbook(raw, emp_map, active, _date.fromisoformat(today_ist()))
+    # Client / task type / due date for standup rows linked to a board task.
+    # One Notion listing for the whole export; any failure just leaves those
+    # columns blank rather than failing the download.
+    notion_info = {}
+    wanted = {r[7] for r in raw if r[7]}
+    if wanted:
+        try:
+            if notion_store.is_configured():
+                for t in notion_store.list_tasks():
+                    if t.get("notion_id") in wanted:
+                        notion_info[t["notion_id"]] = {
+                            "client": t.get("client_name") or "",
+                            "type": t.get("service") or t.get("type") or "",
+                            "due": t.get("due_date") or "",
+                        }
+        except Exception:
+            logger.exception("export_standup_sheets: notion lookup failed")
+
+    data = standup_export.build_workbook(raw, emp_map, active, _date.fromisoformat(today_ist()),
+                                         notion_info)
     return Response(
         data,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
