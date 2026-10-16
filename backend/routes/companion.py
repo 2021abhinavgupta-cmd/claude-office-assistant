@@ -1175,7 +1175,10 @@ def companion_ask_test():
             conn.close()
     if isinstance(reply, dict):
         reply = reply.get("reply", "")
-    return jsonify({"reply": reply, "seconds": round(time.time() - t0, 1), **seen})
+    out = {"reply": reply, "seconds": round(time.time() - t0, 1), **seen}
+    if reply and reply.startswith("Sorry, I hit an error") and wa.LAST_ERROR.get("trace"):
+        out["error_trace"] = wa.LAST_ERROR["trace"]
+    return jsonify(out)
 
 
 @companion_bp.route("/api/companion/group-summary-debug", methods=["GET"])

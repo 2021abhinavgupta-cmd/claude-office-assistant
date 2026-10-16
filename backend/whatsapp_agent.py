@@ -51,6 +51,7 @@ import wa_outbox
 import llm_openrouter
 
 logger = logging.getLogger(__name__)
+LAST_ERROR = {}   # last model-loop traceback, shown by /api/companion/ask-test for debugging
 
 _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -4142,6 +4143,11 @@ def handle_message(sender: str, text: str, *,
             break
     except Exception:
         logger.exception("whatsapp_agent: model loop failed")
+        try:
+            import traceback
+            LAST_ERROR["trace"] = traceback.format_exc()[-2500:]
+        except Exception:
+            pass
         return "Sorry, I hit an error looking that up. Try again in a moment."
 
     if not reply:
