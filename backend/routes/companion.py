@@ -1181,6 +1181,38 @@ def companion_ask_test():
     return jsonify(out)
 
 
+@companion_bp.route("/api/companion/attendance-fix", methods=["POST"])
+def companion_attendance_fix():
+    """HR correction of one day's checkout time (token-gated).
+    ?user_id=emp003&date=2026-10-16&checkout=19:33   (checkout = HH:MM, IST)
+    Only touches an existing row that already has a check-in, and never moves
+    checkout earlier than check-in. Returns the before/after times."""
+    if not _auth_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import re as _re
+    uid = (request.args.get("user_id") or "").strip()
+    day = (request.args.get("date") or "").strip()
+    co = (request.args.get("checkout") or "").strip()
+    if not uid or not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) or not _re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", co):
+        return jsonify({"error": "pass user_id, date=YYYY-MM-DD, checkout=HH:MM"}), 400
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT checkin_time, checkout_time FROM daily_attendance WHERE user_id=? AND date=?",
+                           (uid, day)).fetchone()
+        if not row or not row[0]:
+            return jsonify({"error": "no check-in recorded for that person and date"}), 404
+        if co + ":00" <= str(row[0]):
+            return jsonify({"error": "checkout must be after check-in", "checkin": row[0]}), 400
+        with conn:
+            conn.execute("UPDATE daily_attendance SET checkout_time=? WHERE user_id=? AND date=?",
+                         (co + ":00", uid, day))
+    finally:
+        conn.close()
+    logger.warning("attendance-fix: %s %s checkout %s -> %s:00", uid, day, row[1], co)
+    return jsonify({"success": True, "user_id": uid, "date": day, "checkin": row[0],
+                    "checkout_before": row[1], "checkout_after": co + ":00"})
+
+
 @companion_bp.route("/api/companion/group-summary-debug", methods=["GET"])
 def companion_group_summary_debug():
     """Run the group summary once and show the model's raw points and which the
